@@ -18,7 +18,7 @@ from telegram.ext import (
 TOKEN = "8046769457:AAHYIPHxZ4fw6NKLBfW_3XOMZapmONK4a9g"
 DRIVERS_GROUP_ID = -1002452524294
 ADMIN_USERNAME = "@tg_adminstator"
-ADMIN_ID = 5660204735
+ADMIN_ID = "5660204735"
 
 CARD_NUMBER = "9860130147785443 (K.A nomida)"
 PRICE_PER_PERSON = 10000
@@ -275,6 +275,11 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Buyurtmalar\n"
         "• Cheklar"
         )
+    async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Siz admin emassiz")
+        return
+    await update.message.reply_text("👮 Admin panel ishlayapti")
 # ================= MAIN =================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
