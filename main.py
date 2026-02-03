@@ -127,9 +127,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👥 {o['people']} kishi"
         )
 
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Yangi Buyurtma", callback_data=f"accept_{uid}")]
-        ])
+        kb = InlineKeyboardButton(
+    "✅ QABUL QILISH",
+    callback_data=f"accept_{uid}"
+        )
 
         await context.bot.send_message(
             DRIVERS_GROUP_ID,
