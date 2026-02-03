@@ -39,7 +39,7 @@ def is_admin(user):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🚖 Taksi buyurtma", callback_data="order")],
-        [InlineKeyboardButton("✉️ Pochta (bepul)", callback_data="post")],
+        [InlineKeyboardButton("✉️ Pochta ()", callback_data="post")],
         [InlineKeyboardButton("🚗 Haydovchi bo‘lish", callback_data="driver")],
     ])
     await update.message.reply_text("Panelni tanlang:", reply_markup=kb)
