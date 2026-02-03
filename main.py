@@ -263,12 +263,24 @@ async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "no":
         await q.edit_message_caption("❌ Chek rad etildi")
         await context.bot.send_message(did, "❌ Chek noto‘g‘ri, qayta yuboring.")
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user):
+        await update.message.reply_text("❌ Siz admin emassiz")
+        return
 
+    await update.message.reply_text(
+        "👮 ADMIN PANEL\n\n"
+        "• Haydovchilar soni\n"
+        "• Yo‘lovchilar soni\n"
+        "• Buyurtmalar\n"
+        "• Cheklar"
+        )
 # ================= MAIN =================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("admin", admin))
     app.add_handler(CallbackQueryHandler(panel))
     app.add_handler(CallbackQueryHandler(accept, pattern="accept_"))
     app.add_handler(CallbackQueryHandler(close, pattern="close"))
