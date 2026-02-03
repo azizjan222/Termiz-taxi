@@ -18,6 +18,7 @@ from telegram.ext import (
 TOKEN = "8046769457:AAHYIPHxZ4fw6NKLBfW_3XOMZapmONK4a9g"
 DRIVERS_GROUP_ID = -1002452524294
 ADMIN_USERNAME = "@tg_adminstator"
+ADMIN_ID = 5660204735
 
 CARD_NUMBER = "9860130147785443 (K.A nomida)"
 PRICE_PER_PERSON = 10000
@@ -33,7 +34,7 @@ pending_checks = {}
 
 # ================= HELPERS =================
 def is_admin(user):
-    return f"@{user.username}" == ADMIN_USERNAME
+    return user.id == ADMIN_ID
 
 # ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
