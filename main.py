@@ -1,86 +1,127 @@
-import asyncio
-from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+)
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    CallbackQueryHandler, ContextTypes, filters
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters,
 )
 
-# ================== CONFIG ==================
+# ================= CONFIG =================
 TOKEN = "8046769457:AAHYIPHxZ4fw6NKLBfW_3XOMZapmONK4a9g"
 DRIVERS_GROUP_ID = -1002452524294
 ADMIN_USERNAME = "@tg_adminstator"
-CARD_NUMBER = "9860 1301 4778 5443 (K.A. nomida)"
+
+CARD_NUMBER = "9860130147785443 (K.A nomida)"
 PRICE_PER_PERSON = 10000
-PAYMENT_TIME_MIN = 20
 
-# ================== DATA ==================
-orders = {}              # passenger_id -> order details
-active_orders = {}       # driver_id -> passenger_id
-awaiting_close = set()   # driver_id
+# ================= STORAGE =================
+orders = {}
+drivers = {}
+driver_steps = {}
+
+active_orders = {}
 blocked_drivers = set()
-payment_deadline = {}    # driver_id -> datetime
+pending_checks = {}
 
-# ================== START ==================
+# ================= HELPERS =================
+def is_admin(user):
+    return f"@{user.username}" == ADMIN_USERNAME
+
+# ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚖 Taksi buyurtma", callback_data="panel_order")],
-        [InlineKeyboardButton("✉️ Pochta yuborish", callback_data="panel_post")]
+        [InlineKeyboardButton("🚖 Taksi buyurtma", callback_data="order")],
+        [InlineKeyboardButton("✉️ Pochta (bepul)", callback_data="post")],
+        [InlineKeyboardButton("🚗 Haydovchi bo‘lish", callback_data="driver")],
     ])
-    await update.message.reply_text(
-        "Assalomu alaykum! Panelni tanlang:",
-        reply_markup=kb
-    )
+    await update.message.reply_text("Panelni tanlang:", reply_markup=kb)
 
-# ================== PANEL CALLBACK ==================
-async def panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ================= PANEL =================
+async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
+    await q.answer()
     uid = q.from_user.id
-    data = q.data
-    if data == "panel_order":
+
+    if q.data == "order":
         orders[uid] = {}
         context.user_data["step"] = "from"
         await q.message.reply_text("📍 Qayerdan ketasiz?")
-    elif data == "panel_post":
-        context.user_data["step"] = "post_text"
-        await q.message.reply_text("✉️ Pochta xabarini yozing (bepul):")
 
-# ================== HANDLE TEXT ==================
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    elif q.data == "post":
+        context.user_data["step"] = "post"
+        await q.message.reply_text("✉️ Xabar matnini yozing:")
+
+    elif q.data == "driver":
+        if uid in drivers:
+            await q.message.reply_text("✅ Siz allaqachon haydovchisiz.")
+        else:
+            driver_steps[uid] = "name"
+            await q.message.reply_text("👤 Ismingizni yozing:")
+
+# ================= TEXT HANDLER =================
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
+    text = update.message.text.strip()
     step = context.user_data.get("step")
-    txt = update.message.text
 
-    # -------- TAKSI BUYURTMALARI --------
+    # ---- DRIVER REG ----
+    if uid in driver_steps:
+        if driver_steps[uid] == "name":
+            drivers[uid] = {"name": text}
+            driver_steps[uid] = "phone"
+            kb = ReplyKeyboardMarkup(
+                [[KeyboardButton("📞 Telefon yuborish", request_contact=True)]],
+                resize_keyboard=True
+            )
+            await update.message.reply_text("📞 Telefon raqamingizni yuboring:", reply_markup=kb)
+            return
+
+        if driver_steps[uid] == "car":
+            drivers[uid]["car"] = text
+            driver_steps.pop(uid)
+            await update.message.reply_text("✅ Haydovchi sifatida ro‘yxatdan o‘tdingiz.")
+            return
+
+    # ---- ORDER FLOW ----
     if step == "from":
-        orders[uid]["from"] = txt
+        orders[uid]["from"] = text
         context.user_data["step"] = "to"
         await update.message.reply_text("📍 Qayerga borasiz?")
-    elif step == "to":
-        orders[uid]["to"] = txt
+        return
+
+    if step == "to":
+        orders[uid]["to"] = text
         context.user_data["step"] = "time"
         await update.message.reply_text("⏰ Soat nechida?")
-    elif step == "time":
-        orders[uid]["time"] = txt
+        return
+
+    if step == "time":
+        orders[uid]["time"] = text
         context.user_data["step"] = "people"
         await update.message.reply_text("👥 Nechta odam?")
-    elif step == "people":
-        try:
-            orders[uid]["people"] = int(txt)
-        except:
-            await update.message.reply_text("❌ Iltimos, faqat raqam kiriting!")
-            return
+        return
+
+    if step == "people":
+        orders[uid]["people"] = int(text)
         context.user_data["step"] = "phone"
-        await update.message.reply_text(
-            "📞 Iltimos, ishlayotgan telefon raqamingizni yuboring (taksi siz bilan bog‘lanish uchun)."
-        )
-    elif step == "phone":
-        orders[uid]["phone"] = txt
+        await update.message.reply_text("📞 Telefon raqamingizni yozing:")
+        return
+
+    if step == "phone":
+        orders[uid]["phone"] = text
         context.user_data["step"] = None
 
         o = orders[uid]
-        text = (
-            "🚖 *Yangi buyurtma*\n\n"
+        msg = (
+            f"🚖 *Yangi buyurtma*\n\n"
             f"📍 {o['from']} → {o['to']}\n"
             f"⏰ {o['time']}\n"
             f"👥 {o['people']} kishi"
@@ -91,148 +132,151 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
         await context.bot.send_message(
-            DRIVERS_GROUP_ID, text,
-            parse_mode="Markdown", reply_markup=kb
+            DRIVERS_GROUP_ID,
+            msg,
+            parse_mode="Markdown",
+            reply_markup=kb
         )
 
-        await update.message.reply_text(
-            "⏳ Buyurtmangiz qabul qilinmoqda. Haydovchi tez orada bog‘lanadi."
-        )
+        await update.message.reply_text("⏳ Buyurtma yuborildi, haydovchi kutilmoqda.")
+        return
 
-    # -------- POCHTA --------
-    elif step == "post_text":
+    # ---- POST ----
+    if step == "post":
         context.user_data["step"] = None
-        msg_text = (
-            f"✉️ *Yangi pochta*\n\n"
-            f"👤 Yo‘lovchi: {update.effective_user.full_name}\n"
-            f"📞 @{update.effective_user.username if update.effective_user.username else 'yo‘q'}\n"
-            f"📝 Xabar:\n{txt}"
-        )
         await context.bot.send_message(
-            DRIVERS_GROUP_ID, msg_text, parse_mode="Markdown"
+            DRIVERS_GROUP_ID,
+            f"✉️ *Pochta xabar*\n\n{text}",
+            parse_mode="Markdown"
         )
-        await update.message.reply_text("✅ Xabaringiz yuborildi. Tez orada bog‘lanishadi.")
+        await update.message.reply_text("✅ Xabar yuborildi.")
+        return
 
-# ================== ACCEPT ORDER ==================
-async def accept_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ================= CONTACT =================
+async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid in driver_steps and driver_steps[uid] == "phone":
+        drivers[uid]["phone"] = update.message.contact.phone_number
+        driver_steps[uid] = "car"
+        await update.message.reply_text("🚘 Mashina raqamini yozing:")
+
+# ================= ACCEPT =================
+async def accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    driver = q.from_user
+    await q.answer()
+
+    driver_id = q.from_user.id
     passenger_id = int(q.data.split("_")[1])
 
-    if driver.id in blocked_drivers:
-        await q.answer(
-            f"❌ To‘lov qilinmagan. Admin: {ADMIN_USERNAME}",
-            show_alert=True
-        )
+    if driver_id not in drivers:
+        await q.answer("❌ Avval haydovchi bo‘ling", show_alert=True)
         return
 
-    active_orders[driver.id] = passenger_id
-    awaiting_close.add(driver.id)
+    if driver_id in blocked_drivers:
+        await q.answer("❌ To‘lov qilinmagan", show_alert=True)
+        return
 
-    passenger = await context.bot.get_chat(passenger_id)
-    passenger_phone = orders[passenger_id]["phone"]
+    active_orders[driver_id] = passenger_id
+    d = drivers[driver_id]
+    o = orders[passenger_id]
 
-    # Haydovchiga yo'lovchi info
-    await q.edit_message_text(
-        f"✅ Buyurtma sizga biriktirildi.\n\n"
-        f"👤 Yo‘lovchi: {passenger.full_name}\n"
-        f"📞 {passenger_phone}\n\n"
-        "ℹ️ Agar buyurtmani olgan bo‘lsangiz, **YOPILDI** tugmasini bosing."
-    )
+    await q.edit_message_text("✅ Buyurtma olindi")
 
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔒 YOPILDI", callback_data="closed")]
-    ])
     await context.bot.send_message(
-        driver.id,
-        "Buyurtma holatini yoping:",
-        reply_markup=kb
+        driver_id,
+        f"👤 Yo‘lovchi tel: {o['phone']}\n\nBuyurtmani olgach *YOPILDI* bosing.",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔒 YOPILDI", callback_data="close")]
+        ])
     )
 
-    # Yo‘lovchiga haydovchi info
     await context.bot.send_message(
         passenger_id,
-        f"🚗 Haydovchi topildi:\n"
-        f"👤 {driver.full_name}\n"
-        f"📞 @{driver.username if driver.username else 'yo‘q'}"
+        f"🚗 Haydovchi topildi!\n\n👤 {d['name']}\n📞 {d['phone']}\n🚘 {d.get('car','')}"
     )
 
-# ================== CLOSE ORDER ==================
-async def close_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ================= CLOSE =================
+async def close(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
+    await q.answer()
+
     driver_id = q.from_user.id
+    passenger_id = active_orders.get(driver_id)
 
-    if driver_id not in awaiting_close:
-        return
-
-    passenger_id = active_orders[driver_id]
     people = orders[passenger_id]["people"]
     total = people * PRICE_PER_PERSON
 
     blocked_drivers.add(driver_id)
-    awaiting_close.remove(driver_id)
-    payment_deadline[driver_id] = datetime.now() + timedelta(minutes=PAYMENT_TIME_MIN)
+    pending_checks[driver_id] = total
 
     await q.edit_message_text(
-        "🔒 Buyurtma yopildi.\n\n"
-        f"💳 To‘lov uchun karta:\n{CARD_NUMBER}\n"
-        f"💰 Summa: {total:,} so‘m\n\n"
-        f"⏱ {PAYMENT_TIME_MIN} daqiqa ichida chek tashlang."
+        f"💳 Karta: {CARD_NUMBER}\n"
+        f"💰 Summa: {total} so‘m\n\n"
+        "📸 Chek rasmini yuboring"
     )
 
-    # Adminga xabar
-    await context.bot.send_message(
-        ADMIN_USERNAME,
-        f"🚨 Haydovchi {driver_id} buyurtmani yopdi. To‘lovni qabul qiling."
-    )
-
-# ================== PAYMENT CHECKER ==================
-async def payment_checker(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now()
-    for driver_id, deadline in list(payment_deadline.items()):
-        if now > deadline:
-            if driver_id not in blocked_drivers:
-                blocked_drivers.add(driver_id)
-                await context.bot.send_message(
-                    ADMIN_USERNAME,
-                    f"❌ Haydovchi {driver_id} 20 daqiqa ichida to‘lov qilmagan, bloklandi."
-                )
-
-# ================== ADMIN COMMANDS ==================
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if f"@{update.effective_user.username}" != ADMIN_USERNAME:
-        await update.message.reply_text("❌ Faqat admin ko‘ra oladi")
+# ================= PHOTO =================
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid not in pending_checks:
         return
 
-    total_orders = len(orders)
-    total_drivers = len(active_orders)
-    total_blocked = len(blocked_drivers)
+    amount = pending_checks[uid]
+    photo = update.message.photo[-1]
 
-    msg = (
-        f"📊 Statistika:\n"
-        f"👥 Buyurtmalar: {total_orders}\n"
-        f"🚗 Faol haydovchilar: {total_drivers}\n"
-        f"⛔ Bloklangan haydovchilar: {total_blocked}"
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"ok_{uid}"),
+            InlineKeyboardButton("❌ Rad etish", callback_data=f"no_{uid}")
+        ]
+    ])
+
+    await context.bot.send_photo(
+        ADMIN_USERNAME,
+        photo.file_id,
+        caption=f"💳 Haydovchi: {uid}\n💰 {amount} so‘m",
+        reply_markup=kb
     )
-    await update.message.reply_text(msg)
 
-# ================== MAIN ==================
+    await update.message.reply_text("⏳ Chek adminga yuborildi.")
+
+# ================= ADMIN =================
+async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    if not is_admin(q.from_user):
+        return
+
+    action, did = q.data.split("_")
+    did = int(did)
+
+    if action == "ok":
+        blocked_drivers.discard(did)
+        pending_checks.pop(did, None)
+        await q.edit_message_caption("✅ To‘lov tasdiqlandi")
+        await context.bot.send_message(did, "✅ To‘lov qabul qilindi.")
+
+    if action == "no":
+        await q.edit_message_caption("❌ Chek rad etildi")
+        await context.bot.send_message(did, "❌ Chek noto‘g‘ri, qayta yuboring.")
+
+# ================= MAIN =================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CallbackQueryHandler(panel_callback, pattern="panel_"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(CallbackQueryHandler(accept_order, pattern="accept_"))
-    app.add_handler(CallbackQueryHandler(close_order, pattern="closed"))
+    app.add_handler(CallbackQueryHandler(panel))
+    app.add_handler(CallbackQueryHandler(accept, pattern="accept_"))
+    app.add_handler(CallbackQueryHandler(close, pattern="close"))
+    app.add_handler(CallbackQueryHandler(admin_check, pattern="ok_|no_"))
 
-    # Timer
-    job_queue = app.job_queue
-    job_queue.run_repeating(payment_checker, interval=60, first=10)
+    app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
+    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
     app.run_polling()
 
-# ================== RUN ==================
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
