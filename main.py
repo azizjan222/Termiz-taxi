@@ -128,7 +128,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Qabul qildim", callback_data=f"accept_{uid}")]
+            [InlineKeyboardButton("✅ Yangi Buyurtma", callback_data=f"accept_{uid}")]
         ])
 
         await context.bot.send_message(
