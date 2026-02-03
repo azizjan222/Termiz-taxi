@@ -264,17 +264,22 @@ async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_caption("❌ Chek rad etildi")
         await context.bot.send_message(did, "❌ Chek noto‘g‘ri, qayta yuboring.")
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user):
+    if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Siz admin emassiz")
         return
 
+    drivers_count = len(drivers)
+    users_count = len(users)
+    orders_count = len(active_orders)
+
     await update.message.reply_text(
         "👮 ADMIN PANEL\n\n"
-        "• Haydovchilar soni\n"
-        "• Yo‘lovchilar soni\n"
-        "• Buyurtmalar\n"
-        "• Cheklar"
-        )
+        f"🚗 Haydovchilar soni: {drivers_count}\n"
+        f"👤 Yo‘lovchilar soni: {users_count}\n"
+        f"📦 Buyurtmalar: {orders_count}\n"
+        f"🧾 Cheklar: {len(pending_checks)}"
+    )
+        
     async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Siz admin emassiz")
