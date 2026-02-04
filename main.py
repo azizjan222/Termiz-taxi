@@ -18,7 +18,7 @@ from telegram.ext import (
 )
 
 # ================= CONFIG =================
-TOKEN = "BOT_TOKENINGNI_BU_YERGA_QO‘Y"
+TOKEN = os.getenv("BOT_TOKEN")
 DRIVERS_GROUP_ID = -1002452524294
 
 ADMIN_ID = 5660204735
