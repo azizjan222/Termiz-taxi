@@ -193,7 +193,7 @@ async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save(FILES["orders"], orders)
 
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅️ Qabul qilish, callback_data=f"accept_{order_id}")]
+            [InlineKeyboardButton(" Qabul Qilish ✅️", callback_data=f"accept_{order_id}")]
         ])
 
         await context.bot.send_message(
