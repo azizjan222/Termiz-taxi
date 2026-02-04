@@ -1,6 +1,7 @@
-import json
 import os
+import json
 import time
+import logging
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -17,37 +18,35 @@ from telegram.ext import (
     filters
 )
 
-# ================= CONFIG =================
+# ===================== CONFIG =====================
 TOKEN = "8046769457:AAHYIPHxZ4fw6NKLBfW_3XOMZapmONK4a9g"
-DRIVERS_GROUP_ID = -1002452524294
-
 ADMIN_ID = 5660204735
 ADMIN_USERNAME = "@tg_adminstator"
+DRIVERS_GROUP_ID = -1002452524294
 
 PRICE_PER_PERSON = 10000
-PAYMENT_TIMEOUT = 1200  # 20 minut
-WARNING_TIME = 600      # 10 minut
-# =========================================
+WARNING_TIME = 600
+PAYMENT_TIMEOUT = 1200
 
-# ================= FILES ==================
+# ===================== FILES ======================
 FILES = {
     "drivers": "drivers.json",
     "users": "users.json",
     "orders": "orders.json",
-    "pending": "pending_payments.json",
-    "blocked": "blocked_drivers.json",
-    "payments": "payments_confirmed.json"
+    "pending": "pending.json",
+    "blocked": "blocked.json",
+    "payments": "payments.json"
 }
-# =========================================
 
-def load(path, default):
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
+# ===================== LOAD / SAVE =================
+def load(file, default):
+    if os.path.exists(file):
+        with open(file, "r", encoding="utf-8") as f:
             return json.load(f)
     return default
 
-def save(path, data):
-    with open(path, "w", encoding="utf-8") as f:
+def save(file, data):
+    with open(file, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 drivers = load(FILES["drivers"], {})
@@ -57,48 +56,41 @@ pending = load(FILES["pending"], {})
 blocked = load(FILES["blocked"], [])
 payments = load(FILES["payments"], [])
 
-# ================= HELPERS =================
-def is_admin(uid):
-    return uid == ADMIN_ID
+logging.basicConfig(level=logging.INFO)
 
-def is_blocked(uid):
-    return uid in blocked
+# ===================== HELPERS =====================
+def is_admin(uid): return uid == ADMIN_ID
+def is_blocked(uid): return str(uid) in blocked
 
-# ================= JOB QUEUE =================
+# ===================== JOB QUEUE ===================
 async def payment_warning(context: ContextTypes.DEFAULT_TYPE):
-    driver_id = context.job.data
-    if driver_id not in pending:
-        return
-    await context.bot.send_message(
-        int(driver_id),
-        "⏰ OGOHLANTIRISH!\n\n"
-        "To‘lov uchun 10 daqiqa qoldi.\n"
-        "Iltimos, chekni BOTGA yuboring.\n\n"
-        f"👮 Admin: {ADMIN_USERNAME}"
-    )
+    uid = context.job.data
+    if uid in pending:
+        await context.bot.send_message(
+            int(uid),
+            "⏰ OGOHLANTIRISH!\n\n"
+            "To‘lov uchun 10 daqiqa qoldi.\n"
+            "Chekni BOTGA yuboring.\n\n"
+            f"Admin: {ADMIN_USERNAME}"
+        )
 
-async def check_payment_timeout(context: ContextTypes.DEFAULT_TYPE):
-    driver_id = context.job.data
-    if driver_id not in pending:
-        return
-
-    start_time = pending[driver_id]["start"]
-    if time.time() - start_time >= PAYMENT_TIMEOUT:
-        if driver_id not in blocked:
-            blocked.append(driver_id)
+async def payment_timeout(context: ContextTypes.DEFAULT_TYPE):
+    uid = context.job.data
+    if uid in pending:
+        if uid not in blocked:
+            blocked.append(uid)
             save(FILES["blocked"], blocked)
 
         await context.bot.send_message(
-            int(driver_id),
+            int(uid),
             "❌ Siz vaqtincha bloklandingiz.\n\n"
-            "Sababi: to‘lovni belgilangan vaqt ichida amalga oshirmadingiz.\n\n"
-            "🚫 Yangi buyurtmalarni olish uchun\n"
-            "avval oldingi buyurtma bo‘yicha\n"
-            "to‘lovni amalga oshiring.\n\n"
-            f"👮 Admin: {ADMIN_USERNAME}"
+            "Sababi: to‘lovni vaqtida amalga oshirmadingiz.\n\n"
+            "🚫 Yangi zakas olish uchun\n"
+            "avval eski zakas bo‘yicha to‘lov qiling.\n\n"
+            f"Admin: {ADMIN_USERNAME}"
         )
 
-# ================= START =================
+# ===================== START ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     if uid not in users:
@@ -106,13 +98,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save(FILES["users"], users)
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚕 Taksi zakas", callback_data="order_taxi")],
-        [InlineKeyboardButton("📦 Pochta", callback_data="order_post")],
+        [InlineKeyboardButton("🚕 Taksi zakas", callback_data="order")],
         [InlineKeyboardButton("🚗 Haydovchi bo‘lish", callback_data="driver")]
     ])
     await update.message.reply_text("Tanlang:", reply_markup=kb)
 
-# ================= PANEL =================
+# ===================== PANEL ======================
 async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -120,23 +111,17 @@ async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if q.data == "driver":
         if uid in drivers:
-            d = drivers[uid]
-            await q.message.reply_text(
-                f"✅ Siz allaqachon haydovchisiz\n👤 {d['name']}\n📞 {d['phone']}"
-            )
+            await q.message.reply_text("✅ Siz allaqachon haydovchisiz.")
             return
         context.user_data["step"] = "driver_name"
         await q.message.reply_text("👤 Ismingizni yozing:")
-        return
 
-    if q.data in ["order_taxi", "order_post"]:
+    if q.data == "order":
         context.user_data.clear()
-        context.user_data["type"] = q.data
         context.user_data["step"] = "from"
         await q.message.reply_text("📍 Qayerdan ketasiz?")
-        return
 
-# ================= TEXT =================
+# ===================== TEXT =======================
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     step = context.user_data.get("step")
     text = update.message.text
@@ -148,7 +133,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [[KeyboardButton("📞 Telefon yuborish", request_contact=True)]],
             resize_keyboard=True
         )
-        await update.message.reply_text("📞 Telefoningizni yuboring:", reply_markup=kb)
+        await update.message.reply_text("Telefoningizni yuboring:", reply_markup=kb)
         return
 
     if step == "from":
@@ -178,7 +163,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text("📞 Telefon raqamingizni yuboring:", reply_markup=kb)
 
-# ================= CONTACT =================
+# ===================== CONTACT ====================
 async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     phone = update.message.contact.phone_number
@@ -203,18 +188,17 @@ async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "from": context.user_data["from"],
             "to": context.user_data["to"],
             "time": context.user_data["time"],
-            "people": context.user_data["people"],
-            "type": context.user_data["type"]
+            "people": context.user_data["people"]
         }
         save(FILES["orders"], orders)
 
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🟢 Qabul Qilish", callback_data=f"accept_{order_id}")]
+            [InlineKeyboardButton("🆕 Yangi buyurtma", callback_data=f"accept_{order_id}")]
         ])
 
         await context.bot.send_message(
             DRIVERS_GROUP_ID,
-            f"📢 YANGI BUYURTMA\n"
+            f"🆕 YANGI BUYURTMA\n"
             f"📍 {orders[order_id]['from']} → {orders[order_id]['to']}\n"
             f"⏰ {orders[order_id]['time']}\n"
             f"👥 {orders[order_id]['people']} kishi",
@@ -226,25 +210,23 @@ async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data.clear()
 
-# ================= ACCEPT =================
+# ===================== ACCEPT =====================
 async def accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     driver_id = str(q.from_user.id)
-    order_id = q.data.replace("accept_", "")
 
     if driver_id not in drivers:
-        await q.message.reply_text("❌ Avval haydovchi bo‘lib ro‘yxatdan o‘ting.")
+        await q.answer("❌ Avval haydovchi bo‘lib ro‘yxatdan o‘ting", show_alert=True)
         return
 
     if is_blocked(driver_id):
-        await q.message.reply_text(
-            f"❌ Sizda to‘lanmagan buyurtma bor.\nAdmin: {ADMIN_USERNAME}"
-        )
+        await q.answer("⛔ Sizda to‘lanmagan zakas bor", show_alert=True)
         return
 
+    order_id = q.data.replace("accept_", "")
     if order_id not in orders:
-        await q.edit_message_text("❌ Buyurtma allaqachon olingan.")
+        await q.edit_message_text("❌ Buyurtma allaqachon olingan")
         return
 
     order = orders.pop(order_id)
@@ -256,20 +238,20 @@ async def accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     save(FILES["pending"], pending)
 
-    context.job_queue.run_once(payment_warning, when=WARNING_TIME, data=driver_id)
-    context.job_queue.run_once(check_payment_timeout, when=PAYMENT_TIMEOUT, data=driver_id)
+    context.job_queue.run_once(payment_warning, WARNING_TIME, data=driver_id)
+    context.job_queue.run_once(payment_timeout, PAYMENT_TIMEOUT, data=driver_id)
 
     await q.edit_message_text("✅ Buyurtma olindi")
 
     await context.bot.send_message(
         int(driver_id),
         f"🚕 BUYURTMA MA’LUMOTLARI\n\n"
-        f"👤 Yo‘lovchi: {order['passenger_name']}\n"
-        f"📞 Telefon: {order['phone']}\n"
+        f"👤 {order['passenger_name']}\n"
+        f"📞 {order['phone']}\n"
         f"📍 {order['from']} → {order['to']}\n"
-        f"⏰ Vaqt: {order['time']}\n"
+        f"⏰ {order['time']}\n"
         f"👥 {order['people']} kishi\n\n"
-        f"⏳ 20 daqiqa ichida to‘lov chekini BOTGA yuboring"
+        "⏳ 20 daqiqa ichida chekni BOTGA yuboring"
     )
 
     d = drivers[driver_id]
@@ -278,7 +260,7 @@ async def accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🚗 Haydovchi topildi\n👤 {d['name']}\n📞 {d['phone']}"
     )
 
-# ================= PHOTO (CHEK) =================
+# ===================== PHOTO ======================
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     if uid not in pending:
@@ -295,9 +277,9 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ])
     )
-    await update.message.reply_text("⏳ Chek adminga yuborildi. Kutilmoqda.")
+    await update.message.reply_text("⏳ Chek adminga yuborildi.")
 
-# ================= ADMIN CALLBACK =================
+# ===================== ADMIN CALLBACK =============
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -309,50 +291,48 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data.startswith("pay_ok"):
         payments.append({"driver_id": uid, "timestamp": time.time()})
         save(FILES["payments"], payments)
+
         pending.pop(uid, None)
         save(FILES["pending"], pending)
+
         if uid in blocked:
             blocked.remove(uid)
             save(FILES["blocked"], blocked)
 
         await context.bot.send_message(
             int(uid),
-            "✅ To‘lov qabul qilindi.\n\n"
-            "🔓 Siz blokdan chiqarildingiz.\n"
-            "Endi yangi buyurtmalarni qabul qilishingiz mumkin.\n"
-            "Rahmat!"
+            "✅ To‘lov qabul qilindi.\n🔓 Siz blokdan chiqarildingiz."
         )
-        await q.edit_message_caption("✅ To‘lov tasdiqlandi")
+        await q.edit_message_caption("✅ Tasdiqlandi")
 
     if q.data.startswith("pay_no"):
         await context.bot.send_message(
             int(uid),
-            "❌ Chek rad etildi.\nIltimos, to‘g‘ri chekni qayta yuboring."
+            "❌ Chek rad etildi. Qayta yuboring."
         )
-        await q.edit_message_caption("❌ Chek rad etildi")
+        await q.edit_message_caption("❌ Rad etildi")
 
-# ================= ADMIN =================
+# ===================== ADMIN ======================
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ Siz admin emassiz")
         return
 
     now = time.time()
     daily = sum(1 for p in payments if now - p["timestamp"] <= 86400)
-    weekly = sum(1 for p in payments if now - p["timestamp"] <= 7 * 86400)
+    weekly = sum(1 for p in payments if now - p["timestamp"] <= 604800)
 
     await update.message.reply_text(
         f"👮 ADMIN PANEL\n\n"
         f"🚗 Haydovchilar: {len(drivers)}\n"
         f"👤 Yo‘lovchilar: {len(users)}\n"
         f"📦 Aktiv zakaslar: {len(orders)}\n"
-        f"⏳ To‘lov kutilmoqda: {len(pending)}\n"
+        f"⏳ Kutilayotgan to‘lovlar: {len(pending)}\n"
         f"🔒 Bloklangan: {len(blocked)}\n\n"
         f"📅 Bugungi to‘lovlar: {daily}\n"
         f"📆 Haftalik to‘lovlar: {weekly}"
     )
 
-# ================= MAIN =================
+# ===================== MAIN =======================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -360,7 +340,7 @@ def main():
     app.add_handler(CommandHandler("admin", admin))
 
     app.add_handler(CallbackQueryHandler(panel))
-    app.add_handler(CallbackQueryHandler(accept_order, pattern="^accept_"))
+    app.add_handler(CallbackQueryHandler(accept, pattern="^accept_"))
     app.add_handler(CallbackQueryHandler(admin_callback, pattern="^pay_"))
 
     app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
