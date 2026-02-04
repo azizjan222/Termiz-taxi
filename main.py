@@ -361,7 +361,6 @@ def main():
 
     app.add_handler(CallbackQueryHandler(panel))
     app.add_handler(CallbackQueryHandler(accept_order, pattern="^accept_"))
-    app.add_handler(CallbackQueryHandler(accept, pattern="^accept_"))
     app.add_handler(CallbackQueryHandler(admin_callback, pattern="^pay_"))
 
     app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
