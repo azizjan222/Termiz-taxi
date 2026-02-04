@@ -209,7 +209,7 @@ async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save(FILES["orders"], orders)
 
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🟢 Yangi buyurtma", callback_data=f"accept_{order_id}")]
+            [InlineKeyboardButton("🟢 Qabul Qilish", callback_data=f"accept_{order_id}")]
         ])
 
         await context.bot.send_message(
@@ -360,6 +360,7 @@ def main():
     app.add_handler(CommandHandler("admin", admin))
 
     app.add_handler(CallbackQueryHandler(panel))
+    app.add_handler(CallbackQueryHandler(accept_order, pattern="^accept_"))
     app.add_handler(CallbackQueryHandler(accept, pattern="^accept_"))
     app.add_handler(CallbackQueryHandler(admin_callback, pattern="^pay_"))
 
