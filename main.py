@@ -19,7 +19,7 @@ from telegram.ext import (
 
 # ================== ⚙️ SOZLAMALAR ==================
 TOKEN = "8046769457:AAHYIPHxZ4fw6NKLBfW_3XOMZapmONK4a9g"
-DRIVERS_GROUP_ID = -1002452524294 # Haydovchilar guruhi
+DRIVERS_GROUP_ID = -1003490806598 # Haydovchilar guruhi
 ADMIN_ID = 5660204735 # Admin ID (Sizning ID raqamingiz)
 
 # Taymer vaqtlari (minutda)
