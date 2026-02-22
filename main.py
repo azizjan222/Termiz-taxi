@@ -19,7 +19,7 @@ from telegram.ext import (
 
 # ================== ⚙️ SOZLAMALAR ==================
 TOKEN = "8046769457:AAHYIPHxZ4fw6NKLBfW_3XOMZapmONK4a9g"
-DRIVERS_GROUP_ID = -1003490806598 # Haydovchilar guruhi
+DRIVERS_GROUP_ID = -1002452524294 # Haydovchilar guruhi
 ADMIN_ID = 5660204735 # Admin ID (Sizning ID raqamingiz)
 
 # Taymer vaqtlari (minutda)
@@ -397,7 +397,7 @@ async def admin_tasdiqlash_rad(update: Update, context: ContextTypes.DEFAULT_TYP
         if uid in pending_payments: del pending_payments[uid]
             
         await query.message.edit_caption(caption=query.message.caption + "\n\n✅ TASDIQLANDI")
-        await context.bot.send_message(chat_id=uid, text="✅ To‘lov tasdiqlandi\nBlok yechildi, yana ishlashingiz mumkin!")
+        await context.bot.send_message(chat_id=uid, text="✅ To‘lov tasdiqlandi\nYana ishlashingiz mumkin!")
         
     elif data.startswith("rad_"):
         bloklangan_haydovchilar.add(uid)
