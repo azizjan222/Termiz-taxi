@@ -19,6 +19,7 @@ from telegram.ext import (
 )
 
 # ================== CONFIG ==================
+# DIQQAT: Bot tokenini keyinroq almashtirib qo'yishni unutmang
 TOKEN = "8046769457:AAHYIPHxZ4fw6NKLBfW_3XOMZapmONK4a9g"
 
 ADMIN_ID = 5660204735
@@ -31,7 +32,7 @@ PAY_WARN_MIN = 10     # 10 minut
 PAY_BLOCK_MIN = 20    # 20 minut
 CONTACT_WAIT_MIN = 30 # 30 minut
 
-# ================== STORAGE (JSON YO‘Q) ==================
+# ================== STORAGE ==================
 driver_phones = {}        # driver_id -> phone
 orders = {}               # order_id -> order_data
 active_orders = {}        # order_id -> {passenger_id, driver_id}
@@ -54,14 +55,16 @@ async def is_group_member(bot, user_id: int) -> bool:
 # ================== START ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = ReplyKeyboardMarkup(
-        [[KeyboardButton("📞 Telefon raqamni yuborish", request_contact=True)]],
+        [
+            [KeyboardButton("🚕 Men Haydovchiman")],
+            [KeyboardButton("🙋‍♂️ Men Yo'lovchiman")]
+        ],
         resize_keyboard=True,
         one_time_keyboard=True
     )
     await update.message.reply_text(
-        "Assalomu alaykum!\n"
-        "🚕 Zakas olish uchun telefon raqamingizni yuboring.\n"
-        "(faqat 1 marta)",
+        "Assalomu alaykum! Termiz-Sariosiyo taksi botiga xush kelibsiz.\n\n"
+        "Iltimos, o'zingizga kerakli bo'limni tanlang:",
         reply_markup=kb
     )
 
@@ -73,21 +76,47 @@ async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "✅ Telefon saqlandi.\n"
-        "Endi zakaslarni olishingiz mumkin.",
+        "Endi guruhdan zakaslarni olishingiz mumkin.",
         reply_markup=ReplyKeyboardRemove()
     )
 
-# ================== ORDER START ==================
+# ================== ORDER START (/zakas) ==================
 async def order_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data["step"] = "name"
-    await update.message.reply_text("👤 Ismingizni yozing:")
+    await update.message.reply_text(
+        "👤 Ismingizni yozing:", 
+        reply_markup=ReplyKeyboardRemove()
+    )
 
 # ================== TEXT HANDLER ==================
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    step = context.user_data.get("step")
     text = update.message.text
+    step = context.user_data.get("step")
 
+    # --- Asosiy Menyu ---
+    if text == "🚕 Men Haydovchiman":
+        kb = ReplyKeyboardMarkup(
+            [[KeyboardButton("📞 Telefon raqamni yuborish", request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        await update.message.reply_text(
+            "Haydovchi, zakas olish uchun telefon raqamingizni yuboring.\n(faqat 1 marta)",
+            reply_markup=kb
+        )
+        return
+
+    if text == "🙋‍♂️ Men Yo'lovchiman":
+        context.user_data.clear()
+        context.user_data["step"] = "name"
+        await update.message.reply_text(
+            "👤 Ismingizni yozing:", 
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+
+    # --- Yo'lovchi ro'yxatdan o'tishi ---
     if step == "name":
         context.user_data["name"] = text
         context.user_data["step"] = "phone"
@@ -113,6 +142,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if step == "people":
+        if not text.isdigit():
+            await update.message.reply_text("Iltimos, odam sonini faqat raqam bilan yozing (masalan: 2)")
+            return
+            
         context.user_data["people"] = int(text)
         context.user_data["step"] = "time"
         await update.message.reply_text("⏰ Qaysi vaqtda ketiladi?")
@@ -147,9 +180,11 @@ async def create_order(update, context, time_text):
 
     text = (
         "🆕 YANGI BUYURTMA\n\n"
-        f"📍 {order['from']} ➜ {order['to']}\n"
-        f"⏰ {order['time']}\n"
-        f"👥 {order['people']} kishi"
+        f"📍 Qayerdan: {order['from']}\n"
+        f"📍 Qayerga: {order['to']}\n"
+        f"⏰ Vaqt: {order['time']}\n"
+        f"👥 Odam soni: {order['people']} kishi\n"
+        f"📞 Yo'lovchi tel: {order['passenger_phone']}"
     )
 
     await context.bot.send_message(
@@ -159,8 +194,8 @@ async def create_order(update, context, time_text):
     )
 
     await update.message.reply_text(
-        "⏳ Buyurtmangiz qabul qilindi.\n"
-        "Haydovchi topilishi kutilmoqda."
+        "⏳ Buyurtmangiz qabul qilindi va haydovchilarga yuborildi.\n"
+        "Haydovchi topilishi kutilmoqda..."
     )
 
 # ================== TAKE ORDER ==================
@@ -180,11 +215,11 @@ async def take_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if uid not in driver_phones:
-        await q.message.reply_text("❗ Avval /start bosib telefon yuboring.")
+        await q.message.reply_text("❗ Avval botga kirib /start orqali telefon raqamingizni yuboring.")
         return
 
     if oid not in orders:
-        await q.message.edit_text("❌ Buyurtma topilmadi.")
+        await q.message.edit_text("❌ Bu buyurtma olib bo'lingan yoki bekor qilingan.")
         return
 
     order = orders.pop(oid)
@@ -193,8 +228,7 @@ async def take_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "driver_id": uid
     }
 
-    # guruhda yopamiz
-    await q.message.edit_text("✅ Buyurtma olindi")
+    await q.message.edit_text(f"✅ Buyurtma {q.from_user.first_name} tomonidan olindi.")
 
     total_price = order["people"] * PRICE_PER_PERSON
 
@@ -202,20 +236,18 @@ async def take_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❌ Buyurtmani bekor qilish", callback_data=f"cancel_{oid}")]
     ])
 
-    # yo‘lovchiga
     await context.bot.send_message(
         chat_id=order["passenger_id"],
         text=(
             "🚖 Haydovchi topildi!\n\n"
-            f"👤 Telegram: @{q.from_user.username}\n"
+            f"👤 Haydovchi: @{q.from_user.username if q.from_user.username else q.from_user.first_name}\n"
             f"📞 Telefon: {driver_phones[uid]}\n"
             f"💰 To‘lov: {total_price} so‘m\n\n"
-            "Haydovchi 30 daqiqa ichida bog‘lanishi kerak."
+            "Haydovchi siz bilan tez orada bog‘lanadi."
         ),
         reply_markup=cancel_kb
     )
 
-    # haydovchiga
     await context.bot.send_message(
         chat_id=uid,
         text=(
@@ -226,7 +258,6 @@ async def take_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=cancel_kb
     )
 
-    # 30 minut avtomatik bekor
     context.job_queue.run_once(
         auto_cancel_order,
         when=CONTACT_WAIT_MIN * 60,
@@ -234,7 +265,6 @@ async def take_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name=f"auto_cancel_{oid}"
     )
 
-    # to‘lov taymerlari
     pending_payments[uid] = datetime.now() + timedelta(minutes=PAY_BLOCK_MIN)
 
 # ================== AUTO CANCEL ==================
@@ -263,10 +293,9 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order = active_orders.pop(oid, None)
 
     if not order:
-        await q.message.edit_text("Bu buyurtma allaqachon yopilgan.")
+        await q.message.edit_text("Bu buyurtma allaqachon yopilgan yoki bekor qilingan.")
         return
 
-    # jobni o‘chiramiz
     for j in context.job_queue.get_jobs_by_name(f"auto_cancel_{oid}"):
         j.schedule_removal()
 
@@ -289,7 +318,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending_payments.pop(uid, None)
     blocked_drivers.discard(uid)
 
-    await update.message.reply_text("✅ Chek adminga yuborildi.")
+    await update.message.reply_text("✅ Chek adminga yuborildi. Rahmat!")
 
 # ================== PAYMENT CHECK ==================
 async def check_payments(context: ContextTypes.DEFAULT_TYPE):
@@ -298,15 +327,15 @@ async def check_payments(context: ContextTypes.DEFAULT_TYPE):
         remaining = (deadline - now).total_seconds()
 
         if 0 < remaining <= PAY_WARN_MIN * 60:
-            await context.bot.send_message(uid, "⚠️ 10 daqiqa qoldi, chek yuboring!")
+            await context.bot.send_message(uid, "⚠️ 10 daqiqa qoldi, to'lov chekini botga rasm qilib yuboring!")
 
         if remaining <= 0:
             blocked_drivers.add(uid)
             pending_payments.pop(uid, None)
             await context.bot.send_message(
                 uid,
-                "⛔ To‘lov bajarilmadi.\n"
-                "Oldingi to‘lovni amalga oshirmaguncha zakas ola olmaysiz."
+                "⛔ To‘lov bajarilmagani uchun bloklandingiz.\n"
+                "Oldingi to‘lovni amalga oshirmaguncha yangi zakas ola olmaysiz."
             )
 
 # ================== ADMIN ==================
@@ -329,6 +358,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
+    app.add_handler(CommandHandler("zakas", order_start))
 
     app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
@@ -337,7 +367,10 @@ def main():
     app.add_handler(CallbackQueryHandler(take_order, pattern="^take_"))
     app.add_handler(CallbackQueryHandler(cancel_order, pattern="^cancel_"))
 
-    app.job_queue.run_repeating(check_payments, 60)
+    if app.job_queue:
+        app.job_queue.run_repeating(check_payments, interval=60)
+    else:
+        print("XATO: JobQueue yuklanmadi. Buni tekshiring.")
 
     print("Bot ishga tushdi")
     app.run_polling()
