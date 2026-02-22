@@ -1,4 +1,6 @@
 import asyncio
+import json
+import os
 from telegram import (
     Update, 
     KeyboardButton, 
@@ -22,10 +24,10 @@ TOKEN = "8046769457:AAHYIPHxZ4fw6NKLBfW_3XOMZapmONK4a9g"
 DRIVERS_GROUP_ID = -1002452524294 # Haydovchilar guruhi
 ADMIN_ID = 5660204735 # Admin ID (Sizning ID raqamingiz)
 
-# Taymer vaqtlari (minutda)
 KUTISH_VAQTI = 30 
 OGOHLANTIRISH_VAQTI = 20
 TOLOV_KUTISH_VAQTI = 20
+DB_FILE = "taksi_baza.json" # Ma'lumotlar saqlanadigan fayl
 
 # Xotira va Statistika
 haydovchilar = {}  
@@ -39,8 +41,36 @@ stat_zakaslar = 0
 stat_cheklar = 0
 zakas_raqami = 0
 
-# Suhbat bosqichlari
 ISM, TELEFON, QAYERDAN, QAYERGA, ODAM_SONI, VAQT = range(6)
+
+# ================== 📂 MA'LUMOTLARNI SAQLASH VA YUKLASH ==================
+def load_data():
+    global haydovchilar, yolovchilar, bloklangan_haydovchilar, stat_zakaslar, stat_cheklar, zakas_raqami
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r") as f:
+                d = json.load(f)
+                haydovchilar.update({int(k): v for k, v in d.get("haydovchilar", {}).items()})
+                yolovchilar.update([int(i) for i in d.get("yolovchilar", [])])
+                bloklangan_haydovchilar.update([int(i) for i in d.get("bloklangan", [])])
+                stat_zakaslar = d.get("stat_zakaslar", 0)
+                stat_cheklar = d.get("stat_cheklar", 0)
+                zakas_raqami = d.get("zakas_raqami", 0)
+        except: pass
+
+def save_data():
+    d = {
+        "haydovchilar": haydovchilar,
+        "yolovchilar": list(yolovchilar),
+        "bloklangan": list(bloklangan_haydovchilar),
+        "stat_zakaslar": stat_zakaslar,
+        "stat_cheklar": stat_cheklar,
+        "zakas_raqami": zakas_raqami
+    }
+    try:
+        with open(DB_FILE, "w") as f:
+            json.dump(d, f)
+    except: pass
 
 # ================== 1. START VA DEEP LINK MENYUSI ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -94,6 +124,7 @@ async def haydovchi_raqamini_saqlash(update: Update, context: ContextTypes.DEFAU
     uid = update.effective_user.id
     if update.message.contact:
         haydovchilar[uid] = update.message.contact.phone_number
+        save_data() # MA'LUMOT BAZAGA SAQLANDI
         
         kutilayotgan_zakas = context.user_data.get('kutilayotgan_zakas')
         if kutilayotgan_zakas:
@@ -109,6 +140,7 @@ async def haydovchi_raqamini_saqlash(update: Update, context: ContextTypes.DEFAU
 # ================== 3. YO'LOVCHI ANKETASI ==================
 async def zakas_boshlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     yolovchilar.add(update.effective_user.id)
+    save_data() # BAZAGA SAQLANDI
     await update.message.reply_text("👤 Ismingizni yozing:", reply_markup=ReplyKeyboardRemove())
     return ISM
 
@@ -164,6 +196,7 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global zakas_raqami, stat_zakaslar
     zakas_raqami += 1
     stat_zakaslar += 1
+    save_data() # BAZAGA SAQLANDI
     
     context.user_data['vaqt'] = update.message.text
     m = context.user_data
@@ -260,7 +293,6 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
             longitude=z['lon']
         )
         
-    # 🔥 HAYDOVCHIGA ANIQ ESLATMA QO'SHILDI
     haydovchi_xabari = (
         "🚕 BUYURTMA OLINDI\n\n"
         f"👤 Yo‘lovchi: {z['ism']}\n📞 Tel: {z['telefon']}\n📍 {z['qayerdan']} → {z['qayerga']}\n"
@@ -298,6 +330,7 @@ async def haydovchini_bloklash(context: ContextTypes.DEFAULT_TYPE):
     uid = context.job.data
     if uid in pending_payments:
         bloklangan_haydovchilar.add(uid)
+        save_data() # BAZAGA SAQLANDI
         await context.bot.send_message(chat_id=uid, text="⛔ Siz vaqtincha bloklandingiz\nSabab: To‘lov amalga oshirilmadi\nOldingi zakasni to‘lang")
 
 # ================== 6. YOPISH VA BEKOR QILISHLAR ==================
@@ -351,12 +384,11 @@ async def zakas_bekor_yolovchi(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.message.reply_text("❌ Siz buyurtmani bekor qildingiz.")
     
     if zakas_id in zakaslar:
+        z = zakaslar.pop(zakas_id)
         try:
-             z = zakaslar[zakas_id]
              await context.bot.edit_message_text(chat_id=DRIVERS_GROUP_ID, message_id=z['guruh_xabar_id'], text="❌ Bu zakas yo'lovchi tomonidan bekor qilindi.")
              context.job_queue.run_once(guruh_xabarini_ochirish, when=60, data={'chat_id': DRIVERS_GROUP_ID, 'msg_id': z['guruh_xabar_id']})
         except: pass
-        zakaslar.pop(zakas_id)
     elif zakas_id in faol_zakaslar:
         z = faol_zakaslar.pop(zakas_id)
         taymerni_toxtatish(context, zakas_id)
@@ -370,6 +402,7 @@ async def rasm_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         global stat_cheklar
         stat_cheklar += 1
+        save_data() # BAZAGA SAQLANDI
         
         photo = update.message.photo[-1].file_id
         summa = pending_payments[uid]['summa']
@@ -393,14 +426,18 @@ async def admin_tasdiqlash_rad(update: Update, context: ContextTypes.DEFAULT_TYP
     uid = int(data.split("_")[1])
     
     if data.startswith("tasdiq_"):
-        if uid in bloklangan_haydovchilar: bloklangan_haydovchilar.remove(uid)
-        if uid in pending_payments: del pending_payments[uid]
+        if uid in bloklangan_haydovchilar: 
+            bloklangan_haydovchilar.remove(uid)
+            save_data() # BAZAGA SAQLANDI
+        if uid in pending_payments: 
+            del pending_payments[uid]
             
         await query.message.edit_caption(caption=query.message.caption + "\n\n✅ TASDIQLANDI")
-        await context.bot.send_message(chat_id=uid, text="✅ To‘lov tasdiqlandi\nYana ishlashingiz mumkin!")
+        await context.bot.send_message(chat_id=uid, text="✅ To‘lov tasdiqlandi\nBlok yechildi, yana ishlashingiz mumkin!")
         
     elif data.startswith("rad_"):
         bloklangan_haydovchilar.add(uid)
+        save_data() # BAZAGA SAQLANDI
         await query.message.edit_caption(caption=query.message.caption + "\n\n❌ RAD ETILDI")
         await context.bot.send_message(chat_id=uid, text="⛔ Siz vaqtincha bloklandingiz\nSabab: Chek noto'g'ri. Admin rad etdi.")
 
@@ -411,6 +448,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================== MAIN ==================
 def main():
+    load_data() # ISHGA TUSHGANDA BAZADAGI MA'LUMOTLARNI YUKLASH
     app = ApplicationBuilder().token(TOKEN).build()
     
     zakas_handler = ConversationHandler(
