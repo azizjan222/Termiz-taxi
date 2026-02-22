@@ -19,7 +19,7 @@ from telegram.ext import (
 
 # ================== ⚙️ SOZLAMALAR ==================
 TOKEN = "8046769457:AAHYIPHxZ4fw6NKLBfW_3XOMZapmONK4a9g"
-DRIVERS_GROUP_ID = -1003490806598 # Haydovchilar guruhi
+DRIVERS_GROUP_ID = -1002452524294 # Haydovchilar guruhi
 ADMIN_ID = 5660204735 # Admin ID (Sizning ID raqamingiz)
 
 # Taymer vaqtlari (minutda)
@@ -134,7 +134,6 @@ async def telefon_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text("📍 Qayerdan ketasiz?", reply_markup=tugma)
     return QAYERDAN
 
-# 🔥 Lokatsiyani qabul qilib, xotirada saqlash qismi o'zgartirildi
 async def qayerdan_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.location:
         context.user_data['qayerdan'] = "Lokatsiya 📍"
@@ -190,7 +189,6 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     msg = await context.bot.send_message(chat_id=DRIVERS_GROUP_ID, text=guruh_xabari, reply_markup=tugma_guruh)
     
-    # 🔥 Lokatsiya ma'lumotlari xotiraga qo'shildi
     zakaslar[zakas_raqami] = {
         "yolovchi_id": update.effective_user.id,
         "telefon": m['telefon'],
@@ -210,7 +208,7 @@ async def bekor_qilish_anketa(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("❌ Buyurtma bekor qilindi.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
-# ================== GURUHDAN XABAR O'CHIRISH FUNKSIYASI ==================
+# ================== GURUHDAN XABAR O'CHIRISH ==================
 async def guruh_xabarini_ochirish(context: ContextTypes.DEFAULT_TYPE):
     d = context.job.data
     try:
@@ -232,23 +230,19 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
     z["haydovchi_id"] = haydovchi_id
     faol_zakaslar[zakas_id] = z
     
-    # 1. 🔥 Guruhdagi xabarni qisqartirish va 1 daqiqadan so'ng o'chirish taymeri
     try:
         await context.bot.edit_message_text(
             chat_id=DRIVERS_GROUP_ID,
             message_id=z['guruh_xabar_id'],
             text="✅ Zakas yopildi"
         )
-        # 60 soniyadan so'ng o'chib ketadi
         context.job_queue.run_once(
             guruh_xabarini_ochirish, 
             when=60, 
             data={'chat_id': DRIVERS_GROUP_ID, 'msg_id': z['guruh_xabar_id']}
         )
-    except:
-        pass 
+    except: pass 
     
-    # 2. Yo'lovchiga xabar
     user = update.effective_user
     username_str = f"@{user.username}" if user.username else user.first_name
     
@@ -259,7 +253,6 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
         reply_markup=tugma_yolovchi
     )
     
-    # 3. 🔥 Haydovchining shaxsiyiga LOKATSIYA yuborish
     if z.get('lat') and z.get('lon'):
         await context.bot.send_location(
             chat_id=haydovchi_id,
@@ -267,11 +260,13 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
             longitude=z['lon']
         )
         
+    # 🔥 HAYDOVCHIGA ANIQ ESLATMA QO'SHILDI
     haydovchi_xabari = (
         "🚕 BUYURTMA OLINDI\n\n"
         f"👤 Yo‘lovchi: {z['ism']}\n📞 Tel: {z['telefon']}\n📍 {z['qayerdan']} → {z['qayerga']}\n"
         f"👥 {z['odam_soni']} ta odam | ⏰ {z['vaqt']}\n\n"
-        "⚠️ Eslatma: Har bir olingan yo'lovchi uchun 10 ming so'm to'lov qilish shart!"
+        "⚠️ Eslatma: Har bir olingan yo'lovchi uchun 10 ming so'm to'lov qilish shart!\n\n"
+        "❗️ Iltimos, yo'lovchi bilan tezroq bog'laning. Zakas yakunlangach, pastdagi «✅ Yopildi» tugmasini bosishni unutmang!"
     )
     tugmalar_haydovchi = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Yopildi", callback_data=f"yopish_{zakas_id}")],
@@ -279,7 +274,6 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
     ])
     await context.bot.send_message(chat_id=haydovchi_id, text=haydovchi_xabari, reply_markup=tugmalar_haydovchi)
 
-    # 4. Taymerlarni ishga tushirish
     context.job_queue.run_once(ogohlantirish_10_min, OGOHLANTIRISH_VAQTI * 60, data={'z_id': zakas_id, 'h_id': haydovchi_id}, name=f"warn_{zakas_id}")
     context.job_queue.run_once(avto_bekor_qilish, KUTISH_VAQTI * 60, data={'z_id': zakas_id, 'h_id': haydovchi_id}, name=f"avto_{zakas_id}")
 
@@ -320,12 +314,19 @@ async def zakas_yopish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         taymerni_toxtatish(context, zakas_id) 
         
         summa = z['odam_soni'] * 10000
+        summa_str = f"{summa:,}".replace(",", " ")
         pending_payments[haydovchi_id] = {'summa': summa, 'zakas_id': zakas_id}
         
-        matn = f"💰 To‘lov qiling:\n\n9860 1301 4778 5443\n(K.A nomida)\n\nSumma: {summa} so'm"
-        tugma = InlineKeyboardMarkup([[InlineKeyboardButton("📸 Chek yuborish", callback_data=f"chek_{haydovchi_id}")]])
+        matn = (
+            "✅ Zakas muvaffaqiyatli yopildi!\n\n"
+            "💰 To‘lov qiling:\n"
+            "9860 1301 4778 5443\n"
+            "(K.A nomida)\n\n"
+            f"Summa: {summa_str} so'm\n\n"
+            "📸 Iltimos, to'lov qilinganligi haqidagi chekni rasmga olib (skrinshot) shu yerga yuboring."
+        )
         
-        await context.bot.send_message(chat_id=haydovchi_id, text=matn, reply_markup=tugma)
+        await context.bot.send_message(chat_id=haydovchi_id, text=matn)
         context.job_queue.run_once(haydovchini_bloklash, TOLOV_KUTISH_VAQTI * 60, data=haydovchi_id, name=f"block_{haydovchi_id}")
 
 async def zakas_bekor_haydovchi(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -362,11 +363,6 @@ async def zakas_bekor_yolovchi(update: Update, context: ContextTypes.DEFAULT_TYP
         await context.bot.send_message(chat_id=z['haydovchi_id'], text=f"⚠️ Diqqat! Yo'lovchi ({z['ism']}) buyurtmani bekor qildi.")
 
 # ================== 7. TO'LOV VA ADMIN PANEL ==================
-async def chek_yuborish_tugmasi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.message.reply_text("📸 Iltimos, to'lov chekini rasmga olib menga yuboring.")
-
 async def rasm_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if uid in pending_payments:
@@ -401,7 +397,7 @@ async def admin_tasdiqlash_rad(update: Update, context: ContextTypes.DEFAULT_TYP
         if uid in pending_payments: del pending_payments[uid]
             
         await query.message.edit_caption(caption=query.message.caption + "\n\n✅ TASDIQLANDI")
-        await context.bot.send_message(chat_id=uid, text="✅ To‘lov tasdiqlandi\nBlok yechildi")
+        await context.bot.send_message(chat_id=uid, text="✅ To‘lov tasdiqlandi\nBlok yechildi, yana ishlashingiz mumkin!")
         
     elif data.startswith("rad_"):
         bloklangan_haydovchilar.add(uid)
@@ -441,7 +437,6 @@ def main():
     app.add_handler(CallbackQueryHandler(zakas_yopish, pattern="^yopish_"))
     app.add_handler(CallbackQueryHandler(zakas_bekor_haydovchi, pattern="^hbekor_"))
     app.add_handler(CallbackQueryHandler(zakas_bekor_yolovchi, pattern="^ybekor_"))
-    app.add_handler(CallbackQueryHandler(chek_yuborish_tugmasi, pattern="^chek_"))
     app.add_handler(CallbackQueryHandler(admin_tasdiqlash_rad, pattern="^(tasdiq_|rad_)"))
     
     print("Bot ishga tushdi...")
