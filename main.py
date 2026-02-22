@@ -82,6 +82,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if param.startswith("olish_"):
             zakas_id = int(param.split("_")[1])
             
+            # Agar oldin ro'yxatdan o'tgan bo'lsa, zakas shartta o'ziga birikadi
             if user_id in haydovchilar:
                 await zakasni_biriktirish(update, context, user_id, zakas_id)
                 return
@@ -92,7 +93,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     resize_keyboard=True, one_time_keyboard=True
                 )
                 await update.message.reply_text(
-                    "👨‍✈️ Siz hali botdan ro'yxatdan o'tmagansiz.\nZakasni olish uchun telefon raqamingizni yuboring:", 
+                    "👨‍✈️ Siz hali botdan ro'yxatdan o'tmagansiz.\nZakasni olish uchun bir marta telefon raqamingizni yuboring:", 
                     reply_markup=tugma
                 )
                 return
@@ -111,6 +112,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================== 2. HAYDOVCHI RO'YXATDAN O'TISHI ==================
 async def haydovchi_bolish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    
+    # 🔥 YANGILIK: Agar ro'yxatdan o'tgan bo'lsa, raqamni qayta so'ramaydi
+    if uid in haydovchilar:
+        await update.message.reply_text(
+            f"✅ Siz allaqachon ro'yxatdan o'tgansiz!\n📞 Raqamingiz: {haydovchilar[uid]}\n\nEndi guruhdan bemalol zakas olishingiz mumkin.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+
     tugma = ReplyKeyboardMarkup(
         [[KeyboardButton("📞 Telefon raqamni yuborish", request_contact=True)]],
         resize_keyboard=True, one_time_keyboard=True
@@ -124,7 +135,7 @@ async def haydovchi_raqamini_saqlash(update: Update, context: ContextTypes.DEFAU
     uid = update.effective_user.id
     if update.message.contact:
         haydovchilar[uid] = update.message.contact.phone_number
-        save_data() # MA'LUMOT BAZAGA SAQLANDI
+        save_data() # BAZAGA SAQLANDI
         
         kutilayotgan_zakas = context.user_data.get('kutilayotgan_zakas')
         if kutilayotgan_zakas:
@@ -140,7 +151,7 @@ async def haydovchi_raqamini_saqlash(update: Update, context: ContextTypes.DEFAU
 # ================== 3. YO'LOVCHI ANKETASI ==================
 async def zakas_boshlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     yolovchilar.add(update.effective_user.id)
-    save_data() # BAZAGA SAQLANDI
+    save_data()
     await update.message.reply_text("👤 Ismingizni yozing:", reply_markup=ReplyKeyboardRemove())
     return ISM
 
@@ -196,7 +207,7 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global zakas_raqami, stat_zakaslar
     zakas_raqami += 1
     stat_zakaslar += 1
-    save_data() # BAZAGA SAQLANDI
+    save_data() 
     
     context.user_data['vaqt'] = update.message.text
     m = context.user_data
@@ -330,7 +341,7 @@ async def haydovchini_bloklash(context: ContextTypes.DEFAULT_TYPE):
     uid = context.job.data
     if uid in pending_payments:
         bloklangan_haydovchilar.add(uid)
-        save_data() # BAZAGA SAQLANDI
+        save_data() 
         await context.bot.send_message(chat_id=uid, text="⛔ Siz vaqtincha bloklandingiz\nSabab: To‘lov amalga oshirilmadi\nOldingi zakasni to‘lang")
 
 # ================== 6. YOPISH VA BEKOR QILISHLAR ==================
@@ -402,7 +413,7 @@ async def rasm_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         global stat_cheklar
         stat_cheklar += 1
-        save_data() # BAZAGA SAQLANDI
+        save_data() 
         
         photo = update.message.photo[-1].file_id
         summa = pending_payments[uid]['summa']
@@ -428,7 +439,7 @@ async def admin_tasdiqlash_rad(update: Update, context: ContextTypes.DEFAULT_TYP
     if data.startswith("tasdiq_"):
         if uid in bloklangan_haydovchilar: 
             bloklangan_haydovchilar.remove(uid)
-            save_data() # BAZAGA SAQLANDI
+            save_data() 
         if uid in pending_payments: 
             del pending_payments[uid]
             
@@ -437,7 +448,7 @@ async def admin_tasdiqlash_rad(update: Update, context: ContextTypes.DEFAULT_TYP
         
     elif data.startswith("rad_"):
         bloklangan_haydovchilar.add(uid)
-        save_data() # BAZAGA SAQLANDI
+        save_data() 
         await query.message.edit_caption(caption=query.message.caption + "\n\n❌ RAD ETILDI")
         await context.bot.send_message(chat_id=uid, text="⛔ Siz vaqtincha bloklandingiz\nSabab: Chek noto'g'ri. Admin rad etdi.")
 
@@ -448,7 +459,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================== MAIN ==================
 def main():
-    load_data() # ISHGA TUSHGANDA BAZADAGI MA'LUMOTLARNI YUKLASH
+    load_data() # BAZADAN MA'LUMOTLAR YUKLANADI
     app = ApplicationBuilder().token(TOKEN).build()
     
     zakas_handler = ConversationHandler(
