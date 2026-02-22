@@ -1,2 +1,1 @@
-pip install "python-telegram-bot[job-queue]" --upgrade
-
+python-telegram-bot[job-queue]==20.8
