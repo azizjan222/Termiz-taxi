@@ -47,18 +47,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
     
-    # Agar haydovchi guruhdan "Zakasni olish" tugmasi orqali kirgan bo'lsa (Deep Link)
     if text and len(text.split()) > 1:
         param = text.split()[1]
         if param.startswith("olish_"):
             zakas_id = int(param.split("_")[1])
             
-            # 1. Haydovchi ro'yxatdan o'tgan bo'lsa, zakasni darhol unga beramiz
             if user_id in haydovchilar:
                 await zakasni_biriktirish(update, context, user_id, zakas_id)
                 return
             else:
-                # 2. Ro'yxatdan o'tmagan bo'lsa, zakas IDsini xotirada saqlab, raqam so'raymiz
                 context.user_data['kutilayotgan_zakas'] = zakas_id
                 tugma = ReplyKeyboardMarkup(
                     [[KeyboardButton("📞 Telefon raqamni yuborish", request_contact=True)]],
@@ -70,7 +67,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
 
-    # Oddiy botga kirgan bo'lsa (Asosiy menyu)
     tugmalar = [
         [KeyboardButton("🚕 Taksi buyurtma qilish")],
         [KeyboardButton("👨‍✈️ Haydovchi bo'lish")]
@@ -99,11 +95,9 @@ async def haydovchi_raqamini_saqlash(update: Update, context: ContextTypes.DEFAU
     if update.message.contact:
         haydovchilar[uid] = update.message.contact.phone_number
         
-        # Telefonini saqlagach, uni kutyotgan zakas bormi tekshiramiz
         kutilayotgan_zakas = context.user_data.get('kutilayotgan_zakas')
         if kutilayotgan_zakas:
-            del context.user_data['kutilayotgan_zakas'] # Xotiradan tozalaymiz
-            # Darhol zakasni unga biriktirib beramiz!
+            del context.user_data['kutilayotgan_zakas'] 
             await update.message.reply_text("✅ Telefoningiz saqlandi.", reply_markup=ReplyKeyboardRemove())
             await zakasni_biriktirish(update, context, uid, kutilayotgan_zakas)
         else:
@@ -140,11 +134,17 @@ async def telefon_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text("📍 Qayerdan ketasiz?", reply_markup=tugma)
     return QAYERDAN
 
+# 🔥 Lokatsiyani qabul qilib, xotirada saqlash qismi o'zgartirildi
 async def qayerdan_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.location:
-        context.user_data['qayerdan'] = "Lokatsiya yuborildi 🗺"
+        context.user_data['qayerdan'] = "Lokatsiya 📍"
+        context.user_data['lat'] = update.message.location.latitude
+        context.user_data['lon'] = update.message.location.longitude
     else:
         context.user_data['qayerdan'] = update.message.text
+        context.user_data['lat'] = None
+        context.user_data['lon'] = None
+        
     await update.message.reply_text("📍 Qayerga borasiz?", reply_markup=ReplyKeyboardRemove())
     return QAYERGA
 
@@ -169,7 +169,7 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['vaqt'] = update.message.text
     m = context.user_data
     
-    bot_username = context.bot.username # Botning usernamesini avtomatik olamiz
+    bot_username = context.bot.username 
     
     tugma_yolovchi = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Bekor qilish", callback_data=f"ybekor_{zakas_raqami}")]])
     await update.message.reply_text(
@@ -185,12 +185,12 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👥 {m['odam_soni']} ta odam | ⏰ {m['vaqt']}"
     )
     
-    # GURUHDAGI TUGMA ENDI MAXSUS URL LINK!
     url_link = f"https://t.me/{bot_username}?start=olish_{zakas_raqami}"
     tugma_guruh = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Zakasni olish", url=url_link)]])
     
     msg = await context.bot.send_message(chat_id=DRIVERS_GROUP_ID, text=guruh_xabari, reply_markup=tugma_guruh)
     
+    # 🔥 Lokatsiya ma'lumotlari xotiraga qo'shildi
     zakaslar[zakas_raqami] = {
         "yolovchi_id": update.effective_user.id,
         "telefon": m['telefon'],
@@ -199,7 +199,9 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "qayerga": m['qayerga'],
         "odam_soni": m['odam_soni'],
         "vaqt": m['vaqt'],
-        "guruh_xabar_id": msg.message_id # Guruhdagi xabar ID sini saqlaymiz (keyin o'zgartirish uchun)
+        "lat": m.get('lat'),
+        "lon": m.get('lon'),
+        "guruh_xabar_id": msg.message_id 
     }
     
     return ConversationHandler.END
@@ -208,7 +210,15 @@ async def bekor_qilish_anketa(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("❌ Buyurtma bekor qilindi.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
-# ================== 4. ZAKASNI BIRIKTIRISH JARAYONI (ASOSIY) ==================
+# ================== GURUHDAN XABAR O'CHIRISH FUNKSIYASI ==================
+async def guruh_xabarini_ochirish(context: ContextTypes.DEFAULT_TYPE):
+    d = context.job.data
+    try:
+        await context.bot.delete_message(chat_id=d['chat_id'], message_id=d['msg_id'])
+    except:
+        pass
+
+# ================== 4. ZAKASNI BIRIKTIRISH JARAYONI ==================
 async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE, haydovchi_id: int, zakas_id: int):
     if haydovchi_id in bloklangan_haydovchilar:
         await context.bot.send_message(chat_id=haydovchi_id, text="⛔ Siz vaqtincha bloklandingiz\nSabab: To‘lov amalga oshirilmadi\nOldingi zakasni to‘lang.")
@@ -222,26 +232,26 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
     z["haydovchi_id"] = haydovchi_id
     faol_zakaslar[zakas_id] = z
     
-    # 1. Guruhdagi xabarni o'zgartiramiz (kim olganini ko'rsatamiz)
+    # 1. 🔥 Guruhdagi xabarni qisqartirish va 1 daqiqadan so'ng o'chirish taymeri
     try:
-        user = update.effective_user
-        username_str = f"@{user.username}" if user.username else user.first_name
-        yangi_matn = (
-            "🚕 BUYURTMA OLINDI\n\n"
-            f"👤 Ism: {z['ism']}\n📍 Qayerdan: {z['qayerdan']}\n📍 Qayerga: {z['qayerga']}\n"
-            f"👥 {z['odam_soni']} ta odam | ⏰ {z['vaqt']}\n\n"
-            f"✅ <b>Bu zakas {username_str} tomonidan olindi!</b>"
-        )
         await context.bot.edit_message_text(
             chat_id=DRIVERS_GROUP_ID,
             message_id=z['guruh_xabar_id'],
-            text=yangi_matn,
-            parse_mode='HTML'
+            text="✅ Zakas yopildi"
+        )
+        # 60 soniyadan so'ng o'chib ketadi
+        context.job_queue.run_once(
+            guruh_xabarini_ochirish, 
+            when=60, 
+            data={'chat_id': DRIVERS_GROUP_ID, 'msg_id': z['guruh_xabar_id']}
         )
     except:
-        pass # Agar xatoga uchrasa (masalan xabar o'chirilgan bo'lsa), bot ishdan to'xtamasligi uchun
+        pass 
     
     # 2. Yo'lovchiga xabar
+    user = update.effective_user
+    username_str = f"@{user.username}" if user.username else user.first_name
+    
     tugma_yolovchi = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Bekor qilish", callback_data=f"ybekor_{zakas_id}")]])
     await context.bot.send_message(
         chat_id=z["yolovchi_id"],
@@ -249,7 +259,14 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
         reply_markup=tugma_yolovchi
     )
     
-    # 3. Haydovchining shaxsiyiga to'liq ma'lumot
+    # 3. 🔥 Haydovchining shaxsiyiga LOKATSIYA yuborish
+    if z.get('lat') and z.get('lon'):
+        await context.bot.send_location(
+            chat_id=haydovchi_id,
+            latitude=z['lat'],
+            longitude=z['lon']
+        )
+        
     haydovchi_xabari = (
         "🚕 BUYURTMA OLINDI\n\n"
         f"👤 Yo‘lovchi: {z['ism']}\n📞 Tel: {z['telefon']}\n📍 {z['qayerdan']} → {z['qayerga']}\n"
@@ -333,12 +350,12 @@ async def zakas_bekor_yolovchi(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.message.reply_text("❌ Siz buyurtmani bekor qildingiz.")
     
     if zakas_id in zakaslar:
-        zakaslar.pop(zakas_id)
         try:
-             # Guruhdagi xabarni "Bekor qilindi" deb o'zgartirib qo'yamiz
              z = zakaslar[zakas_id]
              await context.bot.edit_message_text(chat_id=DRIVERS_GROUP_ID, message_id=z['guruh_xabar_id'], text="❌ Bu zakas yo'lovchi tomonidan bekor qilindi.")
+             context.job_queue.run_once(guruh_xabarini_ochirish, when=60, data={'chat_id': DRIVERS_GROUP_ID, 'msg_id': z['guruh_xabar_id']})
         except: pass
+        zakaslar.pop(zakas_id)
     elif zakas_id in faol_zakaslar:
         z = faol_zakaslar.pop(zakas_id)
         taymerni_toxtatish(context, zakas_id)
