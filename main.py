@@ -82,7 +82,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if param.startswith("olish_"):
             zakas_id = int(param.split("_")[1])
             
-            # Agar oldin ro'yxatdan o'tgan bo'lsa, zakas shartta o'ziga birikadi
             if user_id in haydovchilar:
                 await zakasni_biriktirish(update, context, user_id, zakas_id)
                 return
@@ -114,7 +113,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def haydovchi_bolish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     
-    # 🔥 YANGILIK: Agar ro'yxatdan o'tgan bo'lsa, raqamni qayta so'ramaydi
     if uid in haydovchilar:
         await update.message.reply_text(
             f"✅ Siz allaqachon ro'yxatdan o'tgansiz!\n📞 Raqamingiz: {haydovchilar[uid]}\n\nEndi guruhdan bemalol zakas olishingiz mumkin.",
@@ -135,7 +133,7 @@ async def haydovchi_raqamini_saqlash(update: Update, context: ContextTypes.DEFAU
     uid = update.effective_user.id
     if update.message.contact:
         haydovchilar[uid] = update.message.contact.phone_number
-        save_data() # BAZAGA SAQLANDI
+        save_data() 
         
         kutilayotgan_zakas = context.user_data.get('kutilayotgan_zakas')
         if kutilayotgan_zakas:
@@ -457,9 +455,36 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = (f"👮 ADMIN PANEL\n\n👥 Haydovchilar: {len(haydovchilar)}\n👤 Yo‘lovchilar: {len(yolovchilar)}\n🚕 Buyurtmalar: {stat_zakaslar}\n📸 Cheklar: {stat_cheklar}")
     await update.message.reply_text(matn)
 
+# ================== 8. AVTOMATIK REKLAMA (ESKISINI O'CHIRISH BILAN) ==================
+async def reklama_yuborish(context: ContextTypes.DEFAULT_TYPE):
+    reklama_matni = (
+        "🚕 Termiz  Sariosiyo taxi boti — tez va qulay taksi xizmati.\n\n"
+        "📲 Bir necha soniyada buyurtma berish\n"
+        "🚗 Haydovchilar tomonidan tezkor qabul \n\n"
+        "Hoziroq sinab ko'ring👇👇👇\n"
+        "    @termizsariosiyotaxi_bot\n"
+        "    @termizsariosiyotaxi_bot\n"
+        "    @termizsariosiyotaxi_bot"
+    )
+    
+    # 1. Agar oldingi reklama xabarining ID si saqlangan bo'lsa, uni o'chiramiz
+    eski_xabar_id = context.bot_data.get('reklama_msg_id')
+    if eski_xabar_id:
+        try:
+            await context.bot.delete_message(chat_id=DRIVERS_GROUP_ID, message_id=eski_xabar_id)
+        except Exception:
+            pass # Xatolik bo'lsa (masalan birov o'chirib yuborgan bo'lsa) bot ishlashda davom etadi
+            
+    # 2. Yangi reklamani yuboramiz va uning ID sini xotiraga yozib qo'yamiz
+    try:
+        msg = await context.bot.send_message(chat_id=DRIVERS_GROUP_ID, text=reklama_matni)
+        context.bot_data['reklama_msg_id'] = msg.message_id
+    except Exception as e:
+        print(f"Reklama yuborishda xato: {e}")
+
 # ================== MAIN ==================
 def main():
-    load_data() # BAZADAN MA'LUMOTLAR YUKLANADI
+    load_data() 
     app = ApplicationBuilder().token(TOKEN).build()
     
     zakas_handler = ConversationHandler(
@@ -487,6 +512,10 @@ def main():
     app.add_handler(CallbackQueryHandler(zakas_bekor_haydovchi, pattern="^hbekor_"))
     app.add_handler(CallbackQueryHandler(zakas_bekor_yolovchi, pattern="^ybekor_"))
     app.add_handler(CallbackQueryHandler(admin_tasdiqlash_rad, pattern="^(tasdiq_|rad_)"))
+    
+    # 🔥 Reklama taymeri: Har 3600 soniya (1 soat) da yuboradi. Server yongach 10 sek.dan so'ng birinchi xabar ketadi.
+    if app.job_queue:
+        app.job_queue.run_repeating(reklama_yuborish, interval=3600, first=10)
     
     print("Bot ishga tushdi...")
     app.run_polling()
