@@ -455,7 +455,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = (f"👮 ADMIN PANEL\n\n👥 Haydovchilar: {len(haydovchilar)}\n👤 Yo‘lovchilar: {len(yolovchilar)}\n🚕 Buyurtmalar: {stat_zakaslar}\n📸 Cheklar: {stat_cheklar}")
     await update.message.reply_text(matn)
 
-# ================== 8. AVTOMATIK REKLAMA (ESKISINI O'CHIRISH BILAN) ==================
+# ================== 8. AVTOMATIK REKLAMA (ESKISINI O'CHIRISH VA QADASH) ==================
 async def reklama_yuborish(context: ContextTypes.DEFAULT_TYPE):
     reklama_matni = (
         "🚕 Termiz  Sariosiyo taxi boti — tez va qulay taksi xizmati.\n\n"
@@ -467,20 +467,27 @@ async def reklama_yuborish(context: ContextTypes.DEFAULT_TYPE):
         "    @termizsariosiyotaxi_bot"
     )
     
-    # 1. Agar oldingi reklama xabarining ID si saqlangan bo'lsa, uni o'chiramiz
+    # 1. Eski xabarni o'chiramiz (axlat bo'lib ketmasligi uchun)
     eski_xabar_id = context.bot_data.get('reklama_msg_id')
     if eski_xabar_id:
         try:
             await context.bot.delete_message(chat_id=DRIVERS_GROUP_ID, message_id=eski_xabar_id)
         except Exception:
-            pass # Xatolik bo'lsa (masalan birov o'chirib yuborgan bo'lsa) bot ishlashda davom etadi
+            pass 
             
-    # 2. Yangi reklamani yuboramiz va uning ID sini xotiraga yozib qo'yamiz
+    # 2. Yangi reklamani yuboramiz, xotiraga yozamiz va QADAB QO'YAMIZ (PIN)
     try:
         msg = await context.bot.send_message(chat_id=DRIVERS_GROUP_ID, text=reklama_matni)
         context.bot_data['reklama_msg_id'] = msg.message_id
+        
+        # Guruhga ovozsiz qadab qo'yish (pin message)
+        await context.bot.pin_chat_message(
+            chat_id=DRIVERS_GROUP_ID, 
+            message_id=msg.message_id, 
+            disable_notification=True
+        )
     except Exception as e:
-        print(f"Reklama yuborishda xato: {e}")
+        print(f"Reklama yuborish yoki qadashda xato: {e}")
 
 # ================== MAIN ==================
 def main():
