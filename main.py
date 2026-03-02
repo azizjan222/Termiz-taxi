@@ -455,49 +455,31 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = (f"👮 ADMIN PANEL\n\n👥 Haydovchilar: {len(haydovchilar)}\n👤 Yo‘lovchilar: {len(yolovchilar)}\n🚕 Buyurtmalar: {stat_zakaslar}\n📸 Cheklar: {stat_cheklar}")
     await update.message.reply_text(matn)
 
-# ================== 8. AVTOMATIK REKLAMA (ESKISINI O'CHIRISH VA QADASH) ==================
+# ================== 8. AVTOMATIK REKLAMA ==================
 async def reklama_yuborish(context: ContextTypes.DEFAULT_TYPE):
     reklama_matni = (
-        "🚕 Termiz  Sariosiyo taxi boti — tez va qulay taksi xizmati.\n\n"
+        "🚕 Termiz  Sariosiyo Boti — tez va qulay taksi xizmati.\n\n"
         "📲 Bir necha soniyada buyurtma berish\n"
-        "🚗 Haydovchilar tomonidan tezkor qabul \n\n"
-        "Hoziroq sinab ko'ring👇👇👇\n"
-        "    @termizsariosiyotaxi_bot\n"
-        "    @termizsariosiyotaxi_bot\n"
-        "    @termizsariosiyotaxi_bot"
+        "🚗 Haydovchilar tomonidan tezkor qabul\n"
+        "Botni sinab ko'ring 👇👇👇\n"
+        "@termizsariosiyotaxi_bot\n"
+        "@termizsariosiyotaxi_bot"
     )
-    
-    # 1. Eski xabarni o'chiramiz (axlat bo'lib ketmasligi uchun)
-    eski_xabar_id = context.bot_data.get('reklama_msg_id')
-    if eski_xabar_id:
-        try:
-            await context.bot.delete_message(chat_id=DRIVERS_GROUP_ID, message_id=eski_xabar_id)
-        except Exception:
-            pass 
-            
-    # 2. Yangi reklamani yuboramiz, xotiraga yozamiz va QADAB QO'YAMIZ (PIN)
     try:
-        msg = await context.bot.send_message(chat_id=DRIVERS_GROUP_ID, text=reklama_matni)
-        context.bot_data['reklama_msg_id'] = msg.message_id
-        
-        # Guruhga ovozsiz qadab qo'yish (pin message)
-        await context.bot.pin_chat_message(
-            chat_id=DRIVERS_GROUP_ID, 
-            message_id=msg.message_id, 
-            disable_notification=True
-        )
+        await context.bot.send_message(chat_id=DRIVERS_GROUP_ID, text=reklama_matni)
     except Exception as e:
-        print(f"Reklama yuborish yoki qadashda xato: {e}")
+        print(f"Reklama yuborishda xatolik: {e}")
+
 # ================== 9. GURUHDAGI XABARLARNI O'CHIRISH (QOROVUL) ==================
 async def guruhda_yozishni_taqiqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message and update.message.chat_id == DRIVERS_GROUP_ID:
         uid = update.effective_user.id
         
-        # 1-QOIDAI ISTISNO: Agar yozgan odam haydovchilar bazasida bo'lsa, unga ruxsat!
+        # 1. Haydovchilar yozishi mumkin
         if uid in haydovchilar:
             return
             
-        # 2-QOIDAI ISTISNO: Agar yozgan odam admin bo'lsa, unga ham ruxsat!
+        # 2. Adminlar yozishi mumkin
         try:
             user_status = await context.bot.get_chat_member(DRIVERS_GROUP_ID, uid)
             if user_status.status in ['administrator', 'creator']:
@@ -505,14 +487,13 @@ async def guruhda_yozishni_taqiqlash(update: Update, context: ContextTypes.DEFAU
         except:
             pass
             
-        # QOLGAN HAMMA UCHUN: Xabarni o'chirib, tugmali ogohlantirish beramiz
+        # Qolgan barcha holatlarda xabarni o'chirib, tugmali ogohlantirish beramiz
         try:
             await update.message.delete()
             
             bot_username = context.bot.username
             bot_url = f"https://t.me/{bot_username}"
             
-            # Ketma-ket 2 ta tugma yaratamiz
             tugmalar = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🚕 Taksiga buyurtma berish", url=bot_url)],
                 [InlineKeyboardButton("👨‍✈️ Haydovchi bo'lish", url=bot_url)]
@@ -529,7 +510,7 @@ async def guruhda_yozishni_taqiqlash(update: Update, context: ContextTypes.DEFAU
                 reply_markup=tugmalar
             )
             
-            # Guruh ifloslanmasligi uchun bu xabarni ham 15 soniyada o'chirib yuboramiz
+            # Xabarni 15 soniyada tozalaymiz
             context.job_queue.run_once(
                 guruh_xabarini_ochirish, 
                 when=15, 
@@ -537,10 +518,6 @@ async def guruhda_yozishni_taqiqlash(update: Update, context: ContextTypes.DEFAU
             )
         except Exception as e:
             print(f"Xabar o'chirishda xatolik: {e}")
-# ================== GURUHDAGI TUGMALARNI TOZALASH ==================
-async def tozala(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id == ADMIN_ID:
-        await update.message.reply_text("Guruh tugmalardan tozalandi ✅", reply_markup=ReplyKeyboardRemove())
 
 # ================== MAIN ==================
 def main():
@@ -563,18 +540,20 @@ def main():
     app.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("admin", admin_panel, filters=filters.ChatType.PRIVATE))
     app.add_handler(zakas_handler) 
-        app.add_handler(CommandHandler("tozala", tozala))
-
+    
     app.add_handler(MessageHandler(filters.Regex("^👨‍✈️ Haydovchi bo'lish$") & filters.ChatType.PRIVATE, haydovchi_bolish))
     app.add_handler(MessageHandler(filters.CONTACT & filters.ChatType.PRIVATE, haydovchi_raqamini_saqlash))
     app.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, rasm_qabul_qilish))
+    
+    # Guruhdagi nazorat handleri
+    app.add_handler(MessageHandler(filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND, guruhda_yozishni_taqiqlash))
     
     app.add_handler(CallbackQueryHandler(zakas_yopish, pattern="^yopish_"))
     app.add_handler(CallbackQueryHandler(zakas_bekor_haydovchi, pattern="^hbekor_"))
     app.add_handler(CallbackQueryHandler(zakas_bekor_yolovchi, pattern="^ybekor_"))
     app.add_handler(CallbackQueryHandler(admin_tasdiqlash_rad, pattern="^(tasdiq_|rad_)"))
     
-    # 🔥 Reklama taymeri: Har 3600 soniya (1 soat) da yuboradi. Server yongach 10 sek.dan so'ng birinchi xabar ketadi.
+    # Har 1 soatda reklama jo'natish (10 soniyadan so'ng boshlanadi)
     if app.job_queue:
         app.job_queue.run_repeating(reklama_yuborish, interval=3600, first=10)
     
