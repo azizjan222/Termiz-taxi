@@ -537,6 +537,10 @@ async def guruhda_yozishni_taqiqlash(update: Update, context: ContextTypes.DEFAU
             )
         except Exception as e:
             print(f"Xabar o'chirishda xatolik: {e}")
+# ================== GURUHDAGI TUGMALARNI TOZALASH ==================
+async def tozala(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id == ADMIN_ID:
+        await update.message.reply_text("Guruh tugmalardan tozalandi ✅", reply_markup=ReplyKeyboardRemove())
 
 # ================== MAIN ==================
 def main():
@@ -559,7 +563,8 @@ def main():
     app.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("admin", admin_panel, filters=filters.ChatType.PRIVATE))
     app.add_handler(zakas_handler) 
-    
+        app.add_handler(CommandHandler("tozala", tozala))
+
     app.add_handler(MessageHandler(filters.Regex("^👨‍✈️ Haydovchi bo'lish$") & filters.ChatType.PRIVATE, haydovchi_bolish))
     app.add_handler(MessageHandler(filters.CONTACT & filters.ChatType.PRIVATE, haydovchi_raqamini_saqlash))
     app.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, rasm_qabul_qilish))
