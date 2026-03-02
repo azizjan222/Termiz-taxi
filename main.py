@@ -488,6 +488,55 @@ async def reklama_yuborish(context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         print(f"Reklama yuborish yoki qadashda xato: {e}")
+# ================== 9. GURUHDAGI XABARLARNI O'CHIRISH (QOROVUL) ==================
+async def guruhda_yozishni_taqiqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message and update.message.chat_id == DRIVERS_GROUP_ID:
+        uid = update.effective_user.id
+        
+        # 1-QOIDAI ISTISNO: Agar yozgan odam haydovchilar bazasida bo'lsa, unga ruxsat!
+        if uid in haydovchilar:
+            return
+            
+        # 2-QOIDAI ISTISNO: Agar yozgan odam admin bo'lsa, unga ham ruxsat!
+        try:
+            user_status = await context.bot.get_chat_member(DRIVERS_GROUP_ID, uid)
+            if user_status.status in ['administrator', 'creator']:
+                return
+        except:
+            pass
+            
+        # QOLGAN HAMMA UCHUN: Xabarni o'chirib, tugmali ogohlantirish beramiz
+        try:
+            await update.message.delete()
+            
+            bot_username = context.bot.username
+            bot_url = f"https://t.me/{bot_username}"
+            
+            # Ketma-ket 2 ta tugma yaratamiz
+            tugmalar = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚕 Taksiga buyurtma berish", url=bot_url)],
+                [InlineKeyboardButton("👨‍✈️ Haydovchi bo'lish", url=bot_url)]
+            ])
+            
+            matn = (
+                f"Hurmatli {update.effective_user.first_name}!\n\n"
+                f"Taksi kerak bo'lsa bot orqali buyurtma bering, haydovchi bo'lish uchun botga kiring 👇"
+            )
+            
+            ogohlantirish = await context.bot.send_message(
+                chat_id=DRIVERS_GROUP_ID,
+                text=matn,
+                reply_markup=tugmalar
+            )
+            
+            # Guruh ifloslanmasligi uchun bu xabarni ham 15 soniyada o'chirib yuboramiz
+            context.job_queue.run_once(
+                guruh_xabarini_ochirish, 
+                when=15, 
+                data={'chat_id': DRIVERS_GROUP_ID, 'msg_id': ogohlantirish.message_id}
+            )
+        except Exception as e:
+            print(f"Xabar o'chirishda xatolik: {e}")
 
 # ================== MAIN ==================
 def main():
