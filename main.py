@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from datetime import datetime # VAQT BILAN ISHLASH UCHUN QO'SHILDI
+from datetime import datetime
 from telegram import (
     Update, 
     KeyboardButton, 
@@ -28,7 +28,7 @@ ADMIN_ID = 5660204735 # Admin ID (Sizning ID raqamingiz)
 KUTISH_VAQTI = 30 
 OGOHLANTIRISH_VAQTI = 20
 TOLOV_KUTISH_VAQTI = 20
-DB_FILE = "/data/taksi_baza.json" # Ma'lumotlar saqlanadigan fayl (Railway uchun)
+DB_FILE = "/data/taksi_baza.json" # Ma'lumotlar saqlanadigan fayl
 
 # Xotira va Statistika
 haydovchilar = {}  
@@ -42,7 +42,7 @@ bloklangan_haydovchilar = set()
 stat_zakaslar = 0
 stat_cheklar = 0
 zakas_raqami = 0
-zakaslar_tarixi = [] # YANGI: ZAKASLAR TARIXI SAQLANADIGAN RO'YXAT
+zakaslar_tarixi = []
 
 ISM, TELEFON, QAYERDAN, QAYERGA, ODAM_SONI, VAQT = range(6)
 
@@ -122,13 +122,19 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     bugun_sana = datetime.now().strftime("%Y-%m-%d")
     bugungi_zakaslar = [z for z in zakaslar_tarixi if z.get("vaqt", "").startswith(bugun_sana)]
+    
+    # 🔥 YANGILANISH: Statistika hisoblari
+    jami_balans = sum(balanslar.values())
+    jami_balans_str = f"{jami_balans:,}".replace(",", " ")
 
     matn = "👑 <b>ADMIN PANEL</b>\n\n"
+    matn += f"👨‍✈️ <b>Jami haydovchilar:</b> {len(haydovchilar)} ta\n"
+    matn += f"👤 <b>Jami yo'lovchilar:</b> {len(yolovchilar)} ta\n"
+    matn += f"💰 <b>Tizimdagi umumiy balans:</b> {jami_balans_str} so'm\n\n"
     matn += f"📅 <b>Bugun qabul qilingan zakaslar:</b> {len(bugungi_zakaslar)} ta\n"
     matn += f"📦 <b>Umumiy qabul qilingan zakaslar:</b> {len(zakaslar_tarixi)} ta\n\n"
     matn += "📜 <b>SO'NGGI 15 TA ZAKAS TARIXI:</b>\n\n"
 
-    # Oxirgi 15 ta zakasni ko'rsatamiz (bot xabari uzun bo'lib ketmasligi uchun)
     for z in zakaslar_tarixi[-15:]:
         matn += f"🚕 <b>{z['qayerdan']} -> {z['qayerga']}</b>\n"
         matn += f"👨‍✈️ Haydovchi: {z['haydovchi_user']} (Tel: {z.get('haydovchi_tel', '')})\n"
@@ -180,9 +186,9 @@ async def haydovchi_raqamini_saqlash(update: Update, context: ContextTypes.DEFAU
         if uid not in balanslar: balanslar[uid] = 0 
         save_data() 
         
+        # 🔥 YANGILANISH: Ortiqcha gaplar olib tashlandi
         matn_yoriqnoma = (
             "🎉 <b>TABRIKLAYMIZ! Siz haydovchi sifatida ro'yxatdan o'tdingiz!</b>\n\n"
-            "Endi siz guruhdagi zakaslarni olishingiz mumkin. Ishni boshlashdan oldin qoidalar bilan tanishib chiqing:\n\n"
             "<b>1.</b> Zakas olish uchun balansingizda pul bo'lishi kerak (1 odam = 10 ming so'm).\n"
             "<b>2.</b> Balansni «💳 Kabinet» bo'limidan to'ldirasiz.\n"
             "<b>3.</b> Guruhdan «✅ Zakasni olish»ni bossangiz, pul yechilib raqam beriladi.\n"
@@ -268,7 +274,6 @@ async def rasm_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         summa_str = f"{summa:,}".replace(",", " ")
         photo = update.message.photo[-1].file_id
         
-        # Haydovchining telegram lichkasini (username) aniqlash
         haydovchi_user = f"@{user.username}" if user.username else f"<a href='tg://user?id={uid}'>{user.first_name}</a>"
 
         global stat_cheklar
@@ -280,7 +285,6 @@ async def rasm_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("❌ Rad etish", callback_data=f"rad_{uid}_{summa}")]
         ])
         
-        # Adminga yuboriladigan xabarda Username chiqadi
         await context.bot.send_photo(
             chat_id=ADMIN_ID, 
             photo=photo, 
@@ -431,7 +435,6 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         balanslar[haydovchi_id] -= narx
         
-        # 🔥 ZAKAS TARIXINI SAQLASH
         user = update.effective_user
         haydovchi_user = f"@{user.username}" if user.username else f"<a href='tg://user?id={haydovchi_id}'>{user.first_name}</a>"
         vaqt_hozir = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -444,7 +447,7 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
             "qayerdan": z['qayerdan'],
             "qayerga": z['qayerga']
         })
-        save_data() # Barcha o'zgarishlarni bazaga saqlaymiz
+        save_data() 
         
         try:
             await context.bot.edit_message_text(chat_id=DRIVERS_GROUP_ID, message_id=z['guruh_xabar_id'], text="✅ Zakas yopildi")
@@ -574,7 +577,7 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin_panel)) # 🔥 ADMIN PANEL QO'SHILDI
+    app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(MessageHandler(filters.Regex("^👨‍✈️ Haydovchi bo'lish$"), haydovchi_bolish))
     app.add_handler(MessageHandler(filters.CONTACT, haydovchi_raqamini_saqlash))
     app.add_handler(conv_handler)
