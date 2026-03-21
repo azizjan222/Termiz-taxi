@@ -90,7 +90,6 @@ def save_data():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
-    user_name = update.effective_user.first_name # Foydalanuvchi ismini olish
     
     if text and len(text.split()) > 1:
         param = text.split()[1]
@@ -119,12 +118,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     menyular = ReplyKeyboardMarkup(tugmalar, resize_keyboard=True)
 
     await update.message.reply_text(
-        f"Hurmatli <b>{user_name}</b>,\n"
-        "Taksi kerak bo'lsa bot orqali buyurtma bering, haydovchi bo'lish uchun botga kiring 👇\n\n"
-        "🚕 <b>Yo'lovchilar:</b> Taksi kerak bo'lsa bot orqali buyurtma qiling.\n"
-        "👨‍✈️ <b>Haydovchilar:</b> Guruhdan zakas olish uchun hisobingizni to'ldiring.",
-        reply_markup=menyular,
-        parse_mode='HTML'
+        "Assalomu alaykum! Termiz-Sariosiyo taksi xizmatiga xush kelibsiz.\n\n"
+        "Iltimos, o'zingizga kerakli bo'limni tanlang:",
+        reply_markup=menyular
+    )
+    parse_mode='HTML'
     )
 
 # ================== 🔥 GURUHDA KIMDIR YOZSA AVTO-JAVOB ==================
