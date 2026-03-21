@@ -44,7 +44,7 @@ stat_cheklar = 0
 zakas_raqami = 0
 zakaslar_tarixi = []
 
-# 🔥 YANGI: Bonus va Limit uchun bazalar
+# 🔥 Bonus va Limit uchun bazalar
 birinchi_tolov_qilganlar = [] 
 kunlik_xabarlar = {} 
 
@@ -122,8 +122,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Iltimos, o'zingizga kerakli bo'limni tanlang:",
         reply_markup=menyular
     )
-    parse_mode='HTML'
-    )
 
 # ================== 🔥 GURUHDA KIMDIR YOZSA AVTO-JAVOB ==================
 async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -135,7 +133,7 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
             f"Hurmatli <b>{user_name}</b>,\n"
             "Taksi kerak bo'lsa bot orqali buyurtma bering, haydovchi bo'lish uchun botga kiring 👇\n\n"
             "🚕 Taksi kerak bo'lsa bot orqali buyurtma qiling\n"
-            "👨‍✈️ Haydovchi bo'lish uchun ham botga kiring"
+            "👨‍✈️ Haydovchi bo'lish uchun xam botga kiring"
         )
         
         tugma = InlineKeyboardMarkup([[InlineKeyboardButton("🤖 Botga o'tish", url=f"https://t.me/{bot_username}")]])
@@ -258,7 +256,7 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
     
     tugmalar_ruyxati = ["💳 Kabinet (Balans)", "📚 Yo'riqnoma", "👨‍✈️ Haydovchi bo'lish", "🚕 Taksi buyurtma qilish"]
     
-    # 1. LIMITNI TEKSHIRISH (Faqat haydovchilar uchun, tugmalardan tashqari xabarlarga)
+    # LIMITNI TEKSHIRISH (Faqat haydovchilar uchun, tugmalardan tashqari xabarlarga)
     if text not in tugmalar_ruyxati and not (text.isdigit() and context.user_data.get('topup_step') == 'summa'):
         if uid in haydovchilar:
             bugun = datetime.now().strftime("%Y-%m-%d")
@@ -266,17 +264,16 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
             kunlik = kunlik_xabarlar.get(uid_str, {"sana": bugun, "soni": 0})
             
             if kunlik["sana"] != bugun:
-                kunlik = {"sana": bugun, "soni": 0} # Yangi kun uchun nollash
+                kunlik = {"sana": bugun, "soni": 0} 
             
             if kunlik["soni"] >= 3:
                 await update.message.reply_text("❌ <b>Limit tugadi!</b>\nSiz haydovchi sifatida botga kuniga faqat 3 ta xabar yozishingiz mumkin. Iltimos, ertaga yozing.", parse_mode='HTML')
-                return # Xabarni o'qimasdan to'xtatadi
+                return 
             else:
                 kunlik["soni"] += 1
                 kunlik_xabarlar[uid_str] = kunlik
                 save_data()
 
-    # 2. ODDIY ISHLASH JARAYONI
     if text == "💳 Kabinet (Balans)":
         context.user_data.pop('topup_step', None) 
         await kabinet(update, context)
@@ -346,9 +343,8 @@ async def admin_tasdiqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summa = int(data[2])
 
     if amal == "tasdiq":
-        # Bonus tizimi ishga tushadi
         if uid not in birinchi_tolov_qilganlar:
-            bonus = int(summa * 0.5) # 50% qo'shib beriladi
+            bonus = int(summa * 0.5) 
             jami_summa = summa + bonus
             birinchi_tolov_qilganlar.append(uid)
             balanslar[uid] = balanslar.get(uid, 0) + jami_summa
