@@ -28,7 +28,7 @@ ADMIN_ID = 5660204735 # Admin ID (Sizning ID raqamingiz)
 KUTISH_VAQTI = 30 
 OGOHLANTIRISH_VAQTI = 20
 TOLOV_KUTISH_VAQTI = 20
-DB_FILE = "/data/taksi_baza.json" # Ma'lumotlar saqlanadigan fayl
+DB_FILE = "/data/taksi_baza.json" # Ma'lumotlar saqlanadigan xavfsiz fayl
 
 # Xotira va Statistika
 haydovchilar = {}  
@@ -44,7 +44,6 @@ stat_cheklar = 0
 zakas_raqami = 0
 zakaslar_tarixi = []
 
-# 🔥 Bonus va Limit uchun bazalar
 birinchi_tolov_qilganlar = [] 
 kunlik_xabarlar = {} 
 
@@ -123,26 +122,49 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=menyular
     )
 
-# ================== 🔥 GURUHDA KIMDIR YOZSA AVTO-JAVOB ==================
+# ================== 🔥 GURUHDA KIMDIR YOZSA AVTO-JAVOB VA LIMIT ==================
 async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type in ['group', 'supergroup']:
+        user_id = update.effective_user.id
         user_name = update.effective_user.first_name
         bot_username = context.bot.username
-        
+
+        # 1-QOIDA: Agar yozgan odam HAYDOVCHI bo'lsa
+        if user_id in haydovchilar:
+            bugun = datetime.now().strftime("%Y-%m-%d")
+            uid_str = str(user_id)
+            kunlik = kunlik_xabarlar.get(uid_str, {"sana": bugun, "soni": 0})
+            
+            if kunlik["sana"] != bugun:
+                kunlik = {"sana": bugun, "soni": 0} # Yangi kunga o'tsa nollanadi
+            
+            if kunlik["soni"] >= 3:
+                # 3 tadan ko'p yozsa, xabari indamasdan o'chirib tashlanadi
+                try: 
+                    await update.message.delete()
+                except: 
+                    pass
+                return 
+            else:
+                # 3 tagacha ruxsat, hisobni 1 taga oshiramiz va saqlaymiz (eslatma berilmaydi)
+                kunlik["soni"] += 1
+                kunlik_xabarlar[uid_str] = kunlik
+                save_data()
+                return 
+
+        # 2-QOIDA: Agar yozgan odam YO'LOVCHI (ro'yxatdan o'tmagan) bo'lsa
         matn = (
             f"Hurmatli <b>{user_name}</b>,\n"
             "Taksi kerak bo'lsa bot orqali buyurtma bering, haydovchi bo'lish uchun botga kiring 👇\n\n"
             "🚕 Taksi kerak bo'lsa bot orqali buyurtma qiling\n"
-            "👨‍✈️ Haydovchi bo'lish uchun xam botga kiring"
+            "👨‍✈️ Haydovchi bo'lsangiz botdan ro'yxatdan o'ting"
         )
         
         tugma = InlineKeyboardMarkup([[InlineKeyboardButton("🤖 Botga o'tish", url=f"https://t.me/{bot_username}")]])
         msg = await update.message.reply_text(matn, reply_markup=tugma, parse_mode='HTML')
         
-        try:
-            await update.message.delete() # Guruhdagilar yozgan xabarni o'chirish
-            context.job_queue.run_once(guruh_xabarini_ochirish, 30, data={'chat_id': msg.chat_id, 'msg_id': msg.message_id})
-        except: pass
+        # Botning yo'lovchiga yozgan eslatma xabari 30 soniyadan keyin guruhdan avtomatik o'chib ketadi
+        context.job_queue.run_once(guruh_xabarini_ochirish, 30, data={'chat_id': msg.chat_id, 'msg_id': msg.message_id})
 
 # ================== ADMIN PANEL VA YO'RIQNOMA ==================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -249,31 +271,10 @@ async def hisob_toldirish_tugmasi(update: Update, context: ContextTypes.DEFAULT_
         parse_mode='HTML'
     )
 
-# 🔥 UMUMIY MATN QABUL QILISH VA 3-TA XABAR LIMITI
+# 🔥 UMUMIY MATN QABUL QILISH
 async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    uid = update.effective_user.id
     
-    tugmalar_ruyxati = ["💳 Kabinet (Balans)", "📚 Yo'riqnoma", "👨‍✈️ Haydovchi bo'lish", "🚕 Taksi buyurtma qilish"]
-    
-    # LIMITNI TEKSHIRISH (Faqat haydovchilar uchun, tugmalardan tashqari xabarlarga)
-    if text not in tugmalar_ruyxati and not (text.isdigit() and context.user_data.get('topup_step') == 'summa'):
-        if uid in haydovchilar:
-            bugun = datetime.now().strftime("%Y-%m-%d")
-            uid_str = str(uid)
-            kunlik = kunlik_xabarlar.get(uid_str, {"sana": bugun, "soni": 0})
-            
-            if kunlik["sana"] != bugun:
-                kunlik = {"sana": bugun, "soni": 0} 
-            
-            if kunlik["soni"] >= 3:
-                await update.message.reply_text("❌ <b>Limit tugadi!</b>\nSiz haydovchi sifatida botga kuniga faqat 3 ta xabar yozishingiz mumkin. Iltimos, ertaga yozing.", parse_mode='HTML')
-                return 
-            else:
-                kunlik["soni"] += 1
-                kunlik_xabarlar[uid_str] = kunlik
-                save_data()
-
     if text == "💳 Kabinet (Balans)":
         context.user_data.pop('topup_step', None) 
         await kabinet(update, context)
@@ -343,8 +344,9 @@ async def admin_tasdiqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summa = int(data[2])
 
     if amal == "tasdiq":
+        # Bonus tizimi ishga tushadi
         if uid not in birinchi_tolov_qilganlar:
-            bonus = int(summa * 0.5) 
+            bonus = int(summa * 0.5) # 50% qo'shib beriladi
             jami_summa = summa + bonus
             birinchi_tolov_qilganlar.append(uid)
             balanslar[uid] = balanslar.get(uid, 0) + jami_summa
@@ -440,6 +442,8 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tugma_guruh = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Zakasni olish", url=f"https://t.me/{bot_username}?start=olish_{zakas_raqami}")]])
     
     msg = await context.bot.send_message(chat_id=DRIVERS_GROUP_ID, text=guruh_xabari, reply_markup=tugma_guruh)
+    
+    # Guruhga tushganda Pin qilib qo'yish
     try: await context.bot.pin_chat_message(chat_id=DRIVERS_GROUP_ID, message_id=msg.message_id, disable_notification=False)
     except: pass 
     
@@ -490,6 +494,7 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
         try:
             await context.bot.edit_message_text(chat_id=DRIVERS_GROUP_ID, message_id=z['guruh_xabar_id'], text="✅ Zakas yopildi")
             context.job_queue.run_once(guruh_xabarini_ochirish, when=60, data={'chat_id': DRIVERS_GROUP_ID, 'msg_id': z['guruh_xabar_id']})
+            # Haydovchi olganidan keyin Pindan olib tashlash
             await context.bot.unpin_chat_message(chat_id=DRIVERS_GROUP_ID, message_id=z['guruh_xabar_id']) 
         except: pass 
         
@@ -562,7 +567,10 @@ async def zakas_amallari(update: Update, context: ContextTypes.DEFAULT_TYPE):
             z = zakaslar.pop(z_id)
             save_data()
             await query.edit_message_text("❌ Buyurtma bekor qilindi.")
-            try: await context.bot.delete_message(chat_id=DRIVERS_GROUP_ID, message_id=z['guruh_xabar_id'])
+            try: 
+                await context.bot.delete_message(chat_id=DRIVERS_GROUP_ID, message_id=z['guruh_xabar_id'])
+                # Bekor qilinganda pindan ham olib tashlanadi
+                await context.bot.unpin_chat_message(chat_id=DRIVERS_GROUP_ID, message_id=z['guruh_xabar_id']) 
             except: pass
         elif z_id in faol_zakaslar:
             z = faol_zakaslar.pop(z_id)
@@ -574,7 +582,7 @@ async def zakas_amallari(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("❌ Buyurtma bekor qilindi.")
             await context.bot.send_message(chat_id=h_id, text="❌ Yo'lovchi buyurtmani bekor qildi. Pulingiz balansingizga qaytarildi.")
 
-# ================== 🔥 GURUHGA REKLAMA ESLATMASI ==================
+# ================== 🔥 GURUHGA REKLAMA ESLATMASI (Har 6 soatda) ==================
 async def guruhga_eslatma_xabar(context: ContextTypes.DEFAULT_TYPE):
     eslatma_matni = (
         "🚕 Termiz Sariosiyo Boti — tez va qulay taksi xizmati.\n\n"
@@ -621,6 +629,7 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_tasdiqlash, pattern="^(tasdiq|rad)_"))
     app.add_handler(CallbackQueryHandler(zakas_amallari, pattern="^(yopish|hbekor|ybekor)_"))
 
+    # Har 6 soatda (21600 soniyada) reklama jo'natish
     app.job_queue.run_repeating(guruhga_eslatma_xabar, interval=21600, first=10)
 
     print("Bot ishga tushdi...")
