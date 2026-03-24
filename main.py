@@ -122,7 +122,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=menyular
     )
 
-
 # ================== 🔥 GURUHDA KIMDIR YOZSA AVTO-JAVOB VA LIMIT ==================
 async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type in ['group', 'supergroup']:
@@ -140,27 +139,16 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
                 kunlik = {"sana": bugun, "soni": 0} 
             
             if kunlik["soni"] >= 3:
-                # 3 tadan ko'p yozsa, xabari indamasdan o'chirib tashlanadi
-                try: 
-                    await update.message.delete()
-                except: 
-                    pass
+                try: await update.message.delete()
+                except: pass
                 return 
             else:
-                # 3 tagacha ruxsat
                 kunlik["soni"] += 1
                 kunlik_xabarlar[uid_str] = kunlik
                 save_data()
                 return 
 
         # 2-QOIDA: Agar yozgan odam YO'LOVCHI (ro'yxatdan o'tmagan) bo'lsa
-        # Xabarini darhol o'chiramiz
-        try:
-            await update.message.delete()
-        except:
-            pass
-
-        # Va o'rniga 2 ta taklif tugmasini chiqaramiz
         matn = f"Hurmatli <b>{user_name}</b>,\nIltimos, o'zingizga kerakli bo'limni tanlang 👇"
         
         tugmalar = InlineKeyboardMarkup([
@@ -168,10 +156,19 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
             [InlineKeyboardButton("👨‍✈️ Haydovchi bo'lish", url=f"https://t.me/{bot_username}")]
         ])
         
-        msg = await update.message.reply_text(matn, reply_markup=tugmalar, parse_mode='HTML')
+        # 1-qadam: Avval eslatmani guruhga to'g'ridan-to'g'ri jo'natamiz (reply_text emas)
+        msg = await context.bot.send_message(chat_id=update.message.chat_id, text=matn, reply_markup=tugmalar, parse_mode='HTML')
         
-        # Bu xabar ham guruh toza turishi uchun 30 soniyadan keyin o'chib ketadi
+        # 2-qadam: Keyin yo'lovchining xabarini o'chiramiz
+        try:
+            await update.message.delete()
+        except:
+            pass
+
+        # 3-qadam: Bot o'z eslatmasini 30 soniyadan keyin o'chiradi
         context.job_queue.run_once(guruh_xabarini_ochirish, 30, data={'chat_id': msg.chat_id, 'msg_id': msg.message_id})
+        
+
         
 # ================== ADMIN PANEL VA YO'RIQNOMA ==================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
