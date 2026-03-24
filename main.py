@@ -122,6 +122,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=menyular
     )
 
+
 # ================== 🔥 GURUHDA KIMDIR YOZSA AVTO-JAVOB VA LIMIT ==================
 async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type in ['group', 'supergroup']:
@@ -129,14 +130,14 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
         user_name = update.effective_user.first_name
         bot_username = context.bot.username
 
-        # 1-QOIDA: Agar yozgan odam HAYDOVCHI bo'lsa
+        # 1-QOIDA: Agar yozgan odam HAYDOVCHI bo'lsa (Ro'yxatdan o'tgan)
         if user_id in haydovchilar:
             bugun = datetime.now().strftime("%Y-%m-%d")
             uid_str = str(user_id)
             kunlik = kunlik_xabarlar.get(uid_str, {"sana": bugun, "soni": 0})
             
             if kunlik["sana"] != bugun:
-                kunlik = {"sana": bugun, "soni": 0} # Yangi kunga o'tsa nollanadi
+                kunlik = {"sana": bugun, "soni": 0} 
             
             if kunlik["soni"] >= 3:
                 # 3 tadan ko'p yozsa, xabari indamasdan o'chirib tashlanadi
@@ -146,26 +147,32 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
                     pass
                 return 
             else:
-                # 3 tagacha ruxsat, hisobni 1 taga oshiramiz va saqlaymiz (eslatma berilmaydi)
+                # 3 tagacha ruxsat
                 kunlik["soni"] += 1
                 kunlik_xabarlar[uid_str] = kunlik
                 save_data()
                 return 
 
         # 2-QOIDA: Agar yozgan odam YO'LOVCHI (ro'yxatdan o'tmagan) bo'lsa
-        matn = (
-            f"Hurmatli <b>{user_name}</b>,\n"
-            "Taksi kerak bo'lsa bot orqali buyurtma bering, haydovchi bo'lish uchun botga kiring 👇\n\n"
-            "🚕 Taksi kerak bo'lsa bot orqali buyurtma qiling\n"
-            "👨‍✈️ Haydovchi bo'lsangiz botdan ro'yxatdan o'ting"
-        )
-        
-        tugma = InlineKeyboardMarkup([[InlineKeyboardButton("🤖 Botga o'tish", url=f"https://t.me/{bot_username}")]])
-        msg = await update.message.reply_text(matn, reply_markup=tugma, parse_mode='HTML')
-        
-        # Botning yo'lovchiga yozgan eslatma xabari 30 soniyadan keyin guruhdan avtomatik o'chib ketadi
-        context.job_queue.run_once(guruh_xabarini_ochirish, 30, data={'chat_id': msg.chat_id, 'msg_id': msg.message_id})
+        # Xabarini darhol o'chiramiz
+        try:
+            await update.message.delete()
+        except:
+            pass
 
+        # Va o'rniga 2 ta taklif tugmasini chiqaramiz
+        matn = f"Hurmatli <b>{user_name}</b>,\nIltimos, o'zingizga kerakli bo'limni tanlang 👇"
+        
+        tugmalar = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚕 Taksi zakas qilish", url=f"https://t.me/{bot_username}")],
+            [InlineKeyboardButton("👨‍✈️ Haydovchi bo'lish", url=f"https://t.me/{bot_username}")]
+        ])
+        
+        msg = await update.message.reply_text(matn, reply_markup=tugmalar, parse_mode='HTML')
+        
+        # Bu xabar ham guruh toza turishi uchun 30 soniyadan keyin o'chib ketadi
+        context.job_queue.run_once(guruh_xabarini_ochirish, 30, data={'chat_id': msg.chat_id, 'msg_id': msg.message_id})
+        
 # ================== ADMIN PANEL VA YO'RIQNOMA ==================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return 
