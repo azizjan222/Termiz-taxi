@@ -138,11 +138,14 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
             if kunlik["sana"] != bugun:
                 kunlik = {"sana": bugun, "soni": 0} 
             
-            if kunlik["soni"] >= 3:
+            # 🔥 Limit 7 taga o'zgartirildi
+            if kunlik["soni"] >= 7:
+                # 7 tadan ko'p yozsa, xabari indamasdan o'chirib tashlanadi
                 try: await update.message.delete()
                 except: pass
                 return 
             else:
+                # 7 tagacha ruxsat
                 kunlik["soni"] += 1
                 kunlik_xabarlar[uid_str] = kunlik
                 save_data()
@@ -156,7 +159,7 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
             [InlineKeyboardButton("👨‍✈️ Haydovchi bo'lish", url=f"https://t.me/{bot_username}")]
         ])
         
-        # 1-qadam: Avval eslatmani guruhga to'g'ridan-to'g'ri jo'natamiz (reply_text emas)
+        # 1-qadam: Avval eslatmani guruhga to'g'ridan-to'g'ri jo'natamiz
         msg = await context.bot.send_message(chat_id=update.message.chat_id, text=matn, reply_markup=tugmalar, parse_mode='HTML')
         
         # 2-qadam: Keyin yo'lovchining xabarini o'chiramiz
@@ -167,7 +170,6 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
 
         # 3-qadam: Bot o'z eslatmasini 30 soniyadan keyin o'chiradi
         context.job_queue.run_once(guruh_xabarini_ochirish, 30, data={'chat_id': msg.chat_id, 'msg_id': msg.message_id})
-        
 
         
 # ================== ADMIN PANEL VA YO'RIQNOMA ==================
