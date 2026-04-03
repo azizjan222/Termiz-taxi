@@ -45,7 +45,6 @@ zakas_raqami = 0
 zakaslar_tarixi = []
 birinchi_tolov_qilganlar = [] 
 
-# YANGA QO'SHILGANLAR (Admin panel uchun)
 banned_users = []
 maintenance_mode = False
 
@@ -100,12 +99,11 @@ async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
 # ================== 1. START VA MENYU ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_access(update, context): return
-    context.user_data.pop('admin_state', None) # Admin holatini tozalash
+    context.user_data.pop('admin_state', None) 
 
     text = update.message.text
     user_id = update.effective_user.id
     
-    # Deep link orqali guruhdan kelgan bo'lsa
     if text and len(text.split()) > 1:
         param = text.split()[1]
         if param.startswith("olish_"):
@@ -127,7 +125,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     menyular = ReplyKeyboardMarkup(tugmalar, resize_keyboard=True)
     await update.message.reply_text("Assalomu alaykum! Termiz-Sariosiyo taksi xizmatiga xush kelibsiz.\n\nIltimos, o'zingizga kerakli bo'limni tanlang:", reply_markup=menyular)
 
-# ================== 🔥 YANGI ADMIN PANEL ==================
+# ================== 🔥 ADMIN PANEL ==================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return 
     
@@ -275,11 +273,27 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
         await kabinet(update, context)
         return
     if text == "📚 Yo'riqnoma":
-        await update.message.reply_text("📚 <b>HAYDOVCHILAR UCHUN YO'RIQNOMA</b>\n\n1️⃣ Zakas narxi: 1 odam = 10 000 so'm.\n2️⃣ Birinchi marta hisob to'ldirganda 50% BONUS beriladi.", parse_mode='HTML')
+        matn = (
+            "📚 <b>HAYDOVCHILAR UCHUN YO'RIQNOMA</b>\n\n"
+            "🎁 <b>AKSIYA:</b> Birinchi marta hisob to'ldirganda <b>50% BONUS</b> beriladi!\n"
+            "<i>(Masalan: 50,000 so'm tashlasangiz, 75,000 so'm tushadi)</i>\n\n"
+            "1️⃣ <b>Zakas narxi:</b> 1 odam = 10 000 so'm.\n"
+            "<i>(Zakas olish uchun hisobingizda pul bo'lishi shart)</i>\n\n"
+            "2️⃣ <b>Hisobni to'ldirish tartibi:</b>\n"
+            "🔸 Asosiy menyudan <b>«💳 Kabinet (Balans)»</b> tugmasini bosing.\n"
+            "🔸 <b>«💰 Hisobni to'ldirish»</b> ni tanlab, tayyor summalardan birini bosing yoki o'zingiz summa yozing.\n"
+            "🔸 Berilgan karta raqami ustiga bossangiz, avtomatik nusxa (copy) oladi.\n"
+            "🔸 Payme/Click orqali pulni tashlab, chekni (skrinshot) botga yuboring.\n"
+            "🔸 Admin tasdiqlashi bilan pul darhol hisobingizga tushadi!\n\n"
+            "3️⃣ <b>Zakas bilan ishlash:</b>\n"
+            "🔸 Guruhda chiqqan zakasni olish uchun <b>«✅ Zakasni olish»</b> tugmasini bosing.\n"
+            "🔸 Mijozni manzilga yetkazgach, botdagi <b>«✅ Yopildi»</b> tugmasini bosishni unutmang!"
+        )
+        await update.message.reply_text(matn, parse_mode='HTML')
         return
 
     # BOSHQA SUMMA KIRITISH (To'lov)
-    if context.user_data.get('topup_step') == 'summa' and uid not in [ADMIN_ID]: # Admin boshqa holatda bo'lishi mumkin
+    if context.user_data.get('topup_step') == 'summa' and uid not in [ADMIN_ID]: 
         if not text.isdigit():
             await update.message.reply_text("❗ Faqat raqam kiriting (masalan: 35000)")
             return
@@ -294,12 +308,11 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
     if uid == ADMIN_ID:
         admin_state = context.user_data.get('admin_state')
 
-        # 1. TUGMALAR BOSILGANDA
         if text == "🔙 Foydalanuvchi menyusi":
             await start(update, context)
             return
             
-                elif text == "📊 Statistika":
+        elif text == "📊 Statistika":
             jami_balans = sum(balanslar.values())
             bugun_sana = datetime.now().strftime("%Y-%m-%d")
             bugungi_zakaslar = [z for z in zakaslar_tarixi if z.get("vaqt", "").startswith(bugun_sana)]
@@ -310,9 +323,8 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
             matn += f"💰 <b>Tizimdagi umumiy balans:</b> {jami_balans:,} so'm\n\n"
             matn += f"📅 <b>Bugun qabul qilingan zakaslar:</b> {len(bugungi_zakaslar)} ta\n"
             matn += f"📦 <b>Umumiy qabul qilingan zakaslar:</b> {len(zakaslar_tarixi)} ta\n\n"
-            
-            # Mana shu joyda oxirgi 15 ta zakas tarixi yana qaytadi
             matn += "📜 <b>SO'NGGI 15 TA ZAKAS TARIXI:</b>\n\n"
+            
             for z in zakaslar_tarixi[-15:]:
                 matn += f"🚕 <b>{z['qayerdan']} -> {z['qayerga']}</b>\n"
                 matn += f"👨‍✈️ Haydovchi: {z['haydovchi_user']} (Tel: {z.get('haydovchi_tel', '')})\n"
@@ -320,11 +332,9 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
 
             await update.message.reply_text(matn.replace(",", " "), parse_mode='HTML')
             return
-
             
         elif text == "💾 DB Yuklash":
-            try:
-                await update.message.reply_document(document=open(DB_FILE, 'rb'), filename="taksi_baza.json")
+            try: await update.message.reply_document(document=open(DB_FILE, 'rb'), filename="taksi_baza.json")
             except: await update.message.reply_text("Xato: Baza fayli topilmadi.")
             return
             
@@ -365,7 +375,6 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
             await update.message.reply_text("♻️ Blokdan chiqarmoqchi bo'lgan foydalanuvchining ID raqamini yuboring:")
             return
 
-        # 2. STATE LARDAN KELGAN JAVOBLAR (Ban, Unban, Rassilka text)
         if admin_state == 'ban':
             if text.isdigit():
                 b_id = int(text)
@@ -385,7 +394,7 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
             return
             
         elif admin_state == 'rassilka':
-            await rassilka_tarqatish(update, context) # Text uchun ham ishlaydi
+            await rassilka_tarqatish(update, context) 
             return
 
 # ================== 📢 RASSILKA (RASM/VIDEO/TEXT YUBORISH) ==================
@@ -402,7 +411,7 @@ async def rassilka_tarqatish(update: Update, context: ContextTypes.DEFAULT_TYPE)
         try:
             await context.bot.copy_message(chat_id=uid, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
             success += 1
-            await asyncio.sleep(0.05) # Telegram bloklamasligi uchun pauza
+            await asyncio.sleep(0.05) 
         except: pass
         
     context.user_data.pop('admin_state', None)
@@ -412,10 +421,8 @@ async def rassilka_tarqatish(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type in ['group', 'supergroup']:
         user_id = update.effective_user.id
-        # Haydovchilar bemalol, limitsiz yozadi
         if user_id in haydovchilar: return 
 
-        # Yo'lovchilar yozsa o'chirib eslatma beriladi
         try: await update.message.delete()
         except: pass
 
@@ -575,7 +582,6 @@ def main():
     load_data()
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Passenger Conversation Handler
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^🚕 Taksi buyurtma qilish$"), zakas_boshlash)],
         states={
@@ -597,17 +603,13 @@ def main():
     app.add_handler(MessageHandler(filters.Regex("^👨‍✈️ Haydovchi bo'lish$"), haydovchi_bolish))
     app.add_handler(MessageHandler(filters.CONTACT, haydovchi_raqamini_saqlash))
     
-    # Guruh avto-javob (Limit olib tashlangan, faqat yo'lovchiga ishlaydi)
     app.add_handler(MessageHandler(filters.ChatType.GROUPS & ~filters.COMMAND, guruhda_avtomatik_javob))
     
-    # Rasm(chek) va Media(Rassilka) qabul qilish
     app.add_handler(MessageHandler(filters.PHOTO, lambda u, c: rasm_qabul_qilish(u, c) if c.user_data.get('topup_step') == 'chek' else admin_rassilka_media(u, c)))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL, admin_rassilka_media))
     
-    # Matn qabul qilish (Menyu tugmalari, Admin holatlari)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, umumiy_matn_qabul_qilish))
 
-    # Tugmalar (To'lov, Ban, Zakas amallari)
     app.add_handler(CallbackQueryHandler(hisob_toldirish_tugmasi, pattern="^hisob_toldirish$"))
     app.add_handler(CallbackQueryHandler(summa_tanlash, pattern="^summatanla_"))
     app.add_handler(CallbackQueryHandler(admin_tasdiqlash, pattern="^(tasdiq|rad)_"))
