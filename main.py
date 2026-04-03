@@ -299,16 +299,28 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
             await start(update, context)
             return
             
-        elif text == "📊 Statistika":
+                elif text == "📊 Statistika":
             jami_balans = sum(balanslar.values())
             bugun_sana = datetime.now().strftime("%Y-%m-%d")
             bugungi_zakaslar = [z for z in zakaslar_tarixi if z.get("vaqt", "").startswith(bugun_sana)]
             
             matn = "📊 <b>UMUMIY STATISTIKA</b>\n\n"
-            matn += f"👨‍✈️ Haydovchilar: {len(haydovchilar)} ta\n👤 Yo'lovchilar: {len(yolovchilar)} ta\n💰 Umumiy balans: {jami_balans:,} so'm\n\n"
-            matn += f"📅 Bugungi zakaslar: {len(bugungi_zakaslar)} ta\n📦 Jami zakaslar: {len(zakaslar_tarixi)} ta"
+            matn += f"👨‍✈️ <b>Jami haydovchilar:</b> {len(haydovchilar)} ta\n"
+            matn += f"👤 <b>Jami yo'lovchilar:</b> {len(yolovchilar)} ta\n"
+            matn += f"💰 <b>Tizimdagi umumiy balans:</b> {jami_balans:,} so'm\n\n"
+            matn += f"📅 <b>Bugun qabul qilingan zakaslar:</b> {len(bugungi_zakaslar)} ta\n"
+            matn += f"📦 <b>Umumiy qabul qilingan zakaslar:</b> {len(zakaslar_tarixi)} ta\n\n"
+            
+            # Mana shu joyda oxirgi 15 ta zakas tarixi yana qaytadi
+            matn += "📜 <b>SO'NGGI 15 TA ZAKAS TARIXI:</b>\n\n"
+            for z in zakaslar_tarixi[-15:]:
+                matn += f"🚕 <b>{z['qayerdan']} -> {z['qayerga']}</b>\n"
+                matn += f"👨‍✈️ Haydovchi: {z['haydovchi_user']} (Tel: {z.get('haydovchi_tel', '')})\n"
+                matn += f"⏰ Vaqti: {z['vaqt']}\n〰️〰️〰️〰️〰️〰️\n"
+
             await update.message.reply_text(matn.replace(",", " "), parse_mode='HTML')
             return
+
             
         elif text == "💾 DB Yuklash":
             try:
