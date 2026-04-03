@@ -122,7 +122,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=menyular
     )
 
-# ================== 🔥 GURUHDA KIMDIR YOZSA AVTO-JAVOB VA LIMIT ==================
+# ================== 🔥 GURUHDA KIMDIR YOZSA AVTO-JAVOB ==================
 async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type in ['group', 'supergroup']:
         user_id = update.effective_user.id
@@ -131,25 +131,9 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
 
         # 1-QOIDA: Agar yozgan odam HAYDOVCHI bo'lsa (Ro'yxatdan o'tgan)
         if user_id in haydovchilar:
-            bugun = datetime.now().strftime("%Y-%m-%d")
-            uid_str = str(user_id)
-            kunlik = kunlik_xabarlar.get(uid_str, {"sana": bugun, "soni": 0})
-            
-            if kunlik["sana"] != bugun:
-                kunlik = {"sana": bugun, "soni": 0} 
-            
-            # 🔥 Limit 7 taga o'zgartirildi
-            if kunlik["soni"] >= 7:
-                # 7 tadan ko'p yozsa, xabari indamasdan o'chirib tashlanadi
-                try: await update.message.delete()
-                except: pass
-                return 
-            else:
-                # 7 tagacha ruxsat
-                kunlik["soni"] += 1
-                kunlik_xabarlar[uid_str] = kunlik
-                save_data()
-                return 
+            # Endi limit yo'q! Haydovchilar guruhga cheklanmagan miqdorda yoza oladi.
+            # Bot indamaydi va xabarni o'chirmaydi.
+            return 
 
         # 2-QOIDA: Agar yozgan odam YO'LOVCHI (ro'yxatdan o'tmagan) bo'lsa
         matn = f"Hurmatli <b>{user_name}</b>,\nIltimos, o'zingizga kerakli bo'limni tanlang 👇"
@@ -170,7 +154,7 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
 
         # 3-qadam: Bot o'z eslatmasini 30 soniyadan keyin o'chiradi
         context.job_queue.run_once(guruh_xabarini_ochirish, 30, data={'chat_id': msg.chat_id, 'msg_id': msg.message_id})
-
+        
         
 # ================== ADMIN PANEL VA YO'RIQNOMA ==================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
