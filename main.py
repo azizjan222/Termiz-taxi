@@ -164,6 +164,78 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     jami_balans = sum(balanslar.values())
     jami_balans_str = f"{jami_balans:,}".replace(",", " ")
 
+    # ================== 🔥 ADMIN ORQALI QO'LDA PUL QO'SHISH ==================
+async def admin_pul_qoshish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Faqat admin ishlata olishi uchun tekshiruv
+    if update.effective_user.id != ADMIN_ID:
+        return
+        
+    try:
+        args = context.args
+        if len(args) < 2:
+            raise ValueError
+            
+        identifikator = args[0] # Admin kiritgan ID yoki Tel raqam
+        summa = int(args[1])
+        haydovchi_id = None
+        
+        # 1. ID orqali qidirib ko'ramiz
+        if identifikator.isdigit() and int(identifikator) in haydovchilar:
+            haydovchi_id = int(identifikator)
+        
+        # 2. Agar ID bo'lmasa, Telefon raqam orqali qidiramiz
+        if not haydovchi_id:
+            # Raqam orasidagi + va bo'shliqlarni olib tashlaymiz (masalan: +998 90 -> 99890)
+            toza_kiritilgan = identifikator.replace("+", "").replace(" ", "")
+            for uid, tel in haydovchilar.items():
+                toza_tel = str(tel).replace("+", "").replace(" ", "")
+                if toza_tel == toza_kiritilgan:
+                    haydovchi_id = uid
+                    break
+        
+        # Agar bazadan topilmasa
+        if not haydovchi_id:
+            await update.message.reply_text("❌ <b>Bunday ID yoki Telefon raqamli haydovchi topilmadi!</b>\nRaqamni to'g'ri yozganingizni tekshiring.", parse_mode='HTML')
+            return
+            
+        # Balansga qo'shamiz
+        balanslar[haydovchi_id] = balanslar.get(haydovchi_id, 0) + summa
+        save_data()
+        
+        jami_str = f"{balanslar[haydovchi_id]:,}".replace(",", " ")
+        qoshilgan_str = f"{summa:,}".replace(",", " ")
+        haydovchi_tel = haydovchilar.get(haydovchi_id, "Noma'lum")
+        
+        # Adminga tasdiq xabari
+        await update.message.reply_text(
+            f"✅ <b>Muaffaqiyatli qo'shildi!</b>\n\n"
+            f"👤 Haydovchi tel: {haydovchi_tel}\n"
+            f"🆔 ID raqami: <code>{haydovchi_id}</code>\n"
+            f"💰 Qo'shilgan summa: {qoshilgan_str} so'm\n"
+            f"💳 Jami balansi: {jami_str} so'm",
+            parse_mode='HTML'
+        )
+        
+        # Haydovchining o'ziga xabar yuborish
+        try:
+            await context.bot.send_message(
+                chat_id=haydovchi_id,
+                text=f"🎁 <b>Hisobingiz to'ldirildi!</b>\n\nAdmin tomonidan balansingizga <b>{qoshilgan_str} so'm</b> qo'shildi.\n💰 Joriy balans: <b>{jami_str} so'm</b>",
+                parse_mode='HTML'
+            )
+        except:
+            await update.message.reply_text("⚠️ Pul qo'shildi, lekin haydovchiga xabar bormadi (u botni bloklagan bo'lishi mumkin).")
+            
+    except (IndexError, ValueError):
+        # Agar admin xato yozsa
+        await update.message.reply_text(
+            "❌ <b>Xato kiritdingiz!</b>\n\n"
+            "To'g'ri foydalanish shakli: <code>/pul [Raqam yoki ID] Summa</code>\n\n"
+            "<i>Masalan raqam bilan:</i> <code>/pul 998901234567 50000</code>\n"
+            "<i>Masalan ID bilan:</i> <code>/pul 123456789 50000</code>",
+            parse_mode='HTML'
+        )
+        
     matn = "👑 <b>ADMIN PANEL</b>\n\n"
     matn += f"👨‍✈️ <b>Jami haydovchilar:</b> {len(haydovchilar)} ta\n"
     matn += f"👤 <b>Jami yo'lovchilar:</b> {len(yolovchilar)} ta\n"
