@@ -530,6 +530,20 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     return ConversationHandler.END
 
+    # ... bu vaqt_qabul_qilish funksiyasining oxiri
+    zakaslar[zakas_raqami] = {
+        "yolovchi_id": update.effective_user.id,
+        # ... qolgan yozuvlar
+        "guruh_xabar_id": msg.message_id
+    }
+    return ConversationHandler.END
+
+async def bekor_qilish_anketa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ Buyurtma bekor qilindi.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+    
+    
+
 
 # ================== 6. ZAKAS BIRIKTIRISH ==================
 async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE, haydovchi_id: int, zakas_id: int):
