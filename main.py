@@ -507,19 +507,29 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tugma_yolovchi = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Bekor qilish", callback_data=f"ybekor_{zakas_raqami}")]])
     await update.message.reply_text("✅ Buyurtmangiz qabul qilindi va haydovchilarga yuborildi!", reply_markup=tugma_yolovchi)
     
-    guruh_xabari = f"🚕 YANGI BUYURTMA\n\n👤 {m['ism']} | 📞 {m['telefon']}\n📍 {m['qayerdan']} → {m['qayerga']}\n👥 {m['odam_soni']} ta | ⏰ {m['vaqt']}"
+    # 🔥 GURUHGA BORADIGAN XABAR (TELEFON RAQAM YASHIRILDI)
+    guruh_xabari = f"🚕 YANGI BUYURTMA\n\n👤 Yo'lovchi: {m['ism']}\n📍 {m['qayerdan']} → {m['qayerga']}\n👥 {m['odam_soni']} ta | ⏰ {m['vaqt']}"
+    
     tugma_guruh = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Zakasni olish", url=f"https://t.me/{context.bot.username}?start=olish_{zakas_raqami}")]])
     
     msg = await context.bot.send_message(DRIVERS_GROUP_ID, text=guruh_xabari, reply_markup=tugma_guruh)
     try: await context.bot.pin_chat_message(DRIVERS_GROUP_ID, msg.message_id)
     except: pass 
     
-    zakaslar[zakas_raqami] = {"yolovchi_id": update.effective_user.id, "telefon": m['telefon'], "ism": m['ism'], "qayerdan": m['qayerdan'], "qayerga": m['qayerga'], "odam_soni": m['odam_soni'], "vaqt": m['vaqt'], "lat": m.get('lat'), "lon": m.get('lon'), "guruh_xabar_id": msg.message_id}
+    zakaslar[zakas_raqami] = {
+        "yolovchi_id": update.effective_user.id, 
+        "telefon": m['telefon'], 
+        "ism": m['ism'], 
+        "qayerdan": m['qayerdan'], 
+        "qayerga": m['qayerga'], 
+        "odam_soni": m['odam_soni'], 
+        "vaqt": m['vaqt'], 
+        "lat": m.get('lat'), 
+        "lon": m.get('lon'), 
+        "guruh_xabar_id": msg.message_id
+    }
     return ConversationHandler.END
 
-async def bekor_qilish_anketa(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Buyurtma bekor qilindi.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
 
 # ================== 6. ZAKAS BIRIKTIRISH ==================
 async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE, haydovchi_id: int, zakas_id: int):
