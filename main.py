@@ -3,7 +3,7 @@ import json
 import os
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import (
     Update, 
     KeyboardButton, 
@@ -28,8 +28,8 @@ DRIVERS_GROUP_ID = -1002452524294 # Haydovchilar guruhi
 ADMIN_ID = 5660204735 # Admin ID
 DB_FILE = "/data/taksi_baza.json" # Xavfsiz xotira fayli
 
-KUTISH_VAQTI = 30 
-OGOHLANTIRISH_VAQTI = 20
+KUTISH_VAQTI = 30 # Avto bekor qilish vaqti (minut)
+OGOHLANTIRISH_VAQTI = 10 # Eslatma vaqti (minut)
 ISM, TELEFON, QAYERDAN, QAYERGA, ODAM_SONI, VAQT = range(6)
 
 # ================== 📂 XOTIRA VA BAZA ==================
@@ -43,14 +43,15 @@ stat_zakaslar = 0
 stat_cheklar = 0
 zakas_raqami = 0
 zakaslar_tarixi = []
+bekor_tarixi = [] # YANGA QO'SHILDI: Bekor qilinganlar tarixi
 birinchi_tolov_qilganlar = [] 
 
 banned_users = []
 maintenance_mode = False
 
 def load_data():
-    global haydovchilar, balanslar, yolovchilar, stat_zakaslar, stat_cheklar, zakas_raqami, zakaslar_tarixi
-    global birinchi_tolov_qilganlar, banned_users, maintenance_mode
+    global haydovchilar, balanslar, yolovchilar, stat_zakaslar, stat_cheklar, zakas_raqami
+    global zakaslar_tarixi, bekor_tarixi, birinchi_tolov_qilganlar, banned_users, maintenance_mode
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r") as f:
@@ -62,10 +63,12 @@ def load_data():
                 stat_cheklar = d.get("stat_cheklar", 0)
                 zakas_raqami = d.get("zakas_raqami", 0)
                 zakaslar_tarixi = d.get("zakaslar_tarixi", [])
+                bekor_tarixi = d.get("bekor_tarixi", [])
                 birinchi_tolov_qilganlar = d.get("birinchi_tolov_qilganlar", [])
                 banned_users = d.get("banned_users", [])
                 maintenance_mode = d.get("maintenance_mode", False)
-        except: pass
+        except Exception as e: 
+            print(f"Baza o'qishda xatolik: {e}")
 
 def save_data():
     d = {
@@ -76,6 +79,7 @@ def save_data():
         "stat_cheklar": stat_cheklar,
         "zakas_raqami": zakas_raqami,
         "zakaslar_tarixi": zakaslar_tarixi,
+        "bekor_tarixi": bekor_tarixi,
         "birinchi_tolov_qilganlar": birinchi_tolov_qilganlar,
         "banned_users": banned_users,
         "maintenance_mode": maintenance_mode
@@ -83,7 +87,8 @@ def save_data():
     try:
         with open(DB_FILE, "w") as f:
             json.dump(d, f)
-    except: pass
+    except Exception as e: 
+        print(f"Baza saqlashda xatolik: {e}")
 
 # ================== 🚫 XAVFSIZLIK TEKSHIRUVLARI ==================
 async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -149,6 +154,7 @@ async def admin_pul_qoshish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if identifikator.isdigit() and int(identifikator) in haydovchilar:
             haydovchi_id = int(identifikator)
+            
         if not haydovchi_id:
             toza_kiritilgan = identifikator.replace("+", "").replace(" ", "")
             for uid, tel in haydovchilar.items():
@@ -268,7 +274,6 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
     text = update.message.text
     uid = update.effective_user.id
     
-    # KABINET VA YO'RIQNOMA
     if text == "💳 Kabinet (Balans)":
         await kabinet(update, context)
         return
@@ -292,7 +297,6 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(matn, parse_mode='HTML')
         return
 
-    # BOSHQA SUMMA KIRITISH (To'lov)
     if context.user_data.get('topup_step') == 'summa' and uid not in [ADMIN_ID]: 
         if not text.isdigit():
             await update.message.reply_text("❗ Faqat raqam kiriting (masalan: 35000)")
@@ -312,25 +316,15 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
             await start(update, context)
             return
             
+        # 🔥 YANGILANGAN STATISTIKA (Ikkita tugmali tizim)
         elif text == "📊 Statistika":
-            jami_balans = sum(balanslar.values())
-            bugun_sana = datetime.now().strftime("%Y-%m-%d")
-            bugungi_zakaslar = [z for z in zakaslar_tarixi if z.get("vaqt", "").startswith(bugun_sana)]
-            
-            matn = "📊 <b>UMUMIY STATISTIKA</b>\n\n"
-            matn += f"👨‍✈️ <b>Jami haydovchilar:</b> {len(haydovchilar)} ta\n"
-            matn += f"👤 <b>Jami yo'lovchilar:</b> {len(yolovchilar)} ta\n"
-            matn += f"💰 <b>Tizimdagi umumiy balans:</b> {jami_balans:,} so'm\n\n"
-            matn += f"📅 <b>Bugun qabul qilingan zakaslar:</b> {len(bugungi_zakaslar)} ta\n"
-            matn += f"📦 <b>Umumiy qabul qilingan zakaslar:</b> {len(zakaslar_tarixi)} ta\n\n"
-            matn += "📜 <b>SO'NGGI 15 TA ZAKAS TARIXI:</b>\n\n"
-            
-            for z in zakaslar_tarixi[-15:]:
-                matn += f"🚕 <b>{z['qayerdan']} -> {z['qayerga']}</b>\n"
-                matn += f"👨‍✈️ Haydovchi: {z['haydovchi_user']} (Tel: {z.get('haydovchi_tel', '')})\n"
-                matn += f"⏰ Vaqti: {z['vaqt']}\n〰️〰️〰️〰️〰️〰️\n"
-
-            await update.message.reply_text(matn.replace(",", " "), parse_mode='HTML')
+            tugmalar = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("📦 Zakaslar", callback_data="stat_zakaslar"),
+                    InlineKeyboardButton("📈 Umumiy", callback_data="stat_umumiy")
+                ]
+            ])
+            await update.message.reply_text("📊 <b>Qaysi statistikani ko'rishni xohlaysiz?</b>\nQuyidagi tugmalardan birini tanlang 👇", reply_markup=tugmalar, parse_mode='HTML')
             return
             
         elif text == "💾 DB Yuklash":
@@ -397,6 +391,57 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
             await rassilka_tarqatish(update, context) 
             return
 
+# ================== 🔥 STATISTIKA TUGMALARI ISHLASHI ==================
+async def admin_stat_tugmalari(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    
+    if data == "stat_umumiy":
+        jami_balans = sum(balanslar.values())
+        matn = "📈 <b>UMUMIY STATISTIKA</b>\n\n"
+        matn += f"👨‍✈️ <b>Jami haydovchilar:</b> {len(haydovchilar)} ta\n"
+        matn += f"👤 <b>Jami yo'lovchilar:</b> {len(yolovchilar)} ta\n"
+        matn += f"💰 <b>Tizimdagi umumiy balans:</b> {jami_balans:,} so'm\n"
+        
+        tugmalar = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📦 Zakaslar", callback_data="stat_zakaslar"), InlineKeyboardButton("🔄 Yangilash", callback_data="stat_umumiy")]
+        ])
+        await query.edit_message_text(matn.replace(",", " "), parse_mode='HTML', reply_markup=tugmalar)
+        
+    elif data == "stat_zakaslar":
+        uz_time = datetime.utcnow() + timedelta(hours=5)
+        bugun_sana = uz_time.strftime("%Y-%m-%d")
+        
+        bugun_yopilgan = [z for z in zakaslar_tarixi if z.get("vaqt", "").startswith(bugun_sana)]
+        bugun_bekor = [b for b in bekor_tarixi if b.get("vaqt", "").startswith(bugun_sana)]
+        
+        matn = "📦 <b>ZAKASLAR STATISTIKASI</b>\n\n"
+        matn += f"📅 <b>Bugun:</b> {len(bugun_yopilgan)} ta qabul | {len(bugun_bekor)} ta atkaz\n"
+        matn += f"📊 <b>Umumiy:</b> {len(zakaslar_tarixi)} ta qabul | {len(bekor_tarixi)} ta atkaz\n\n"
+        
+        matn += "✅ <b>OXIRGI 10 TA QABUL QILINGAN:</b>\n"
+        if not zakaslar_tarixi: matn += "<i>Hozircha yo'q...</i>\n"
+        for z in zakaslar_tarixi[-10:]:
+            matn += f"🚕 {z.get('qayerdan')} -> {z.get('qayerga')}\n"
+            matn += f"👨‍✈️ Haydovchi: {z.get('haydovchi_user', 'Noma\\'lum')} | 📞 {z.get('haydovchi_tel', '')}\n"
+            matn += f"⏰ {z.get('vaqt', '')}\n〰️〰️〰️\n"
+
+        matn += "\n❌ <b>OXIRGI 10 TA ATKAZ (BEKOR) QILINGAN:</b>\n"
+        if not bekor_tarixi: matn += "<i>Hozircha yo'q...</i>\n"
+        for b in bekor_tarixi[-10:]:
+            matn += f"🚕 {b.get('qayerdan')} -> {b.get('qayerga')}\n"
+            matn += f"👤 {b.get('kim', 'Noma\\'lum')} | 📞 {b.get('tel', '')}\n"
+            matn += f"⏰ {b.get('vaqt', '')}\n〰️〰️〰️\n"
+            
+        tugmalar = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📈 Umumiy", callback_data="stat_umumiy"), InlineKeyboardButton("🔄 Yangilash", callback_data="stat_zakaslar")]
+        ])
+        
+        try:
+            await query.edit_message_text(matn, parse_mode='HTML', reply_markup=tugmalar)
+        except Exception: pass # Matn uzun bo'lsa xato bermasligi uchun
+
 # ================== 📢 RASSILKA (RASM/VIDEO/TEXT YUBORISH) ==================
 async def admin_rassilka_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == ADMIN_ID and context.user_data.get('admin_state') == 'rassilka':
@@ -432,12 +477,13 @@ async def guruhda_avtomatik_javob(update: Update, context: ContextTypes.DEFAULT_
             [InlineKeyboardButton("👨‍✈️ Haydovchi bo'lish", url=f"https://t.me/{context.bot.username}")]
         ])
         msg = await context.bot.send_message(update.message.chat_id, text=matn, reply_markup=tugmalar, parse_mode='HTML')
-        context.job_queue.run_once(guruh_xabarini_ochirish, 30, data={'chat_id': msg.chat_id, 'msg_id': msg.message_id})
-
-async def guruh_xabarini_ochirish(context: ContextTypes.DEFAULT_TYPE):
-    d = context.job.data
-    try: await context.bot.delete_message(chat_id=d['chat_id'], message_id=d['msg_id'])
-    except: pass
+        
+        async def xabarni_ochirish():
+            await asyncio.sleep(30) 
+            try: await context.bot.delete_message(chat_id=msg.chat_id, message_id=msg.message_id)
+            except: pass
+            
+        asyncio.create_task(xabarni_ochirish())
 
 # ================== 5. RO'YXATDAN O'TISH & ANKETA ==================
 async def haydovchi_bolish(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -507,9 +553,7 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tugma_yolovchi = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Bekor qilish", callback_data=f"ybekor_{zakas_raqami}")]])
     await update.message.reply_text("✅ Buyurtmangiz qabul qilindi va haydovchilarga yuborildi!", reply_markup=tugma_yolovchi)
     
-    # 🔥 GURUHGA BORADIGAN XABAR (TELEFON RAQAM YASHIRILDI)
     guruh_xabari = f"🚕 YANGI BUYURTMA\n\n👤 Yo'lovchi: {m['ism']}\n📍 {m['qayerdan']} → {m['qayerga']}\n👥 {m['odam_soni']} ta | ⏰ {m['vaqt']}"
-    
     tugma_guruh = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Zakasni olish", url=f"https://t.me/{context.bot.username}?start=olish_{zakas_raqami}")]])
     
     msg = await context.bot.send_message(DRIVERS_GROUP_ID, text=guruh_xabari, reply_markup=tugma_guruh)
@@ -530,26 +574,50 @@ async def vaqt_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     return ConversationHandler.END
 
-    # ... bu vaqt_qabul_qilish funksiyasining oxiri
-    zakaslar[zakas_raqami] = {
-        "yolovchi_id": update.effective_user.id,
-        # ... qolgan yozuvlar
-        "guruh_xabar_id": msg.message_id
-    }
-    return ConversationHandler.END
-
 async def bekor_qilish_anketa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Buyurtma bekor qilindi.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
-    
-    
 
+# ================== 🔥 TAYMERLAR ==================
+async def ogohlantirish_10_min(context: ContextTypes.DEFAULT_TYPE):
+    d = context.job.data
+    if d['z_id'] in faol_zakaslar:
+        try: await context.bot.send_message(chat_id=d['h_id'], text="⏰ 10 minut qoldi!\nYo‘lovchi sizni kutmoqda.\nIltimos zakasni yoping.")
+        except: pass
 
-# ================== 6. ZAKAS BIRIKTIRISH ==================
+async def avto_bekor_qilish(context: ContextTypes.DEFAULT_TYPE):
+    d = context.job.data
+    if d['z_id'] in faol_zakaslar:
+        z = faol_zakaslar.pop(d['z_id'])
+        
+        # 🔥 Tarixga yozish (Avto bekor qilinganda)
+        uz_time = datetime.utcnow() + timedelta(hours=5)
+        bekor_tarixi.append({
+            "qayerdan": z['qayerdan'], "qayerga": z['qayerga'], "vaqt": uz_time.strftime("%Y-%m-%d %H:%M"),
+            "kim": "Taymer (Avtomatik)", "tel": "-"
+        })
+        save_data()
+        
+        try: await context.bot.send_message(chat_id=z['yolovchi_id'], text="❌ Buyurtma bekor qilindi (vaqt tugadi).")
+        except: pass
+        try: await context.bot.send_message(chat_id=z['haydovchi_id'], text="❌ Buyurtma avtomatik yopildi (vaqt tugadi). Keyingi safar tugmani bosishni unutmang.")
+        except: pass
+
+def taymerni_toxtatish(context, zakas_id):
+    for job in context.job_queue.get_jobs_by_name(f"warn_{zakas_id}"): job.schedule_removal()
+    for job in context.job_queue.get_jobs_by_name(f"avto_{zakas_id}"): job.schedule_removal()
+
+async def guruh_xabarini_ochirish(context: ContextTypes.DEFAULT_TYPE):
+    d = context.job.data
+    try: await context.bot.delete_message(chat_id=d['chat_id'], message_id=d['msg_id'])
+    except: pass
+
+# ================== 6. ZAKAS BIRIKTIRISH VA AMALLARI ==================
 async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE, haydovchi_id: int, zakas_id: int):
     if zakas_id not in zakaslar:
         await context.bot.send_message(haydovchi_id, "❌ Zakas band yoki bekor qilingan.")
         return
+        
     narx = zakaslar[zakas_id]['odam_soni'] * 10000
     if balanslar.get(haydovchi_id, 0) >= narx:
         z = zakaslar.pop(zakas_id); z["haydovchi_id"] = haydovchi_id; faol_zakaslar[zakas_id] = z
@@ -563,43 +631,106 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         tugma_yolovchi = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Bekor qilish", callback_data=f"ybekor_{zakas_id}")]])
         await context.bot.send_message(z["yolovchi_id"], f"✅ Haydovchi topildi!\n📞 {haydovchilar[haydovchi_id]}", reply_markup=tugma_yolovchi)
-        if z.get('lat') and z.get('lon'): await context.bot.send_location(haydovchi_id, z['lat'], z['lon'])
+        
+        if z.get('lat') and z.get('lon'): 
+            await context.bot.send_location(haydovchi_id, z['lat'], z['lon'])
             
         h_xabar = f"🚕 BUYURTMA OLINDI\n👤 {z['ism']} | 📞 {z['telefon']}\n📍 {z['qayerdan']} → {z['qayerga']}\n📉 <i>Xizmat haqi ({narx} so'm) yechildi. Qoldiq: {balanslar[haydovchi_id]:,} so'm</i>"
         tugma_h = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Yopildi", callback_data=f"yopish_{zakas_id}")], [InlineKeyboardButton("❌ Bekor qilish", callback_data=f"hbekor_{zakas_id}")]])
         await context.bot.send_message(haydovchi_id, h_xabar, reply_markup=tugma_h, parse_mode='HTML')
+        
+        context.job_queue.run_once(ogohlantirish_10_min, OGOHLANTIRISH_VAQTI * 60, data={'z_id': zakas_id, 'h_id': haydovchi_id}, name=f"warn_{zakas_id}")
+        context.job_queue.run_once(avto_bekor_qilish, KUTISH_VAQTI * 60, data={'z_id': zakas_id, 'h_id': haydovchi_id}, name=f"avto_{zakas_id}")
     else:
         await context.bot.send_message(haydovchi_id, f"❌ Mablag' yetarli emas. Xizmat haqi: {narx} so'm.")
 
 async def zakas_amallari(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
     amal, z_id = query.data.split('_')[0], int(query.data.split('_')[1])
+    
+    uz_time = datetime.utcnow() + timedelta(hours=5)
 
     if amal == "yopish" and z_id in faol_zakaslar:
-        z = faol_zakaslar.pop(z_id); save_data()
+        z = faol_zakaslar.pop(z_id)
+        taymerni_toxtatish(context, z_id) 
+        
+        h_id = z['haydovchi_id']
+        haydovchi_ismi = update.effective_user.first_name if update.effective_user else "Noma'lum"
+        haydovchi_username = f" (@{update.effective_user.username})" if update.effective_user.username else ""
+        haydovchi_raqami = haydovchilar.get(h_id, "")
+        
+        zakaslar_tarixi.append({
+            "qayerdan": z['qayerdan'], 
+            "qayerga": z['qayerga'], 
+            "vaqt": uz_time.strftime("%Y-%m-%d %H:%M"), 
+            "haydovchi_user": f"{haydovchi_ismi}{haydovchi_username}",
+            "haydovchi_tel": haydovchi_raqami
+        })
+        save_data()
+        
         await query.edit_message_text(f"{query.message.text}\n\n✅ ZAKAS YOPILDI")
         try: await context.bot.send_message(z['yolovchi_id'], "✅ Manzilga yetib keldingiz. Rahmat!")
         except: pass
     
     elif amal == "hbekor" and z_id in faol_zakaslar:
         z = faol_zakaslar.pop(z_id); h_id = z['haydovchi_id']
-        balanslar[h_id] = balanslar.get(h_id, 0) + (z['odam_soni'] * 10000); save_data()
+        taymerni_toxtatish(context, z_id) 
+        balanslar[h_id] = balanslar.get(h_id, 0) + (z['odam_soni'] * 10000)
+        
+        haydovchi_ismi = update.effective_user.first_name if update.effective_user else "Noma'lum"
+        haydovchi_username = f" (@{update.effective_user.username})" if update.effective_user.username else ""
+        
+        bekor_tarixi.append({
+            "qayerdan": z['qayerdan'], "qayerga": z['qayerga'], "vaqt": uz_time.strftime("%Y-%m-%d %H:%M"),
+            "kim": f"Haydovchi: {haydovchi_ismi}{haydovchi_username}", "tel": haydovchilar.get(h_id, "")
+        })
+        save_data()
+        
         await query.edit_message_text(f"{query.message.text}\n\n❌ ZAKAS BEKOR QILINDI (Pul qaytarildi)")
         try: await context.bot.send_message(z['yolovchi_id'], "❌ Haydovchi buyurtmani bekor qildi.")
         except: pass
     
     elif amal == "ybekor":
+        yolovchi_ismi = update.effective_user.first_name if update.effective_user else "Noma'lum"
+        yolovchi_username = f" (@{update.effective_user.username})" if update.effective_user.username else ""
+        kim_matni = f"Yo'lovchi: {yolovchi_ismi}{yolovchi_username}"
+
         if z_id in zakaslar:
-            z = zakaslar.pop(z_id); save_data()
+            z = zakaslar.pop(z_id)
+            bekor_tarixi.append({
+                "qayerdan": z['qayerdan'], "qayerga": z['qayerga'], "vaqt": uz_time.strftime("%Y-%m-%d %H:%M"),
+                "kim": kim_matni, "tel": z.get('telefon', '')
+            })
+            save_data()
             await query.edit_message_text("❌ Buyurtma bekor qilindi.")
             try: await context.bot.delete_message(DRIVERS_GROUP_ID, z['guruh_xabar_id'])
             except: pass
+            
         elif z_id in faol_zakaslar:
             z = faol_zakaslar.pop(z_id); h_id = z['haydovchi_id']
-            balanslar[h_id] = balanslar.get(h_id, 0) + (z['odam_soni'] * 10000); save_data()
+            taymerni_toxtatish(context, z_id) 
+            balanslar[h_id] = balanslar.get(h_id, 0) + (z['odam_soni'] * 10000)
+            
+            bekor_tarixi.append({
+                "qayerdan": z['qayerdan'], "qayerga": z['qayerga'], "vaqt": uz_time.strftime("%Y-%m-%d %H:%M"),
+                "kim": kim_matni, "tel": z.get('telefon', '')
+            })
+            save_data()
             await query.edit_message_text("❌ Buyurtma bekor qilindi.")
             try: await context.bot.send_message(h_id, "❌ Yo'lovchi buyurtmani bekor qildi. Pul qaytarildi.")
             except: pass
+
+# ================== 📢 GURUH REKLAMA (Eslatma) ==================
+async def guruhga_eslatma_xabar(context: ContextTypes.DEFAULT_TYPE):
+    eslatma_matni = (
+        "🚕 Termiz Sariosiyo Boti — tez va qulay taksi xizmati.\n\n"
+        "📲 Bir necha soniyada buyurtma berish\n"
+        "🚗 Haydovchilar tomonidan tezkor qabul\n"
+        "Botni sinab ko'ring 👇👇👇\n"
+        "@termizsariosiyotaxi_bot"
+    )
+    try: await context.bot.send_message(chat_id=DRIVERS_GROUP_ID, text=eslatma_matni)
+    except Exception as e: pass
 
 # ================== ASOSIY MAIN FUNKSIYASI ==================
 def main():
@@ -634,12 +765,16 @@ def main():
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, umumiy_matn_qabul_qilish))
 
+    # Barcha tugmalarni ro'yxatdan o'tkazish
     app.add_handler(CallbackQueryHandler(hisob_toldirish_tugmasi, pattern="^hisob_toldirish$"))
     app.add_handler(CallbackQueryHandler(summa_tanlash, pattern="^summatanla_"))
     app.add_handler(CallbackQueryHandler(admin_tasdiqlash, pattern="^(tasdiq|rad)_"))
     app.add_handler(CallbackQueryHandler(zakas_amallari, pattern="^(yopish|hbekor|ybekor)_"))
+    app.add_handler(CallbackQueryHandler(admin_stat_tugmalari, pattern="^stat_")) # Yangi statistika tugmalari
 
-    print("✅ Bot (Admin panelli) ishga tushdi...")
+    app.job_queue.run_repeating(guruhga_eslatma_xabar, interval=21600, first=10)
+
+    print("✅ Bot ishga tushdi...")
     app.run_polling()
 
 if __name__ == '__main__':
