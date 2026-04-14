@@ -43,7 +43,7 @@ stat_zakaslar = 0
 stat_cheklar = 0
 zakas_raqami = 0
 zakaslar_tarixi = []
-bekor_tarixi = [] # YANGA QO'SHILDI: Bekor qilinganlar tarixi
+bekor_tarixi = [] 
 birinchi_tolov_qilganlar = [] 
 
 banned_users = []
@@ -316,7 +316,6 @@ async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT
             await start(update, context)
             return
             
-        # 🔥 YANGILANGAN STATISTIKA (Ikkita tugmali tizim)
         elif text == "📊 Statistika":
             tugmalar = InlineKeyboardMarkup([
                 [
@@ -421,18 +420,30 @@ async def admin_stat_tugmalari(update: Update, context: ContextTypes.DEFAULT_TYP
         matn += f"📊 <b>Umumiy:</b> {len(zakaslar_tarixi)} ta qabul | {len(bekor_tarixi)} ta atkaz\n\n"
         
         matn += "✅ <b>OXIRGI 10 TA QABUL QILINGAN:</b>\n"
-        if not zakaslar_tarixi: matn += "<i>Hozircha yo'q...</i>\n"
+        if not zakaslar_tarixi: 
+            matn += "<i>Hozircha yo'q...</i>\n"
         for z in zakaslar_tarixi[-10:]:
-            matn += f"🚕 {z.get('qayerdan')} -> {z.get('qayerga')}\n"
-            matn += f"👨‍✈️ Haydovchi: {z.get('haydovchi_user', 'Noma\\'lum')} | 📞 {z.get('haydovchi_tel', '')}\n"
-            matn += f"⏰ {z.get('vaqt', '')}\n〰️〰️〰️\n"
+            h_user = z.get('haydovchi_user', "Noma'lum")
+            h_tel = z.get('haydovchi_tel', "")
+            qayerdan = z.get('qayerdan', "?")
+            qayerga = z.get('qayerga', "?")
+            vaqt = z.get('vaqt', "")
+            matn += f"🚕 {qayerdan} -> {qayerga}\n"
+            matn += f"👨‍✈️ Haydovchi: {h_user} | 📞 {h_tel}\n"
+            matn += f"⏰ {vaqt}\n〰️〰️〰️\n"
 
         matn += "\n❌ <b>OXIRGI 10 TA ATKAZ (BEKOR) QILINGAN:</b>\n"
-        if not bekor_tarixi: matn += "<i>Hozircha yo'q...</i>\n"
+        if not bekor_tarixi: 
+            matn += "<i>Hozircha yo'q...</i>\n"
         for b in bekor_tarixi[-10:]:
-            matn += f"🚕 {b.get('qayerdan')} -> {b.get('qayerga')}\n"
-            matn += f"👤 {b.get('kim', 'Noma\\'lum')} | 📞 {b.get('tel', '')}\n"
-            matn += f"⏰ {b.get('vaqt', '')}\n〰️〰️〰️\n"
+            b_kim = b.get('kim', "Noma'lum")
+            b_tel = b.get('tel', "")
+            qayerdan = b.get('qayerdan', "?")
+            qayerga = b.get('qayerga', "?")
+            vaqt = b.get('vaqt', "")
+            matn += f"🚕 {qayerdan} -> {qayerga}\n"
+            matn += f"👤 {b_kim} | 📞 {b_tel}\n"
+            matn += f"⏰ {vaqt}\n〰️〰️〰️\n"
             
         tugmalar = InlineKeyboardMarkup([
             [InlineKeyboardButton("📈 Umumiy", callback_data="stat_umumiy"), InlineKeyboardButton("🔄 Yangilash", callback_data="stat_zakaslar")]
@@ -440,7 +451,7 @@ async def admin_stat_tugmalari(update: Update, context: ContextTypes.DEFAULT_TYP
         
         try:
             await query.edit_message_text(matn, parse_mode='HTML', reply_markup=tugmalar)
-        except Exception: pass # Matn uzun bo'lsa xato bermasligi uchun
+        except Exception: pass
 
 # ================== 📢 RASSILKA (RASM/VIDEO/TEXT YUBORISH) ==================
 async def admin_rassilka_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -590,7 +601,6 @@ async def avto_bekor_qilish(context: ContextTypes.DEFAULT_TYPE):
     if d['z_id'] in faol_zakaslar:
         z = faol_zakaslar.pop(d['z_id'])
         
-        # 🔥 Tarixga yozish (Avto bekor qilinganda)
         uz_time = datetime.utcnow() + timedelta(hours=5)
         bekor_tarixi.append({
             "qayerdan": z['qayerdan'], "qayerga": z['qayerga'], "vaqt": uz_time.strftime("%Y-%m-%d %H:%M"),
@@ -765,12 +775,11 @@ def main():
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, umumiy_matn_qabul_qilish))
 
-    # Barcha tugmalarni ro'yxatdan o'tkazish
     app.add_handler(CallbackQueryHandler(hisob_toldirish_tugmasi, pattern="^hisob_toldirish$"))
     app.add_handler(CallbackQueryHandler(summa_tanlash, pattern="^summatanla_"))
     app.add_handler(CallbackQueryHandler(admin_tasdiqlash, pattern="^(tasdiq|rad)_"))
     app.add_handler(CallbackQueryHandler(zakas_amallari, pattern="^(yopish|hbekor|ybekor)_"))
-    app.add_handler(CallbackQueryHandler(admin_stat_tugmalari, pattern="^stat_")) # Yangi statistika tugmalari
+    app.add_handler(CallbackQueryHandler(admin_stat_tugmalari, pattern="^stat_")) 
 
     app.job_queue.run_repeating(guruhga_eslatma_xabar, interval=21600, first=10)
 
