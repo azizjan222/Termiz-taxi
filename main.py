@@ -1,3 +1,4 @@
+from aiohttp import web
 import asyncio
 import json
 import os
@@ -741,6 +742,56 @@ async def guruhga_eslatma_xabar(context: ContextTypes.DEFAULT_TYPE):
     )
     try: await context.bot.send_message(chat_id=DRIVERS_GROUP_ID, text=eslatma_matni)
     except Exception as e: pass
+        async def api_handler(request):
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+    if request.method == "OPTIONS":
+        return web.Response(headers=headers)
+    
+    if request.method == "POST":
+        body = await request.json()
+        if os.path.exists(DB_FILE):
+            with open(DB_FILE, "r") as f:
+                current = json.load(f)
+        else:
+            current = {}
+        current.update(body)
+        with open(DB_FILE, "w") as f:
+            json.dump(current, f)
+        load_data()
+        return web.Response(
+            text='{"ok":true}',
+            content_type="application/json",
+            headers=headers
+        )
+    
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r") as f:
+            data = f.read()
+        return web.Response(
+            text=data,
+            content_type="application/json",
+            headers=headers
+        )
+    return web.Response(
+        text='{}',
+        content_type="application/json",
+        headers=headers
+    )
+
+async def start_api():
+    app_web = web.Application()
+    app_web.router.add_route("GET", "/db", api_handler)
+    app_web.router.add_route("POST", "/db", api_handler)
+    app_web.router.add_route("OPTIONS", "/db", api_handler)
+    runner = web.AppRunner(app_web)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
+    print("✅ API ishga tushdi: port 8080")
 
 # ================== ASOSIY MAIN FUNKSIYASI ==================
 def main():
@@ -783,8 +834,15 @@ def main():
 
     app.job_queue.run_repeating(guruhga_eslatma_xabar, interval=21600, first=10)
 
+    async def run():
+    await start_api()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
     print("✅ Bot ishga tushdi...")
-    app.run_polling()
+    await asyncio.Event().wait()
+
+asyncio.run(run())
 
 if __name__ == '__main__':
     main()
