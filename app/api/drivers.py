@@ -63,12 +63,9 @@ def require_driver(handler):
 
 
 async def driver_login(request: web.Request) -> web.Response:
-    """POST /api/driver/login
-    Body: {"telegram_id": 123456, "init_data": "..."}
-
-    Driver must already be registered via Telegram bot.
-    Login flow: bot sends short-lived code; app exchanges it for JWT.
-    For MVP: simple lookup by telegram_id (in production add Telegram Login Widget verification).
+    """POST /api/driver/login (DEPRECATED - use request-otp/verify-otp)
+    Legacy endpoint that logs in driver by telegram_id.
+    Kept for backward compatibility.
     """
     try:
         data = await request.json()
@@ -76,11 +73,9 @@ async def driver_login(request: web.Request) -> web.Response:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
     tg_id = data.get("telegram_id")
-    code = data.get("code", "").strip()
-
     if not tg_id:
         return web.json_response(
-            {"error": "Telegram ID kerak. Avval botga /start yuboring"},
+            {"error": "Telegram ID kerak"},
             status=400,
         )
 
@@ -89,13 +84,123 @@ async def driver_login(request: web.Request) -> web.Response:
         driver = session.query(Driver).filter_by(telegram_id=int(tg_id)).first()
         if not driver:
             return web.json_response(
-                {"error": "Siz haydovchi sifatida ro'yxatdan o'tmagansiz. Botga /start yuboring"},
+                {"error": "Siz haydovchi sifatida ro'yxatdan o'tmagansiz"},
                 status=404,
             )
         if driver.is_blocked:
             return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
 
-        # MVP: skip code verification. In production, verify code from bot.
+        token = _create_driver_token(driver)
+        return web.json_response({
+            "success": True,
+            "token": token,
+            "driver": _serialize_driver(driver),
+        })
+    finally:
+        session.close()
+
+
+async def driver_request_otp(request: web.Request) -> web.Response:
+    """POST /api/driver/request-otp
+    Body: {"phone": "+998901234567"}
+    Sends OTP via SMS or Telegram bot. Driver must be already registered.
+    """
+    from app.services.otp import normalize_phone, create_and_send_otp
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    phone_raw = (data.get("phone") or "").strip()
+    if not phone_raw:
+        return web.json_response({"error": "Telefon raqam kerak"}, status=400)
+
+    phone = normalize_phone(phone_raw)
+    if not phone.startswith("+998") or len(phone) != 13:
+        return web.json_response(
+            {"error": "Telefon formati: +998XXXXXXXXX"},
+            status=400,
+        )
+
+    session = get_session()
+    try:
+        # Check that driver exists
+        driver = session.query(Driver).filter(
+            Driver.phone.in_([phone, phone.lstrip("+"), "+" + phone.lstrip("+")])
+        ).first()
+
+        if not driver:
+            return web.json_response({
+                "error": (
+                    "Bu telefon raqam ro'yxatda yo'q. "
+                    "Avval botga (@termizsariosiyotaxi_bot) /start yuborib ro'yxatdan o'ting"
+                ),
+                "code": "not_registered",
+            }, status=404)
+
+        if driver.is_blocked:
+            return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
+
+        bot = request.app.get("bot")
+        result = await create_and_send_otp(session, phone, bot=bot)
+    finally:
+        session.close()
+
+    response = {
+        "success": result["success"],
+        "message": result["message"],
+        "phone": phone,
+    }
+    if result.get("dev_code"):
+        response["dev_code"] = result["dev_code"]
+
+    return web.json_response(response, status=200 if result["success"] else 400)
+
+
+async def driver_verify_otp(request: web.Request) -> web.Response:
+    """POST /api/driver/verify-otp
+    Body: {"phone": "+998...", "code": "123456"}
+    Returns: JWT token for driver.
+    """
+    from app.services.otp import normalize_phone, verify_otp as verify_otp_fn
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    phone_raw = data.get("phone", "")
+    code = str(data.get("code", "")).strip()
+
+    if not phone_raw or not code:
+        return web.json_response({"error": "Telefon va kod kerak"}, status=400)
+
+    phone = normalize_phone(phone_raw)
+
+    session = get_session()
+    try:
+        ok, msg = verify_otp_fn(session, phone, code)
+        if not ok:
+            return web.json_response({"error": msg}, status=400)
+
+        driver = session.query(Driver).filter(
+            Driver.phone.in_([phone, phone.lstrip("+"), "+" + phone.lstrip("+")])
+        ).first()
+
+        if not driver:
+            return web.json_response(
+                {"error": "Haydovchi topilmadi. Botga /start yuboring"},
+                status=404,
+            )
+        if driver.is_blocked:
+            return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
+
+        from datetime import datetime
+        driver.last_active = datetime.utcnow()
+        session.commit()
+        session.refresh(driver)
+
         token = _create_driver_token(driver)
         return web.json_response({
             "success": True,
@@ -237,11 +342,26 @@ async def accept_order(request: web.Request) -> web.Response:
         d = session.query(Driver).filter_by(id=driver.id).first()
         if not d:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+
+        # Minimum balance check (driver must have at least this much to accept any order)
+        if (d.balance or 0) < config.MIN_DRIVER_BALANCE:
+            return web.json_response({
+                "error": (
+                    f"Zakas qabul qilish uchun balansingizda kamida "
+                    f"{config.MIN_DRIVER_BALANCE:,} so'm bo'lishi kerak. "
+                    f"Hozir: {d.balance or 0:,} so'm"
+                ).replace(",", " "),
+                "balance": d.balance,
+                "min_required": config.MIN_DRIVER_BALANCE,
+                "code": "min_balance",
+            }, status=400)
+
         if (d.balance or 0) < (order.commission or 0):
             return web.json_response({
                 "error": f"Balans yetarli emas. Kerak: {order.commission} so'm",
                 "balance": d.balance,
                 "commission": order.commission,
+                "code": "insufficient",
             }, status=400)
 
         # Deduct commission, assign driver

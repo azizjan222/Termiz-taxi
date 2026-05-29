@@ -8,35 +8,57 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '../src/components/Button';
-import { loginDriver } from '../src/api/driver';
-import { useDriverStore } from '../src/store/driver';
+import { requestDriverOtp } from '../src/api/driver';
 import { BOT_USERNAME } from '../src/api/client';
 import { colors, typography, spacing, radius } from '../src/theme';
 
 export default function LoginScreen() {
   const { t } = useTranslation();
-  const setDriver = useDriverStore((s) => s.setDriver);
-  const [tgId, setTgId] = useState('');
+  const [phone, setPhone] = useState('+998');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const openBot = () => {
-    Linking.openURL(`https://t.me/${BOT_USERNAME}?start=getid`);
+  const formatPhone = (text: string) => {
+    let cleaned = text.replace(/[^\d+]/g, '');
+    if (!cleaned.startsWith('+998')) {
+      if (cleaned.startsWith('998')) cleaned = '+' + cleaned;
+      else if (!cleaned.startsWith('+')) cleaned = '+998' + cleaned.replace(/^\+/, '');
+    }
+    return cleaned.slice(0, 13);
   };
 
-  const handleLogin = async () => {
-    const id = parseInt(tgId, 10);
-    if (!id) {
-      Alert.alert(t('common.error'), t('auth.enterTelegramId'));
+  const openBot = () => {
+    Linking.openURL(`https://t.me/${BOT_USERNAME}`);
+  };
+
+  const handleSendOtp = async () => {
+    if (phone.length < 13) {
+      setError(t('auth.invalidPhone') || 'Telefon raqam noto\'g\'ri');
       return;
     }
+    setError('');
     setLoading(true);
     try {
-      const res = await loginDriver(id);
-      setDriver(res.driver);
-      router.replace('/(main)/orders');
+      const res = await requestDriverOtp(phone);
+      router.push({
+        pathname: '/login-otp',
+        params: { phone, devCode: res.dev_code || '' },
+      });
     } catch (e: any) {
-      const msg = e?.response?.data?.error || t('auth.notFound');
-      Alert.alert(t('common.error'), msg);
+      const msg = e?.response?.data?.error || 'Xatolik';
+      const code = e?.response?.data?.code;
+      if (code === 'not_registered') {
+        Alert.alert(
+          '⚠️ Ro\'yxatdan o\'tmagansiz',
+          msg,
+          [
+            { text: 'Bekor qilish', style: 'cancel' },
+            { text: 'Botga o\'tish', onPress: openBot },
+          ]
+        );
+      } else {
+        Alert.alert(t('common.error'), msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -52,37 +74,43 @@ export default function LoginScreen() {
           <View style={styles.logoBox}>
             <Text style={styles.logoEmoji}>🚕</Text>
           </View>
-          <Text style={styles.title}>{t('auth.title')}</Text>
-          <Text style={styles.subtitle}>{t('auth.subtitle')}</Text>
+          <Text style={styles.title}>Sarix Go Driver</Text>
+          <Text style={styles.subtitle}>Haydovchilar uchun ilova</Text>
         </View>
 
         <View style={styles.body}>
           <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>{t('auth.instruction')}</Text>
+            <Text style={styles.infoTitle}>📞 Telefon raqam orqali kirish</Text>
+            <Text style={styles.infoText}>
+              Botda ro'yxatdan o'tgan telefon raqamingizni kiriting. SMS yoki Telegram orqali kod yuboriladi.
+            </Text>
             <TouchableOpacity style={styles.botBtn} onPress={openBot}>
               <Text style={styles.botBtnText}>📱 @{BOT_USERNAME}</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.label}>{t('auth.enterTelegramId')}</Text>
+          <Text style={styles.label}>Telefon raqamingiz</Text>
           <TextInput
             style={styles.input}
-            value={tgId}
-            onChangeText={setTgId}
-            placeholder="123456789"
+            value={phone}
+            onChangeText={(t) => {
+              setPhone(formatPhone(t));
+              setError('');
+            }}
+            placeholder="+998 __ ___ __ __"
             placeholderTextColor={colors.textMuted}
-            keyboardType="number-pad"
-            maxLength={15}
+            keyboardType="phone-pad"
+            autoFocus
           />
-          <Text style={styles.hint}>{t('auth.telegramIdHint')}</Text>
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
 
         <View style={styles.footer}>
           <Button
-            title={t('auth.login')}
-            onPress={handleLogin}
+            title="Kodni yuborish"
+            onPress={handleSendOtp}
             loading={loading}
-            disabled={!tgId}
+            disabled={phone.length < 13}
             variant="accent"
           />
         </View>
@@ -117,7 +145,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     marginBottom: spacing.lg,
   },
-  infoTitle: { ...typography.body, color: colors.white, marginBottom: spacing.sm },
+  infoTitle: { ...typography.bodyBold, color: colors.white, marginBottom: 4 },
+  infoText: { ...typography.caption, color: colors.white, opacity: 0.9, marginBottom: spacing.sm },
   botBtn: {
     backgroundColor: colors.accent,
     paddingVertical: spacing.sm,
@@ -136,6 +165,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
-  hint: { ...typography.small, color: colors.white, opacity: 0.7, marginTop: spacing.xs },
+  errorText: { ...typography.small, color: colors.accent, marginTop: spacing.xs },
   footer: { paddingBottom: spacing.lg },
 });

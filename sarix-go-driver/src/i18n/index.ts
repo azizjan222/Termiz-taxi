@@ -17,6 +17,7 @@ const uz = {
     error: 'Xatolik',
     retry: 'Qayta urinish',
     close: 'Yopish',
+    send: 'Yuborish',
   },
   auth: {
     title: 'Sarix Go Driver',
@@ -50,6 +51,7 @@ const uz = {
     complete: 'Yopildi',
     cancel: 'Bekor qilish',
     insufficientBalance: 'Balans yetarli emas',
+    minBalance: 'Minimal 20 000 so\'m bo\'lishi kerak',
     accepted: 'Qabul qilindi!',
     notFound: 'Buyurtma topilmadi yoki band',
   },
@@ -65,6 +67,26 @@ const uz = {
     history: 'Tarix',
     settings: 'Sozlamalar',
     logout: 'Chiqish',
+    aiAssistant: 'AI Yordamchi',
+    aiAssistantHint: 'Savollaringizga javob beradi',
+    support: 'Admin bilan bog\'lanish',
+    supportHint: 'Telegram orqali yordam',
+    topUp: 'Balansni to\'ldirish',
+    topUpHint: 'Bot orqali chek yuboring',
+  },
+  ai: {
+    title: 'AI Yordamchi',
+    subtitle: 'Savollaringizga javob beraman',
+    welcome: 'Salom! 👋\n\nMen Sarix Go yordamchisiman. Sizga balans, zakas, komissiya va boshqa savollaringizda yordam beraman.\n\nNimaga qiziqasiz?',
+    placeholder: 'Savol yozing...',
+    typing: 'Yozyapti...',
+    suggestions: [
+      'Balansni qanday to\'ldiraman?',
+      'Zakas qabul qilish uchun qancha pul kerak?',
+      'Komissiya qanday hisoblanadi?',
+      'Onlayn rejim nima?',
+    ],
+    needHuman: 'Adminga yozish',
   },
   notifications: {
     newOrder: '🚕 Yangi zakas keldi!',
@@ -77,7 +99,7 @@ const ru = {
   common: {
     next: 'Далее', back: 'Назад', cancel: 'Отмена', confirm: 'Подтвердить',
     yes: 'Да', no: 'Нет', loading: 'Загрузка...', error: 'Ошибка',
-    retry: 'Повторить', close: 'Закрыть',
+    retry: 'Повторить', close: 'Закрыть', send: 'Отправить',
   },
   auth: {
     title: 'Sarix Go Driver',
@@ -101,6 +123,7 @@ const ru = {
     accept: 'Принять', callPassenger: 'Позвонить пассажиру',
     complete: 'Завершить', cancel: 'Отменить',
     insufficientBalance: 'Недостаточно баланса',
+    minBalance: 'Минимум 20 000 сум на балансе',
     accepted: 'Принят!', notFound: 'Заказ не найден или занят',
   },
   profile: {
@@ -108,6 +131,23 @@ const ru = {
     rating: 'Рейтинг', totalOrders: 'Всего заказов',
     balance: 'Баланс', earned: 'Заработок', history: 'История',
     settings: 'Настройки', logout: 'Выход',
+    aiAssistant: 'AI Помощник', aiAssistantHint: 'Ответит на ваши вопросы',
+    support: 'Связаться с админом', supportHint: 'Помощь через Telegram',
+    topUp: 'Пополнить баланс', topUpHint: 'Отправьте чек через бот',
+  },
+  ai: {
+    title: 'AI Помощник',
+    subtitle: 'Отвечу на ваши вопросы',
+    welcome: 'Привет! 👋\n\nЯ помощник Sarix Go. Помогу с вопросами о балансе, заказах, комиссиях и других.\n\nЧем интересуетесь?',
+    placeholder: 'Напишите вопрос...',
+    typing: 'Печатает...',
+    suggestions: [
+      'Как пополнить баланс?',
+      'Сколько нужно денег для приема заказа?',
+      'Как считается комиссия?',
+      'Что такое онлайн режим?',
+    ],
+    needHuman: 'Написать админу',
   },
   notifications: {
     newOrder: '🚕 Новый заказ!',
