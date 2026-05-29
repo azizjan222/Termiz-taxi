@@ -1,0 +1,113 @@
+import React, { useEffect, useState } from 'react';
+import {
+  View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+
+import { listMyActive, type DriverOrder } from '../../src/api/driver';
+import { colors, typography, spacing, radius } from '../../src/theme';
+
+export default function ActiveOrdersScreen() {
+  const { t } = useTranslation();
+  const [orders, setOrders] = useState<DriverOrder[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = async () => {
+    setRefreshing(true);
+    try {
+      const list = await listMyActive();
+      setOrders(list);
+    } catch {
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    const i = setInterval(load, 15000);
+    return () => clearInterval(i);
+  }, []);
+
+  const renderOrder = ({ item }: { item: DriverOrder }) => (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => router.push(`/order/${item.id}`)}
+      activeOpacity={0.85}
+    >
+      <View style={styles.row}>
+        <Text style={styles.route}>
+          {item.from_city} → {item.to_city}
+        </Text>
+        <View style={styles.statusBadge}>
+          <Text style={styles.statusBadgeText}>🟡 Yo'lda</Text>
+        </View>
+      </View>
+      <Text style={styles.passenger}>📞 {item.passenger_phone}</Text>
+      <Text style={styles.persons}>👥 {item.person_count} kishi</Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{t('home.active')}</Text>
+      </View>
+
+      {orders.length === 0 && !refreshing ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyEmoji}>📭</Text>
+          <Text style={styles.emptyText}>Faol zakaslar yo'q</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={orders}
+          keyExtractor={(o) => o.id.toString()}
+          renderItem={renderOrder}
+          contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
+        />
+      )}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.surface },
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.white,
+  },
+  title: { ...typography.h2, color: colors.primary },
+  list: { padding: spacing.md },
+  card: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  route: { ...typography.bodyBold, color: colors.text, flex: 1 },
+  statusBadge: {
+    backgroundColor: colors.warningLight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  statusBadgeText: { ...typography.small, color: colors.warning, fontWeight: '700' },
+  passenger: { ...typography.caption, color: colors.text, marginBottom: 2 },
+  persons: { ...typography.caption, color: colors.textSecondary },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyEmoji: { fontSize: 64, marginBottom: spacing.md },
+  emptyText: { ...typography.body, color: colors.textSecondary },
+});

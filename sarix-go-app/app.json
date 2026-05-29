@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "Sarix Go",
+    "slug": "sarix-go",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "sarixgo",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0E1B3D"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "uz.sarixgo.passenger",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Sarix Go ilovasi sizning joylashuvingizni taksi buyurtmasi uchun kerak"
+      }
+    },
+    "android": {
+      "package": "uz.sarixgo.passenger",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0E1B3D"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-localization",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Sarix Go joylashuvingizni biladi"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "backgroundColor": "#0E1B3D"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiBaseUrl": "https://your-railway-app.up.railway.app",
+      "yandexMapsApiKey": "YOUR_YANDEX_MAPS_KEY",
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}
