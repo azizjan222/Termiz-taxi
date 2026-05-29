@@ -1,0 +1,389 @@
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Linking,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  Clipboard,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+
+import { Button } from '../src/components/Button';
+import {
+  listMethods,
+  createClickPayment,
+  createPaymePayment,
+  type PaymentMethod,
+} from '../src/api/payments';
+import { useDriverStore } from '../src/store/driver';
+import { BOT_USERNAME } from '../src/api/client';
+import { colors, typography, spacing, radius } from '../src/theme';
+
+const PRESET_AMOUNTS = [20000, 50000, 100000, 200000, 500000];
+const MIN_AMOUNT = 1000;
+
+export default function TopUpScreen() {
+  const { t } = useTranslation();
+  const driver = useDriverStore((s) => s.driver);
+
+  const [methods, setMethods] = useState<PaymentMethod[]>([]);
+  const [selectedMethod, setSelectedMethod] = useState<string>('card');
+  const [amount, setAmount] = useState<number>(50000);
+  const [customAmount, setCustomAmount] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    listMethods()
+      .then(setMethods)
+      .catch(() => setMethods([]));
+  }, []);
+
+  const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+  const getActualAmount = (): number => {
+    if (customAmount) {
+      const n = parseInt(customAmount.replace(/\s/g, ''), 10);
+      return isNaN(n) ? 0 : n;
+    }
+    return amount;
+  };
+
+  const copyCard = async () => {
+    const card = methods.find((m) => m.id === 'card');
+    if (card?.card_number) {
+      Clipboard.setString(card.card_number);
+      Alert.alert('✅', 'Karta nusxa olindi');
+    }
+  };
+
+  const openBot = () => {
+    Linking.openURL(`https://t.me/${BOT_USERNAME}?start=topup`);
+  };
+
+  const handleTopUp = async () => {
+    const amt = getActualAmount();
+    if (amt < MIN_AMOUNT) {
+      Alert.alert('❌', `Minimal summa ${formatPrice(MIN_AMOUNT)} so'm`);
+      return;
+    }
+
+    if (selectedMethod === 'card') {
+      Alert.alert(
+        '💳 Karta orqali to\'ldirish',
+        `Karta: ${methods.find((m) => m.id === 'card')?.card_number}\n\nSumma: ${formatPrice(amt)} so'm\n\nKartaga to'lab, chekni rasm qilib botga yuboring.\nAdmin tasdiqlashi bilan balansingiz to'ldiriladi.`,
+        [
+          { text: 'Bekor qilish', style: 'cancel' },
+          { text: 'Botga o\'tish', onPress: openBot },
+        ]
+      );
+      return;
+    }
+
+    setLoading(true);
+    try {
+      let result;
+      if (selectedMethod === 'click') {
+        result = await createClickPayment(amt);
+      } else if (selectedMethod === 'payme') {
+        result = await createPaymePayment(amt);
+      } else {
+        return;
+      }
+
+      // Open payment URL in browser
+      const supported = await Linking.canOpenURL(result.url);
+      if (supported) {
+        await Linking.openURL(result.url);
+        Alert.alert(
+          '⏳ To\'lov sahifasi ochildi',
+          'To\'lovni amalga oshirgach, balansingiz avtomatik to\'ldiriladi.'
+        );
+      } else {
+        Alert.alert('❌', 'Brauzer ochib bo\'lmadi');
+      }
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || 'Xatolik yuz berdi';
+      Alert.alert('❌', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderMethod = (method: PaymentMethod) => {
+    const isSelected = selectedMethod === method.id;
+    return (
+      <TouchableOpacity
+        key={method.id}
+        style={[
+          styles.methodCard,
+          isSelected && styles.methodCardSelected,
+          method.disabled && styles.methodCardDisabled,
+        ]}
+        onPress={() => !method.disabled && setSelectedMethod(method.id)}
+        activeOpacity={0.85}
+        disabled={method.disabled}
+      >
+        <View style={styles.methodIcon}>
+          <Text style={styles.methodIconText}>{method.icon}</Text>
+        </View>
+        <View style={styles.methodInfo}>
+          <Text style={styles.methodName}>
+            {method.name}
+            {method.disabled && ' (Tez orada)'}
+          </Text>
+          <Text style={styles.methodDesc}>{method.description}</Text>
+          {method.card_number && (
+            <Text style={styles.methodCard1}>{method.card_number}</Text>
+          )}
+        </View>
+        <View style={[styles.radio, isSelected && styles.radioSelected]}>
+          {isSelected && <View style={styles.radioInner} />}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backIcon}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>Balansni to'ldirish</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.scroll}>
+          {/* Current balance */}
+          <View style={styles.balanceCard}>
+            <Text style={styles.balanceLabel}>Joriy balans</Text>
+            <Text style={styles.balanceValue}>
+              {formatPrice(driver?.balance || 0)} so'm
+            </Text>
+            {(driver?.balance || 0) < 20000 && (
+              <Text style={styles.balanceWarning}>
+                ⚠️ Zakas qabul qilish uchun kamida 20 000 so'm bo'lishi kerak
+              </Text>
+            )}
+          </View>
+
+          {/* Bonus banner */}
+          <View style={styles.bonusBanner}>
+            <Text style={styles.bonusEmoji}>🎁</Text>
+            <Text style={styles.bonusText}>
+              Birinchi to'lovda <Text style={styles.bonusBold}>+50% BONUS!</Text>
+            </Text>
+          </View>
+
+          {/* Amount selection */}
+          <Text style={styles.sectionTitle}>Summa</Text>
+          <View style={styles.amounts}>
+            {PRESET_AMOUNTS.map((a) => (
+              <TouchableOpacity
+                key={a}
+                style={[
+                  styles.amountChip,
+                  amount === a && !customAmount && styles.amountChipSelected,
+                ]}
+                onPress={() => {
+                  setAmount(a);
+                  setCustomAmount('');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.amountChipText,
+                    amount === a && !customAmount && styles.amountChipTextSelected,
+                  ]}
+                >
+                  {formatPrice(a)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TextInput
+            style={styles.customAmountInput}
+            placeholder="Yoki o'zingiz yozing..."
+            placeholderTextColor={colors.textMuted}
+            keyboardType="number-pad"
+            value={customAmount}
+            onChangeText={(t) => setCustomAmount(t.replace(/[^\d]/g, ''))}
+          />
+
+          {/* Payment methods */}
+          <Text style={styles.sectionTitle}>To'lov turi</Text>
+          <View style={styles.methods}>
+            {methods.map(renderMethod)}
+          </View>
+        </ScrollView>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <View style={styles.footerInfo}>
+            <Text style={styles.footerLabel}>To'lanadigan</Text>
+            <Text style={styles.footerAmount}>
+              {formatPrice(getActualAmount())} so'm
+            </Text>
+          </View>
+          <Button
+            title={loading ? '...' : "To'lash"}
+            onPress={handleTopUp}
+            loading={loading}
+            disabled={getActualAmount() < MIN_AMOUNT}
+            variant="accent"
+            fullWidth={false}
+            style={{ flex: 1, marginLeft: spacing.md }}
+          />
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.surface },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 28, color: colors.primary },
+  title: { ...typography.h3, color: colors.primary },
+  scroll: { padding: spacing.lg },
+  balanceCard: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+  },
+  balanceLabel: { ...typography.caption, color: colors.white, opacity: 0.8 },
+  balanceValue: { ...typography.h1, color: colors.accent, marginVertical: spacing.xs },
+  balanceWarning: {
+    ...typography.small,
+    color: colors.accent,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  bonusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accentLight,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  bonusEmoji: { fontSize: 28 },
+  bonusText: { flex: 1, ...typography.body, color: colors.primary },
+  bonusBold: { fontWeight: '800' },
+  sectionTitle: {
+    ...typography.bodyBold,
+    color: colors.primary,
+    marginBottom: spacing.sm,
+    marginTop: spacing.md,
+  },
+  amounts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  amountChip: {
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  amountChipSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.white,
+  },
+  amountChipText: { ...typography.bodyBold, color: colors.text },
+  amountChipTextSelected: { color: colors.primary },
+  customAmountInput: {
+    backgroundColor: colors.white,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    ...typography.body,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  methods: { gap: spacing.sm },
+  methodCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: colors.divider,
+  },
+  methodCardSelected: { borderColor: colors.accent },
+  methodCardDisabled: { opacity: 0.5 },
+  methodIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  methodIconText: { fontSize: 24 },
+  methodInfo: { flex: 1 },
+  methodName: { ...typography.bodyBold, color: colors.text },
+  methodDesc: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
+  methodCard1: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  radio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioSelected: { borderColor: colors.accent },
+  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.accent },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    backgroundColor: colors.white,
+  },
+  footerInfo: { flex: 0 },
+  footerLabel: { ...typography.caption, color: colors.textSecondary },
+  footerAmount: { ...typography.h3, color: colors.primary },
+});

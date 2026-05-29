@@ -47,6 +47,19 @@ export async function loginDriver(telegramId: number): Promise<{ driver: Driver;
   return response.data;
 }
 
+export async function requestDriverOtp(phone: string): Promise<{ success: boolean; message: string; dev_code?: string }> {
+  const response = await api.post('/api/driver/request-otp', { phone });
+  return response.data;
+}
+
+export async function verifyDriverOtp(phone: string, code: string): Promise<{ driver: Driver; token: string }> {
+  const response = await api.post('/api/driver/verify-otp', { phone, code });
+  if (response.data.token) {
+    await setAuthToken(response.data.token);
+  }
+  return response.data;
+}
+
 export async function getMe(): Promise<Driver> {
   const response = await api.get<Driver>('/api/driver/me');
   return response.data;

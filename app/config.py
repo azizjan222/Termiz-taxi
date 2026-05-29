@@ -57,6 +57,14 @@ COMMISSION_PARCEL = _get_int("COMMISSION_PARCEL", 5000)
 COMMISSION_FULL_CAR = _get_int("COMMISSION_FULL_CAR", 30000)
 PARCEL_PRICE = _get_int("PARCEL_PRICE", 30000)
 FULL_CAR_PRICE = _get_int("FULL_CAR_PRICE", 400000)
+MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 20000)  # Minimum balance to accept any order
+
+# Support contact
+SUPPORT_TELEGRAM = _get("SUPPORT_TELEGRAM", "termizsariosiyotaxi_bot")
+
+# AI Assistant
+OPENAI_API_KEY = _get("OPENAI_API_KEY", "")
+AI_MODEL = _get("AI_MODEL", "gpt-4o-mini")
 
 
 def validate() -> list[str]:
@@ -67,3 +75,20 @@ def validate() -> list[str]:
     if ADMIN_ID == 0:
         issues.append("ADMIN_ID is not set")
     return issues
+
+
+
+# Payment providers - Click Uz
+CLICK_MERCHANT_ID = _get("CLICK_MERCHANT_ID", "")
+CLICK_SERVICE_ID = _get("CLICK_SERVICE_ID", "")
+CLICK_SECRET_KEY = _get("CLICK_SECRET_KEY", "")
+CLICK_MERCHANT_USER_ID = _get("CLICK_MERCHANT_USER_ID", "")
+
+# Payme
+PAYME_MERCHANT_ID = _get("PAYME_MERCHANT_ID", "")
+PAYME_SECRET_KEY = _get("PAYME_SECRET_KEY", "")
+PAYME_TEST_MODE = _get("PAYME_TEST_MODE", "true").lower() == "true"
+
+# Manual card
+TOPUP_CARD_NUMBER = _get("TOPUP_CARD_NUMBER", "9860130147785443")
+TOPUP_CARD_HOLDER = _get("TOPUP_CARD_HOLDER", "")

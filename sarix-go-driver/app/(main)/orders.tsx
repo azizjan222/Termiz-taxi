@@ -81,10 +81,29 @@ export default function OrdersScreen() {
   };
 
   const handleAccept = async (order: DriverOrder) => {
-    if ((driver?.balance || 0) < order.commission) {
+    const balance = driver?.balance || 0;
+    const MIN_BALANCE = 20000;
+
+    if (balance < MIN_BALANCE) {
+      Alert.alert(
+        '💰 Balans yetarli emas',
+        `Zakas qabul qilish uchun balansingizda kamida ${MIN_BALANCE.toLocaleString()} so'm bo'lishi kerak.\n\nHozir: ${balance.toLocaleString()} so'm`,
+        [
+          { text: 'Bekor qilish', style: 'cancel' },
+          { text: "💳 To'ldirish", onPress: () => router.push('/top-up') },
+        ]
+      );
+      return;
+    }
+
+    if (balance < order.commission) {
       Alert.alert(
         t('order.insufficientBalance'),
-        `${t('order.commission')}: ${order.commission} so'm\n${t('order.yourBalance')}: ${driver?.balance || 0} so'm`
+        `${t('order.commission')}: ${order.commission} so'm\n${t('order.yourBalance')}: ${balance} so'm`,
+        [
+          { text: 'Bekor qilish', style: 'cancel' },
+          { text: "💳 To'ldirish", onPress: () => router.push('/top-up') },
+        ]
       );
       return;
     }

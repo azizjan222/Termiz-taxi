@@ -42,8 +42,11 @@ export default function RootLayout() {
         >
           <Stack.Screen name="index" />
           <Stack.Screen name="login" />
+          <Stack.Screen name="login-otp" />
           <Stack.Screen name="(main)" />
           <Stack.Screen name="order/[id]" />
+          <Stack.Screen name="ai-chat" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="top-up" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

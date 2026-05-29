@@ -6,6 +6,8 @@ from app.api import auth as auth_api
 from app.api import orders as orders_api
 from app.api import routes_api as routes_api
 from app.api import drivers as drivers_api
+from app.api import ai_assistant as ai_api
+from app.api import payments as payments_api
 from app.api.websocket import websocket_handler
 
 logger = logging.getLogger(__name__)
@@ -95,7 +97,9 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/orders/{id}/cancel", orders_api.cancel_order)
 
     # Driver endpoints (haydovchi ilovasi)
-    app.router.add_post("/api/driver/login", drivers_api.driver_login)
+    app.router.add_post("/api/driver/login", drivers_api.driver_login)  # legacy
+    app.router.add_post("/api/driver/request-otp", drivers_api.driver_request_otp)
+    app.router.add_post("/api/driver/verify-otp", drivers_api.driver_verify_otp)
     app.router.add_get("/api/driver/me", drivers_api.driver_me)
     app.router.add_post("/api/driver/online", drivers_api.driver_set_online)
     app.router.add_get("/api/driver/orders/available", drivers_api.list_available_orders)
@@ -104,6 +108,19 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/driver/orders/{id}/complete", drivers_api.complete_order)
     app.router.add_post("/api/driver/orders/{id}/cancel", drivers_api.cancel_by_driver)
     app.router.add_get("/api/driver/balance/history", drivers_api.driver_balance_history)
+
+    # AI Assistant + Support
+    app.router.add_post("/api/ai/chat", ai_api.chat)
+    app.router.add_get("/api/support", ai_api.get_support_info)
+
+    # Payments (Click Uz, Payme, manual card)
+    app.router.add_get("/api/payments/methods", payments_api.list_methods)
+    app.router.add_post("/api/payments/click/create", payments_api.create_click_payment)
+    app.router.add_post("/api/payments/click/prepare", payments_api.click_prepare)
+    app.router.add_post("/api/payments/click/complete", payments_api.click_complete)
+    app.router.add_post("/api/payments/payme/create", payments_api.create_payme_payment)
+    app.router.add_post("/api/payments/payme/webhook", payments_api.payme_webhook)
+    app.router.add_get("/api/payments/{id}/status", payments_api.get_payment_status)
 
     # WebSocket
     app.router.add_get("/ws", websocket_handler)
