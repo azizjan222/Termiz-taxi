@@ -1,0 +1,171 @@
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+
+import { useAuthStore } from '../../src/store/auth';
+import { colors, typography, spacing, radius } from '../../src/theme';
+
+interface MenuItem {
+  icon: string;
+  labelKey: string;
+  onPress: () => void;
+  highlight?: boolean;
+}
+
+export default function ProfileScreen() {
+  const { t } = useTranslation();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+
+  const handleLogout = () => {
+    Alert.alert(t('profile.logout'), t('common.confirm') + '?', [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('profile.logout'),
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/phone');
+        },
+      },
+    ]);
+  };
+
+  const menu: MenuItem[] = [
+    { icon: '📋', labelKey: 'profile.orderHistory', onPress: () => router.push('/(tabs)/history') },
+    { icon: '💳', labelKey: 'profile.paymentMethods', onPress: () => Alert.alert('Soon') },
+    { icon: '📍', labelKey: 'profile.savedAddresses', onPress: () => Alert.alert('Soon') },
+    { icon: '🔔', labelKey: 'profile.notifications', onPress: () => Alert.alert('Soon') },
+    { icon: '🏷', labelKey: 'profile.promoCodes', onPress: () => Alert.alert('Soon') },
+    { icon: '💬', labelKey: 'profile.helpSupport', onPress: () => Alert.alert('Soon') },
+    { icon: '👨‍✈️', labelKey: 'profile.becomeDriver', onPress: () => Alert.alert('Soon') },
+    { icon: '⚙️', labelKey: 'profile.settings', onPress: () => Alert.alert('Soon') },
+    { icon: '💡', labelKey: 'profile.feedback', onPress: () => Alert.alert('Soon') },
+  ];
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        {/* User card */}
+        <View style={styles.userCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {user?.first_name?.[0]?.toUpperCase() || '?'}
+            </Text>
+          </View>
+          <View style={styles.userInfo}>
+            <Text style={styles.userName}>{user?.first_name || ''}</Text>
+            <Text style={styles.userPhone}>{user?.phone}</Text>
+          </View>
+        </View>
+
+        {/* Promo banner */}
+        <View style={styles.promo}>
+          <Text style={styles.promoIcon}>🎁</Text>
+          <Text style={styles.promoText}>{t('profile.inviteFriends')}</Text>
+        </View>
+
+        {/* Menu */}
+        <View style={styles.menu}>
+          {menu.map((item, i) => (
+            <TouchableOpacity
+              key={i}
+              style={[
+                styles.menuItem,
+                i < menu.length - 1 && styles.menuItemBorder,
+              ]}
+              onPress={item.onPress}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.menuIcon}>{item.icon}</Text>
+              <Text style={styles.menuLabel}>{t(item.labelKey)}</Text>
+              <Text style={styles.menuArrow}>›</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutText}>{t('profile.logout')}</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.version}>
+          {t('profile.version', { version: '1.0.0' })}
+        </Text>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.white },
+  scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  userCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  avatarText: { ...typography.h2, color: colors.white },
+  userInfo: { flex: 1 },
+  userName: { ...typography.h2, color: colors.primary },
+  userPhone: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  promo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginVertical: spacing.md,
+  },
+  promoIcon: { fontSize: 24, marginRight: spacing.md },
+  promoText: { flex: 1, ...typography.body, color: colors.white },
+  menu: {
+    backgroundColor: colors.white,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  menuItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  menuIcon: { fontSize: 22, marginRight: spacing.md, width: 28 },
+  menuLabel: { flex: 1, ...typography.body, color: colors.text },
+  menuArrow: { fontSize: 24, color: colors.textMuted, fontWeight: '300' },
+  logoutButton: {
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  logoutText: { ...typography.bodyBold, color: colors.error },
+  version: {
+    ...typography.small,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
+});
