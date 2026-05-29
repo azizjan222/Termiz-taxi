@@ -1,9 +1,9 @@
-from aiohttp import web
 import asyncio
 import json
 import os
 import csv
 import io
+import logging
 from datetime import datetime, timedelta
 from telegram import (
     Update,
@@ -23,14 +23,29 @@ from telegram.ext import (
     CallbackQueryHandler
 )
 
-# ================== ⚙️ SOZLAMALAR ==================
-TOKEN = "8046769457:AAHYIPHxZ4fw6NKLBfW_3XOMZapmONK4a9g"
-DRIVERS_GROUP_ID = -1002452524294
-ADMIN_ID = 5660204735
-DB_FILE = "/data/taksi_baza.json"
+# Load environment configuration
+from app import config as app_config
+from app.database import init_db, get_session
+from app.api.server import start_api_server
+from app.api.websocket import ws_manager
+from app.migrate import run_migration
+from app.models import Driver as DBDriver, User as DBUser, Order as DBOrder, OrderHistory as DBHistory
 
-KUTISH_VAQTI = 30
-OGOHLANTIRISH_VAQTI = 10
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("sarixgo.bot")
+
+# ================== ⚙️ SOZLAMALAR ==================
+TOKEN = app_config.BOT_TOKEN
+DRIVERS_GROUP_ID = app_config.DRIVERS_GROUP_ID
+ADMIN_ID = app_config.ADMIN_ID
+# Use local data folder by default; falls back to /data if it exists (Railway volume)
+DB_FILE = "/data/taksi_baza.json" if os.path.exists("/data") else "./data/taksi_baza.json"
+
+KUTISH_VAQTI = app_config.WAIT_MINUTES
+OGOHLANTIRISH_VAQTI = app_config.WARN_MINUTES
 ISM, TELEFON, QAYERDAN, QAYERGA, ODAM_SONI, VAQT = range(6)
 
 # ================== 📂 XOTIRA VA BAZA ==================
@@ -721,54 +736,81 @@ async def guruhga_eslatma_xabar(context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
 
-# ================== 🌐 API SERVER ==================
-async def api_handler(request):
-    headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-    }
-    if request.method == "OPTIONS":
-        return web.Response(headers=headers)
-
-    if request.method == "POST":
-        try:
-            body = await request.json()
-            if os.path.exists(DB_FILE):
-                with open(DB_FILE, "r") as f:
-                    current = json.load(f)
-            else:
-                current = {}
-            current.update(body)
-            with open(DB_FILE, "w") as f:
-                json.dump(current, f, ensure_ascii=False)
-            load_data()
-            return web.Response(text='{"ok":true}', content_type="application/json", headers=headers)
-        except Exception as e:
-            return web.Response(text=f'{{"error":"{str(e)}"}}', content_type="application/json", headers=headers)
-
-    if os.path.exists(DB_FILE):
-        with open(DB_FILE, "r") as f:
-            data = f.read()
-        return web.Response(text=data, content_type="application/json", headers=headers)
-    return web.Response(text='{}', content_type="application/json", headers=headers)
+# ================== 🌐 API SERVER (Legacy + New) ==================
+# Note: Old /db endpoint is kept for backward compatibility in app.api.server
+# New API endpoints are in app.api.* modules
 
 
-async def start_api():
-    app_web = web.Application()
-    app_web.router.add_route("GET", "/db", api_handler)
-    app_web.router.add_route("POST", "/db", api_handler)
-    app_web.router.add_route("OPTIONS", "/db", api_handler)
-    runner = web.AppRunner(app_web)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 8080)
-    await site.start()
-    print("✅ API ishga tushdi: port 8080")
+async def notify_drivers_about_new_app_order(order):
+    """Called when a new order arrives from the mobile app.
+    Forward it to the drivers Telegram group like bot orders.
+    """
+    try:
+        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+        bot = Bot(token=TOKEN)
+
+        narx_str = f"{order.price:,}".replace(",", " ")
+        komissiya_str = f"{order.commission:,}".replace(",", " ")
+        emoji = "📦" if order.service_type == "parcel" else ("🚗" if order.service_type == "full_car" else "🚕")
+        service_label = {
+            "taxi": "Taksi",
+            "parcel": "Pochta",
+            "full_car": "Bo'sh mashina",
+        }.get(order.service_type, "Taksi")
+
+        text = (
+            f"{emoji} <b>YANGI ZAKAS (Ilovadan)</b>\n\n"
+            f"📍 <b>{order.from_city}</b> → <b>{order.to_city}</b>\n"
+            f"👥 {order.person_count} kishi · {service_label}\n"
+            f"⏰ {order.departure_time or 'Hozir'}\n"
+            f"💰 Narxi: <b>{narx_str} so'm</b>\n"
+            f"💸 Komissiya: {komissiya_str} so'm\n"
+            f"📞 {order.passenger_phone}"
+        )
+        if order.note:
+            text += f"\n📝 {order.note}"
+
+        # Get bot username for deep link
+        me = await bot.get_me()
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                "✅ Zakasni olish",
+                url=f"https://t.me/{me.username}?start=apporder_{order.id}"
+            )
+        ]])
+
+        await bot.send_message(
+            chat_id=DRIVERS_GROUP_ID,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+        await bot.shutdown()
+    except Exception as e:
+        logger.error(f"Failed to notify drivers about app order: {e}")
 
 
 # ================== MAIN ==================
 async def run():
+    # Initialize DB and run migration
+    print("🔄 Initializing database...")
+    init_db()
+    try:
+        run_migration()
+    except Exception as e:
+        logger.error(f"Migration error (non-fatal): {e}")
+
+    # Load legacy JSON data for the bot's existing logic
     load_data()
+
+    # Validate config
+    issues = app_config.validate()
+    if issues:
+        for issue in issues:
+            logger.error(f"❌ Config issue: {issue}")
+        if not TOKEN:
+            raise SystemExit("BOT_TOKEN not configured. Set it in .env")
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -807,11 +849,19 @@ async def run():
     app.add_handler(CallbackQueryHandler(admin_stat_tugmalari, pattern="^stat_"))
     app.job_queue.run_repeating(guruhga_eslatma_xabar, interval=21600, first=10)
 
-    await start_api()
+    # Start new API server (replaces old start_api)
+    api_runner, api_app = await start_api_server(
+        bot=app.bot,
+        host=app_config.API_HOST,
+        port=app_config.API_PORT,
+    )
+    # Register callbacks for app→bot integration
+    api_app["notify_drivers_callback"] = notify_drivers_about_new_app_order
+
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
-    print("✅ Bot ishga tushdi...")
+    logger.info("✅ Bot ishga tushdi (Sarix Go API + Telegram Bot)")
     await asyncio.Event().wait()
 
 

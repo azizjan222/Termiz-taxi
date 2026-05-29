@@ -1,0 +1,172 @@
+"""Authentication endpoints: phone OTP login."""
+from datetime import datetime
+from aiohttp import web
+
+from app.database import get_session
+from app.models import User
+from app.services.otp import (
+    create_and_send_otp,
+    verify_otp,
+    normalize_phone,
+)
+from app.utils.auth import create_token, require_auth
+
+
+async def request_otp(request: web.Request) -> web.Response:
+    """POST /api/auth/request-otp
+    Body: {"phone": "+998901234567"}
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    phone_raw = data.get("phone", "").strip()
+    if not phone_raw:
+        return web.json_response({"error": "Telefon raqam kerak"}, status=400)
+
+    phone = normalize_phone(phone_raw)
+    # Basic Uzbek phone validation
+    if not phone.startswith("+998") or len(phone) != 13:
+        return web.json_response(
+            {"error": "Telefon formati: +998XXXXXXXXX"},
+            status=400,
+        )
+
+    bot = request.app.get("bot")
+    session = get_session()
+    try:
+        result = await create_and_send_otp(session, phone, bot=bot)
+    finally:
+        session.close()
+
+    response = {
+        "success": result["success"],
+        "message": result["message"],
+        "phone": phone,
+    }
+    # In dev/mock mode, return code so testing is easier
+    if result.get("dev_code"):
+        response["dev_code"] = result["dev_code"]
+
+    return web.json_response(response, status=200 if result["success"] else 400)
+
+
+async def verify_otp_endpoint(request: web.Request) -> web.Response:
+    """POST /api/auth/verify-otp
+    Body: {"phone": "+998901234567", "code": "123456", "first_name": "...", "language": "uz"}
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    phone_raw = data.get("phone", "")
+    code = str(data.get("code", "")).strip()
+    first_name = data.get("first_name", "").strip()
+    language = data.get("language", "uz")
+
+    if not phone_raw or not code:
+        return web.json_response({"error": "Telefon va kod kerak"}, status=400)
+
+    phone = normalize_phone(phone_raw)
+
+    session = get_session()
+    try:
+        ok, msg = verify_otp(session, phone, code)
+        if not ok:
+            return web.json_response({"error": msg}, status=400)
+
+        # Find or create user
+        user = session.query(User).filter_by(phone=phone).first()
+        is_new = False
+        if not user:
+            user = User(
+                phone=phone,
+                first_name=first_name or None,
+                language=language,
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            is_new = True
+        else:
+            if first_name and not user.first_name:
+                user.first_name = first_name
+            user.language = language
+            user.last_active = datetime.utcnow()
+            session.commit()
+            session.refresh(user)
+
+        token = create_token(user.id, user.phone)
+
+        return web.json_response({
+            "success": True,
+            "is_new": is_new,
+            "token": token,
+            "user": {
+                "id": user.id,
+                "phone": user.phone,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "language": user.language,
+                "bonus_balance": user.bonus_balance,
+            },
+        })
+    finally:
+        session.close()
+
+
+@require_auth
+async def me(request: web.Request) -> web.Response:
+    """GET /api/auth/me - return current user info."""
+    user: User = request["user"]
+    return web.json_response({
+        "id": user.id,
+        "phone": user.phone,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "language": user.language,
+        "bonus_balance": user.bonus_balance,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    })
+
+
+@require_auth
+async def update_profile(request: web.Request) -> web.Response:
+    """PATCH /api/auth/me - update profile."""
+    user: User = request["user"]
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    session = get_session()
+    try:
+        u = session.query(User).filter_by(id=user.id).first()
+        if not u:
+            return web.json_response({"error": "User not found"}, status=404)
+
+        if "first_name" in data:
+            u.first_name = data["first_name"][:100] if data["first_name"] else None
+        if "last_name" in data:
+            u.last_name = data["last_name"][:100] if data["last_name"] else None
+        if "language" in data and data["language"] in ("uz", "uz-cyrl", "ru", "en"):
+            u.language = data["language"]
+
+        session.commit()
+        session.refresh(u)
+
+        return web.json_response({
+            "success": True,
+            "user": {
+                "id": u.id,
+                "phone": u.phone,
+                "first_name": u.first_name,
+                "last_name": u.last_name,
+                "language": u.language,
+                "bonus_balance": u.bonus_balance,
+            },
+        })
+    finally:
+        session.close()
