@@ -121,4 +121,19 @@ export default {
     serverError: 'Server xatoligi',
     unknownError: "Noma'lum xatolik",
   },
+  ai: {
+    title: 'AI Yordamchi',
+    subtitle: 'Savollaringizga javob beraman',
+    welcome: "Salom! 👋\n\nMen Sarix Go yordamchisiman. Yo'nalishlar, narxlar, buyurtma berish va boshqa savollaringizda yordam beraman.\n\nNimaga qiziqasiz?",
+    placeholder: 'Savol yozing...',
+    typing: 'Yozyapti...',
+    suggestions: [
+      "Termizdan Sariosiyogacha qancha turadi?",
+      'Pochta xizmati qanday ishlaydi?',
+      "Bo'sh mashina nima?",
+      "Buyurtmani qanday bekor qilaman?",
+    ],
+    needHuman: 'Adminga yozish',
+    errorMessage: "Kechirasiz, javob bera olmadim. Internetni tekshiring.",
+  },
 };

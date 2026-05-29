@@ -48,6 +48,7 @@ export default function RootLayout() {
           <Stack.Screen name="confirm-order" />
           <Stack.Screen name="searching" options={{ gestureEnabled: false }} />
           <Stack.Screen name="order/[id]" />
+          <Stack.Screen name="ai-chat" options={{ presentation: 'modal' }} />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

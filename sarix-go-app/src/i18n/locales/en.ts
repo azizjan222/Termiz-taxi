@@ -121,4 +121,19 @@ export default {
     serverError: 'Server error',
     unknownError: 'Unknown error',
   },
+  ai: {
+    title: 'AI Assistant',
+    subtitle: 'I will answer your questions',
+    welcome: "Hi! 👋\n\nI'm Sarix Go assistant. I can help with routes, prices, orders, and other questions.\n\nWhat are you interested in?",
+    placeholder: 'Type your question...',
+    typing: 'Typing...',
+    suggestions: [
+      'How much from Termiz to Sariosiyo?',
+      'How does parcel service work?',
+      'What is full car?',
+      'How to cancel order?',
+    ],
+    needHuman: 'Contact admin',
+    errorMessage: "Sorry, couldn't answer. Check your internet.",
+  },
 };
