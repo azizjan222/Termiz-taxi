@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../src/store/auth';
 import { useOrderStore } from '../../src/store/order';
 import { colors, typography, spacing, radius } from '../../src/theme';
+import YandexMap from '../../src/components/YandexMap';
 
 export default function HomeScreen() {
   const { t } = useTranslation();
@@ -51,10 +52,18 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {/* Map placeholder */}
+        {/* Yandex Map */}
         <View style={styles.mapCard}>
-          <Text style={styles.mapText}>🗺</Text>
-          <Text style={styles.mapHint}>Yandex Maps</Text>
+          <YandexMap
+            initialLat={37.224}
+            initialLon={67.278}
+            initialZoom={10}
+            markers={[
+              { id: 'termiz', lat: 37.224, lon: 67.278, label: 'Termiz' },
+              { id: 'sariosiyo', lat: 38.412, lon: 67.948, label: 'Sariosiyo' },
+              { id: 'denov', lat: 38.265, lon: 67.892, label: 'Denov' },
+            ]}
+          />
         </View>
 
         {/* Service buttons */}

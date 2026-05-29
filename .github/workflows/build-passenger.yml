@@ -1,0 +1,54 @@
+name: Build Passenger App (Android)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sarix-go-app/**'
+      - '.github/workflows/build-passenger.yml'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Build profile (preview = APK, production = AAB)'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
+
+jobs:
+  build:
+    name: Build Sarix Go Passenger
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sarix-go-app
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sarix-go-app/package-lock.json
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build APK / AAB
+        run: |
+          PROFILE="${{ github.event.inputs.profile || 'preview' }}"
+          echo "Building with profile: $PROFILE"
+          eas build --platform android --profile $PROFILE --non-interactive --no-wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}

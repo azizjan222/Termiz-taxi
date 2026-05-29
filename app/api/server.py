@@ -5,6 +5,7 @@ from aiohttp import web
 from app.api import auth as auth_api
 from app.api import orders as orders_api
 from app.api import routes_api as routes_api
+from app.api import drivers as drivers_api
 from app.api.websocket import websocket_handler
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,17 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/orders/my", orders_api.list_my_orders)
     app.router.add_get("/api/orders/{id}", orders_api.get_order)
     app.router.add_post("/api/orders/{id}/cancel", orders_api.cancel_order)
+
+    # Driver endpoints (haydovchi ilovasi)
+    app.router.add_post("/api/driver/login", drivers_api.driver_login)
+    app.router.add_get("/api/driver/me", drivers_api.driver_me)
+    app.router.add_post("/api/driver/online", drivers_api.driver_set_online)
+    app.router.add_get("/api/driver/orders/available", drivers_api.list_available_orders)
+    app.router.add_get("/api/driver/orders/active", drivers_api.list_my_active)
+    app.router.add_post("/api/driver/orders/{id}/accept", drivers_api.accept_order)
+    app.router.add_post("/api/driver/orders/{id}/complete", drivers_api.complete_order)
+    app.router.add_post("/api/driver/orders/{id}/cancel", drivers_api.cancel_by_driver)
+    app.router.add_get("/api/driver/balance/history", drivers_api.driver_balance_history)
 
     # WebSocket
     app.router.add_get("/ws", websocket_handler)
