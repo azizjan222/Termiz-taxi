@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,14 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../src/store/auth';
+import { getSupportInfo } from '../../src/api/ai';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 interface MenuItem {
@@ -25,6 +27,13 @@ export default function ProfileScreen() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const [supportUrl, setSupportUrl] = useState('https://t.me/tg_adminstator');
+
+  useEffect(() => {
+    getSupportInfo()
+      .then((info) => setSupportUrl(info.telegram_url))
+      .catch(() => {});
+  }, []);
 
   const handleLogout = () => {
     Alert.alert(t('profile.logout'), t('common.confirm') + '?', [
@@ -40,13 +49,16 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const openSupport = () => Linking.openURL(supportUrl);
+
   const menu: MenuItem[] = [
     { icon: '📋', labelKey: 'profile.orderHistory', onPress: () => router.push('/(tabs)/history') },
     { icon: '💳', labelKey: 'profile.paymentMethods', onPress: () => Alert.alert('Soon') },
     { icon: '📍', labelKey: 'profile.savedAddresses', onPress: () => Alert.alert('Soon') },
     { icon: '🔔', labelKey: 'profile.notifications', onPress: () => Alert.alert('Soon') },
     { icon: '🏷', labelKey: 'profile.promoCodes', onPress: () => Alert.alert('Soon') },
-    { icon: '💬', labelKey: 'profile.helpSupport', onPress: () => Alert.alert('Soon') },
+    { icon: '🤖', labelKey: 'ai.title', onPress: () => router.push('/ai-chat') },
+    { icon: '👤', labelKey: 'profile.helpSupport', onPress: openSupport },
     { icon: '👨‍✈️', labelKey: 'profile.becomeDriver', onPress: () => Alert.alert('Soon') },
     { icon: '⚙️', labelKey: 'profile.settings', onPress: () => Alert.alert('Soon') },
     { icon: '💡', labelKey: 'profile.feedback', onPress: () => Alert.alert('Soon') },

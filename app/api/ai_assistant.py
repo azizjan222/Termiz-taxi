@@ -1,16 +1,28 @@
-"""AI Assistant for drivers - answers FAQ via OpenAI or built-in fallback."""
+"""AI Assistant for drivers and passengers - answers FAQ via OpenAI or built-in fallback."""
 import logging
 from aiohttp import web
 import aiohttp
 
 from app import config
-from app.api.drivers import require_driver
+from app.api.drivers import _get_driver_from_request
+from app.utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
 
+def _get_authenticated_user(request: web.Request):
+    """Returns dict with role and info, or None."""
+    driver = _get_driver_from_request(request)
+    if driver:
+        return {"role": "driver", "name": driver.first_name or "Haydovchi"}
+    user = get_current_user(request)
+    if user:
+        return {"role": "passenger", "name": user.first_name or "Yo'lovchi"}
+    return None
+
+
 # System prompt - teaches the AI about Sarix Go
-SYSTEM_PROMPT = """Sen Sarix Go taksi xizmati uchun yordamchisan. Termiz va Surxondaryo viloyati hududida ishlovchi taksi haydovchilariga yordam berasan.
+SYSTEM_PROMPT_DRIVER = """Sen Sarix Go taksi xizmati uchun yordamchisan. Termiz va Surxondaryo viloyati hududida ishlovchi taksi haydovchilariga yordam berasan.
 
 XIZMAT HAQIDA:
 - Sarix Go - Termiz Sariosiyo taksi xizmati
@@ -59,6 +71,62 @@ JAVOB BERISH STILI:
 - Agar savol xizmat haqida bo'lmasa, "Bu savolga javob bera olmayman, yordam uchun adminga murojaat qiling: @{support}" deb ayt
 - Agar texnik muammo haqida bo'lsa, adminga murojaat qilishni tavsiya qil
 """
+
+
+# Passenger system prompt
+SYSTEM_PROMPT_PASSENGER = """Sen Sarix Go taksi xizmati uchun yordamchisan. Termiz va Surxondaryo viloyatidagi yo'lovchilarga yordam berasan.
+
+XIZMAT HAQIDA:
+- Sarix Go - Termiz Sariosiyo taksi xizmati
+- Bot: @termizsariosiyotaxi_bot
+- Hudud: Surxondaryo viloyati (Termiz, Sariosiyo, Uzun, Denov, Sho'rchi, Jarqo'rg'on, Qumqo'rg'on)
+
+YO'NALISHLAR VA NARXLAR (1 yo'lovchi uchun):
+- Termiz ↔ Sariosiyo: 90,000 so'm
+- Termiz ↔ Uzun: 90,000 so'm
+- Termiz ↔ Denov: 80,000 so'm
+- Termiz ↔ Sho'rchi: 70,000 so'm
+- Sariosiyo ↔ Jarqo'rg'on: 80,000 so'm
+- Sariosiyo ↔ Qumqo'rg'on: 70,000 so'm
+
+XIZMAT TURLARI:
+- 🚕 Taksi - 1, 2, 3 yo'lovchi (har biri uchun narx ko'paytiriladi)
+- 📦 Pochta - hujjat va dokumentlarni boshqa shaharga yuborish (30,000 so'm)
+- 🚗 Bo'sh mashina - butun mashinani band qilish (4 o'rin) - 400,000 so'm
+
+BUYURTMA BERISH:
+1. Telefon raqam orqali kiring
+2. Qayerdan va qayerga ekanini tanlang
+3. Tarif va odam sonini tanlang
+4. Buyurtmani tasdiqlang
+5. Haydovchi tez orada topiladi - sizga xabar beriladi
+6. Haydovchining telefoni va mashinasini ko'rasiz
+
+TO'LOV:
+- Naqd pul - haydovchiga to'g'ridan-to'g'ri to'lanadi
+- Karta - kelajakda qo'shiladi
+
+BEKOR QILISH:
+- Haydovchi tayinlanmagunga qadar - tekin
+- Tayinlangandan keyin - haydovchiga sabab bilan tushuntiring
+
+XAVFSIZLIK:
+- Faqat tasdiqlangan haydovchilar
+- Haydovchi ma'lumotlari ko'rinadi (ism, telefon, reyting)
+- Ayollar uchun maxsus filtr ham bor (ayol haydovchi yoki ayol yo'lovchi bilan)
+
+JAVOB BERISH STILI:
+- Qisqa va aniq javob ber (3-5 jumla)
+- O'zbek tilida (lotin)
+- Do'stona va xushmuomala
+- Emoji ishlatishing mumkin
+- Mijoz bo'lganligini hisobga ol
+- Agar savol xizmat haqida bo'lmasa: "Bu savolga javob bera olmayman, yordam uchun adminga murojaat qiling: @{support}"
+"""
+
+
+# Use driver prompt as default for backward compat
+SYSTEM_PROMPT = SYSTEM_PROMPT_DRIVER
 
 
 # Built-in FAQ for fallback (when OpenAI not configured)
@@ -194,13 +262,17 @@ def _default_response(support_username: str) -> str:
     )
 
 
-async def _ask_openai(messages: list, support_username: str) -> str:
+async def _ask_openai(messages: list, support_username: str, role: str = "driver") -> str:
     """Ask OpenAI; returns response text or raises."""
     api_key = config.OPENAI_API_KEY
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY not configured")
 
-    system = SYSTEM_PROMPT.replace("{support}", support_username)
+    if role == "passenger":
+        system_template = SYSTEM_PROMPT_PASSENGER
+    else:
+        system_template = SYSTEM_PROMPT_DRIVER
+    system = system_template.replace("{support}", support_username)
 
     payload = {
         "model": config.AI_MODEL,
@@ -226,11 +298,87 @@ async def _ask_openai(messages: list, support_username: str) -> str:
             return data["choices"][0]["message"]["content"]
 
 
-@require_driver
+# Passenger-specific FAQ
+FAQ_PATTERNS_PASSENGER = [
+    {
+        "keywords": ["narx", "qancha", "summa"],
+        "answer": (
+            "💰 Yo'nalish narxlari (1 yo'lovchi uchun):\n\n"
+            "• Termiz ↔ Sariosiyo: 90,000 so'm\n"
+            "• Termiz ↔ Uzun: 90,000 so'm\n"
+            "• Termiz ↔ Denov: 80,000 so'm\n"
+            "• Termiz ↔ Sho'rchi: 70,000 so'm\n"
+            "• Sariosiyo ↔ Jarqo'rg'on: 80,000 so'm\n"
+            "• Sariosiyo ↔ Qumqo'rg'on: 70,000 so'm\n\n"
+            "👥 Bir nechta yo'lovchi uchun narx ko'paytiriladi"
+        ),
+    },
+    {
+        "keywords": ["pochta", "hujjat", "dokument", "yuborish"],
+        "answer": (
+            "📦 Pochta xizmati:\n\n"
+            "• Hujjat va dokumentlarni boshqa shaharga yuborish\n"
+            "• Narx: 30,000 so'm\n"
+            "• Buyurtma berishda \"Pochta\" tanlang\n"
+            "• Qabul qiluvchi ma'lumotlarini kiriting\n"
+            "• Kim to'lashini ko'rsating (yuboruvchi yoki qabul qiluvchi)"
+        ),
+    },
+    {
+        "keywords": ["bo'sh", "bosh mashina", "to'liq", "tolik"],
+        "answer": (
+            "🚗 Bo'sh mashina:\n\n"
+            "• Butun mashinani 4 o'rin to'liq band qilish\n"
+            "• Narx: 400,000 so'm\n"
+            "• Boshqa yo'lovchilar bo'lmaydi\n"
+            "• Yuk uchun ham qulay\n"
+            "• Tarif tanlashda \"Bo'sh mashina\" ni tanlang"
+        ),
+    },
+    {
+        "keywords": ["bekor", "cancel"],
+        "answer": (
+            "❌ Buyurtmani bekor qilish:\n\n"
+            "• Haydovchi topilmaguncha — bemalol bekor qiling\n"
+            "• Haydovchi tayinlangach — agar muammo bo'lsa qo'ng'iroq qilib gaplashing\n"
+            "• Bekor qilish haydovchi va o'zingiz uchun yomon, iloji boricha bekor qilmang"
+        ),
+    },
+    {
+        "keywords": ["xavfsiz", "ayol", "ishonch"],
+        "answer": (
+            "🔒 Xavfsizlik:\n\n"
+            "• Faqat tasdiqlangan haydovchilar\n"
+            "• Haydovchi ismi, telefoni, reytingi ko'rinadi\n"
+            "• Mashina raqami va modeli ko'rinadi\n"
+            "• Ayol yo'lovchi uchun maxsus filtr (ayol haydovchi yoki ayol yo'lovchi bor mashina)\n"
+            "• Tashvish bo'lsa: @tg_adminstator ga yozing"
+        ),
+    },
+    {
+        "keywords": ["bonus", "ball", "promo"],
+        "answer": (
+            "🎁 Bonus va Promo:\n\n"
+            "• Do'stlaringizni taklif qiling - ball oling\n"
+            "• Promo kodlar bilan chegirma\n"
+            "• Profil → \"Promokodlarim\" bo'limida ko'ring\n"
+            "• Yangi aksiyalardan xabardor bo'lish uchun bildirishnomalar yoqing"
+        ),
+    },
+]
+
+
 async def chat(request: web.Request) -> web.Response:
     """POST /api/ai/chat
     Body: {"messages": [{"role": "user", "content": "Salom"}, ...]}
+    Works for both authenticated drivers and passengers.
     """
+    auth = _get_authenticated_user(request)
+    if not auth:
+        return web.json_response(
+            {"error": "Avtorizatsiya talab qilinadi"}, status=401
+        )
+
     try:
         body = await request.json()
     except Exception:
@@ -240,7 +388,6 @@ async def chat(request: web.Request) -> web.Response:
     if not messages or not isinstance(messages, list):
         return web.json_response({"error": "messages array required"}, status=400)
 
-    # Get last user question
     last_user = next(
         (m for m in reversed(messages) if m.get("role") == "user"),
         None,
@@ -253,25 +400,32 @@ async def chat(request: web.Request) -> web.Response:
         return web.json_response({"error": "Empty question"}, status=400)
 
     support = config.SUPPORT_TELEGRAM
+    role = auth["role"]
 
-    # Try OpenAI first
     if config.OPENAI_API_KEY:
         try:
-            answer = await _ask_openai(messages, support)
-            return web.json_response({
-                "answer": answer,
-                "source": "ai",
-            })
+            answer = await _ask_openai(messages, support, role=role)
+            return web.json_response({"answer": answer, "source": "ai"})
         except Exception as e:
             logger.warning(f"OpenAI failed, falling back to FAQ: {e}")
 
-    # Fallback to built-in FAQ
-    faq_answer = _find_faq_answer(question, support)
-    if faq_answer:
-        return web.json_response({
-            "answer": faq_answer,
-            "source": "faq",
-        })
+    # FAQ fallback - role-specific
+    patterns = FAQ_PATTERNS_PASSENGER if role == "passenger" else FAQ_PATTERNS
+    q_lower = question.lower()
+    for faq in patterns:
+        if any(kw in q_lower for kw in faq["keywords"]):
+            return web.json_response({
+                "answer": faq["answer"].replace("{support}", support),
+                "source": "faq",
+            })
+
+    # Also check the other set (general questions)
+    for faq in (FAQ_PATTERNS if role == "passenger" else FAQ_PATTERNS_PASSENGER):
+        if any(kw in q_lower for kw in faq["keywords"]):
+            return web.json_response({
+                "answer": faq["answer"].replace("{support}", support),
+                "source": "faq",
+            })
 
     return web.json_response({
         "answer": _default_response(support),

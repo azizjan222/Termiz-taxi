@@ -832,6 +832,21 @@ async def run():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(CommandHandler("pul", admin_pul_qoshish))
+
+    # New admin commands (manage app via bot)
+    from app import admin_commands as admcmd
+    app.add_handler(CommandHandler("stats", admcmd.cmd_stats))
+    app.add_handler(CommandHandler("drivers", admcmd.cmd_drivers))
+    app.add_handler(CommandHandler("users", admcmd.cmd_users))
+    app.add_handler(CommandHandler("orders", admcmd.cmd_orders))
+    app.add_handler(CommandHandler("find", admcmd.cmd_find))
+    app.add_handler(CommandHandler("balance", admcmd.cmd_balance))
+    app.add_handler(CommandHandler("broadcast", admcmd.cmd_broadcast))
+    app.add_handler(CommandHandler("history", admcmd.cmd_history))
+    app.add_handler(CommandHandler("payments", admcmd.cmd_payments))
+    app.add_handler(CommandHandler("admin_help", admcmd.cmd_admin_help))
+    app.add_handler(CallbackQueryHandler(admcmd.admin_callback, pattern="^adm_"))
+
     app.add_handler(conv_handler)
     app.add_handler(MessageHandler(filters.Regex("^👨‍✈️ Haydovchi bo'lish$"), haydovchi_bolish))
     app.add_handler(MessageHandler(filters.CONTACT, haydovchi_raqamini_saqlash))
