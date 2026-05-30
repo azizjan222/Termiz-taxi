@@ -136,4 +136,9 @@ export default {
     needHuman: 'Adminga yozish',
     errorMessage: "Kechirasiz, javob bera olmadim. Internetni tekshiring.",
   },
+  becomeDriver: {
+    subtitle: "Mashinangiz bormi? Pul ishlang!",
+    message: "Sarix Go'da haydovchi bo'lish uchun haydovchilar uchun maxsus ilovamiz bor. Play Market'dan yuklab oling va telefon raqamingiz bilan kiring.\n\n💰 Har zakas - real daromad\n🕒 24/7 ishlaysiz\n📱 Oson ilova",
+    openPlayMarket: "Play Market'da ochish",
+  },
 };

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -15,6 +16,11 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../src/store/auth';
 import { getSupportInfo } from '../../src/api/ai';
 import { colors, typography, spacing, radius } from '../../src/theme';
+
+// Driver app package on Play Market
+const DRIVER_APP_PACKAGE = 'uz.sarixgo.driver';
+const DRIVER_APP_PLAY_URL = `https://play.google.com/store/apps/details?id=${DRIVER_APP_PACKAGE}`;
+const DRIVER_APP_INTENT = `market://details?id=${DRIVER_APP_PACKAGE}`;
 
 interface MenuItem {
   icon: string;
@@ -51,7 +57,33 @@ export default function ProfileScreen() {
 
   const openSupport = () => Linking.openURL(supportUrl);
 
+  const openDriverApp = async () => {
+    Alert.alert(
+      t('profile.becomeDriver'),
+      t('becomeDriver.message'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('becomeDriver.openPlayMarket'),
+          onPress: async () => {
+            // Try market:// scheme first (opens Play Store app directly on Android)
+            if (Platform.OS === 'android') {
+              const supported = await Linking.canOpenURL(DRIVER_APP_INTENT);
+              if (supported) {
+                await Linking.openURL(DRIVER_APP_INTENT);
+                return;
+              }
+            }
+            // Fallback to web URL
+            await Linking.openURL(DRIVER_APP_PLAY_URL);
+          },
+        },
+      ]
+    );
+  };
+
   const menu: MenuItem[] = [
+    { icon: '👨‍✈️', labelKey: 'profile.becomeDriver', onPress: openDriverApp, highlight: true },
     { icon: '📋', labelKey: 'profile.orderHistory', onPress: () => router.push('/(tabs)/history') },
     { icon: '💳', labelKey: 'profile.paymentMethods', onPress: () => Alert.alert('Soon') },
     { icon: '📍', labelKey: 'profile.savedAddresses', onPress: () => Alert.alert('Soon') },
@@ -59,7 +91,6 @@ export default function ProfileScreen() {
     { icon: '🏷', labelKey: 'profile.promoCodes', onPress: () => Alert.alert('Soon') },
     { icon: '🤖', labelKey: 'ai.title', onPress: () => router.push('/ai-chat') },
     { icon: '👤', labelKey: 'profile.helpSupport', onPress: openSupport },
-    { icon: '👨‍✈️', labelKey: 'profile.becomeDriver', onPress: () => Alert.alert('Soon') },
     { icon: '⚙️', labelKey: 'profile.settings', onPress: () => Alert.alert('Soon') },
     { icon: '💡', labelKey: 'profile.feedback', onPress: () => Alert.alert('Soon') },
   ];
@@ -94,13 +125,27 @@ export default function ProfileScreen() {
               style={[
                 styles.menuItem,
                 i < menu.length - 1 && styles.menuItemBorder,
+                item.highlight && styles.menuItemHighlight,
               ]}
               onPress={item.onPress}
               activeOpacity={0.7}
             >
-              <Text style={styles.menuIcon}>{item.icon}</Text>
-              <Text style={styles.menuLabel}>{t(item.labelKey)}</Text>
-              <Text style={styles.menuArrow}>›</Text>
+              <Text style={[styles.menuIcon, item.highlight && styles.menuIconHighlight]}>
+                {item.icon}
+              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.menuLabel, item.highlight && styles.menuLabelHighlight]}>
+                  {t(item.labelKey)}
+                </Text>
+                {item.highlight && (
+                  <Text style={styles.menuSubLabel}>
+                    {t('becomeDriver.subtitle')}
+                  </Text>
+                )}
+              </View>
+              <Text style={[styles.menuArrow, item.highlight && styles.menuArrowHighlight]}>
+                ›
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -165,9 +210,25 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
   },
+  menuItemHighlight: {
+    backgroundColor: colors.accent,
+  },
   menuIcon: { fontSize: 22, marginRight: spacing.md, width: 28 },
-  menuLabel: { flex: 1, ...typography.body, color: colors.text },
+  menuIconHighlight: { fontSize: 26 },
+  menuLabel: { ...typography.body, color: colors.text },
+  menuLabelHighlight: {
+    ...typography.bodyBold,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  menuSubLabel: {
+    ...typography.small,
+    color: colors.primary,
+    opacity: 0.7,
+    marginTop: 2,
+  },
   menuArrow: { fontSize: 24, color: colors.textMuted, fontWeight: '300' },
+  menuArrowHighlight: { color: colors.primary, fontWeight: '700' },
   logoutButton: {
     marginTop: spacing.lg,
     padding: spacing.md,
