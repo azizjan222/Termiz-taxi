@@ -92,11 +92,57 @@ async def create_and_send_otp(
             "dev_code": None,
         }
 
+    if provider == "twilio":
+        ok, msg = await _send_via_twilio(phone, code)
+        return {
+            "success": ok,
+            "message": msg,
+            "dev_code": None,
+        }
+
     return {
         "success": False,
         "message": f"Unknown OTP provider: {provider}",
         "dev_code": None,
     }
+
+
+async def _send_via_twilio(phone: str, code: str) -> tuple[bool, str]:
+    """Send SMS via Twilio (easy registration, global, free trial credit).
+
+    Get credentials at https://www.twilio.com/console
+    """
+    sid = config.TWILIO_ACCOUNT_SID
+    token = config.TWILIO_AUTH_TOKEN
+    from_number = config.TWILIO_FROM_NUMBER
+
+    if not sid or not token or not from_number:
+        return False, "Twilio sozlanmagan"
+
+    message = f"Sarix Go tasdiqlash kodi: {code}. Hech kimga aytmang."
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
+
+    auth = aiohttp.BasicAuth(sid, token)
+    data = {
+        "To": phone,
+        "From": from_number,
+        "Body": message,
+    }
+
+    async with aiohttp.ClientSession() as http:
+        try:
+            async with http.post(
+                url, data=data, auth=auth,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                result = await resp.json()
+                if resp.status in (200, 201):
+                    return True, "SMS yuborildi"
+                logger.error(f"Twilio send failed: {result}")
+                return False, result.get("message", "SMS yuborib bo'lmadi")
+        except Exception as e:
+            logger.error(f"Twilio exception: {e}")
+            return False, "SMS yuborishda xatolik"
 
 
 async def _send_via_telegram(

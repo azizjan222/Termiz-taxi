@@ -92,3 +92,10 @@ PAYME_TEST_MODE = _get("PAYME_TEST_MODE", "true").lower() == "true"
 # Manual card
 TOPUP_CARD_NUMBER = _get("TOPUP_CARD_NUMBER", "9860130147785443")
 TOPUP_CARD_HOLDER = _get("TOPUP_CARD_HOLDER", "")
+
+
+
+# Twilio SMS (alternative to Eskiz - easy registration)
+TWILIO_ACCOUNT_SID = _get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = _get("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM_NUMBER = _get("TWILIO_FROM_NUMBER", "")
