@@ -22,6 +22,14 @@ class User(Base):
     language = Column(String(10), default="uz")  # uz, uz-cyrl, ru, en
     is_blocked = Column(Boolean, default=False)
     bonus_balance = Column(Integer, default=0)  # ball
+    rating = Column(Float, default=5.0)  # passenger rating from drivers
+    rating_count = Column(Integer, default=0)
+    push_token = Column(String(200))  # Expo push token
+    referral_code = Column(String(20), unique=True, index=True)  # my own code
+    referred_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    referral_count = Column(Integer, default=0)
+    referral_bonus_earned = Column(Integer, default=0)
+    theme = Column(String(20), default="auto")  # auto, light, dark
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)
 
@@ -42,11 +50,17 @@ class Driver(Base):
     car_model = Column(String(100))
     car_number = Column(String(20))
     car_color = Column(String(50))
+    car_photo_url = Column(String(500))  # uploaded photo path
+    license_photo_url = Column(String(500))
+    is_verified = Column(Boolean, default=False)  # admin approved documents
     balance = Column(Integer, default=0)
     is_blocked = Column(Boolean, default=False)
     is_online = Column(Boolean, default=False)
     rating = Column(Float, default=5.0)
+    rating_count = Column(Integer, default=0)
     total_orders = Column(Integer, default=0)
+    push_token = Column(String(200))  # Expo push token
+    theme = Column(String(20), default="auto")
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)
 
@@ -225,3 +239,54 @@ class OrderHistory(Base):
     actor = Column(String(100))  # who completed/cancelled
     actor_phone = Column(String(20))
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+# ============= RATINGS =============
+class Rating(Base):
+    """Ratings between drivers and passengers."""
+    __tablename__ = "ratings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+    rater_type = Column(String(20))  # 'passenger' or 'driver'
+    rater_id = Column(Integer)
+    rated_type = Column(String(20))  # 'passenger' or 'driver'
+    rated_id = Column(Integer)
+    stars = Column(Integer)  # 1-5
+    comment = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ============= NOTIFICATIONS LOG =============
+class NotificationLog(Base):
+    """Log of sent push notifications."""
+    __tablename__ = "notification_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    recipient_type = Column(String(20))  # 'user' or 'driver'
+    recipient_id = Column(Integer)
+    title = Column(String(200))
+    body = Column(Text)
+    data = Column(Text)  # JSON
+    status = Column(String(20))  # sent, failed
+    error = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+# ============= SOS / EMERGENCY =============
+class SosAlert(Base):
+    """Emergency SOS alerts."""
+    __tablename__ = "sos_alerts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=True)
+    reporter_type = Column(String(20))  # 'passenger' or 'driver'
+    reporter_phone = Column(String(20))
+    latitude = Column(Float)
+    longitude = Column(Float)
+    note = Column(Text)
+    status = Column(String(20), default="open")  # open, in_progress, resolved
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    resolved_at = Column(DateTime)

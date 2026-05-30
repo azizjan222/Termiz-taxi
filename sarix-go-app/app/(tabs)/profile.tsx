@@ -85,14 +85,15 @@ export default function ProfileScreen() {
   const menu: MenuItem[] = [
     { icon: '👨‍✈️', labelKey: 'profile.becomeDriver', onPress: openDriverApp, highlight: true },
     { icon: '📋', labelKey: 'profile.orderHistory', onPress: () => router.push('/(tabs)/history') },
+    { icon: '📍', labelKey: 'profile.savedAddresses', onPress: () => router.push('/saved-addresses') },
+    { icon: '🎁', labelKey: 'profile.inviteFriends', onPress: () => router.push('/referral') },
     { icon: '💳', labelKey: 'profile.paymentMethods', onPress: () => Alert.alert('Soon') },
-    { icon: '📍', labelKey: 'profile.savedAddresses', onPress: () => Alert.alert('Soon') },
     { icon: '🔔', labelKey: 'profile.notifications', onPress: () => Alert.alert('Soon') },
     { icon: '🏷', labelKey: 'profile.promoCodes', onPress: () => Alert.alert('Soon') },
     { icon: '🤖', labelKey: 'ai.title', onPress: () => router.push('/ai-chat') },
     { icon: '👤', labelKey: 'profile.helpSupport', onPress: openSupport },
-    { icon: '⚙️', labelKey: 'profile.settings', onPress: () => Alert.alert('Soon') },
-    { icon: '💡', labelKey: 'profile.feedback', onPress: () => Alert.alert('Soon') },
+    { icon: '⚙️', labelKey: 'profile.settings', onPress: () => router.push('/settings') },
+    { icon: '💡', labelKey: 'profile.feedback', onPress: openSupport },
   ];
 
   return (

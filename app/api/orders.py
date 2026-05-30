@@ -1,4 +1,5 @@
 """Orders API: create, list, accept, cancel."""
+import logging
 from datetime import datetime
 from aiohttp import web
 
@@ -7,6 +8,8 @@ from app.models import Order, Route, Driver, User, OrderHistory
 from app.utils.auth import require_auth
 from app.api.websocket import ws_manager
 from app import config
+
+logger = logging.getLogger(__name__)
 
 
 def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
@@ -151,6 +154,18 @@ async def create_order(request: web.Request) -> web.Response:
             "type": "new_order",
             "order": _serialize_order(order, include_passenger=True),
         })
+
+        # Send push notifications to online drivers
+        try:
+            from app.services.push import notify_driver_new_order
+            online_drivers = session.query(Driver).filter(
+                Driver.is_online == True,  # noqa
+                Driver.is_blocked == False,  # noqa
+                Driver.push_token.isnot(None),
+            ).all()
+            await notify_driver_new_order(session, order, online_drivers)
+        except Exception as e:
+            logger.error(f"Push notify drivers failed: {e}")
 
         # Also notify the bot driver group via callback
         bot_callback = request.app.get("notify_drivers_callback")

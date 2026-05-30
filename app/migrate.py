@@ -3,10 +3,51 @@ import json
 import os
 from datetime import datetime
 
-from app.database import init_db, DbContext
+from app.database import init_db, DbContext, engine
 from app.models import Driver, Setting, OrderHistory
 from app.seed_data import seed_routes
 from app.config import LEGACY_JSON_PATH
+
+
+def _apply_schema_migrations() -> int:
+    """Add new columns to existing tables if they don't exist (SQLite ALTER TABLE)."""
+    from sqlalchemy import text
+
+    migrations = [
+        # User new columns
+        ("users", "rating", "FLOAT DEFAULT 5.0"),
+        ("users", "rating_count", "INTEGER DEFAULT 0"),
+        ("users", "push_token", "VARCHAR(200)"),
+        ("users", "referral_code", "VARCHAR(20)"),
+        ("users", "referred_by_user_id", "INTEGER"),
+        ("users", "referral_count", "INTEGER DEFAULT 0"),
+        ("users", "referral_bonus_earned", "INTEGER DEFAULT 0"),
+        ("users", "theme", "VARCHAR(20) DEFAULT 'auto'"),
+        # Driver new columns
+        ("drivers", "car_photo_url", "VARCHAR(500)"),
+        ("drivers", "license_photo_url", "VARCHAR(500)"),
+        ("drivers", "is_verified", "BOOLEAN DEFAULT 0"),
+        ("drivers", "rating_count", "INTEGER DEFAULT 0"),
+        ("drivers", "push_token", "VARCHAR(200)"),
+        ("drivers", "theme", "VARCHAR(20) DEFAULT 'auto'"),
+    ]
+
+    count = 0
+    with engine.connect() as conn:
+        for table, column, definition in migrations:
+            try:
+                # Check if column exists
+                result = conn.execute(text(f"PRAGMA table_info({table})"))
+                cols = [row[1] for row in result]
+                if column not in cols:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+                    conn.commit()
+                    count += 1
+                    print(f"  ✓ Added {table}.{column}")
+            except Exception as e:
+                print(f"  ⚠️  Skipping {table}.{column}: {e}")
+
+    return count
 
 
 def parse_legacy_datetime(value) -> "datetime | None":
@@ -27,11 +68,15 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
         "history": 0,
         "settings": 0,
         "routes": 0,
+        "schema_updated": 0,
     }
 
     # Always seed routes (even if no legacy JSON)
     with DbContext() as session:
         counts["routes"] = seed_routes(session)
+
+    # Apply schema migrations for existing DB
+    counts["schema_updated"] = _apply_schema_migrations()
 
     if not os.path.exists(json_path):
         # Try local path as fallback
@@ -133,10 +178,11 @@ def run_migration():
     counts = migrate_legacy_json()
 
     print("\n📊 Migration summary:")
-    print(f"   Drivers:     {counts['drivers']}")
-    print(f"   History:     {counts['history']}")
-    print(f"   Settings:    {counts['settings']}")
-    print(f"   Routes:      {counts['routes']}")
+    print(f"   Drivers:        {counts['drivers']}")
+    print(f"   History:        {counts['history']}")
+    print(f"   Settings:       {counts['settings']}")
+    print(f"   Routes:         {counts['routes']}")
+    print(f"   Schema updated: {counts['schema_updated']}")
     print("\n✅ Migration complete!")
     return counts
 

@@ -383,6 +383,13 @@ async def accept_order(request: web.Request) -> web.Response:
                 "driver": _serialize_driver(d),
             })
 
+        # Push notification
+        try:
+            from app.services.push import notify_passenger_order_accepted
+            await notify_passenger_order_accepted(session, order, d)
+        except Exception:
+            pass
+
         return web.json_response({
             "success": True,
             "order": _serialize_order(order),
@@ -435,6 +442,13 @@ async def complete_order(request: web.Request) -> web.Response:
                 "type": "order_completed",
                 "order_id": order.id,
             })
+
+        # Push
+        try:
+            from app.services.push import notify_order_completed
+            await notify_order_completed(session, order)
+        except Exception:
+            pass
 
         return web.json_response({"success": True})
     finally:
