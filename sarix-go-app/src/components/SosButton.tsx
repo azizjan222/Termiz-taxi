@@ -1,0 +1,165 @@
+import React, { useState } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, Alert, Linking,
+  Modal, TextInput, KeyboardAvoidingView, Platform,
+} from 'react-native';
+import * as Location from 'expo-location';
+
+import { Button } from './Button';
+import { triggerSos } from '../api/sos';
+import { colors, typography, spacing, radius } from '../theme';
+
+interface Props {
+  orderId?: number;
+  style?: any;
+}
+
+export const SosButton: React.FC<Props> = ({ orderId, style }) => {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handlePress = () => {
+    Alert.alert(
+      '🚨 SHOSHILINCH YORDAM',
+      'Sizga yordam kerakmi?',
+      [
+        { text: 'Bekor qilish', style: 'cancel' },
+        { text: '102 (Politsiya)', onPress: () => Linking.openURL('tel:102') },
+        { text: '🚨 SOS yuborish', style: 'destructive', onPress: () => setModalOpen(true) },
+      ]
+    );
+  };
+
+  const sendSos = async () => {
+    setLoading(true);
+    try {
+      let lat: number | undefined;
+      let lon: number | undefined;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          lat = loc.coords.latitude;
+          lon = loc.coords.longitude;
+        }
+      } catch {}
+
+      const res = await triggerSos({
+        order_id: orderId,
+        lat,
+        lon,
+        note: note.trim() || undefined,
+      });
+      setModalOpen(false);
+      setNote('');
+      Alert.alert('✅ Yuborildi!', res.message);
+    } catch (e: any) {
+      Alert.alert('❌', e?.response?.data?.error || 'Xatolik');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <TouchableOpacity
+        style={[styles.button, style]}
+        onPress={handlePress}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.icon}>🚨</Text>
+        <Text style={styles.text}>SOS</Text>
+      </TouchableOpacity>
+
+      <Modal visible={modalOpen} animationType="slide" transparent>
+        <KeyboardAvoidingView
+          style={styles.modalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalEmoji}>🚨</Text>
+            <Text style={styles.modalTitle}>SOS yuborish</Text>
+            <Text style={styles.modalSubtitle}>
+              Adminga zudlik bilan xabar yuboriladi.
+              Joylashuvingiz va telefon raqamingiz bilan.
+            </Text>
+
+            <Text style={styles.fieldLabel}>Holat tavsifi (ixtiyoriy)</Text>
+            <TextInput
+              style={styles.input}
+              value={note}
+              onChangeText={setNote}
+              placeholder="Nima sodir bo'ldi?"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              maxLength={500}
+            />
+
+            <View style={styles.modalButtons}>
+              <Button
+                title="Bekor qilish"
+                onPress={() => setModalOpen(false)}
+                variant="outline"
+                fullWidth={false}
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="🚨 YUBORISH"
+                onPress={sendSos}
+                loading={loading}
+                fullWidth={false}
+                style={{ flex: 1, marginLeft: spacing.sm, backgroundColor: colors.error }}
+                textStyle={{ color: colors.white }}
+              />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    </>
+  );
+};
+
+const styles = StyleSheet.create({
+  button: {
+    backgroundColor: colors.error,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.error,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  icon: { fontSize: 22 },
+  text: { color: colors.white, fontWeight: '900', fontSize: 11, marginTop: 2 },
+  modalContainer: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
+  modalContent: {
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+  },
+  modalEmoji: { fontSize: 56, textAlign: 'center', marginBottom: spacing.sm },
+  modalTitle: { ...typography.h2, color: colors.error, textAlign: 'center' },
+  modalSubtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginVertical: spacing.md,
+  },
+  fieldLabel: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.xs },
+  input: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: 80,
+    ...typography.body,
+    color: colors.text,
+    textAlignVertical: 'top',
+  },
+  modalButtons: { flexDirection: 'row', marginTop: spacing.md },
+});

@@ -8,10 +8,12 @@ import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { initI18n } from '../src/i18n';
 import { useDriverStore } from '../src/store/driver';
 import { colors } from '../src/theme';
+import { registerPushToken } from '../src/services/notifications';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const loadDriver = useDriverStore((s) => s.loadDriver);
+  const isAuth = useDriverStore((s) => s.isAuthenticated);
 
   useEffect(() => {
     (async () => {
@@ -20,6 +22,13 @@ export default function RootLayout() {
       setReady(true);
     })();
   }, []);
+
+  // Register push token after auth
+  useEffect(() => {
+    if (isAuth && ready) {
+      registerPushToken().catch(() => {});
+    }
+  }, [isAuth, ready]);
 
   if (!ready) {
     return (
@@ -47,6 +56,8 @@ export default function RootLayout() {
           <Stack.Screen name="order/[id]" />
           <Stack.Screen name="ai-chat" options={{ presentation: 'modal' }} />
           <Stack.Screen name="top-up" />
+          <Stack.Screen name="stats" />
+          <Stack.Screen name="car-photo" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

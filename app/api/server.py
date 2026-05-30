@@ -8,6 +8,14 @@ from app.api import routes_api as routes_api
 from app.api import drivers as drivers_api
 from app.api import ai_assistant as ai_api
 from app.api import payments as payments_api
+from app.api import notifications as notif_api
+from app.api import ratings as ratings_api
+from app.api import addresses as addresses_api
+from app.api import promo as promo_api
+from app.api import driver_stats as driver_stats_api
+from app.api import app_config as app_config_api
+from app.api import sos as sos_api
+from app.api import uploads as uploads_api
 from app.api.websocket import websocket_handler
 
 logger = logging.getLogger(__name__)
@@ -121,6 +129,40 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/payments/payme/create", payments_api.create_payme_payment)
     app.router.add_post("/api/payments/payme/webhook", payments_api.payme_webhook)
     app.router.add_get("/api/payments/{id}/status", payments_api.get_payment_status)
+
+    # Push Notifications
+    app.router.add_post("/api/notifications/register-token", notif_api.register_token)
+    app.router.add_post("/api/notifications/remove-token", notif_api.remove_token)
+
+    # Ratings (passenger ↔ driver)
+    app.router.add_post("/api/orders/{id}/rate-driver", ratings_api.passenger_rate_driver)
+    app.router.add_post("/api/driver/orders/{id}/rate-passenger", ratings_api.driver_rate_passenger)
+    app.router.add_get("/api/orders/{id}/rating", ratings_api.get_order_rating_status)
+
+    # Saved addresses (passenger)
+    app.router.add_get("/api/addresses", addresses_api.list_addresses)
+    app.router.add_post("/api/addresses", addresses_api.create_address)
+    app.router.add_patch("/api/addresses/{id}", addresses_api.update_address)
+    app.router.add_delete("/api/addresses/{id}", addresses_api.delete_address)
+
+    # Promo codes & Referral
+    app.router.add_post("/api/promo/validate", promo_api.validate_promo)
+    app.router.add_get("/api/referral", promo_api.get_referral_info)
+    app.router.add_post("/api/referral/apply", promo_api.apply_referral_code)
+
+    # Driver statistics
+    app.router.add_get("/api/driver/stats", driver_stats_api.driver_stats)
+
+    # App config (version, features, force update)
+    app.router.add_get("/api/config", app_config_api.get_app_config)
+
+    # SOS / Emergency
+    app.router.add_post("/api/sos", sos_api.trigger_sos)
+
+    # File uploads
+    app.router.add_post("/api/driver/upload/car-photo", uploads_api.upload_car_photo)
+    app.router.add_post("/api/driver/upload/license", uploads_api.upload_license_photo)
+    app.router.add_get("/uploads/{filename}", uploads_api.serve_upload)
 
     # WebSocket
     app.router.add_get("/ws", websocket_handler)

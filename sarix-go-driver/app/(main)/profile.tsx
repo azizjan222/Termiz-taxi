@@ -125,6 +125,34 @@ export default function ProfileScreen() {
 
           <TouchableOpacity
             style={[styles.menuItem, styles.menuItemBorder]}
+            onPress={() => router.push('/stats')}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.infoLight }]}>
+              <Text style={styles.menuIconText}>📊</Text>
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.menuTitle}>Statistika</Text>
+              <Text style={styles.menuSub}>Daromad va zakaslar</Text>
+            </View>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, styles.menuItemBorder]}
+            onPress={() => router.push('/car-photo')}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.warningLight }]}>
+              <Text style={styles.menuIconText}>🚗</Text>
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.menuTitle}>Mashina rasmi</Text>
+              <Text style={styles.menuSub}>Yo'lovchilar ko'radi</Text>
+            </View>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, styles.menuItemBorder]}
             onPress={() => router.push('/ai-chat')}
           >
             <View style={[styles.menuIcon, { backgroundColor: colors.accentLight }]}>

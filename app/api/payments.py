@@ -1,6 +1,7 @@
 """Payment endpoints - Click Uz, Payme, and manual card top-up."""
 import base64
 import hashlib
+import hmac
 import time
 import logging
 from urllib.parse import urlencode
@@ -12,6 +13,38 @@ from app.database import get_session
 from app.models import Driver, Payment
 
 logger = logging.getLogger(__name__)
+
+
+def _verify_click_signature(data: dict, action: str) -> bool:
+    """Verify Click Uz signature.
+    Click sends sign_string which is MD5 of:
+    click_trans_id + service_id + SECRET_KEY + merchant_trans_id + amount + action + sign_time
+    For complete: + merchant_prepare_id between merchant_trans_id and amount.
+    """
+    if not config.CLICK_SECRET_KEY:
+        # If no secret configured, accept all (dev mode)
+        return True
+
+    sign_string = data.get("sign_string", "")
+    if not sign_string:
+        return False
+
+    parts = [
+        str(data.get("click_trans_id", "")),
+        str(data.get("service_id", "")),
+        config.CLICK_SECRET_KEY,
+        str(data.get("merchant_trans_id", "")),
+    ]
+
+    if action == "1":  # complete
+        parts.append(str(data.get("merchant_prepare_id", "")))
+
+    parts.append(str(data.get("amount", "")))
+    parts.append(str(data.get("action", "")))
+    parts.append(str(data.get("sign_time", "")))
+
+    expected = hashlib.md5("".join(parts).encode()).hexdigest()
+    return hmac.compare_digest(expected.lower(), sign_string.lower())
 
 
 # ============= AVAILABLE PAYMENT METHODS =============
@@ -138,8 +171,13 @@ async def click_prepare(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": -8, "error_note": "Invalid request"})
 
-    # TODO: Verify sign_string with CLICK_SECRET_KEY
-    # For MVP, we'll accept all
+    data_dict = dict(data)
+
+    # Verify signature
+    if not _verify_click_signature(data_dict, "0"):
+        logger.warning(f"Click prepare: invalid signature")
+        return web.json_response({"error": -1, "error_note": "Invalid signature"})
+
     transaction_param = data.get("merchant_trans_id")
 
     session = get_session()
@@ -167,6 +205,13 @@ async def click_complete(request: web.Request) -> web.Response:
         data = await request.post()
     except Exception:
         return web.json_response({"error": -8, "error_note": "Invalid request"})
+
+    data_dict = dict(data)
+
+    # Verify signature
+    if not _verify_click_signature(data_dict, "1"):
+        logger.warning(f"Click complete: invalid signature")
+        return web.json_response({"error": -1, "error_note": "Invalid signature"})
 
     transaction_param = data.get("merchant_trans_id")
     error_code = int(data.get("error", -1))
