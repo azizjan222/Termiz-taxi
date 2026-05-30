@@ -136,4 +136,9 @@ export default {
     needHuman: 'Contact admin',
     errorMessage: "Sorry, couldn't answer. Check your internet.",
   },
+  becomeDriver: {
+    subtitle: 'Have a car? Earn money!',
+    message: 'Sarix Go has a separate app for drivers. Download it from Play Market and login with your phone number.\n\n💰 Real earnings\n🕒 Work 24/7\n📱 Easy app',
+    openPlayMarket: 'Open Play Market',
+  },
 };
