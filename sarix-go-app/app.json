@@ -2,6 +2,7 @@
   "expo": {
     "name": "Sarix Go Termiz Sariosiyo Taxi",
     "slug": "sarix-go-passenger",
+    "owner": "kholov",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -61,10 +62,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiBaseUrl": "https://your-railway-app.up.railway.app",
-      "yandexMapsApiKey": "YOUR_YANDEX_MAPS_KEY",
+      "apiBaseUrl": "https://termiz-taxi-production.up.railway.app",
+      "yandexMapsApiKey": "5883875d-6f70-49b7-806a-da33cfd0a128",
+      "yandexSuggestKey": "8ddd4173-e3c5-4317-a844-554619b6bf53",
       "eas": {
-        "projectId": ""
+        "projectId": "c928665e-9700-4f48-a08d-18b9283d9304"
       }
     }
   }

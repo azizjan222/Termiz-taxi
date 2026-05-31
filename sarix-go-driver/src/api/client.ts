@@ -7,7 +7,7 @@ const TOKEN_KEY = 'sarixgo_driver_token';
 const API_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   (Constants.expoConfig?.extra as any)?.apiBaseUrl ||
-  'https://your-railway-app.up.railway.app';
+  'https://termiz-taxi-production.up.railway.app';
 
 export const WS_URL =
   process.env.EXPO_PUBLIC_WS_URL ||

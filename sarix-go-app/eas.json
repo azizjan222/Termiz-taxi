@@ -17,8 +17,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://your-railway-app.up.railway.app",
-        "EXPO_PUBLIC_WS_URL": "wss://your-railway-app.up.railway.app/ws",
+        "EXPO_PUBLIC_API_URL": "https://termiz-taxi-production.up.railway.app",
+        "EXPO_PUBLIC_WS_URL": "wss://termiz-taxi-production.up.railway.app/ws",
         "EXPO_PUBLIC_YANDEX_MAPS_KEY": "5883875d-6f70-49b7-806a-da33cfd0a128",
         "EXPO_PUBLIC_YANDEX_SUGGEST_KEY": "8ddd4173-e3c5-4317-a844-554619b6bf53"
       }
@@ -29,8 +29,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://your-railway-app.up.railway.app",
-        "EXPO_PUBLIC_WS_URL": "wss://your-railway-app.up.railway.app/ws",
+        "EXPO_PUBLIC_API_URL": "https://termiz-taxi-production.up.railway.app",
+        "EXPO_PUBLIC_WS_URL": "wss://termiz-taxi-production.up.railway.app/ws",
         "EXPO_PUBLIC_YANDEX_MAPS_KEY": "5883875d-6f70-49b7-806a-da33cfd0a128",
         "EXPO_PUBLIC_YANDEX_SUGGEST_KEY": "8ddd4173-e3c5-4317-a844-554619b6bf53"
       }
