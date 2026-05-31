@@ -62,7 +62,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiBaseUrl": "https://your-railway-app.up.railway.app",
+      "apiBaseUrl": "https://termiz-taxi-production.up.railway.app",
       "yandexMapsApiKey": "5883875d-6f70-49b7-806a-da33cfd0a128",
       "yandexSuggestKey": "8ddd4173-e3c5-4317-a844-554619b6bf53",
       "eas": {

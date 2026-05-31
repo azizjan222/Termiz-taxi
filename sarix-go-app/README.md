@@ -24,8 +24,8 @@ cp .env.example .env
 
 Keyin `.env` da quyidagilarni o'zgartiring:
 ```
-EXPO_PUBLIC_API_URL=https://your-railway-app.up.railway.app
-EXPO_PUBLIC_WS_URL=wss://your-railway-app.up.railway.app/ws
+EXPO_PUBLIC_API_URL=https://termiz-taxi-production.up.railway.app
+EXPO_PUBLIC_WS_URL=wss://termiz-taxi-production.up.railway.app/ws
 ```
 
 ### 4. Ishga tushirish

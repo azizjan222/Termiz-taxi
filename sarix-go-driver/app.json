@@ -46,7 +46,7 @@
     ],
     "experiments": { "typedRoutes": true },
     "extra": {
-      "apiBaseUrl": "https://your-railway-app.up.railway.app",
+      "apiBaseUrl": "https://termiz-taxi-production.up.railway.app",
       "eas": { "projectId": "981738d3-8ea6-4fca-9d2c-aabab45db6c9" }
     }
   }
