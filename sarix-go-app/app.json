@@ -8,6 +8,7 @@
     "icon": "./assets/icon.png",
     "scheme": "sarixgo",
     "userInterfaceStyle": "light",
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",

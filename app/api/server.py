@@ -90,6 +90,8 @@ def create_app(bot=None) -> web.Application:
     # Auth
     app.router.add_post("/api/auth/request-otp", auth_api.request_otp)
     app.router.add_post("/api/auth/verify-otp", auth_api.verify_otp_endpoint)
+    app.router.add_post("/api/auth/telegram/start", auth_api.telegram_start)
+    app.router.add_get("/api/auth/telegram/check", auth_api.telegram_check)
     app.router.add_get("/api/auth/me", auth_api.me)
     app.router.add_patch("/api/auth/me", auth_api.update_profile)
 
@@ -108,6 +110,8 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/driver/login", drivers_api.driver_login)  # legacy
     app.router.add_post("/api/driver/request-otp", drivers_api.driver_request_otp)
     app.router.add_post("/api/driver/verify-otp", drivers_api.driver_verify_otp)
+    app.router.add_post("/api/driver/telegram/start", drivers_api.driver_telegram_start)
+    app.router.add_get("/api/driver/telegram/check", drivers_api.driver_telegram_check)
     app.router.add_get("/api/driver/me", drivers_api.driver_me)
     app.router.add_post("/api/driver/online", drivers_api.driver_set_online)
     app.router.add_get("/api/driver/orders/available", drivers_api.list_available_orders)

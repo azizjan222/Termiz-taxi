@@ -15,7 +15,7 @@ export default function LanguageScreen() {
   const handleNext = async () => {
     await changeLanguage(selected);
     await AsyncStorage.setItem('@sarixgo/onboarded', 'true');
-    router.replace('/(auth)/phone');
+    router.replace('/(auth)/telegram-login');
   };
 
   return (

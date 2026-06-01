@@ -133,6 +133,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text and len(text.split()) > 1:
         param = text.split()[1]
+        if param.startswith("auth_"):
+            # Telegram-based app login/registration
+            auth_token = param[len("auth_"):]
+            context.user_data['tg_auth_token'] = auth_token
+            tugma = ReplyKeyboardMarkup(
+                [[KeyboardButton("📲 Raqamni ulashib kirish", request_contact=True)]],
+                resize_keyboard=True, one_time_keyboard=True)
+            await update.message.reply_text(
+                "🔐 <b>Ilovaga kirish</b>\n\n"
+                "Ilovaga kirish uchun telefon raqamingizni ulashing. "
+                "Quyidagi tugmani bosing 👇",
+                parse_mode='HTML',
+                reply_markup=tugma)
+            return
         if param.startswith("olish_"):
             zakas_id = int(param.split("_")[1])
             if user_id in haydovchilar:
@@ -490,6 +504,37 @@ async def haydovchi_bolish(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def haydovchi_raqamini_saqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
+
+    # --- Telegram-based app login (passenger/driver) ---
+    if update.message.contact and context.user_data.get('tg_auth_token'):
+        token = context.user_data.pop('tg_auth_token')
+        phone = update.message.contact.phone_number
+        try:
+            from app.database import get_session as _gs
+            from app.services.telegram_auth import mark_verified as _mark
+            db = _gs()
+            try:
+                sess = _mark(
+                    db, token, telegram_id=uid, phone=phone,
+                    first_name=update.effective_user.first_name or "",
+                    last_name=update.effective_user.last_name or "",
+                )
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Telegram auth verify error: {e}")
+            sess = None
+
+        if sess:
+            await update.message.reply_text(
+                "✅ <b>Tasdiqlandi!</b>\n\nIlovaga qayting — avtomatik kirasiz. 📱",
+                parse_mode='HTML', reply_markup=ReplyKeyboardRemove())
+        else:
+            await update.message.reply_text(
+                "❌ Muddati tugagan yoki xatolik. Ilovada qaytadan \"Telegram orqali kirish\"ni bosing.",
+                reply_markup=ReplyKeyboardRemove())
+        return
+
     if update.message.contact:
         haydovchilar[uid] = update.message.contact.phone_number
         if uid not in balanslar: balanslar[uid] = 0

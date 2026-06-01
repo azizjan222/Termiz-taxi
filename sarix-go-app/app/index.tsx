@@ -27,7 +27,7 @@ export default function Index() {
   }
 
   if (!isAuth) {
-    return <Redirect href="/(auth)/phone" />;
+    return <Redirect href="/(auth)/telegram-login" />;
   }
 
   return <Redirect href="/(tabs)/home" />;
