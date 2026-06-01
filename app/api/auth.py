@@ -170,3 +170,92 @@ async def update_profile(request: web.Request) -> web.Response:
         })
     finally:
         session.close()
+
+
+
+# ============= TELEGRAM AUTH (passenger) =============
+from app import config as _cfg
+from app.services import telegram_auth as _tg
+from app.services.otp import normalize_phone as _normalize
+
+
+async def telegram_start(request: web.Request) -> web.Response:
+    """POST /api/auth/telegram/start
+    Creates a Telegram auth session. Returns token + bot deep link.
+    """
+    db = get_session()
+    try:
+        sess = _tg.create_session(db, role="passenger")
+        deep_link = f"https://t.me/{_cfg.BOT_USERNAME}?start=auth_{sess.token}"
+        return web.json_response({
+            "token": sess.token,
+            "deep_link": deep_link,
+            "bot_username": _cfg.BOT_USERNAME,
+            "expires_in": _tg.SESSION_TTL_MINUTES * 60,
+        })
+    finally:
+        db.close()
+
+
+async def telegram_check(request: web.Request) -> web.Response:
+    """GET /api/auth/telegram/check?token=...
+    Polled by the app. When verified, creates/links user and returns JWT.
+    """
+    token = request.query.get("token", "").strip()
+    if not token:
+        return web.json_response({"error": "token kerak"}, status=400)
+
+    db = get_session()
+    try:
+        sess = _tg.get_session(db, token)
+        if not sess:
+            return web.json_response({"status": "not_found"}, status=404)
+
+        if sess.status == "pending":
+            return web.json_response({"status": "pending"})
+        if sess.status == "expired":
+            return web.json_response({"status": "expired"})
+
+        # verified -> find or create user
+        phone = _normalize(sess.phone) if sess.phone else None
+        if not phone:
+            return web.json_response({"status": "pending"})
+
+        user = db.query(User).filter_by(phone=phone).first()
+        is_new = False
+        if not user:
+            user = User(
+                phone=phone,
+                telegram_id=sess.telegram_id,
+                first_name=sess.first_name or None,
+                last_name=sess.last_name or None,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            is_new = True
+        else:
+            if sess.telegram_id and not user.telegram_id:
+                user.telegram_id = sess.telegram_id
+            if sess.first_name and not user.first_name:
+                user.first_name = sess.first_name
+            user.last_active = datetime.utcnow()
+            db.commit()
+            db.refresh(user)
+
+        jwt_token = create_token(user.id, user.phone)
+        return web.json_response({
+            "status": "verified",
+            "is_new": is_new,
+            "token": jwt_token,
+            "user": {
+                "id": user.id,
+                "phone": user.phone,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "language": user.language,
+                "bonus_balance": user.bonus_balance,
+            },
+        })
+    finally:
+        db.close()

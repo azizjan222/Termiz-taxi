@@ -98,3 +98,35 @@ export async function getBalanceHistory(): Promise<{ orders: DriverOrder[]; tota
   const response = await api.get('/api/driver/balance/history');
   return response.data;
 }
+
+
+
+// ===== Telegram-based login (driver) =====
+export interface TgStartResponse {
+  token: string;
+  deep_link: string;
+  bot_username: string;
+  expires_in: number;
+}
+
+export interface TgCheckResponse {
+  status: 'pending' | 'verified' | 'expired' | 'not_found' | 'not_registered' | 'blocked';
+  token?: string;
+  driver?: Driver;
+  message?: string;
+}
+
+export async function telegramStart(): Promise<TgStartResponse> {
+  const response = await api.post<TgStartResponse>('/api/driver/telegram/start', {});
+  return response.data;
+}
+
+export async function telegramCheck(token: string): Promise<TgCheckResponse> {
+  const response = await api.get<TgCheckResponse>('/api/driver/telegram/check', {
+    params: { token },
+  });
+  if (response.data.status === 'verified' && response.data.token) {
+    await setAuthToken(response.data.token);
+  }
+  return response.data;
+}

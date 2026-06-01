@@ -290,3 +290,28 @@ class SosAlert(Base):
     status = Column(String(20), default="open")  # open, in_progress, resolved
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     resolved_at = Column(DateTime)
+
+
+
+# ============= TELEGRAM AUTH SESSIONS =============
+class TelegramAuthSession(Base):
+    """Telegram-based login/registration sessions.
+
+    Flow:
+    1. App creates a session -> gets token + bot deep link
+    2. User opens bot via deep link, shares contact
+    3. Bot links phone <-> telegram_id, marks session verified
+    4. App polls and receives JWT once verified
+    """
+    __tablename__ = "telegram_auth_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    role = Column(String(20), default="passenger")  # passenger | driver
+    phone = Column(String(20))            # filled from shared contact
+    telegram_id = Column(BigInteger)      # filled when user opens bot
+    first_name = Column(String(100))
+    last_name = Column(String(100))
+    status = Column(String(20), default="pending", index=True)  # pending | verified | expired
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)

@@ -99,3 +99,8 @@ TOPUP_CARD_HOLDER = _get("TOPUP_CARD_HOLDER", "")
 TWILIO_ACCOUNT_SID = _get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = _get("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM_NUMBER = _get("TWILIO_FROM_NUMBER", "")
+
+
+
+# Telegram bot username (for deep links, no @)
+BOT_USERNAME = _get("BOT_USERNAME", "termizsariosiyotaxi_bot")

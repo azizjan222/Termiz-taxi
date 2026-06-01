@@ -141,4 +141,17 @@ export default {
     message: 'Sarix Go has a separate app for drivers. Download it from Play Market and login with your phone number.\n\n💰 Real earnings\n🕒 Work 24/7\n📱 Easy app',
     openPlayMarket: 'Open Play Market',
   },
+  telegramLogin: {
+    title: 'Login via Telegram',
+    subtitle: 'Fast and secure',
+    step1: 'Tap the button below',
+    step2: 'Telegram bot opens — tap "Start"',
+    step3: 'Share your number — you log in automatically',
+    button: '📲 Login via Telegram',
+    waiting: 'Waiting for Telegram confirmation...',
+    waitingHint: 'Share your number in Telegram',
+    openAgain: 'Open Telegram again',
+    timeout: 'Timed out. Please try again.',
+    expired: 'Session expired. Please try again.',
+  },
 };

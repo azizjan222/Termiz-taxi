@@ -55,3 +55,35 @@ export async function updateProfile(data: Partial<User>): Promise<{ user: User }
   const response = await api.patch<{ user: User; success: boolean }>('/api/auth/me', data);
   return response.data;
 }
+
+
+
+// ===== Telegram-based login =====
+export interface TelegramStartResponse {
+  token: string;
+  deep_link: string;
+  bot_username: string;
+  expires_in: number;
+}
+
+export interface TelegramCheckResponse {
+  status: 'pending' | 'verified' | 'expired' | 'not_found';
+  is_new?: boolean;
+  token?: string;
+  user?: User;
+}
+
+export async function telegramStart(): Promise<TelegramStartResponse> {
+  const response = await api.post<TelegramStartResponse>('/api/auth/telegram/start', {});
+  return response.data;
+}
+
+export async function telegramCheck(token: string): Promise<TelegramCheckResponse> {
+  const response = await api.get<TelegramCheckResponse>('/api/auth/telegram/check', {
+    params: { token },
+  });
+  if (response.data.status === 'verified' && response.data.token) {
+    await setAuthToken(response.data.token);
+  }
+  return response.data;
+}

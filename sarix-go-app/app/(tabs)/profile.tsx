@@ -49,7 +49,7 @@ export default function ProfileScreen() {
         style: 'destructive',
         onPress: async () => {
           await logout();
-          router.replace('/(auth)/phone');
+          router.replace('/(auth)/telegram-login');
         },
       },
     ]);

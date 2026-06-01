@@ -538,3 +538,81 @@ async def driver_balance_history(request: web.Request) -> web.Response:
         })
     finally:
         session.close()
+
+
+
+# ============= TELEGRAM AUTH (driver) =============
+from app import config as _cfg
+from app.services import telegram_auth as _tg
+from app.services.otp import normalize_phone as _normalize
+
+
+async def driver_telegram_start(request: web.Request) -> web.Response:
+    """POST /api/driver/telegram/start - create Telegram auth session for driver."""
+    db = get_session()
+    try:
+        sess = _tg.create_session(db, role="driver")
+        deep_link = f"https://t.me/{_cfg.BOT_USERNAME}?start=auth_{sess.token}"
+        return web.json_response({
+            "token": sess.token,
+            "deep_link": deep_link,
+            "bot_username": _cfg.BOT_USERNAME,
+            "expires_in": _tg.SESSION_TTL_MINUTES * 60,
+        })
+    finally:
+        db.close()
+
+
+async def driver_telegram_check(request: web.Request) -> web.Response:
+    """GET /api/driver/telegram/check?token=... - poll; returns driver JWT when verified."""
+    token = request.query.get("token", "").strip()
+    if not token:
+        return web.json_response({"error": "token kerak"}, status=400)
+
+    db = get_session()
+    try:
+        sess = _tg.get_session(db, token)
+        if not sess:
+            return web.json_response({"status": "not_found"}, status=404)
+        if sess.status == "pending":
+            return web.json_response({"status": "pending"})
+        if sess.status == "expired":
+            return web.json_response({"status": "expired"})
+
+        # verified -> driver must already be registered (via bot)
+        tg_id = sess.telegram_id
+        phone = _normalize(sess.phone) if sess.phone else None
+
+        driver = None
+        if tg_id:
+            driver = db.query(Driver).filter_by(telegram_id=tg_id).first()
+        if not driver and phone:
+            for d in db.query(Driver).all():
+                dp = (d.phone or "").replace("+", "").replace(" ", "")
+                if dp and dp == phone.replace("+", ""):
+                    driver = d
+                    break
+
+        if not driver:
+            return web.json_response({
+                "status": "not_registered",
+                "message": "Siz haydovchi sifatida ro'yxatdan o'tmagansiz. Botda \"Haydovchi bo'lish\" tugmasini bosing.",
+            })
+        if driver.is_blocked:
+            return web.json_response({"status": "blocked", "message": "Akkauntingiz bloklangan"})
+
+        # Link telegram_id if missing
+        if tg_id and not driver.telegram_id:
+            driver.telegram_id = tg_id
+        driver.last_active = datetime.utcnow()
+        db.commit()
+        db.refresh(driver)
+
+        jwt_token = _create_driver_token(driver)
+        return web.json_response({
+            "status": "verified",
+            "token": jwt_token,
+            "driver": _serialize_driver(driver),
+        })
+    finally:
+        db.close()
