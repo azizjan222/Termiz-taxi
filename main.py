@@ -889,6 +889,7 @@ async def run():
     app.add_handler(CommandHandler("broadcast", admcmd.cmd_broadcast))
     app.add_handler(CommandHandler("history", admcmd.cmd_history))
     app.add_handler(CommandHandler("payments", admcmd.cmd_payments))
+    app.add_handler(CommandHandler("export", admcmd.cmd_export))
     app.add_handler(CommandHandler("admin_help", admcmd.cmd_admin_help))
     app.add_handler(CallbackQueryHandler(admcmd.admin_callback, pattern="^adm_"))
 

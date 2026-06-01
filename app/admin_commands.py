@@ -443,7 +443,8 @@ async def cmd_admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/users - Yo'lovchilar\n"
         "/orders - Faol zakaslar\n"
         "/history - Oxirgi tarix\n"
-        "/payments - Kutilayotgan to'lovlar\n\n"
+        "/payments - Kutilayotgan to'lovlar\n"
+        "/export - Haydovchilar + balans PDF yuklab olish\n\n"
         "💰 <b>Boshqaruv</b>\n"
         "/balance ID SUMMA - Balans qo'shish/ayirish\n"
         "/pul ID SUMMA - (eski versiya, ishlaydi)\n"
@@ -479,3 +480,115 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_orders(update, context)
     elif action == "history":
         await cmd_history(update, context)
+
+
+
+# ============ /export - Haydovchilar va to'lovlar PDF ============
+import io
+import os
+from datetime import datetime as _dt
+
+_FONT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "fonts", "DejaVuSans.ttf")
+
+
+def _build_drivers_pdf() -> bytes:
+    """Build a PDF report of drivers + balances + payments. Returns PDF bytes."""
+    from fpdf import FPDF
+
+    with DbContext() as session:
+        drivers = session.query(Driver).order_by(Driver.balance.desc()).all()
+        total_balance = sum(d.balance or 0 for d in drivers)
+        total_orders = sum(d.total_orders or 0 for d in drivers)
+        try:
+            approved = session.query(Payment).filter_by(status="approved").all()
+            approved_total = sum(p.amount for p in approved)
+            approved_count = len(approved)
+        except Exception:
+            approved_total = 0
+            approved_count = 0
+
+        rows = [
+            (
+                d.first_name or "Nomalum",
+                d.phone or "-",
+                d.balance or 0,
+                d.total_orders or 0,
+                round(d.rating or 5.0, 1),
+                "Bloklangan" if d.is_blocked else ("Onlayn" if d.is_online else "Oflayn"),
+            )
+            for d in drivers
+        ]
+
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.add_page()
+    if os.path.exists(_FONT_PATH):
+        pdf.add_font("DejaVu", "", _FONT_PATH)
+        pdf.add_font("DejaVu", "B", _FONT_PATH)
+        font = "DejaVu"
+    else:
+        font = "Helvetica"
+
+    pdf.set_font(font, "B", 16)
+    pdf.cell(0, 10, "Sarix Go - Haydovchilar hisoboti", ln=True, align="C")
+    pdf.set_font(font, "", 9)
+    pdf.cell(0, 6, f"Sana: {_dt.utcnow().strftime('%Y-%m-%d %H:%M')} UTC", ln=True, align="C")
+    pdf.ln(2)
+
+    pdf.set_font(font, "B", 10)
+    summary = (
+        f"Jami haydovchilar: {len(rows)}   |   "
+        f"Umumiy balans: {total_balance:,} so'm   |   "
+        f"Jami zakaslar: {total_orders}"
+    ).replace(",", " ")
+    pdf.multi_cell(0, 6, summary)
+    pdf.cell(0, 6, f"Tasdiqlangan to'lovlar: {approved_count} ta / {approved_total:,} so'm".replace(",", " "), ln=True)
+    pdf.ln(3)
+
+    headers = ["Ism", "Telefon", "Balans", "Zakas", "Reyting", "Holat"]
+    widths = [40, 38, 30, 20, 22, 30]
+    pdf.set_font(font, "B", 9)
+    pdf.set_fill_color(14, 27, 61)
+    pdf.set_text_color(255, 255, 255)
+    for h, w in zip(headers, widths):
+        pdf.cell(w, 8, h, border=1, align="C", fill=True)
+    pdf.ln()
+
+    pdf.set_font(font, "", 8)
+    pdf.set_text_color(0, 0, 0)
+    fill = False
+    for (name, phone, balance, orders, rating, status) in rows:
+        if pdf.get_y() > 270:
+            pdf.add_page()
+        pdf.set_fill_color(245, 247, 250)
+        pdf.cell(widths[0], 7, str(name)[:22], border=1, fill=fill)
+        pdf.cell(widths[1], 7, str(phone)[:20], border=1, fill=fill)
+        pdf.cell(widths[2], 7, f"{balance:,}".replace(",", " "), border=1, align="R", fill=fill)
+        pdf.cell(widths[3], 7, str(orders), border=1, align="C", fill=fill)
+        pdf.cell(widths[4], 7, str(rating), border=1, align="C", fill=fill)
+        pdf.cell(widths[5], 7, status, border=1, align="C", fill=fill)
+        pdf.ln()
+        fill = not fill
+
+    out = pdf.output()
+    return bytes(out)
+
+
+async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generate and send PDF report of drivers + balances."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    msg = await update.effective_message.reply_text("PDF tayyorlanmoqda...")
+    try:
+        pdf_bytes = _build_drivers_pdf()
+        bio = io.BytesIO(pdf_bytes)
+        bio.name = f"SarixGo_Haydovchilar_{_dt.utcnow().strftime('%Y%m%d_%H%M')}.pdf"
+        await context.bot.send_document(
+            chat_id=update.effective_chat.id,
+            document=bio,
+            filename=bio.name,
+            caption="Haydovchilar va balans hisoboti (PDF)",
+        )
+        await msg.delete()
+    except Exception as e:
+        await msg.edit_text(f"Xatolik: {e}")
