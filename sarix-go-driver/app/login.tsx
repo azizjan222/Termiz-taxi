@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, Alert,
+  View, Text, StyleSheet, Alert,
   KeyboardAvoidingView, Platform, Linking, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,7 +8,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '../src/components/Button';
-import { requestDriverOtp, telegramStart, telegramCheck } from '../src/api/driver';
+import { telegramStart, telegramCheck } from '../src/api/driver';
 import { useDriverStore } from '../src/store/driver';
 import { BOT_USERNAME } from '../src/api/client';
 import { colors, typography, spacing, radius } from '../src/theme';
@@ -17,12 +17,8 @@ export default function LoginScreen() {
   const { t } = useTranslation();
   const setDriver = useDriverStore((s) => s.setDriver);
 
-  const [phone, setPhone] = useState('+998');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPhone, setShowPhone] = useState(false);
-
-  // Telegram flow state
+  const [error, setError] = useState('');
   const [tgWaiting, setTgWaiting] = useState(false);
   const [tgToken, setTgToken] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -55,7 +51,7 @@ export default function LoginScreen() {
             router.replace('/(main)/orders');
           } else if (r.status === 'not_registered') {
             stopPolling(); setTgWaiting(false);
-            Alert.alert("⚠️ Ro'yxatdan o'tmagansiz", r.message || '', [
+            Alert.alert("⚠️ Ro'yxatdan o'tmagansiz", r.message || "Botda \"Haydovchi bo'lish\"ni bosing", [
               { text: 'Bekor qilish', style: 'cancel' },
               { text: "Botga o'tish", onPress: openBot },
             ]);
@@ -68,38 +64,6 @@ export default function LoginScreen() {
       }, 2500);
     } catch (e) {
       setError("Xatolik. Qayta urinib ko'ring.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatPhone = (text: string) => {
-    let cleaned = text.replace(/[^\d+]/g, '');
-    if (!cleaned.startsWith('+998')) {
-      if (cleaned.startsWith('998')) cleaned = '+' + cleaned;
-      else if (!cleaned.startsWith('+')) cleaned = '+998' + cleaned.replace(/^\+/, '');
-    }
-    return cleaned.slice(0, 13);
-  };
-
-  const handleSendOtp = async () => {
-    if (phone.length < 13) { setError("Telefon raqam noto'g'ri"); return; }
-    setError('');
-    setLoading(true);
-    try {
-      const res = await requestDriverOtp(phone);
-      router.push({ pathname: '/login-otp', params: { phone, devCode: res.dev_code || '' } });
-    } catch (e: any) {
-      const msg = e?.response?.data?.error || 'Xatolik';
-      const code = e?.response?.data?.code;
-      if (code === 'not_registered') {
-        Alert.alert("⚠️ Ro'yxatdan o'tmagansiz", msg, [
-          { text: 'Bekor qilish', style: 'cancel' },
-          { text: "Botga o'tish", onPress: openBot },
-        ]);
-      } else {
-        Alert.alert(t('common.error'), msg);
-      }
     } finally {
       setLoading(false);
     }
@@ -124,27 +88,11 @@ export default function LoginScreen() {
                 <Text style={styles.linkText}>Telegram'ni qayta ochish</Text>
               </TouchableOpacity>
             </View>
-          ) : !showPhone ? (
-            <View>
-              <View style={styles.infoCard}>
-                <Text style={styles.infoText}>
-                  Telegram orqali tez va xavfsiz kiring. Raqamingizni ulashasiz, tamom!
-                </Text>
-              </View>
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
-            </View>
           ) : (
-            <View>
-              <Text style={styles.label}>Telefon raqamingiz</Text>
-              <TextInput
-                style={styles.input}
-                value={phone}
-                onChangeText={(t) => { setPhone(formatPhone(t)); setError(''); }}
-                placeholder="+998 __ ___ __ __"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="phone-pad"
-                autoFocus
-              />
+            <View style={styles.steps}>
+              <Step n="1" text="Pastdagi tugmani bosing" />
+              <Step n="2" text='Telegram bot ochiladi — "Boshlash"ni bosing' />
+              <Step n="3" text="Raqamingizni ulashing — avtomatik kirasiz" />
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
             </View>
           )}
@@ -152,27 +100,28 @@ export default function LoginScreen() {
 
         {!tgWaiting && (
           <View style={styles.footer}>
-            {!showPhone ? (
-              <>
-                <Button title="📲 Telegram orqali kirish" onPress={startTelegram} loading={loading} variant="accent" />
-                <TouchableOpacity style={styles.altBtn} onPress={() => setShowPhone(true)}>
-                  <Text style={styles.altText}>SMS kod bilan kirish</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Button title="Kodni yuborish" onPress={handleSendOtp} loading={loading} disabled={phone.length < 13} variant="accent" />
-                <TouchableOpacity style={styles.altBtn} onPress={() => { setShowPhone(false); setError(''); }}>
-                  <Text style={styles.altText}>← Telegram orqali kirish</Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <Button
+              title="📲 Telegram orqali kirish"
+              onPress={startTelegram}
+              loading={loading}
+              variant="accent"
+            />
+            <Text style={styles.note}>
+              Avval botda "Haydovchi bo'lish" orqali ro'yxatdan o'ting
+            </Text>
           </View>
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+const Step: React.FC<{ n: string; text: string }> = ({ n, text }) => (
+  <View style={styles.stepRow}>
+    <View style={styles.stepNum}><Text style={styles.stepNumText}>{n}</Text></View>
+    <Text style={styles.stepText}>{text}</Text>
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.primary, paddingHorizontal: spacing.lg },
@@ -185,19 +134,19 @@ const styles = StyleSheet.create({
   title: { ...typography.h1, color: colors.white },
   subtitle: { ...typography.body, color: colors.white, opacity: 0.8, marginTop: 4 },
   body: { flex: 1, justifyContent: 'center' },
-  infoCard: { backgroundColor: colors.primaryLight, padding: spacing.md, borderRadius: radius.md },
-  infoText: { ...typography.body, color: colors.white, opacity: 0.9 },
-  label: { ...typography.caption, color: colors.white, marginBottom: spacing.xs },
-  input: {
-    backgroundColor: colors.white, borderRadius: radius.md, paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md, fontSize: 18, color: colors.primary, fontWeight: '600',
+  steps: { gap: spacing.md },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  stepNum: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent,
+    alignItems: 'center', justifyContent: 'center',
   },
-  errorText: { ...typography.small, color: '#FCA5A5', marginTop: spacing.sm },
+  stepNumText: { ...typography.bodyBold, color: colors.primary, fontWeight: '800' },
+  stepText: { flex: 1, ...typography.body, color: colors.white },
+  errorText: { ...typography.caption, color: '#FCA5A5', textAlign: 'center', marginTop: spacing.md },
   waitingBox: { alignItems: 'center', gap: spacing.md },
   waitingText: { ...typography.h3, color: colors.white, textAlign: 'center' },
   waitingHint: { ...typography.body, color: colors.accent, textAlign: 'center' },
   linkText: { ...typography.body, color: colors.white, textDecorationLine: 'underline', marginTop: spacing.sm },
   footer: { paddingBottom: spacing.lg },
-  altBtn: { alignItems: 'center', padding: spacing.md, marginTop: spacing.sm },
-  altText: { ...typography.body, color: colors.white, opacity: 0.85 },
+  note: { ...typography.small, color: colors.white, opacity: 0.7, textAlign: 'center', marginTop: spacing.md },
 });
