@@ -9,9 +9,11 @@ import { initI18n } from '../src/i18n';
 import { useDriverStore } from '../src/store/driver';
 import { colors } from '../src/theme';
 import { registerPushToken } from '../src/services/notifications';
+import { AnimatedSplash } from '../src/components/AnimatedSplash';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
   const loadDriver = useDriverStore((s) => s.loadDriver);
   const isAuth = useDriverStore((s) => s.isAuthenticated);
 
@@ -30,12 +32,8 @@ export default function RootLayout() {
     }
   }, [isAuth, ready]);
 
-  if (!ready) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color={colors.accent} />
-      </View>
-    );
+  if (!ready || !splashDone) {
+    return <AnimatedSplash onFinish={() => setSplashDone(true)} />;
   }
 
   return (

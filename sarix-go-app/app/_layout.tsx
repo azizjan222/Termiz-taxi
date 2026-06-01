@@ -10,12 +10,14 @@ import { useAuthStore } from '../src/store/auth';
 import { useThemeStore } from '../src/store/theme';
 import { colors } from '../src/theme';
 import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
+import { AnimatedSplash } from '../src/components/AnimatedSplash';
 import { getAppConfig, compareVersions } from '../src/api/app-config';
 import { registerPushToken } from '../src/services/notifications';
 import Constants from 'expo-constants';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
   const [forceUpdate, setForceUpdate] = useState<{ show: boolean; url: string }>({ show: false, url: '' });
   const loadUser = useAuthStore((s) => s.loadUser);
   const isAuth = useAuthStore((s) => s.isAuthenticated);
@@ -47,12 +49,9 @@ export default function RootLayout() {
     }
   }, [isAuth, ready]);
 
-  if (!ready) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color={colors.accent} />
-      </View>
-    );
+  // Show animated splash until both app is ready AND animation finished
+  if (!ready || !splashDone) {
+    return <AnimatedSplash onFinish={() => setSplashDone(true)} />;
   }
 
   return (
