@@ -112,6 +112,12 @@ FREE_TRIAL_DAYS = _get_int("FREE_TRIAL_DAYS", 30)
 # the driver app. They can enter immediately after submitting; admin reviews via PDF.
 REQUIRE_DRIVER_DOCUMENTS = _get("REQUIRE_DRIVER_DOCUMENTS", "true").lower() == "true"
 
+# Test driver phones: these numbers can use the driver app WITHOUT submitting documents
+# and are auto-created on first login (handy for testing). Comma-separated.
+TEST_DRIVER_PHONES = [
+    p.strip() for p in _get("TEST_DRIVER_PHONES", "+998907465161").split(",") if p.strip()
+]
+
 # Support contact
 SUPPORT_TELEGRAM = _get("SUPPORT_TELEGRAM", "termizsariosiyotaxi_bot")
 

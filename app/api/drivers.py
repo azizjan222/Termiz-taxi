@@ -33,6 +33,59 @@ def driver_can_accept(driver: Driver, now: datetime | None = None) -> bool:
     return (driver.balance or 0) >= config.MIN_DRIVER_BALANCE
 
 
+def _norm_phone(phone: str | None) -> str:
+    """Normalize a phone to '+<digits>' for comparison."""
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    return ("+" + digits) if digits else ""
+
+
+def _is_test_driver(phone: str | None) -> bool:
+    """Whitelisted test phone -> can use the app without documents."""
+    if not phone:
+        return False
+    target = _norm_phone(phone)
+    return any(_norm_phone(p) == target for p in config.TEST_DRIVER_PHONES)
+
+
+def _ensure_test_driver(session, phone: str, telegram_id: int | None = None,
+                        first_name: str = "") -> Driver | None:
+    """Find or create a Driver row for a whitelisted test phone (no documents needed)."""
+    norm = _norm_phone(phone)
+    driver = None
+    if telegram_id:
+        driver = session.query(Driver).filter_by(telegram_id=telegram_id).first()
+    if not driver:
+        for d in session.query(Driver).all():
+            if _norm_phone(d.phone) == norm:
+                driver = d
+                break
+    if not driver:
+        # telegram_id is required & unique; fall back to the phone digits if absent.
+        tg = telegram_id or int(norm.lstrip("+") or "0")
+        driver = Driver(
+            telegram_id=tg,
+            phone=norm,
+            first_name=first_name or "Test",
+            documents_submitted=True,
+            is_verified=True,
+        )
+        session.add(driver)
+        session.commit()
+        session.refresh(driver)
+    else:
+        changed = False
+        if not driver.documents_submitted:
+            driver.documents_submitted = True
+            changed = True
+        if telegram_id and not driver.telegram_id:
+            driver.telegram_id = telegram_id
+            changed = True
+        if changed:
+            session.commit()
+            session.refresh(driver)
+    return driver
+
+
 def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
     """Give the first `FREE_TRIAL_DRIVER_LIMIT` drivers a free month.
 
@@ -190,6 +243,9 @@ async def driver_request_otp(request: web.Request) -> web.Response:
             Driver.phone.in_([phone, phone.lstrip("+"), "+" + phone.lstrip("+")])
         ).first()
 
+        if not driver and _is_test_driver(phone):
+            driver = _ensure_test_driver(session, phone)
+
         if not driver:
             return web.json_response({
                 "error": (
@@ -248,6 +304,9 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
             Driver.phone.in_([phone, phone.lstrip("+"), "+" + phone.lstrip("+")])
         ).first()
 
+        if not driver and _is_test_driver(phone):
+            driver = _ensure_test_driver(session, phone)
+
         if not driver:
             return web.json_response(
                 {"error": "Haydovchi topilmadi. Botga /start yuboring"},
@@ -256,7 +315,8 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
         if driver.is_blocked:
             return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
 
-        if config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted:
+        if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
+                and not _is_test_driver(driver.phone)):
             return web.json_response({
                 "error": "Ilovaga kirish uchun avval botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
                 "code": "documents_required",
@@ -689,6 +749,9 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
                     driver = d
                     break
 
+        if not driver and phone and _is_test_driver(phone):
+            driver = _ensure_test_driver(db, phone, telegram_id=tg_id, first_name=sess.first_name or "")
+
         if not driver:
             return web.json_response({
                 "status": "not_registered",
@@ -697,7 +760,8 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
         if driver.is_blocked:
             return web.json_response({"status": "blocked", "message": "Akkauntingiz bloklangan"})
 
-        if config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted:
+        if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
+                and not _is_test_driver(driver.phone)):
             return web.json_response({
                 "status": "documents_required",
                 "message": "Ilovaga kirish uchun botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
