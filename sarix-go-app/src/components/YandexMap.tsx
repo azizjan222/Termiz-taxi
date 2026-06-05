@@ -30,7 +30,10 @@ export interface YandexMapHandle {
   drawRoute: (from: [number, number], to: [number, number]) => void;
 }
 
+// JavaScript Maps API key (for the WebView map). This is DIFFERENT from the Geocoder key.
 const YANDEX_API_KEY =
+  process.env.EXPO_PUBLIC_YANDEX_JS_API_KEY ||
+  (Constants.expoConfig?.extra as any)?.yandexJsApiKey ||
   process.env.EXPO_PUBLIC_YANDEX_MAPS_KEY ||
   (Constants.expoConfig?.extra as any)?.yandexMapsApiKey ||
   '';
