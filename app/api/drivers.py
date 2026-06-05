@@ -202,6 +202,13 @@ async def driver_login(request: web.Request) -> web.Response:
         if driver.is_blocked:
             return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
 
+        if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
+                and not _is_test_driver(driver.phone)):
+            return web.json_response({
+                "error": "Ilovaga kirish uchun avval botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
+                "code": "documents_required",
+            }, status=403)
+
         _grant_free_trial_if_eligible(session, driver)
         token = _create_driver_token(driver)
         return web.json_response({

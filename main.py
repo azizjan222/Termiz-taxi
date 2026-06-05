@@ -859,9 +859,22 @@ def _model_keyboard():
 def _save_registered_driver_to_db(uid: int, phone: str, data: dict):
     """Create/update the DB Driver row so the app can authenticate the driver."""
     from app.database import get_session as _gs
+
+    def _norm(p):
+        digits = "".join(ch for ch in (p or "") if ch.isdigit())
+        return ("+" + digits) if digits else ""
+
     session = _gs()
     try:
         d = session.query(DBDriver).filter_by(telegram_id=uid).first()
+        if not d and phone:
+            # Avoid creating a duplicate row (e.g. a synthetic test-driver row keyed by phone)
+            norm = _norm(phone)
+            for existing in session.query(DBDriver).all():
+                if _norm(existing.phone) == norm:
+                    d = existing
+                    d.telegram_id = uid  # relink to the real Telegram id
+                    break
         if not d:
             d = DBDriver(telegram_id=uid, phone=phone or f"tg{uid}")
             session.add(d)
@@ -1010,12 +1023,17 @@ async def reg_first(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def reg_last(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['reg']['last_name'] = (update.message.text or "").strip()
+    txt = (update.message.text or "").strip()
+    if txt == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    context.user_data['reg']['last_name'] = txt
     await update.message.reply_text("4️⃣ JSHSHIR (14 raqamli shaxsiy raqam) ni yozing:")
     return D_PINFL
 
 
 async def reg_pinfl(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if (update.message.text or "").strip() == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
     txt = (update.message.text or "").strip().replace(" ", "")
     if not (txt.isdigit() and len(txt) == 14):
         await update.message.reply_text("❗ JSHSHIR 14 ta raqamdan iborat bo'lishi kerak. Qaytadan yozing:")
@@ -1026,7 +1044,10 @@ async def reg_pinfl(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def reg_carnum(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['reg']['car_number'] = (update.message.text or "").strip().upper()
+    txt = (update.message.text or "").strip()
+    if txt == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    context.user_data['reg']['car_number'] = txt.upper()
     await update.message.reply_text(
         "6️⃣ Mashina modelini tanlang (yoki \"✏️ Boshqa model\" orqali yozing):",
         reply_markup=_model_keyboard())
@@ -1054,6 +1075,8 @@ async def reg_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reg_year(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = (update.message.text or "").strip()
+    if txt == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
     cur = datetime.utcnow().year
     if not (txt.isdigit() and 1980 <= int(txt) <= cur + 1):
         await update.message.reply_text(f"❗ Yilni to'g'ri kiriting (1980-{cur + 1}):")
@@ -1121,7 +1144,18 @@ async def run():
             "⚠️ JWT_SECRET is using the default value. Set a strong, STABLE JWT_SECRET "
             "in the environment so tokens stay valid across restarts."
         )
-    logger.info("🗄  Database: %s", app_config.DATABASE_URL)
+    # Log the DB target WITHOUT credentials (scheme/host only for external DBs).
+    _dburl = app_config.DATABASE_URL
+    if _dburl.startswith("sqlite"):
+        _db_display = _dburl
+    else:
+        try:
+            from urllib.parse import urlsplit
+            _s = urlsplit(_dburl)
+            _db_display = f"{_s.scheme}://***@{_s.hostname or '?'}/{(_s.path or '').lstrip('/')}"
+        except Exception:
+            _db_display = _dburl.split("://", 1)[0] + "://***"
+    logger.info("🗄  Database: %s", _db_display)
 
     # Initialize DB and run migration
     print("🔄 Initializing database...")
