@@ -5,28 +5,51 @@ Per product requirement, the following are intentionally EXCLUDED:
 Matiz, Tico, Jiguli (VAZ/Lada classics), Nexia 1 and Nexia 2.
 """
 
-# Shown as quick-pick buttons at the top of the picker.
+# Shown as quick-pick buttons at the top of the picker (user's preferred local list).
 POPULAR_MODELS = [
     "Gentra",
     "Cobalt",
     "Onix",
-    "Tracker",
-    "Malibu",
-    "Captiva",
+    "Tracker 2",
+    "Malibu 2",
+    "Captiva 3-4",
+    "Deepal S07 285 Max",
     "Monza",
-    "Nexia 3",
-    "Lacetti",
-    "Spark",
+    "Deepal S7 121 Max",
+    "Malibu 1",
     "Aveo",
-    "Damas",
-    "Labo",
-    "Cruze",
-    "Orlando",
-    "Equinox",
+    "BYD E2",
     "Epica",
-    "Traverse",
-    "Tahoe",
-    "Trailblazer",
+    "Equinox",
+    "Haval M6",
+    "Leapmotor C16",
+    "Orlando",
+    "Nexia 3",
+    "Menlo LS Plus",
+    "Zafira",
+    "Savana",
+    "Venture",
+    "Tacuma",
+    "Tracker 1",
+    "Metro",
+    "Lumina",
+    "Cruze",
+    "Captiva 5",
+    "Blazer",
+    "Suburban",
+]
+
+# Broader A-Z list provided by the user (extend with the rest when available).
+ALPHA_MODELS = [
+    "2500", "A1", "A150", "A160", "A170", "A180", "A190", "A2", "A200", "A210",
+    "A3", "A4", "A5", "A6", "A6 Allroad", "A8", "Accent", "Accord", "AD", "Admiral",
+    "Aeolus Huge HEV", "Aeolus L7", "Aeolus Shine GS", "Aerostar", "Agila",
+    "AION HYPER GT", "AION i60", "Aion S Plus", "Aion V", "AION Y", "AIQAR",
+    "Airtrek", "AITO M7", "Alaskan", "Albea", "Alero", "Allegro", "Allex", "Allion",
+    "Allroad Quattro", "Almera", "Almera Tino", "Alpha AS", "Alphard", "Altezza",
+    "Altima", "Amarok", "Amaze", "Amulet", "Antara", "Arcadia", "Arena", "Argenta",
+    "Aristo", "Arkana", "Armada", "Arrizo 5 Plus", "Arrizo 6", "Arrizo 6 Pro",
+    "Arrizo 7", "Arrizo 8", "Ascona", "Aspire", "Astra", "Astro", "ASX", "Atenza", "Atos",
 ]
 
 # Broader standard list (brands common in Uzbekistan + global). Extend freely.
@@ -82,7 +105,7 @@ def get_all_models() -> list[str]:
     """De-duplicated, ordered list of allowed models (popular first)."""
     seen = set()
     result = []
-    for name in POPULAR_MODELS + STANDARD_MODELS:
+    for name in POPULAR_MODELS + STANDARD_MODELS + ALPHA_MODELS:
         key = name.strip().lower()
         if key in seen or _is_excluded(name):
             continue
