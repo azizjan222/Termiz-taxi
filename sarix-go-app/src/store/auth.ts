@@ -32,32 +32,37 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   loadUser: async () => {
-    try {
-      const token = await getAuthToken();
-      if (!token) {
-        set({ user: null, isAuthenticated: false, isLoading: false });
-        return;
-      }
-      const user = await getMe();
-      await SecureStore.setItemAsync(USER_CACHE_KEY, JSON.stringify(user)).catch(() => {});
-      set({ user, isAuthenticated: true, isLoading: false });
-    } catch (e: any) {
-      // Only log the user out when the token is genuinely rejected (401).
-      // Network errors / server restarts must NOT delete a valid token.
-      if (e?.response?.status === 401) {
-        await clearAuthToken();
-        await SecureStore.deleteItemAsync(USER_CACHE_KEY).catch(() => {});
-        set({ user: null, isAuthenticated: false, isLoading: false });
-        return;
-      }
-      // Transient error: stay logged in using the cached user (if any).
-      let cached: User | null = null;
-      try {
-        const raw = await SecureStore.getItemAsync(USER_CACHE_KEY);
-        if (raw) cached = JSON.parse(raw);
-      } catch {}
-      set({ user: cached, isAuthenticated: true, isLoading: false });
+    const token = await getAuthToken();
+    if (!token) {
+      set({ user: null, isAuthenticated: false, isLoading: false });
+      return;
     }
+    // Retry a few times to tolerate transient network/server hiccups.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const user = await getMe();
+        await SecureStore.setItemAsync(USER_CACHE_KEY, JSON.stringify(user)).catch(() => {});
+        set({ user, isAuthenticated: true, isLoading: false });
+        return;
+      } catch (e: any) {
+        if (e?.response?.status === 401) {
+          // Token genuinely rejected -> log out.
+          await clearAuthToken();
+          await SecureStore.deleteItemAsync(USER_CACHE_KEY).catch(() => {});
+          set({ user: null, isAuthenticated: false, isLoading: false });
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+      }
+    }
+    // All retries failed (network/server down). Fall back to the cached user if any.
+    // Keep the token regardless; only mark authenticated when we actually have a user.
+    let cached: User | null = null;
+    try {
+      const raw = await SecureStore.getItemAsync(USER_CACHE_KEY);
+      if (raw) cached = JSON.parse(raw);
+    } catch {}
+    set({ user: cached, isAuthenticated: !!cached, isLoading: false });
   },
 
   logout: async () => {

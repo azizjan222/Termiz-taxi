@@ -89,8 +89,9 @@ def _ensure_test_driver(session, phone: str, telegram_id: int | None = None,
 def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
     """Give the first `FREE_TRIAL_DRIVER_LIMIT` drivers a free month.
 
-    Called at login. Idempotent per driver (only acts when subscription_until is None)
-    and globally capped via a Setting counter so only the first N drivers ever get it.
+    Called at login. Idempotent per driver (only acts when subscription_until is None).
+    The global cap is enforced with an ATOMIC conditional UPDATE on the Setting counter,
+    so concurrent first-logins can't exceed the limit (works on SQLite and Postgres).
     """
     if config.FREE_TRIAL_DRIVER_LIMIT <= 0 or config.FREE_TRIAL_DAYS <= 0:
         return
@@ -98,25 +99,29 @@ def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
     if driver.subscription_until is not None:
         return
 
+    from sqlalchemy import text
     try:
-        setting = session.query(Setting).filter_by(key=_FREE_TRIAL_SETTING_KEY).first()
-        granted = 0
-        if setting and setting.value:
+        # Ensure the counter row exists (best-effort).
+        if not session.query(Setting).filter_by(key=_FREE_TRIAL_SETTING_KEY).first():
             try:
-                granted = int(setting.value)
-            except (TypeError, ValueError):
-                granted = 0
+                session.add(Setting(key=_FREE_TRIAL_SETTING_KEY, value="0"))
+                session.commit()
+            except Exception:
+                session.rollback()
 
-        if granted >= config.FREE_TRIAL_DRIVER_LIMIT:
-            return  # quota exhausted
-
-        driver.subscription_until = datetime.utcnow() + timedelta(days=config.FREE_TRIAL_DAYS)
-        granted += 1
-        if setting:
-            setting.value = str(granted)
-        else:
-            session.add(Setting(key=_FREE_TRIAL_SETTING_KEY, value=str(granted)))
+        # Atomically claim a slot only if we're still under the limit.
+        result = session.execute(
+            text(
+                "UPDATE settings SET value = CAST(value AS INTEGER) + 1 "
+                "WHERE key = :k AND CAST(value AS INTEGER) < :lim"
+            ),
+            {"k": _FREE_TRIAL_SETTING_KEY, "lim": config.FREE_TRIAL_DRIVER_LIMIT},
+        )
         session.commit()
+
+        if (result.rowcount or 0) > 0:
+            driver.subscription_until = datetime.utcnow() + timedelta(days=config.FREE_TRIAL_DAYS)
+            session.commit()
     except Exception:
         session.rollback()
 

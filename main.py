@@ -1007,6 +1007,12 @@ async def reg_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reg_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text == "❌ Bekor qilish":
         return await reg_cancel(update, context)
+    # If the user opened an app-login deep link mid-registration, the shared contact
+    # belongs to that login flow -> hand it off to the app-login handler and end here.
+    if context.user_data.get('tg_auth_token') and update.message.contact:
+        context.user_data.pop('reg', None)
+        await haydovchi_raqamini_saqlash(update, context)
+        return ConversationHandler.END
     phone = update.message.contact.phone_number if update.message.contact else (update.message.text or "").strip()
     context.user_data.setdefault('reg', {})['phone'] = phone
     await update.message.reply_text("2️⃣ Ismingizni yozing:", reply_markup=ReplyKeyboardRemove())
