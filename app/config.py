@@ -40,6 +40,11 @@ def _resolve_database_url() -> str:
     raw = os.getenv("DATABASE_URL", "").strip()
     volume_ok = os.path.isdir(PERSISTENT_DATA_DIR)
 
+    # Railway/Heroku sometimes provide the legacy "postgres://" scheme, but SQLAlchemy 2.x
+    # requires "postgresql://". Normalise it so the connection works out of the box.
+    if raw.startswith("postgres://"):
+        raw = "postgresql://" + raw[len("postgres://"):]
+
     # A real database (Postgres/MySQL/...) is always durable -> honour it as-is.
     if raw and not raw.startswith("sqlite"):
         return raw
@@ -102,6 +107,16 @@ MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 20000)  # Minimum balance to
 # during the trial they do NOT need the minimum balance and pay NO commission per order.
 FREE_TRIAL_DRIVER_LIMIT = _get_int("FREE_TRIAL_DRIVER_LIMIT", 100)
 FREE_TRIAL_DAYS = _get_int("FREE_TRIAL_DAYS", 30)
+
+# Require drivers to submit registration documents (via the bot) before they can use
+# the driver app. They can enter immediately after submitting; admin reviews via PDF.
+REQUIRE_DRIVER_DOCUMENTS = _get("REQUIRE_DRIVER_DOCUMENTS", "true").lower() == "true"
+
+# Test driver phones: these numbers can use the driver app WITHOUT submitting documents
+# and are auto-created on first login (handy for testing). Comma-separated.
+TEST_DRIVER_PHONES = [
+    p.strip() for p in _get("TEST_DRIVER_PHONES", "+998907465161").split(",") if p.strip()
+]
 
 # Support contact
 SUPPORT_TELEGRAM = _get("SUPPORT_TELEGRAM", "termizsariosiyotaxi_bot")

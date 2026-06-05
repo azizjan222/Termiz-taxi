@@ -86,8 +86,17 @@ export default function OrdersScreen() {
     setOnlineLocal(val);
     try {
       await apiSetOnline(val);
-    } catch {
+      // Keep the driver object in sync so other screens see the change.
+      if (driver) {
+        useDriverStore.getState().setDriver({ ...driver, is_online: val });
+      }
+    } catch (e: any) {
       setOnlineLocal(!val);
+      const msg =
+        e?.response?.status === 401
+          ? 'Sessiya muddati tugagan. Iltimos, qaytadan kiring.'
+          : "Holatni o'zgartirib bo'lmadi. Internetni tekshiring.";
+      Alert.alert('Xatolik', msg);
     }
   };
 
@@ -189,7 +198,9 @@ export default function OrdersScreen() {
 
         <View style={styles.cardInfo}>
           <Text style={styles.cardInfoText}>
-            👥 {item.person_count} kishi · {formatPrice(item.price)} so'm
+            {item.service_type === 'parcel'
+              ? '📦 Pochta · Narx: Kelishiladi'
+              : `👥 ${item.person_count} kishi · ${formatPrice(item.price)} so'm`}
           </Text>
           {item.note && (
             <Text style={styles.note} numberOfLines={2}>

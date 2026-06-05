@@ -13,6 +13,11 @@ def _apply_schema_migrations() -> int:
     """Add new columns to existing tables if they don't exist (SQLite ALTER TABLE)."""
     from sqlalchemy import text
 
+    # PRAGMA / ALTER ... ADD COLUMN below are SQLite-specific. On Postgres (or any other
+    # engine) the full schema is created by create_all(), so skip this step entirely.
+    if engine.dialect.name != "sqlite":
+        return 0
+
     migrations = [
         # User new columns
         ("users", "rating", "FLOAT DEFAULT 5.0"),
@@ -31,6 +36,12 @@ def _apply_schema_migrations() -> int:
         ("drivers", "push_token", "VARCHAR(200)"),
         ("drivers", "theme", "VARCHAR(20) DEFAULT 'auto'"),
         ("drivers", "subscription_until", "DATETIME"),
+        ("drivers", "car_year", "VARCHAR(10)"),
+        ("drivers", "pinfl", "VARCHAR(20)"),
+        ("drivers", "license_file_id", "VARCHAR(200)"),
+        ("drivers", "tech_passport_file_id", "VARCHAR(200)"),
+        ("drivers", "car_photo_file_id", "VARCHAR(200)"),
+        ("drivers", "documents_submitted", "BOOLEAN DEFAULT 0"),
     ]
 
     count = 0
@@ -49,6 +60,24 @@ def _apply_schema_migrations() -> int:
                 print(f"  ⚠️  Skipping {table}.{column}: {e}")
 
     return count
+
+
+def _grandfather_existing_drivers():
+    """One-time backfill: mark all pre-existing drivers as documents_submitted=True so the
+    new documents gate does not lock out the current driver base. Guarded by a Setting flag,
+    so it runs only once; drivers created afterwards must go through the new registration."""
+    try:
+        with DbContext() as session:
+            flag = session.query(Setting).filter_by(key="docs_backfill_done").first()
+            if flag:
+                return
+            session.query(Driver).update(
+                {Driver.documents_submitted: True}, synchronize_session=False
+            )
+            session.add(Setting(key="docs_backfill_done", value="1"))
+            print("  \u2713 Grandfathered existing drivers (documents_submitted=True)")
+    except Exception as e:
+        print(f"  \u26a0\ufe0f  docs backfill skipped: {e}")
 
 
 def parse_legacy_datetime(value) -> "datetime | None":
@@ -78,6 +107,9 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
 
     # Apply schema migrations for existing DB
     counts["schema_updated"] = _apply_schema_migrations()
+
+    # One-time grandfather of existing drivers so the documents gate doesn't lock them out
+    _grandfather_existing_drivers()
 
     if not os.path.exists(json_path):
         # Try local path as fallback

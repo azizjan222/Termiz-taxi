@@ -30,6 +30,8 @@ from app.api.server import start_api_server
 from app.api.websocket import ws_manager
 from app.migrate import run_migration
 from app.models import Driver as DBDriver, User as DBUser, Order as DBOrder, OrderHistory as DBHistory
+from app import car_models
+from app.services.driver_pdf import build_driver_pdf
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +49,10 @@ DB_FILE = "/data/taksi_baza.json" if os.path.exists("/data") else "./data/taksi_
 KUTISH_VAQTI = app_config.WAIT_MINUTES
 OGOHLANTIRISH_VAQTI = app_config.WARN_MINUTES
 ISM, TELEFON, QAYERDAN, QAYERGA, ODAM_SONI, VAQT = range(6)
+# Driver registration conversation states
+(D_PHONE, D_FIRST, D_LAST, D_PINFL, D_CARNUM, D_MODEL,
+ D_YEAR, D_TECHPASS, D_CARPHOTO, D_LICENSE) = range(100, 110)
+REQUIRE_DRIVER_DOCUMENTS = app_config.REQUIRE_DRIVER_DOCUMENTS
 
 # ================== 📂 XOTIRA VA BAZA ==================
 haydovchilar = {}
@@ -54,6 +60,7 @@ balanslar = {}
 yolovchilar = set()
 zakaslar = {}
 faol_zakaslar = {}
+haydovchi_hujjatlar = {}  # telegram_id -> {first_name,last_name,pinfl,car_number,car_model,car_year,license_file_id,tech_passport_file_id,car_photo_file_id}
 
 stat_zakaslar = 0
 stat_cheklar = 0
@@ -69,6 +76,7 @@ maintenance_mode = False
 def load_data():
     global haydovchilar, balanslar, yolovchilar, stat_zakaslar, stat_cheklar, zakas_raqami
     global zakaslar_tarixi, bekor_tarixi, birinchi_tolov_qilganlar, banned_users, maintenance_mode
+    global haydovchi_hujjatlar
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r") as f:
@@ -76,6 +84,7 @@ def load_data():
                 haydovchilar.update({int(k): v for k, v in d.get("haydovchilar", {}).items()})
                 balanslar.update({int(k): v for k, v in d.get("balanslar", {}).items()})
                 yolovchilar.update([int(i) for i in d.get("yolovchilar", [])])
+                haydovchi_hujjatlar.update({int(k): v for k, v in d.get("haydovchi_hujjatlar", {}).items()})
                 stat_zakaslar = d.get("stat_zakaslar", 0)
                 stat_cheklar = d.get("stat_cheklar", 0)
                 zakas_raqami = d.get("zakas_raqami", 0)
@@ -93,6 +102,7 @@ def save_data():
         "haydovchilar": haydovchilar,
         "balanslar": balanslar,
         "yolovchilar": list(yolovchilar),
+        "haydovchi_hujjatlar": {str(k): v for k, v in haydovchi_hujjatlar.items()},
         "stat_zakaslar": stat_zakaslar,
         "stat_cheklar": stat_cheklar,
         "zakas_raqami": zakas_raqami,
@@ -835,6 +845,303 @@ async def notify_drivers_about_new_app_order(order):
         logger.error(f"Failed to notify drivers about app order: {e}")
 
 
+# ================== HAYDOVCHI RO'YXATDAN O'TISH (HUJJATLAR) ==================
+def _model_keyboard():
+    pop = car_models.get_popular_models()
+    rows = []
+    for i in range(0, len(pop), 2):
+        rows.append([KeyboardButton(m) for m in pop[i:i + 2]])
+    rows.append([KeyboardButton("✏️ Boshqa model")])
+    rows.append([KeyboardButton("❌ Bekor qilish")])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=True)
+
+
+def _save_registered_driver_to_db(uid: int, phone: str, data: dict):
+    """Create/update the DB Driver row so the app can authenticate the driver."""
+    from app.database import get_session as _gs
+
+    def _norm(p):
+        digits = "".join(ch for ch in (p or "") if ch.isdigit())
+        return ("+" + digits) if digits else ""
+
+    session = _gs()
+    try:
+        d = session.query(DBDriver).filter_by(telegram_id=uid).first()
+        if not d and phone:
+            # Avoid creating a duplicate row (e.g. a synthetic test-driver row keyed by phone)
+            norm = _norm(phone)
+            for existing in session.query(DBDriver).all():
+                if _norm(existing.phone) == norm:
+                    d = existing
+                    d.telegram_id = uid  # relink to the real Telegram id
+                    break
+        if not d:
+            d = DBDriver(telegram_id=uid, phone=phone or f"tg{uid}")
+            session.add(d)
+        if phone:
+            d.phone = phone
+        d.first_name = data.get('first_name')
+        d.last_name = data.get('last_name')
+        d.pinfl = data.get('pinfl')
+        d.car_number = data.get('car_number')
+        d.car_model = data.get('car_model')
+        d.car_year = data.get('car_year')
+        d.license_file_id = data.get('license_file_id')
+        d.tech_passport_file_id = data.get('tech_passport_file_id')
+        d.car_photo_file_id = data.get('car_photo_file_id')
+        d.documents_submitted = True
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Driver DB save error: {e}")
+    finally:
+        session.close()
+
+
+async def _notify_admin_new_driver(bot, uid: int, phone: str, data: dict):
+    caption = (
+        "🆕 <b>Yangi haydovchi ro'yxatdan o'tdi</b>\n\n"
+        f"👤 {data.get('first_name','')} {data.get('last_name','')}\n"
+        f"🆔 JSHSHIR: <code>{data.get('pinfl','')}</code>\n"
+        f"📞 {phone}\n"
+        f"🚗 {data.get('car_model','')} · {data.get('car_number','')} · {data.get('car_year','')}\n"
+        f"TG ID: <code>{uid}</code>"
+    )
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("📄 PDF yuklab olish", callback_data=f"drvpdf_{uid}")]])
+    try:
+        await bot.send_message(ADMIN_ID, caption, parse_mode='HTML', reply_markup=kb)
+    except Exception as e:
+        logger.error(f"Admin new-driver notify error: {e}")
+
+
+async def _send_driver_pdf(bot, chat_id: int, uid: int):
+    data = dict(haydovchi_hujjatlar.get(uid, {}))
+    data['telegram_id'] = uid
+    data.setdefault('phone', haydovchilar.get(uid))
+    # Fallback to DB if in-memory docs are missing
+    if not data.get('license_file_id'):
+        try:
+            from app.database import get_session as _gs
+            s = _gs()
+            try:
+                d = s.query(DBDriver).filter_by(telegram_id=uid).first()
+                if d:
+                    data.update({
+                        'first_name': d.first_name, 'last_name': d.last_name,
+                        'pinfl': d.pinfl, 'phone': d.phone, 'car_model': d.car_model,
+                        'car_number': d.car_number, 'car_year': d.car_year,
+                        'license_file_id': d.license_file_id,
+                        'tech_passport_file_id': d.tech_passport_file_id,
+                        'car_photo_file_id': d.car_photo_file_id,
+                    })
+            finally:
+                s.close()
+        except Exception as e:
+            logger.error(f"PDF DB fallback error: {e}")
+    try:
+        pdf_bytes = await build_driver_pdf(bot, data)
+        bio = io.BytesIO(pdf_bytes)
+        bio.name = f"haydovchi_{uid}.pdf"
+        await bot.send_document(chat_id, document=bio, filename=f"haydovchi_{uid}.pdf",
+                                caption=f"📄 Haydovchi hujjatlari (TG: {uid})")
+    except Exception as e:
+        logger.error(f"PDF generate error: {e}")
+        await bot.send_message(chat_id, f"❌ PDF yaratishda xatolik: {e}")
+
+
+async def driver_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if update.effective_user.id != ADMIN_ID:
+        await query.answer("Faqat admin uchun", show_alert=True)
+        return
+    await query.answer("PDF tayyorlanmoqda...")
+    uid = int(query.data.split("_")[1])
+    await _send_driver_pdf(context.bot, ADMIN_ID, uid)
+
+
+async def cmd_hujjat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    args = context.args
+    if not args:
+        await update.message.reply_text("Foydalanish: /hujjat <telegram_id yoki telefon>")
+        return
+    ident = args[0]
+    uid = None
+    if ident.isdigit() and (int(ident) in haydovchi_hujjatlar or int(ident) in haydovchilar):
+        uid = int(ident)
+    else:
+        toza = ident.replace("+", "").replace(" ", "")
+        for k, tel in haydovchilar.items():
+            if str(tel).replace("+", "").replace(" ", "") == toza:
+                uid = k
+                break
+    if not uid:
+        await update.message.reply_text("❌ Haydovchi topilmadi.")
+        return
+    await _send_driver_pdf(context.bot, ADMIN_ID, uid)
+
+
+async def reg_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop('reg', None)
+    await update.message.reply_text("❌ Ro'yxatdan o'tish bekor qilindi.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
+
+async def reg_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_access(update, context):
+        return ConversationHandler.END
+    context.user_data['reg'] = {}
+    tugma = ReplyKeyboardMarkup(
+        [[KeyboardButton("📞 Telefon raqamni yuborish", request_contact=True)],
+         [KeyboardButton("❌ Bekor qilish")]],
+        resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text(
+        "👨‍✈️ <b>Haydovchi ro'yxatdan o'tish</b>\n\n"
+        "Bir necha qadam: ism, familiya, JSHSHIR, mashina ma'lumotlari va hujjat suratlari.\n\n"
+        "1️⃣ Telefon raqamingizni yuboring:",
+        parse_mode='HTML', reply_markup=tugma)
+    return D_PHONE
+
+
+async def reg_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    # If the user opened an app-login deep link mid-registration, the shared contact
+    # belongs to that login flow -> hand it off to the app-login handler and end here.
+    if context.user_data.get('tg_auth_token') and update.message.contact:
+        context.user_data.pop('reg', None)
+        await haydovchi_raqamini_saqlash(update, context)
+        return ConversationHandler.END
+    phone = update.message.contact.phone_number if update.message.contact else (update.message.text or "").strip()
+    context.user_data.setdefault('reg', {})['phone'] = phone
+    await update.message.reply_text("2️⃣ Ismingizni yozing:", reply_markup=ReplyKeyboardRemove())
+    return D_FIRST
+
+
+async def reg_first(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    txt = (update.message.text or "").strip()
+    if txt == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    context.user_data['reg']['first_name'] = txt
+    await update.message.reply_text("3️⃣ Familiyangizni yozing:")
+    return D_LAST
+
+
+async def reg_last(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    txt = (update.message.text or "").strip()
+    if txt == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    context.user_data['reg']['last_name'] = txt
+    await update.message.reply_text("4️⃣ JSHSHIR (14 raqamli shaxsiy raqam) ni yozing:")
+    return D_PINFL
+
+
+async def reg_pinfl(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if (update.message.text or "").strip() == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    txt = (update.message.text or "").strip().replace(" ", "")
+    if not (txt.isdigit() and len(txt) == 14):
+        await update.message.reply_text("❗ JSHSHIR 14 ta raqamdan iborat bo'lishi kerak. Qaytadan yozing:")
+        return D_PINFL
+    context.user_data['reg']['pinfl'] = txt
+    await update.message.reply_text("5️⃣ Mashina davlat raqamini yozing (masalan: 90A123BC):")
+    return D_CARNUM
+
+
+async def reg_carnum(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    txt = (update.message.text or "").strip()
+    if txt == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    context.user_data['reg']['car_number'] = txt.upper()
+    await update.message.reply_text(
+        "6️⃣ Mashina modelini tanlang (yoki \"✏️ Boshqa model\" orqali yozing):",
+        reply_markup=_model_keyboard())
+    return D_MODEL
+
+
+async def reg_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    txt = (update.message.text or "").strip()
+    if txt == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    if txt == "✏️ Boshqa model":
+        await update.message.reply_text("✍️ Mashina modelini yozing:", reply_markup=ReplyKeyboardRemove())
+        return D_MODEL
+    if not car_models.is_valid_model(txt):
+        await update.message.reply_text(
+            "❗ Bu model qabul qilinmaydi (Matiz, Jiguli, Nexia 1-2 mumkin emas).\n"
+            "Boshqa modelni tanlang yoki yozing:")
+        return D_MODEL
+    context.user_data['reg']['car_model'] = txt
+    await update.message.reply_text(
+        "7️⃣ Mashina ishlab chiqarilgan yilini yozing (masalan: 2018):",
+        reply_markup=ReplyKeyboardRemove())
+    return D_YEAR
+
+
+async def reg_year(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    txt = (update.message.text or "").strip()
+    if txt == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    cur = datetime.utcnow().year
+    if not (txt.isdigit() and 1980 <= int(txt) <= cur + 1):
+        await update.message.reply_text(f"❗ Yilni to'g'ri kiriting (1980-{cur + 1}):")
+        return D_YEAR
+    context.user_data['reg']['car_year'] = txt
+    await update.message.reply_text("8️⃣ Texnik pasport (texpasport) suratini yuboring 📄:")
+    return D_TECHPASS
+
+
+async def reg_techpass(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    if not update.message.photo:
+        await update.message.reply_text("❗ Iltimos, texpasport suratini rasm sifatida yuboring:")
+        return D_TECHPASS
+    context.user_data['reg']['tech_passport_file_id'] = update.message.photo[-1].file_id
+    await update.message.reply_text("9️⃣ Mashina fotosuratini yuboring 🚗:")
+    return D_CARPHOTO
+
+
+async def reg_carphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    if not update.message.photo:
+        await update.message.reply_text("❗ Iltimos, mashina suratini yuboring:")
+        return D_CARPHOTO
+    context.user_data['reg']['car_photo_file_id'] = update.message.photo[-1].file_id
+    await update.message.reply_text("🔟 Haydovchilik guvohnomasi suratini yuboring 🪪:")
+    return D_LICENSE
+
+
+async def reg_license(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == "❌ Bekor qilish":
+        return await reg_cancel(update, context)
+    if not update.message.photo:
+        await update.message.reply_text("❗ Iltimos, guvohnoma suratini yuboring:")
+        return D_LICENSE
+    uid = update.effective_user.id
+    reg = context.user_data.get('reg', {})
+    reg['license_file_id'] = update.message.photo[-1].file_id
+    phone = reg.get('phone') or haydovchilar.get(uid)
+
+    haydovchilar[uid] = phone
+    if uid not in balanslar:
+        balanslar[uid] = 0
+    haydovchi_hujjatlar[uid] = reg
+    save_data()
+    _save_registered_driver_to_db(uid, phone, reg)
+    context.user_data.pop('reg', None)
+
+    await update.message.reply_text(
+        "✅ <b>Ro'yxatdan o'tdingiz!</b>\n\n"
+        "Endi haydovchi ilovasiga kirishingiz mumkin. 📱\n"
+        "Hujjatlaringiz administrator tomonidan tekshiriladi.",
+        parse_mode='HTML', reply_markup=ReplyKeyboardRemove())
+    await _notify_admin_new_driver(context.bot, uid, phone, reg)
+    return ConversationHandler.END
+
+
 # ================== MAIN ==================
 async def run():
     # Security/persistence sanity checks (helps diagnose "logged out" / 401 issues)
@@ -843,7 +1150,18 @@ async def run():
             "⚠️ JWT_SECRET is using the default value. Set a strong, STABLE JWT_SECRET "
             "in the environment so tokens stay valid across restarts."
         )
-    logger.info("🗄  Database: %s", app_config.DATABASE_URL)
+    # Log the DB target WITHOUT credentials (scheme/host only for external DBs).
+    _dburl = app_config.DATABASE_URL
+    if _dburl.startswith("sqlite"):
+        _db_display = _dburl
+    else:
+        try:
+            from urllib.parse import urlsplit
+            _s = urlsplit(_dburl)
+            _db_display = f"{_s.scheme}://***@{_s.hostname or '?'}/{(_s.path or '').lstrip('/')}"
+        except Exception:
+            _db_display = _dburl.split("://", 1)[0] + "://***"
+    logger.info("🗄  Database: %s", _db_display)
 
     # Initialize DB and run migration
     print("🔄 Initializing database...")
@@ -901,8 +1219,30 @@ async def run():
     app.add_handler(CommandHandler("admin_help", admcmd.cmd_admin_help))
     app.add_handler(CallbackQueryHandler(admcmd.admin_callback, pattern="^adm_"))
 
+    driver_reg_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^👨‍✈️ Haydovchi bo'lish$"), reg_start)],
+        states={
+            D_PHONE: [MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), reg_phone)],
+            D_FIRST: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_first)],
+            D_LAST: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_last)],
+            D_PINFL: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_pinfl)],
+            D_CARNUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_carnum)],
+            D_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_model)],
+            D_YEAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_year)],
+            D_TECHPASS: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), reg_techpass)],
+            D_CARPHOTO: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), reg_carphoto)],
+            D_LICENSE: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), reg_license)],
+        },
+        fallbacks=[
+            CommandHandler("cancel", reg_cancel),
+            MessageHandler(filters.Regex("^❌ Bekor qilish$"), reg_cancel),
+        ],
+        name="driver_registration",
+    )
+
     app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(filters.Regex("^👨‍✈️ Haydovchi bo'lish$"), haydovchi_bolish))
+    app.add_handler(driver_reg_handler)
+    app.add_handler(CommandHandler("hujjat", cmd_hujjat))
     app.add_handler(MessageHandler(filters.CONTACT, haydovchi_raqamini_saqlash))
     app.add_handler(MessageHandler(filters.ChatType.GROUPS & ~filters.COMMAND, guruhda_avtomatik_javob))
     app.add_handler(MessageHandler(
@@ -914,6 +1254,7 @@ async def run():
     app.add_handler(CallbackQueryHandler(hisob_toldirish_tugmasi, pattern="^hisob_toldirish$"))
     app.add_handler(CallbackQueryHandler(summa_tanlash, pattern="^summatanla_"))
     app.add_handler(CallbackQueryHandler(admin_tasdiqlash, pattern="^(tasdiq|rad)_"))
+    app.add_handler(CallbackQueryHandler(driver_pdf_callback, pattern="^drvpdf_"))
     app.add_handler(CallbackQueryHandler(zakas_amallari, pattern="^(yopish|hbekor|ybekor)_"))
     app.add_handler(CallbackQueryHandler(admin_stat_tugmalari, pattern="^stat_"))
     app.job_queue.run_repeating(guruhga_eslatma_xabar, interval=21600, first=10)

@@ -6,6 +6,8 @@
 import Constants from 'expo-constants';
 
 const GEOCODER_KEY =
+  process.env.EXPO_PUBLIC_YANDEX_GEOCODER_KEY ||
+  (Constants.expoConfig?.extra as any)?.yandexGeocoderKey ||
   process.env.EXPO_PUBLIC_YANDEX_MAPS_KEY ||
   (Constants.expoConfig?.extra as any)?.yandexMapsApiKey ||
   '';

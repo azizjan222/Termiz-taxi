@@ -33,11 +33,65 @@ def driver_can_accept(driver: Driver, now: datetime | None = None) -> bool:
     return (driver.balance or 0) >= config.MIN_DRIVER_BALANCE
 
 
+def _norm_phone(phone: str | None) -> str:
+    """Normalize a phone to '+<digits>' for comparison."""
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    return ("+" + digits) if digits else ""
+
+
+def _is_test_driver(phone: str | None) -> bool:
+    """Whitelisted test phone -> can use the app without documents."""
+    if not phone:
+        return False
+    target = _norm_phone(phone)
+    return any(_norm_phone(p) == target for p in config.TEST_DRIVER_PHONES)
+
+
+def _ensure_test_driver(session, phone: str, telegram_id: int | None = None,
+                        first_name: str = "") -> Driver | None:
+    """Find or create a Driver row for a whitelisted test phone (no documents needed)."""
+    norm = _norm_phone(phone)
+    driver = None
+    if telegram_id:
+        driver = session.query(Driver).filter_by(telegram_id=telegram_id).first()
+    if not driver:
+        for d in session.query(Driver).all():
+            if _norm_phone(d.phone) == norm:
+                driver = d
+                break
+    if not driver:
+        # telegram_id is required & unique; fall back to the phone digits if absent.
+        tg = telegram_id or int(norm.lstrip("+") or "0")
+        driver = Driver(
+            telegram_id=tg,
+            phone=norm,
+            first_name=first_name or "Test",
+            documents_submitted=True,
+            is_verified=True,
+        )
+        session.add(driver)
+        session.commit()
+        session.refresh(driver)
+    else:
+        changed = False
+        if not driver.documents_submitted:
+            driver.documents_submitted = True
+            changed = True
+        if telegram_id and not driver.telegram_id:
+            driver.telegram_id = telegram_id
+            changed = True
+        if changed:
+            session.commit()
+            session.refresh(driver)
+    return driver
+
+
 def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
     """Give the first `FREE_TRIAL_DRIVER_LIMIT` drivers a free month.
 
-    Called at login. Idempotent per driver (only acts when subscription_until is None)
-    and globally capped via a Setting counter so only the first N drivers ever get it.
+    Called at login. Idempotent per driver (only acts when subscription_until is None).
+    The global cap is enforced with an ATOMIC conditional UPDATE on the Setting counter,
+    so concurrent first-logins can't exceed the limit (works on SQLite and Postgres).
     """
     if config.FREE_TRIAL_DRIVER_LIMIT <= 0 or config.FREE_TRIAL_DAYS <= 0:
         return
@@ -45,25 +99,29 @@ def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
     if driver.subscription_until is not None:
         return
 
+    from sqlalchemy import text
     try:
-        setting = session.query(Setting).filter_by(key=_FREE_TRIAL_SETTING_KEY).first()
-        granted = 0
-        if setting and setting.value:
+        # Ensure the counter row exists (best-effort).
+        if not session.query(Setting).filter_by(key=_FREE_TRIAL_SETTING_KEY).first():
             try:
-                granted = int(setting.value)
-            except (TypeError, ValueError):
-                granted = 0
+                session.add(Setting(key=_FREE_TRIAL_SETTING_KEY, value="0"))
+                session.commit()
+            except Exception:
+                session.rollback()
 
-        if granted >= config.FREE_TRIAL_DRIVER_LIMIT:
-            return  # quota exhausted
-
-        driver.subscription_until = datetime.utcnow() + timedelta(days=config.FREE_TRIAL_DAYS)
-        granted += 1
-        if setting:
-            setting.value = str(granted)
-        else:
-            session.add(Setting(key=_FREE_TRIAL_SETTING_KEY, value=str(granted)))
+        # Atomically claim a slot only if we're still under the limit.
+        result = session.execute(
+            text(
+                "UPDATE settings SET value = CAST(value AS INTEGER) + 1 "
+                "WHERE key = :k AND CAST(value AS INTEGER) < :lim"
+            ),
+            {"k": _FREE_TRIAL_SETTING_KEY, "lim": config.FREE_TRIAL_DRIVER_LIMIT},
+        )
         session.commit()
+
+        if (result.rowcount or 0) > 0:
+            driver.subscription_until = datetime.utcnow() + timedelta(days=config.FREE_TRIAL_DAYS)
+            session.commit()
     except Exception:
         session.rollback()
 
@@ -149,6 +207,13 @@ async def driver_login(request: web.Request) -> web.Response:
         if driver.is_blocked:
             return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
 
+        if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
+                and not _is_test_driver(driver.phone)):
+            return web.json_response({
+                "error": "Ilovaga kirish uchun avval botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
+                "code": "documents_required",
+            }, status=403)
+
         _grant_free_trial_if_eligible(session, driver)
         token = _create_driver_token(driver)
         return web.json_response({
@@ -189,6 +254,9 @@ async def driver_request_otp(request: web.Request) -> web.Response:
         driver = session.query(Driver).filter(
             Driver.phone.in_([phone, phone.lstrip("+"), "+" + phone.lstrip("+")])
         ).first()
+
+        if not driver and _is_test_driver(phone):
+            driver = _ensure_test_driver(session, phone)
 
         if not driver:
             return web.json_response({
@@ -248,6 +316,9 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
             Driver.phone.in_([phone, phone.lstrip("+"), "+" + phone.lstrip("+")])
         ).first()
 
+        if not driver and _is_test_driver(phone):
+            driver = _ensure_test_driver(session, phone)
+
         if not driver:
             return web.json_response(
                 {"error": "Haydovchi topilmadi. Botga /start yuboring"},
@@ -255,6 +326,13 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
             )
         if driver.is_blocked:
             return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
+
+        if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
+                and not _is_test_driver(driver.phone)):
+            return web.json_response({
+                "error": "Ilovaga kirish uchun avval botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
+                "code": "documents_required",
+            }, status=403)
 
         from datetime import datetime
         driver.last_active = datetime.utcnow()
@@ -286,6 +364,8 @@ def _serialize_driver(d: Driver) -> dict:
         "rating": d.rating,
         "total_orders": d.total_orders,
         "is_online": d.is_online,
+        "documents_submitted": bool(d.documents_submitted),
+        "is_verified": bool(d.is_verified),
         "subscription_until": d.subscription_until.isoformat() if d.subscription_until else None,
         "has_active_subscription": _subscription_active(d),
         "subscription_days_left": _subscription_days_left(d),
@@ -681,6 +761,9 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
                     driver = d
                     break
 
+        if not driver and phone and _is_test_driver(phone):
+            driver = _ensure_test_driver(db, phone, telegram_id=tg_id, first_name=sess.first_name or "")
+
         if not driver:
             return web.json_response({
                 "status": "not_registered",
@@ -688,6 +771,14 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
             })
         if driver.is_blocked:
             return web.json_response({"status": "blocked", "message": "Akkauntingiz bloklangan"})
+
+        if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
+                and not _is_test_driver(driver.phone)):
+            return web.json_response({
+                "status": "documents_required",
+                "message": "Ilovaga kirish uchun botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
+                "bot_username": _cfg.BOT_USERNAME,
+            })
 
         # Link telegram_id if missing
         if tg_id and not driver.telegram_id:

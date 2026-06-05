@@ -40,40 +40,45 @@ export const useDriverStore = create<DriverState>((set) => ({
   setOnline: (online) => set({ isOnline: online }),
 
   loadDriver: async () => {
-    try {
-      const token = await getAuthToken();
-      if (!token) {
-        set({ driver: null, isAuthenticated: false, isLoading: false });
-        return;
-      }
-      const driver = await getMe();
-      await SecureStore.setItemAsync(DRIVER_CACHE_KEY, JSON.stringify(driver)).catch(() => {});
-      set({
-        driver,
-        isAuthenticated: true,
-        isOnline: driver.is_online,
-        isLoading: false,
-      });
-    } catch (e: any) {
-      // Only log out on a real 401. Network errors / server restarts keep the session.
-      if (e?.response?.status === 401) {
-        await clearAuthToken();
-        await SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
-        set({ driver: null, isAuthenticated: false, isLoading: false });
-        return;
-      }
-      let cached: Driver | null = null;
-      try {
-        const raw = await SecureStore.getItemAsync(DRIVER_CACHE_KEY);
-        if (raw) cached = JSON.parse(raw);
-      } catch {}
-      set({
-        driver: cached,
-        isAuthenticated: true,
-        isOnline: cached?.is_online || false,
-        isLoading: false,
-      });
+    const token = await getAuthToken();
+    if (!token) {
+      set({ driver: null, isAuthenticated: false, isLoading: false });
+      return;
     }
+    // Retry a few times to tolerate transient network/server hiccups.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const driver = await getMe();
+        await SecureStore.setItemAsync(DRIVER_CACHE_KEY, JSON.stringify(driver)).catch(() => {});
+        set({
+          driver,
+          isAuthenticated: true,
+          isOnline: driver.is_online,
+          isLoading: false,
+        });
+        return;
+      } catch (e: any) {
+        if (e?.response?.status === 401) {
+          await clearAuthToken();
+          await SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
+          set({ driver: null, isAuthenticated: false, isLoading: false });
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+      }
+    }
+    // All retries failed: fall back to cache. Keep token; authenticated only if we have a driver.
+    let cached: Driver | null = null;
+    try {
+      const raw = await SecureStore.getItemAsync(DRIVER_CACHE_KEY);
+      if (raw) cached = JSON.parse(raw);
+    } catch {}
+    set({
+      driver: cached,
+      isAuthenticated: !!cached,
+      isOnline: cached?.is_online || false,
+      isLoading: false,
+    });
   },
 
   logout: async () => {
