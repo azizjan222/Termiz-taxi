@@ -140,10 +140,8 @@ export default function TariffScreen() {
           ) : isParcel && parcelQuote ? (
             <>
               <Text style={styles.tariffName}>{t('tariff.parcel')}</Text>
-              <Text style={styles.tariffPrice}>
-                {formatPrice(parcelQuote.price)} so'm
-              </Text>
-              <Text style={styles.tariffHint}>{t('tariff.parcelHint')}</Text>
+              <Text style={styles.tariffPrice}>Kelishiladi</Text>
+              <Text style={styles.tariffHint}>Pochta narxi haydovchi bilan kelishiladi</Text>
             </>
           ) : (
             <Text style={styles.tariffHint}>{t('common.loading')}</Text>
@@ -255,7 +253,7 @@ export default function TariffScreen() {
         <View style={styles.footerInfo}>
           <Text style={styles.footerLabel}>{t('order.price')}</Text>
           <Text style={styles.footerPrice}>
-            {formatPrice(getCurrentPrice())} so'm
+            {isParcel ? 'Kelishiladi' : `${formatPrice(getCurrentPrice())} so'm`}
           </Text>
         </View>
         <Button

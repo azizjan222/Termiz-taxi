@@ -20,6 +20,7 @@ export interface PriceQuote {
   price: number;
   commission: number;
   price_per_person: number;
+  negotiable?: boolean;
 }
 
 export interface Order {

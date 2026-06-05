@@ -64,8 +64,11 @@ def _calc_price_and_commission(
         return 0, 0, f"Yo'nalish topilmadi: {from_city} → {to_city}"
 
     if service_type == "parcel":
-        price = route.parcel_price
-    elif service_type == "full_car":
+        # Parcel price is negotiated directly between the passenger and the driver.
+        # price=0 means "to be agreed (Kelishiladi)". The driver pays a flat parcel commission.
+        return 0, config.COMMISSION_PARCEL, None
+
+    if service_type == "full_car":
         price = route.full_car_price
     else:
         persons = max(1, min(person_count, 10))

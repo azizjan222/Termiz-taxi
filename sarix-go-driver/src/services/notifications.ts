@@ -1,18 +1,24 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import Constants from 'expo-constants';
 
 import { api } from '../api/client';
 
+// When the app is OPEN (foreground), don't show a system pop-up — the order already
+// appears in-app (via WebSocket). When the app is in the BACKGROUND/closed, the OS
+// shows the push as a pop-up automatically.
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async () => {
+    const inForeground = AppState.currentState === 'active';
+    return {
+      shouldShowAlert: !inForeground,
+      shouldPlaySound: !inForeground,
+      shouldSetBadge: true,
+      shouldShowBanner: !inForeground,
+      shouldShowList: true,
+    };
+  },
 });
 
 export async function setupNotificationChannels() {

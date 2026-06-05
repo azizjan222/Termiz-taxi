@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Button } from '../src/components/Button';
 import { Input } from '../src/components/Input';
-import { createOrder } from '../src/api/orders';
+import { createOrder, getPriceQuote, type PriceQuote } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
 import { colors, typography, spacing, radius } from '../src/theme';
 
@@ -22,9 +22,39 @@ export default function ConfirmOrderScreen() {
   const orderStore = useOrderStore();
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState('');
+  const [quote, setQuote] = useState<PriceQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(true);
 
   const formatPrice = (p: number) =>
     p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+  // Fetch the REAL price from the backend (no hardcoded placeholder).
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!orderStore.fromCity || !orderStore.toCity) return;
+      setQuoteLoading(true);
+      try {
+        const q = await getPriceQuote(
+          orderStore.fromCity,
+          orderStore.toCity,
+          orderStore.serviceType,
+          orderStore.personCount
+        );
+        if (active) setQuote(q);
+      } catch {
+        if (active) setQuote(null);
+      } finally {
+        if (active) setQuoteLoading(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [orderStore.fromCity, orderStore.toCity, orderStore.serviceType, orderStore.personCount]);
+
+  const isParcel = orderStore.serviceType === 'parcel';
 
   const handleConfirm = async () => {
     if (!orderStore.fromCity || !orderStore.toCity) return;
@@ -70,14 +100,14 @@ export default function ConfirmOrderScreen() {
     }
   };
 
-  // Calculate display price (rough; backend will validate)
-  const baseFromQuote = 90000; // placeholder, actual price calc done backend
-  const displayPrice =
-    orderStore.serviceType === 'parcel'
-      ? 30000
-      : orderStore.serviceType === 'full_car'
-      ? 400000
-      : baseFromQuote * orderStore.personCount;
+  // Real price from backend. Parcel price is negotiated with the driver -> "Kelishiladi".
+  const priceText = quoteLoading
+    ? '...'
+    : isParcel
+    ? 'Kelishiladi'
+    : quote
+    ? `${formatPrice(quote.price)} so'm`
+    : '—';
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -155,8 +185,11 @@ export default function ConfirmOrderScreen() {
         <View style={styles.footerInfo}>
           <Text style={styles.footerLabel}>{t('order.price')}</Text>
           <Text style={styles.footerPrice}>
-            {formatPrice(displayPrice)} so'm
+            {priceText}
           </Text>
+          {isParcel && (
+            <Text style={styles.negotiableHint}>Pochta narxi haydovchi bilan kelishiladi</Text>
+          )}
         </View>
         <Button
           title={t('order.confirm')}
@@ -224,4 +257,5 @@ const styles = StyleSheet.create({
   footerInfo: {},
   footerLabel: { ...typography.caption, color: colors.textSecondary },
   footerPrice: { ...typography.h2, color: colors.primary },
+  negotiableHint: { ...typography.small, color: colors.textSecondary, maxWidth: 160 },
 });

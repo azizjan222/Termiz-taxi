@@ -74,14 +74,18 @@ async def get_route_price(request: web.Request) -> web.Response:
             )
 
         if service == "parcel":
-            price = route.parcel_price
+            # Parcel price is agreed between passenger and driver -> 0 = "Kelishiladi".
+            price = 0
             commission = config.COMMISSION_PARCEL
+            negotiable = True
         elif service == "full_car":
             price = route.full_car_price
-            commission = config.COMMISSION_FULL_CAR
+            commission = int(round(price * config.COMMISSION_PERCENT / 100.0))
+            negotiable = False
         else:  # taxi
             price = route.price_per_person * persons
-            commission = config.COMMISSION_PER_PERSON * persons
+            commission = int(round(price * config.COMMISSION_PERCENT / 100.0))
+            negotiable = False
 
         return web.json_response({
             "from_city": route.from_city,
@@ -91,6 +95,7 @@ async def get_route_price(request: web.Request) -> web.Response:
             "price": price,
             "commission": commission,
             "price_per_person": route.price_per_person,
+            "negotiable": negotiable,
         })
     finally:
         session.close()
