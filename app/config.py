@@ -25,7 +25,43 @@ ADMIN_ID = _get_int("ADMIN_ID", 0)
 DRIVERS_GROUP_ID = _get_int("DRIVERS_GROUP_ID", 0)
 
 # Database
-DATABASE_URL = _get("DATABASE_URL", "sqlite:///./data/sarixgo.db")
+# IMPORTANT (Railway / container hosting):
+# Only a *mounted volume* survives restarts & redeploys. The volume is usually mounted
+# at /data. A relative sqlite path like "sqlite:///./data/sarixgo.db" lives on the
+# ephemeral container filesystem and is WIPED on every restart. When that happens the
+# passenger `users` table is emptied, JWT tokens point at users that no longer exist,
+# the API returns 401 "Avtorizatsiya talab qilinadi", and the app logs the user out
+# (this is the "kicked out after a few minutes / can't place an order" bug).
+# So we always resolve the sqlite DB onto the persistent volume when it is available.
+PERSISTENT_DATA_DIR = _get("DATA_DIR", "/data")
+
+
+def _resolve_database_url() -> str:
+    raw = os.getenv("DATABASE_URL", "").strip()
+    volume_ok = os.path.isdir(PERSISTENT_DATA_DIR)
+
+    # A real database (Postgres/MySQL/...) is always durable -> honour it as-is.
+    if raw and not raw.startswith("sqlite"):
+        return raw
+
+    persistent_sqlite = f"sqlite:////{PERSISTENT_DATA_DIR.strip('/')}/sarixgo.db"
+
+    if raw.startswith("sqlite"):
+        # Absolute sqlite path (4 slashes) -> trust the operator's choice.
+        if raw.startswith("sqlite:////"):
+            return raw
+        # Relative sqlite path is unsafe on ephemeral storage -> relocate to the volume.
+        if volume_ok:
+            return persistent_sqlite
+        return raw
+
+    # Nothing configured -> prefer the persistent volume, fall back to local ./data.
+    if volume_ok:
+        return persistent_sqlite
+    return "sqlite:///./data/sarixgo.db"
+
+
+DATABASE_URL = _resolve_database_url()
 LEGACY_JSON_PATH = _get("LEGACY_JSON_PATH", "/data/taksi_baza.json")
 
 # API
@@ -55,9 +91,17 @@ WARN_MINUTES = _get_int("WARN_MINUTES", 10)
 COMMISSION_PER_PERSON = _get_int("COMMISSION_PER_PERSON", 10000)
 COMMISSION_PARCEL = _get_int("COMMISSION_PARCEL", 5000)
 COMMISSION_FULL_CAR = _get_int("COMMISSION_FULL_CAR", 30000)
+# Percent-based commission: after the free trial each order costs the driver this % of price.
+COMMISSION_PERCENT = _get_int("COMMISSION_PERCENT", 10)
 PARCEL_PRICE = _get_int("PARCEL_PRICE", 30000)
 FULL_CAR_PRICE = _get_int("FULL_CAR_PRICE", 400000)
 MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 20000)  # Minimum balance to accept any order
+
+# Driver free trial / subscription
+# The first N drivers who sign in to the driver app get FREE_TRIAL_DAYS of free service:
+# during the trial they do NOT need the minimum balance and pay NO commission per order.
+FREE_TRIAL_DRIVER_LIMIT = _get_int("FREE_TRIAL_DRIVER_LIMIT", 100)
+FREE_TRIAL_DAYS = _get_int("FREE_TRIAL_DAYS", 30)
 
 # Support contact
 SUPPORT_TELEGRAM = _get("SUPPORT_TELEGRAM", "termizsariosiyotaxi_bot")

@@ -61,6 +61,9 @@ class Driver(Base):
     total_orders = Column(Integer, default=0)
     push_token = Column(String(200))  # Expo push token
     theme = Column(String(20), default="auto")
+    # Free/paid subscription: while subscription_until > now, the driver pays NO
+    # commission and does not need the minimum balance to accept orders.
+    subscription_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)
 

@@ -1,12 +1,71 @@
 """Driver-side API endpoints (used by driver mobile app)."""
-from datetime import datetime
+from datetime import datetime, timedelta
 from aiohttp import web
 import jwt
 
 from app.database import get_session
-from app.models import Driver, Order, OrderHistory
+from app.models import Driver, Order, OrderHistory, Setting
 from app.api.websocket import ws_manager
 from app import config
+
+
+# ============= FREE TRIAL / SUBSCRIPTION =============
+_FREE_TRIAL_SETTING_KEY = "free_trial_granted_count"
+
+
+def _subscription_active(driver: Driver, now: datetime | None = None) -> bool:
+    now = now or datetime.utcnow()
+    return bool(driver.subscription_until and driver.subscription_until > now)
+
+
+def _subscription_days_left(driver: Driver, now: datetime | None = None) -> int:
+    now = now or datetime.utcnow()
+    if not driver.subscription_until or driver.subscription_until <= now:
+        return 0
+    return (driver.subscription_until - now).days + 1
+
+
+def driver_can_accept(driver: Driver, now: datetime | None = None) -> bool:
+    """A driver may receive/accept orders while on the free trial OR if their balance
+    is at least the minimum. Drivers with no balance get NO orders (must top up)."""
+    if _subscription_active(driver, now):
+        return True
+    return (driver.balance or 0) >= config.MIN_DRIVER_BALANCE
+
+
+def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
+    """Give the first `FREE_TRIAL_DRIVER_LIMIT` drivers a free month.
+
+    Called at login. Idempotent per driver (only acts when subscription_until is None)
+    and globally capped via a Setting counter so only the first N drivers ever get it.
+    """
+    if config.FREE_TRIAL_DRIVER_LIMIT <= 0 or config.FREE_TRIAL_DAYS <= 0:
+        return
+    # Already decided for this driver (granted before, or trial already used/expired).
+    if driver.subscription_until is not None:
+        return
+
+    try:
+        setting = session.query(Setting).filter_by(key=_FREE_TRIAL_SETTING_KEY).first()
+        granted = 0
+        if setting and setting.value:
+            try:
+                granted = int(setting.value)
+            except (TypeError, ValueError):
+                granted = 0
+
+        if granted >= config.FREE_TRIAL_DRIVER_LIMIT:
+            return  # quota exhausted
+
+        driver.subscription_until = datetime.utcnow() + timedelta(days=config.FREE_TRIAL_DAYS)
+        granted += 1
+        if setting:
+            setting.value = str(granted)
+        else:
+            session.add(Setting(key=_FREE_TRIAL_SETTING_KEY, value=str(granted)))
+        session.commit()
+    except Exception:
+        session.rollback()
 
 
 def _create_driver_token(driver: Driver) -> str:
@@ -90,6 +149,7 @@ async def driver_login(request: web.Request) -> web.Response:
         if driver.is_blocked:
             return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
 
+        _grant_free_trial_if_eligible(session, driver)
         token = _create_driver_token(driver)
         return web.json_response({
             "success": True,
@@ -199,6 +259,7 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
         from datetime import datetime
         driver.last_active = datetime.utcnow()
         session.commit()
+        _grant_free_trial_if_eligible(session, driver)
         session.refresh(driver)
 
         token = _create_driver_token(driver)
@@ -225,6 +286,9 @@ def _serialize_driver(d: Driver) -> dict:
         "rating": d.rating,
         "total_orders": d.total_orders,
         "is_online": d.is_online,
+        "subscription_until": d.subscription_until.isoformat() if d.subscription_until else None,
+        "has_active_subscription": _subscription_active(d),
+        "subscription_days_left": _subscription_days_left(d),
     }
 
 
@@ -285,9 +349,27 @@ async def driver_set_online(request: web.Request) -> web.Response:
 
 @require_driver
 async def list_available_orders(request: web.Request) -> web.Response:
-    """GET /api/driver/orders/available - new orders waiting for driver."""
+    """GET /api/driver/orders/available - new orders waiting for driver.
+
+    Drivers with no balance (and no active free trial) receive NO orders and instead get
+    a reminder to top up.
+    """
+    driver: Driver = request["driver"]
     session = get_session()
     try:
+        d = session.query(Driver).filter_by(id=driver.id).first() or driver
+        if not driver_can_accept(d):
+            return web.json_response({
+                "orders": [],
+                "can_receive": False,
+                "balance": d.balance or 0,
+                "min_required": config.MIN_DRIVER_BALANCE,
+                "message": (
+                    "⚠️ Balansingizda mablag' yetarli emas. Yangi zakaslarni olish uchun "
+                    f"balansni kamida {config.MIN_DRIVER_BALANCE:,} so'mga to'ldiring."
+                ).replace(",", " "),
+            })
+
         orders = (
             session.query(Order)
             .filter(Order.status == "new")
@@ -297,6 +379,7 @@ async def list_available_orders(request: web.Request) -> web.Response:
         )
         return web.json_response({
             "orders": [_serialize_order(o) for o in orders],
+            "can_receive": True,
         })
     finally:
         session.close()
@@ -343,29 +426,34 @@ async def accept_order(request: web.Request) -> web.Response:
         if not d:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
 
-        # Minimum balance check (driver must have at least this much to accept any order)
-        if (d.balance or 0) < config.MIN_DRIVER_BALANCE:
-            return web.json_response({
-                "error": (
-                    f"Zakas qabul qilish uchun balansingizda kamida "
-                    f"{config.MIN_DRIVER_BALANCE:,} so'm bo'lishi kerak. "
-                    f"Hozir: {d.balance or 0:,} so'm"
-                ).replace(",", " "),
-                "balance": d.balance,
-                "min_required": config.MIN_DRIVER_BALANCE,
-                "code": "min_balance",
-            }, status=400)
+        now = datetime.utcnow()
+        on_free_trial = _subscription_active(d, now)
 
-        if (d.balance or 0) < (order.commission or 0):
-            return web.json_response({
-                "error": f"Balans yetarli emas. Kerak: {order.commission} so'm",
-                "balance": d.balance,
-                "commission": order.commission,
-                "code": "insufficient",
-            }, status=400)
+        if not on_free_trial:
+            # Minimum balance check (driver must have at least this much to accept any order)
+            if (d.balance or 0) < config.MIN_DRIVER_BALANCE:
+                return web.json_response({
+                    "error": (
+                        f"Zakas qabul qilish uchun balansingizda kamida "
+                        f"{config.MIN_DRIVER_BALANCE:,} so'm bo'lishi kerak. "
+                        f"Hozir: {d.balance or 0:,} so'm"
+                    ).replace(",", " "),
+                    "balance": d.balance,
+                    "min_required": config.MIN_DRIVER_BALANCE,
+                    "code": "min_balance",
+                }, status=400)
 
-        # Deduct commission, assign driver
-        d.balance -= order.commission
+            if (d.balance or 0) < (order.commission or 0):
+                return web.json_response({
+                    "error": f"Balans yetarli emas. Kerak: {order.commission} so'm",
+                    "balance": d.balance,
+                    "commission": order.commission,
+                    "code": "insufficient",
+                }, status=400)
+
+        # Deduct commission (skipped during the free trial), assign driver
+        if not on_free_trial:
+            d.balance -= order.commission
         order.driver_id = d.id
         order.driver_telegram_id = d.telegram_id
         order.status = "accepted"
@@ -606,6 +694,7 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
             driver.telegram_id = tg_id
         driver.last_active = datetime.utcnow()
         db.commit()
+        _grant_free_trial_if_eligible(db, driver)
         db.refresh(driver)
 
         jwt_token = _create_driver_token(driver)

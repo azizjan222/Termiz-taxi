@@ -22,13 +22,22 @@ export default function OrdersScreen() {
   const [orders, setOrders] = useState<DriverOrder[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [accepting, setAccepting] = useState<number | null>(null);
+  const [canReceive, setCanReceive] = useState(true);
+  const [receiveMsg, setReceiveMsg] = useState('');
   const wsRef = useRef<WebSocket | null>(null);
+  const canReceiveRef = useRef(true);
+
+  useEffect(() => {
+    canReceiveRef.current = canReceive;
+  }, [canReceive]);
 
   const load = async () => {
     setRefreshing(true);
     try {
-      const list = await listAvailableOrders();
-      setOrders(list);
+      const res = await listAvailableOrders();
+      setCanReceive(res.can_receive !== false);
+      setReceiveMsg(res.message || '');
+      setOrders(res.can_receive === false ? [] : res.orders);
     } catch {
     } finally {
       setRefreshing(false);
@@ -51,6 +60,8 @@ export default function OrdersScreen() {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'new_order' && msg.order) {
+          // No balance / no trial -> ignore incoming orders (defense in depth).
+          if (!canReceiveRef.current) return;
           setOrders((prev) => {
             if (prev.find((o) => o.id === msg.order.id)) return prev;
             return [msg.order, ...prev];
@@ -83,37 +94,41 @@ export default function OrdersScreen() {
   const handleAccept = async (order: DriverOrder) => {
     const balance = driver?.balance || 0;
     const MIN_BALANCE = 20000;
+    const onFreeTrial = !!driver?.has_active_subscription;
 
-    if (balance < MIN_BALANCE) {
-      Alert.alert(
-        '💰 Balans yetarli emas',
-        `Zakas qabul qilish uchun balansingizda kamida ${MIN_BALANCE.toLocaleString()} so'm bo'lishi kerak.\n\nHozir: ${balance.toLocaleString()} so'm`,
-        [
-          { text: 'Bekor qilish', style: 'cancel' },
-          { text: "💳 To'ldirish", onPress: () => router.push('/top-up') },
-        ]
-      );
-      return;
-    }
+    // During the free trial the driver pays no commission and needs no balance.
+    if (!onFreeTrial) {
+      if (balance < MIN_BALANCE) {
+        Alert.alert(
+          '💰 Balans yetarli emas',
+          `Zakas qabul qilish uchun balansingizda kamida ${MIN_BALANCE.toLocaleString()} so'm bo'lishi kerak.\n\nHozir: ${balance.toLocaleString()} so'm`,
+          [
+            { text: 'Bekor qilish', style: 'cancel' },
+            { text: "💳 To'ldirish", onPress: () => router.push('/top-up') },
+          ]
+        );
+        return;
+      }
 
-    if (balance < order.commission) {
-      Alert.alert(
-        t('order.insufficientBalance'),
-        `${t('order.commission')}: ${order.commission} so'm\n${t('order.yourBalance')}: ${balance} so'm`,
-        [
-          { text: 'Bekor qilish', style: 'cancel' },
-          { text: "💳 To'ldirish", onPress: () => router.push('/top-up') },
-        ]
-      );
-      return;
+      if (balance < order.commission) {
+        Alert.alert(
+          t('order.insufficientBalance'),
+          `${t('order.commission')}: ${order.commission} so'm\n${t('order.yourBalance')}: ${balance} so'm`,
+          [
+            { text: 'Bekor qilish', style: 'cancel' },
+            { text: "💳 To'ldirish", onPress: () => router.push('/top-up') },
+          ]
+        );
+        return;
+      }
     }
 
     setAccepting(order.id);
     try {
       await acceptOrder(order.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Update driver balance
-      if (driver) {
+      // Update driver balance (no deduction during free trial)
+      if (driver && !onFreeTrial) {
         useDriverStore.getState().setDriver({
           ...driver,
           balance: driver.balance - order.commission,
@@ -146,7 +161,8 @@ export default function OrdersScreen() {
   };
 
   const renderOrder = ({ item }: { item: DriverOrder }) => {
-    const insufficientBalance = (driver?.balance || 0) < item.commission;
+    const insufficientBalance =
+      !driver?.has_active_subscription && (driver?.balance || 0) < item.commission;
     return (
       <View style={[styles.card, item.female_only && styles.cardFemale]}>
         <View style={styles.cardHeader}>
@@ -212,9 +228,15 @@ export default function OrdersScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>{t('home.available')}</Text>
-          <Text style={styles.balance}>
-            💰 {formatPrice(driver?.balance || 0)} so'm
-          </Text>
+          {driver?.has_active_subscription ? (
+            <Text style={styles.trialBadge}>
+              🎁 Bepul davr: {driver.subscription_days_left ?? 0} kun qoldi
+            </Text>
+          ) : (
+            <Text style={styles.balance}>
+              💰 {formatPrice(driver?.balance || 0)} so'm
+            </Text>
+          )}
         </View>
         <View style={styles.onlineSwitch}>
           <Text style={[styles.onlineLabel, isOnline && styles.onlineLabelActive]}>
@@ -229,10 +251,25 @@ export default function OrdersScreen() {
         </View>
       </View>
 
+      {!canReceive && (
+        <TouchableOpacity
+          style={styles.topupBanner}
+          onPress={() => router.push('/top-up')}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.topupBannerText}>
+            {receiveMsg || "⚠️ Balansingiz tugagan. Zakaslarni olish uchun balansni to'ldiring."}
+          </Text>
+          <Text style={styles.topupBannerBtn}>💳 To'ldirish</Text>
+        </TouchableOpacity>
+      )}
+
       {orders.length === 0 && !refreshing ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>🛌</Text>
-          <Text style={styles.emptyText}>{t('home.noOrders')}</Text>
+          <Text style={styles.emptyEmoji}>{canReceive ? '🛌' : '💰'}</Text>
+          <Text style={styles.emptyText}>
+            {canReceive ? t('home.noOrders') : "Balansni to'ldirgach zakaslar shu yerda ko'rinadi"}
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -259,6 +296,22 @@ const styles = StyleSheet.create({
   },
   title: { ...typography.h2, color: colors.primary },
   balance: { ...typography.caption, color: colors.success, marginTop: 2, fontWeight: '700' },
+  trialBadge: { ...typography.caption, color: colors.accent, marginTop: 2, fontWeight: '700' },
+  topupBanner: {
+    backgroundColor: '#FDECEC',
+    borderColor: '#F5B5B5',
+    borderWidth: 1,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  topupBannerText: { ...typography.small, color: '#B00020', flex: 1 },
+  topupBannerBtn: { ...typography.bodyBold, color: colors.primary },
   onlineSwitch: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   onlineLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
   onlineLabelActive: { color: colors.success },

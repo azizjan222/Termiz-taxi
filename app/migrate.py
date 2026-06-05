@@ -30,6 +30,7 @@ def _apply_schema_migrations() -> int:
         ("drivers", "rating_count", "INTEGER DEFAULT 0"),
         ("drivers", "push_token", "VARCHAR(200)"),
         ("drivers", "theme", "VARCHAR(20) DEFAULT 'auto'"),
+        ("drivers", "subscription_until", "DATETIME"),
     ]
 
     count = 0

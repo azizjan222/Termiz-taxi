@@ -2,6 +2,7 @@
 import logging
 from datetime import datetime
 from aiohttp import web
+from sqlalchemy import or_
 
 from app.database import get_session
 from app.models import Order, Route, Driver, User, OrderHistory
@@ -49,7 +50,11 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
 def _calc_price_and_commission(
     session, from_city: str, to_city: str, service_type: str, person_count: int
 ) -> tuple[int, int, str]:
-    """Returns (price, commission, error). Error is None on success."""
+    """Returns (price, commission, error). Error is None on success.
+
+    Commission = COMMISSION_PERCENT of the order price (default 10%). This is the amount
+    deducted from a driver's balance per accepted order once their free trial has ended.
+    """
     route = (
         session.query(Route)
         .filter_by(from_city=from_city, to_city=to_city, is_active=True)
@@ -59,13 +64,14 @@ def _calc_price_and_commission(
         return 0, 0, f"Yo'nalish topilmadi: {from_city} → {to_city}"
 
     if service_type == "parcel":
-        return route.parcel_price, config.COMMISSION_PARCEL, None
-    if service_type == "full_car":
-        return route.full_car_price, config.COMMISSION_FULL_CAR, None
+        price = route.parcel_price
+    elif service_type == "full_car":
+        price = route.full_car_price
+    else:
+        persons = max(1, min(person_count, 10))
+        price = route.price_per_person * persons
 
-    persons = max(1, min(person_count, 10))
-    price = route.price_per_person * persons
-    commission = config.COMMISSION_PER_PERSON * persons
+    commission = int(round(price * config.COMMISSION_PERCENT / 100.0))
     return price, commission, None
 
 
@@ -149,20 +155,37 @@ async def create_order(request: web.Request) -> web.Response:
         session.commit()
         session.refresh(order)
 
-        # Broadcast to all online drivers
-        await ws_manager.broadcast_to_drivers({
+        # Only drivers who can actually take the order (free trial OR enough balance)
+        # should receive it. Drivers with no balance get nothing (they must top up).
+        now = datetime.utcnow()
+        eligible_drivers = session.query(Driver).filter(
+            Driver.is_blocked == False,  # noqa
+            or_(
+                Driver.subscription_until > now,
+                Driver.balance >= config.MIN_DRIVER_BALANCE,
+            ),
+        ).all()
+
+        order_payload = {
             "type": "new_order",
             "order": _serialize_order(order, include_passenger=True),
-        })
+        }
 
-        # Send push notifications to online drivers
+        # Send the real-time event only to eligible drivers (instead of broadcasting to all).
+        for d in eligible_drivers:
+            if d.telegram_id:
+                try:
+                    await ws_manager.send_to_driver(d.telegram_id, order_payload)
+                except Exception:
+                    pass
+
+        # Send push notifications only to eligible, online drivers
         try:
             from app.services.push import notify_driver_new_order
-            online_drivers = session.query(Driver).filter(
-                Driver.is_online == True,  # noqa
-                Driver.is_blocked == False,  # noqa
-                Driver.push_token.isnot(None),
-            ).all()
+            online_drivers = [
+                d for d in eligible_drivers
+                if d.is_online and d.push_token
+            ]
             await notify_driver_new_order(session, order, online_drivers)
         except Exception as e:
             logger.error(f"Push notify drivers failed: {e}")
