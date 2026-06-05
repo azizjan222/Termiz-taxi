@@ -40,6 +40,11 @@ def _resolve_database_url() -> str:
     raw = os.getenv("DATABASE_URL", "").strip()
     volume_ok = os.path.isdir(PERSISTENT_DATA_DIR)
 
+    # Railway/Heroku sometimes provide the legacy "postgres://" scheme, but SQLAlchemy 2.x
+    # requires "postgresql://". Normalise it so the connection works out of the box.
+    if raw.startswith("postgres://"):
+        raw = "postgresql://" + raw[len("postgres://"):]
+
     # A real database (Postgres/MySQL/...) is always durable -> honour it as-is.
     if raw and not raw.startswith("sqlite"):
         return raw
