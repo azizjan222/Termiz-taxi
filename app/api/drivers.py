@@ -256,6 +256,12 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
         if driver.is_blocked:
             return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
 
+        if config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted:
+            return web.json_response({
+                "error": "Ilovaga kirish uchun avval botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
+                "code": "documents_required",
+            }, status=403)
+
         from datetime import datetime
         driver.last_active = datetime.utcnow()
         session.commit()
@@ -286,6 +292,8 @@ def _serialize_driver(d: Driver) -> dict:
         "rating": d.rating,
         "total_orders": d.total_orders,
         "is_online": d.is_online,
+        "documents_submitted": bool(d.documents_submitted),
+        "is_verified": bool(d.is_verified),
         "subscription_until": d.subscription_until.isoformat() if d.subscription_until else None,
         "has_active_subscription": _subscription_active(d),
         "subscription_days_left": _subscription_days_left(d),
@@ -688,6 +696,13 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
             })
         if driver.is_blocked:
             return web.json_response({"status": "blocked", "message": "Akkauntingiz bloklangan"})
+
+        if config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted:
+            return web.json_response({
+                "status": "documents_required",
+                "message": "Ilovaga kirish uchun botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
+                "bot_username": _cfg.BOT_USERNAME,
+            })
 
         # Link telegram_id if missing
         if tg_id and not driver.telegram_id:

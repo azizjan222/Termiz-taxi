@@ -127,10 +127,11 @@ export interface TgStartResponse {
 }
 
 export interface TgCheckResponse {
-  status: 'pending' | 'verified' | 'expired' | 'not_found' | 'not_registered' | 'blocked';
+  status: 'pending' | 'verified' | 'expired' | 'not_found' | 'not_registered' | 'blocked' | 'documents_required';
   token?: string;
   driver?: Driver;
   message?: string;
+  bot_username?: string;
 }
 
 export async function telegramStart(): Promise<TgStartResponse> {

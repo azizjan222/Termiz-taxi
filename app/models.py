@@ -50,8 +50,15 @@ class Driver(Base):
     car_model = Column(String(100))
     car_number = Column(String(20))
     car_color = Column(String(50))
+    car_year = Column(String(10))  # manufacture year
+    pinfl = Column(String(20))  # JSHSHIR (14-digit personal ID)
     car_photo_url = Column(String(500))  # uploaded photo path
     license_photo_url = Column(String(500))
+    # Telegram file_ids of documents collected by the bot (for admin PDF export)
+    license_file_id = Column(String(200))
+    tech_passport_file_id = Column(String(200))
+    car_photo_file_id = Column(String(200))
+    documents_submitted = Column(Boolean, default=False)
     is_verified = Column(Boolean, default=False)  # admin approved documents
     balance = Column(Integer, default=0)
     is_blocked = Column(Boolean, default=False)

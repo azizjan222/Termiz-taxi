@@ -31,6 +31,12 @@ def _apply_schema_migrations() -> int:
         ("drivers", "push_token", "VARCHAR(200)"),
         ("drivers", "theme", "VARCHAR(20) DEFAULT 'auto'"),
         ("drivers", "subscription_until", "DATETIME"),
+        ("drivers", "car_year", "VARCHAR(10)"),
+        ("drivers", "pinfl", "VARCHAR(20)"),
+        ("drivers", "license_file_id", "VARCHAR(200)"),
+        ("drivers", "tech_passport_file_id", "VARCHAR(200)"),
+        ("drivers", "car_photo_file_id", "VARCHAR(200)"),
+        ("drivers", "documents_submitted", "BOOLEAN DEFAULT 0"),
     ]
 
     count = 0

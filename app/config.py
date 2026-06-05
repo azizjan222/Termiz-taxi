@@ -108,6 +108,10 @@ MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 20000)  # Minimum balance to
 FREE_TRIAL_DRIVER_LIMIT = _get_int("FREE_TRIAL_DRIVER_LIMIT", 100)
 FREE_TRIAL_DAYS = _get_int("FREE_TRIAL_DAYS", 30)
 
+# Require drivers to submit registration documents (via the bot) before they can use
+# the driver app. They can enter immediately after submitting; admin reviews via PDF.
+REQUIRE_DRIVER_DOCUMENTS = _get("REQUIRE_DRIVER_DOCUMENTS", "true").lower() == "true"
+
 # Support contact
 SUPPORT_TELEGRAM = _get("SUPPORT_TELEGRAM", "termizsariosiyotaxi_bot")
 
