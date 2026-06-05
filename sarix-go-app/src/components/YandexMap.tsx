@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { StyleSheet, View, ViewStyle, StyleProp } from 'react-native';
+import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
+import { StyleSheet, View, ViewStyle, StyleProp, Text, ActivityIndicator } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import Constants from 'expo-constants';
 
@@ -42,6 +42,8 @@ const DEFAULT_ZOOM = 11;
 
 const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
   const webViewRef = useRef<WebView>(null);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
   const html = generateMapHtml({
     apiKey: YANDEX_API_KEY,
@@ -74,7 +76,12 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
       const data = JSON.parse(event.nativeEvent.data);
       switch (data.type) {
         case 'ready':
+          setStatus('ready');
           props.onMapReady?.();
+          break;
+        case 'apiError':
+          setStatus('error');
+          setErrorMsg(data.message || 'Xarita yuklanmadi');
           break;
         case 'markerPress':
           props.onMarkerPress?.(data.id);
@@ -93,18 +100,52 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
     <View style={[styles.container, props.style]}>
       <WebView
         ref={webViewRef}
-        source={{ html }}
+        // A real https baseUrl gives the page a proper origin/referrer. Without it the
+        // page origin is about:blank and the Yandex Maps script (and referrer-restricted
+        // API keys) can silently fail to load -> blank map.
+        source={{ html, baseUrl: 'https://yandex.com/' }}
         style={styles.webview}
         onMessage={handleMessage}
         javaScriptEnabled
         domStorageEnabled
         originWhitelist={['*']}
+        mixedContentMode="always"
+        androidLayerType="hardware"
+        setSupportMultipleWindows={false}
         scalesPageToFit
         scrollEnabled={false}
         bounces={false}
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
+        onError={(e) => {
+          setStatus('error');
+          setErrorMsg(e.nativeEvent?.description || 'WebView xatosi');
+        }}
+        onHttpError={(e) => {
+          // Don't override a successful map load; only surface a hard failure.
+          if (status !== 'ready') {
+            setStatus('error');
+            setErrorMsg(`Tarmoq xatosi (${e.nativeEvent?.statusCode ?? '?'})`);
+          }
+        }}
       />
+
+      {status !== 'ready' && (
+        <View style={styles.overlay} pointerEvents={status === 'error' ? 'auto' : 'none'}>
+          {status === 'loading' ? (
+            <ActivityIndicator size="large" color="#0E1B3D" />
+          ) : (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorTitle}>Xaritani yuklab bo'lmadi</Text>
+              <Text style={styles.errorText}>{errorMsg}</Text>
+              <Text style={styles.errorHint}>
+                Internetni tekshiring. Muammo davom etsa, Yandex Maps API kalitini
+                tekshiring.
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 });
@@ -116,6 +157,16 @@ export default YandexMap;
 const styles = StyleSheet.create({
   container: { flex: 1, overflow: 'hidden' },
   webview: { flex: 1, backgroundColor: 'transparent' },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5F7FA',
+  },
+  errorBox: { paddingHorizontal: 24, alignItems: 'center' },
+  errorTitle: { fontSize: 16, fontWeight: '700', color: '#0E1B3D', marginBottom: 6 },
+  errorText: { fontSize: 13, color: '#B00020', textAlign: 'center', marginBottom: 8 },
+  errorHint: { fontSize: 12, color: '#5A6B8C', textAlign: 'center' },
 });
 
 interface MapHtmlOptions {
@@ -150,7 +201,7 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
   }
 </style>
-<script src="${apiUrl}" type="text/javascript"></script>
+<script src="${apiUrl}" type="text/javascript" onerror="window.__mapApiError && window.__mapApiError('Yandex Maps API yuklanmadi (kalit yoki internet)')"></script>
 </head>
 <body>
 <div id="map"></div>
@@ -164,6 +215,10 @@ function generateMapHtml(opts: MapHtmlOptions): string {
       window.ReactNativeWebView.postMessage(JSON.stringify(data));
     }
   }
+
+  window.__mapApiError = function(msg) {
+    send({ type: 'apiError', message: msg });
+  };
 
   function init() {
     map = new ymaps.Map('map', {
@@ -256,7 +311,22 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     }
   };
 
-  ymaps.ready(init);
+  // Wait for the Yandex API; if it never loads, report an error instead of a blank map.
+  (function waitForYmaps(tries) {
+    if (typeof ymaps !== 'undefined' && ymaps.ready) {
+      try {
+        ymaps.ready(init);
+      } catch (e) {
+        window.__mapApiError('Xarita ishga tushmadi: ' + e.message);
+      }
+      return;
+    }
+    if (tries <= 0) {
+      window.__mapApiError('Yandex Maps API javob bermadi');
+      return;
+    }
+    setTimeout(function() { waitForYmaps(tries - 1); }, 300);
+  })(40); // ~12s
 </script>
 </body>
 </html>`;

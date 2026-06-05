@@ -837,6 +837,14 @@ async def notify_drivers_about_new_app_order(order):
 
 # ================== MAIN ==================
 async def run():
+    # Security/persistence sanity checks (helps diagnose "logged out" / 401 issues)
+    if app_config.JWT_SECRET in ("dev-jwt-secret", "change_this_to_random_string_in_production"):
+        logger.warning(
+            "⚠️ JWT_SECRET is using the default value. Set a strong, STABLE JWT_SECRET "
+            "in the environment so tokens stay valid across restarts."
+        )
+    logger.info("🗄  Database: %s", app_config.DATABASE_URL)
+
     # Initialize DB and run migration
     print("🔄 Initializing database...")
     init_db()

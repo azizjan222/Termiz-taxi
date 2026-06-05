@@ -13,6 +13,9 @@ export interface Driver {
   rating: number;
   total_orders: number;
   is_online: boolean;
+  subscription_until?: string | null;
+  has_active_subscription?: boolean;
+  subscription_days_left?: number;
 }
 
 export interface DriverOrder {
@@ -69,9 +72,23 @@ export async function setOnline(online: boolean): Promise<void> {
   await api.post('/api/driver/online', { online });
 }
 
-export async function listAvailableOrders(): Promise<DriverOrder[]> {
-  const response = await api.get<{ orders: DriverOrder[] }>('/api/driver/orders/available');
-  return response.data.orders;
+export interface AvailableOrdersResponse {
+  orders: DriverOrder[];
+  can_receive?: boolean;
+  message?: string;
+  balance?: number;
+  min_required?: number;
+}
+
+export async function listAvailableOrders(): Promise<AvailableOrdersResponse> {
+  const response = await api.get<AvailableOrdersResponse>('/api/driver/orders/available');
+  return {
+    orders: response.data.orders || [],
+    can_receive: response.data.can_receive !== false,
+    message: response.data.message,
+    balance: response.data.balance,
+    min_required: response.data.min_required,
+  };
 }
 
 export async function listMyActive(): Promise<DriverOrder[]> {
