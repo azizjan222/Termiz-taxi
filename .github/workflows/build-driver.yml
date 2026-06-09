@@ -39,8 +39,11 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
+      - name: Align dependencies to Expo SDK
+        run: npx expo install --fix
+
       - name: Create/link EAS project under your account
         run: eas init --non-interactive --force
 
       - name: Build APK (cloud, fresh free quota)
-        run: eas build --platform android --profile preview --non-interactive --no-wait
+        run: eas build --platform android --profile preview --non-interactive
