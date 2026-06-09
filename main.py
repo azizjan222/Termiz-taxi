@@ -1219,6 +1219,20 @@ async def run():
     app.add_handler(CommandHandler("admin_help", admcmd.cmd_admin_help))
     app.add_handler(CallbackQueryHandler(admcmd.admin_callback, pattern="^adm_"))
 
+    # Push notification & management admin commands
+    app.add_handler(CommandHandler("push_all", admcmd.cmd_push_all))
+    app.add_handler(CommandHandler("push_drivers", admcmd.cmd_push_drivers))
+    app.add_handler(CommandHandler("push_passengers", admcmd.cmd_push_passengers))
+    app.add_handler(CommandHandler("push_user", admcmd.cmd_push_user))
+    app.add_handler(CommandHandler("verify", admcmd.cmd_verify))
+    app.add_handler(CommandHandler("reject", admcmd.cmd_reject))
+    app.add_handler(CommandHandler("price", admcmd.cmd_price))
+    app.add_handler(CommandHandler("commission", admcmd.cmd_commission))
+    app.add_handler(CommandHandler("online_drivers", admcmd.cmd_online_drivers))
+    app.add_handler(CommandHandler("active_orders", admcmd.cmd_active_orders))
+    app.add_handler(CommandHandler("revenue", admcmd.cmd_revenue))
+    app.add_handler(CommandHandler("top_drivers", admcmd.cmd_top_drivers))
+
     driver_reg_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^👨‍✈️ Haydovchi bo'lish$"), reg_start)],
         states={
