@@ -2,7 +2,6 @@
   "expo": {
     "name": "Sarix Go Haydovchi uchun",
     "slug": "sarix-go-driver",
-    "owner": "kholov",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -47,8 +46,7 @@
     ],
     "experiments": { "typedRoutes": true },
     "extra": {
-      "apiBaseUrl": "https://termiz-taxi-production.up.railway.app",
-      "eas": { "projectId": "981738d3-8ea6-4fca-9d2c-aabab45db6c9" }
+      "apiBaseUrl": "https://termiz-taxi-production.up.railway.app"
     }
   }
 }
