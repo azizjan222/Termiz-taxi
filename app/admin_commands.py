@@ -3,8 +3,11 @@ from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
+from sqlalchemy import func
+
 from app.database import DbContext
-from app.models import Driver, User, Order, OrderHistory, Payment
+from app.models import Driver, User, Order, OrderHistory, Payment, Route, Setting
+from app.services.push import send_push
 from app import config
 
 
@@ -444,13 +447,26 @@ async def cmd_admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/orders - Faol zakaslar\n"
         "/history - Oxirgi tarix\n"
         "/payments - Kutilayotgan to'lovlar\n"
-        "/export - Haydovchilar + balans PDF yuklab olish\n\n"
+        "/export - Haydovchilar + balans PDF yuklab olish\n"
+        "/online_drivers - Onlayn haydovchilar\n"
+        "/active_orders - Faol zakaslar (new/accepted)\n"
+        "/revenue - Bugungi va oylik daromad\n"
+        "/top_drivers - Top 10 haydovchilar\n\n"
         "💰 <b>Boshqaruv</b>\n"
         "/balance ID SUMMA - Balans qo'shish/ayirish\n"
         "/pul ID SUMMA - (eski versiya, ishlaydi)\n"
-        "/find phone - Foydalanuvchini qidirish\n\n"
+        "/find phone - Foydalanuvchini qidirish\n"
+        "/verify telegram_id - Haydovchini tasdiqlash\n"
+        "/reject telegram_id - Haydovchini rad etish\n"
+        "/price shahar1 shahar2 narx - Yo'nalish narxini o'zgartirish\n"
+        "/commission foiz - Komissiya foizini belgilash\n\n"
+        "📢 <b>Push xabarlar</b>\n"
+        "/push_all matn - Hammaga push yuborish\n"
+        "/push_drivers matn - Haydovchilarga push\n"
+        "/push_passengers matn - Yo'lovchilarga push\n"
+        "/push_user ID matn - Bitta foydalanuvchiga push\n\n"
         "📢 <b>Aloqa</b>\n"
-        "/broadcast all|drivers|users matn - Xabar yuborish\n\n"
+        "/broadcast all|drivers|users matn - Telegram xabar yuborish\n\n"
         "🛠 <b>Boshqa</b>\n"
         "/admin - Admin paneli\n"
         "/admin_help - Bu yordam\n"
@@ -592,3 +608,478 @@ async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.delete()
     except Exception as e:
         await msg.edit_text(f"Xatolik: {e}")
+
+
+# ============ /push_all - Hammaga push xabar ============
+async def cmd_push_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send push notification to ALL users and drivers with push_token."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.effective_message.reply_text(
+            "Foydalanish: <code>/push_all Xabar matni</code>", parse_mode="HTML"
+        )
+        return
+
+    success = 0
+    failed = 0
+
+    with DbContext() as session:
+        users = session.query(User).filter(User.push_token.isnot(None)).all()
+        for u in users:
+            result = await send_push(
+                session,
+                recipient_type="user",
+                recipient_id=u.id,
+                title="\U0001f4e2 Admin xabar",
+                body=text,
+            )
+            if result:
+                success += 1
+            else:
+                failed += 1
+
+        drivers = session.query(Driver).filter(Driver.push_token.isnot(None)).all()
+        for d in drivers:
+            result = await send_push(
+                session,
+                recipient_type="driver",
+                recipient_id=d.id,
+                title="\U0001f4e2 Admin xabar",
+                body=text,
+            )
+            if result:
+                success += 1
+            else:
+                failed += 1
+
+    await update.effective_message.reply_text(
+        f"\u2705 Push yuborildi!\n\n"
+        f"\U0001f4e4 Muvaffaqiyatli: {success}\n"
+        f"\u274c Xato: {failed}",
+    )
+
+
+# ============ /push_drivers - Haydovchilarga push ============
+async def cmd_push_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send push notification to all drivers with push_token."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.effective_message.reply_text(
+            "Foydalanish: <code>/push_drivers Xabar matni</code>", parse_mode="HTML"
+        )
+        return
+
+    success = 0
+    failed = 0
+
+    with DbContext() as session:
+        drivers = session.query(Driver).filter(Driver.push_token.isnot(None)).all()
+        for d in drivers:
+            result = await send_push(
+                session,
+                recipient_type="driver",
+                recipient_id=d.id,
+                title="\U0001f4e2 Admin xabar",
+                body=text,
+            )
+            if result:
+                success += 1
+            else:
+                failed += 1
+
+    await update.effective_message.reply_text(
+        f"\u2705 Push yuborildi (haydovchilar)!\n\n"
+        f"\U0001f4e4 Muvaffaqiyatli: {success}\n"
+        f"\u274c Xato: {failed}",
+    )
+
+
+# ============ /push_passengers - Yo'lovchilarga push ============
+async def cmd_push_passengers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send push notification to all passengers with push_token."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.effective_message.reply_text(
+            "Foydalanish: <code>/push_passengers Xabar matni</code>", parse_mode="HTML"
+        )
+        return
+
+    success = 0
+    failed = 0
+
+    with DbContext() as session:
+        users = session.query(User).filter(User.push_token.isnot(None)).all()
+        for u in users:
+            result = await send_push(
+                session,
+                recipient_type="user",
+                recipient_id=u.id,
+                title="\U0001f4e2 Admin xabar",
+                body=text,
+            )
+            if result:
+                success += 1
+            else:
+                failed += 1
+
+    await update.effective_message.reply_text(
+        f"\u2705 Push yuborildi (yo'lovchilar)!\n\n"
+        f"\U0001f4e4 Muvaffaqiyatli: {success}\n"
+        f"\u274c Xato: {failed}",
+    )
+
+
+# ============ /push_user - Bitta foydalanuvchiga push ============
+async def cmd_push_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send push to a single user/driver by ID or phone."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    args = context.args
+    if not args or len(args) < 2:
+        await update.effective_message.reply_text(
+            "Foydalanish: <code>/push_user ID_yoki_telefon Xabar matni</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    identifier = args[0]
+    text = " ".join(args[1:])
+
+    with DbContext() as session:
+        recipient_type = None
+        recipient_id = None
+
+        # Try as telegram_id (check both User and Driver)
+        if identifier.isdigit():
+            tid = int(identifier)
+            driver = session.query(Driver).filter_by(telegram_id=tid).first()
+            if driver and driver.push_token:
+                recipient_type = "driver"
+                recipient_id = driver.id
+            else:
+                user = session.query(User).filter_by(telegram_id=tid).first()
+                if user and user.push_token:
+                    recipient_type = "user"
+                    recipient_id = user.id
+                # Try as user.id / driver.id
+                if not recipient_id:
+                    user = session.query(User).filter_by(id=tid).first()
+                    if user and user.push_token:
+                        recipient_type = "user"
+                        recipient_id = user.id
+                if not recipient_id:
+                    driver = session.query(Driver).filter_by(id=tid).first()
+                    if driver and driver.push_token:
+                        recipient_type = "driver"
+                        recipient_id = driver.id
+
+        # Try as phone number
+        if not recipient_id:
+            phone_q = identifier.replace("+", "").replace(" ", "")
+            user = session.query(User).all()
+            for u in user:
+                phone_clean = (u.phone or "").replace("+", "").replace(" ", "")
+                if phone_clean == phone_q or phone_clean.endswith(phone_q):
+                    if u.push_token:
+                        recipient_type = "user"
+                        recipient_id = u.id
+                        break
+            if not recipient_id:
+                drivers = session.query(Driver).all()
+                for d in drivers:
+                    phone_clean = (d.phone or "").replace("+", "").replace(" ", "")
+                    if phone_clean == phone_q or phone_clean.endswith(phone_q):
+                        if d.push_token:
+                            recipient_type = "driver"
+                            recipient_id = d.id
+                            break
+
+        if not recipient_id or not recipient_type:
+            await update.effective_message.reply_text(
+                f"\u274c Foydalanuvchi topilmadi yoki push_token yo'q: {identifier}"
+            )
+            return
+
+        result = await send_push(
+            session,
+            recipient_type=recipient_type,
+            recipient_id=recipient_id,
+            title="\U0001f4e2 Admin xabar",
+            body=text,
+        )
+
+    if result:
+        await update.effective_message.reply_text("\u2705 Push yuborildi!")
+    else:
+        await update.effective_message.reply_text("\u274c Push yuborishda xatolik")
+
+
+# ============ /verify - Haydovchini tasdiqlash ============
+async def cmd_verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Verify a driver by telegram_id."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    args = context.args
+    if not args:
+        await update.effective_message.reply_text(
+            "Foydalanish: <code>/verify telegram_id</code>", parse_mode="HTML"
+        )
+        return
+
+    try:
+        telegram_id = int(args[0])
+    except ValueError:
+        await update.effective_message.reply_text("\u274c telegram_id raqam bo'lishi kerak")
+        return
+
+    with DbContext() as session:
+        driver = session.query(Driver).filter_by(telegram_id=telegram_id).first()
+        if not driver:
+            await update.effective_message.reply_text(
+                f"\u274c Haydovchi topilmadi: {telegram_id}"
+            )
+            return
+        driver.is_verified = True
+
+    await update.effective_message.reply_text(
+        f"\u2705 Haydovchi tasdiqlandi!\n"
+        f"\U0001f464 {driver.first_name or 'Nomalum'}\n"
+        f"\U0001f4de {driver.phone}\n"
+        f"\U0001f194 <code>{telegram_id}</code>",
+        parse_mode="HTML",
+    )
+
+
+# ============ /reject - Haydovchini rad etish ============
+async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reject a driver by telegram_id (unverify + reset documents)."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    args = context.args
+    if not args:
+        await update.effective_message.reply_text(
+            "Foydalanish: <code>/reject telegram_id</code>", parse_mode="HTML"
+        )
+        return
+
+    try:
+        telegram_id = int(args[0])
+    except ValueError:
+        await update.effective_message.reply_text("\u274c telegram_id raqam bo'lishi kerak")
+        return
+
+    with DbContext() as session:
+        driver = session.query(Driver).filter_by(telegram_id=telegram_id).first()
+        if not driver:
+            await update.effective_message.reply_text(
+                f"\u274c Haydovchi topilmadi: {telegram_id}"
+            )
+            return
+        driver.is_verified = False
+        driver.documents_submitted = False
+
+    await update.effective_message.reply_text(
+        f"\u274c Haydovchi rad etildi!\n"
+        f"\U0001f464 {driver.first_name or 'Nomalum'}\n"
+        f"\U0001f4de {driver.phone}\n"
+        f"\U0001f194 <code>{telegram_id}</code>",
+        parse_mode="HTML",
+    )
+
+
+# ============ /price - Yo'nalish narxini o'zgartirish ============
+async def cmd_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Update route price. Usage: /price from_city to_city price"""
+    if not is_admin(update.effective_user.id):
+        return
+
+    args = context.args
+    if not args or len(args) < 3:
+        await update.effective_message.reply_text(
+            "Foydalanish: <code>/price shahar1 shahar2 narx</code>\n"
+            "Masalan: <code>/price Termiz Sariosiyo 80000</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    from_city = args[0]
+    to_city = args[1]
+    try:
+        new_price = int(args[2])
+    except ValueError:
+        await update.effective_message.reply_text("\u274c Narx raqam bo'lishi kerak")
+        return
+
+    with DbContext() as session:
+        route = session.query(Route).filter(
+            func.lower(Route.from_city) == from_city.lower(),
+            func.lower(Route.to_city) == to_city.lower(),
+        ).first()
+
+        if not route:
+            await update.effective_message.reply_text(
+                f"\u274c Yo'nalish topilmadi: {from_city} \u2192 {to_city}"
+            )
+            return
+
+        old_price = route.price_per_person
+        route.price_per_person = new_price
+
+    await update.effective_message.reply_text(
+        f"\u2705 Narx yangilandi!\n\n"
+        f"\U0001f4cd {from_city} \u2192 {to_city}\n"
+        f"\U0001f4b0 Eski: {fmt(old_price)} so'm\n"
+        f"\U0001f4b5 Yangi: {fmt(new_price)} so'm",
+    )
+
+
+# ============ /commission - Komissiya foizini belgilash ============
+async def cmd_commission(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set commission percent. Usage: /commission 10"""
+    if not is_admin(update.effective_user.id):
+        return
+
+    args = context.args
+    if not args:
+        await update.effective_message.reply_text(
+            "Foydalanish: <code>/commission foiz</code>\n"
+            "Masalan: <code>/commission 10</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        percent = int(args[0])
+    except ValueError:
+        await update.effective_message.reply_text("\u274c Foiz raqam bo'lishi kerak")
+        return
+
+    with DbContext() as session:
+        setting = session.query(Setting).filter_by(key="commission_percent").first()
+        if setting:
+            setting.value = str(percent)
+        else:
+            setting = Setting(key="commission_percent", value=str(percent))
+            session.add(setting)
+
+    await update.effective_message.reply_text(
+        f"\u2705 Komissiya belgilandi: <b>{percent}%</b>", parse_mode="HTML"
+    )
+
+
+# ============ /online_drivers - Onlayn haydovchilar ============
+async def cmd_online_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List currently online drivers."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    with DbContext() as session:
+        drivers = session.query(Driver).filter_by(is_online=True).all()
+
+    if not drivers:
+        await update.effective_message.reply_text("\u2705 Hozir onlayn haydovchi yo'q")
+        return
+
+    text = f"\U0001f7e2 <b>ONLAYN HAYDOVCHILAR ({len(drivers)} ta)</b>\n\n"
+    for d in drivers:
+        text += (
+            f"\U0001f464 <b>{d.first_name or 'Nomalum'}</b>\n"
+            f"   \U0001f4de {d.phone}\n"
+            f"   \U0001f4b0 {fmt(d.balance or 0)} so'm\n\n"
+        )
+
+    await update.effective_message.reply_text(text, parse_mode="HTML")
+
+
+# ============ /active_orders - Faol buyurtmalar ============
+async def cmd_active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List active orders (new/accepted)."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    with DbContext() as session:
+        orders = session.query(Order).filter(
+            Order.status.in_(["new", "accepted"])
+        ).order_by(Order.created_at.desc()).limit(20).all()
+
+    if not orders:
+        await update.effective_message.reply_text("\u2705 Faol zakaslar yo'q")
+        return
+
+    text = f"\U0001f6d1 <b>FAOL ZAKASLAR ({len(orders)} ta)</b>\n\n"
+    for o in orders:
+        status_emoji = {"new": "\U0001f195", "accepted": "\u2705"}.get(o.status, "\U0001f7e1")
+        created = o.created_at.strftime("%H:%M %d.%m") if o.created_at else "?"
+        text += (
+            f"{status_emoji} <b>#{o.id}</b> {o.from_city} \u2192 {o.to_city}\n"
+            f"   Status: {o.status} | {fmt(o.price or 0)} so'm\n"
+            f"   \U0001f4c5 {created}\n\n"
+        )
+
+    await update.effective_message.reply_text(text, parse_mode="HTML")
+
+
+# ============ /revenue - Daromad (komissiya) ============
+async def cmd_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show today's and this month's commission revenue."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    with DbContext() as session:
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        today_revenue = session.query(func.coalesce(func.sum(Order.commission), 0)).filter(
+            Order.status == "completed",
+            Order.completed_at >= today_start,
+        ).scalar()
+
+        month_revenue = session.query(func.coalesce(func.sum(Order.commission), 0)).filter(
+            Order.status == "completed",
+            Order.completed_at >= month_start,
+        ).scalar()
+
+    await update.effective_message.reply_text(
+        f"\U0001f4b0 <b>DAROMAD (Komissiya)</b>\n\n"
+        f"\U0001f4c5 Bugun: <b>{fmt(int(today_revenue))} so'm</b>\n"
+        f"\U0001f4c6 Bu oy: <b>{fmt(int(month_revenue))} so'm</b>",
+        parse_mode="HTML",
+    )
+
+
+# ============ /top_drivers - Top haydovchilar ============
+async def cmd_top_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show top 10 drivers by total_orders."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    with DbContext() as session:
+        drivers = session.query(Driver).order_by(
+            Driver.total_orders.desc()
+        ).limit(10).all()
+
+    if not drivers:
+        await update.effective_message.reply_text("Haydovchilar yo'q")
+        return
+
+    text = "\U0001f3c6 <b>TOP 10 HAYDOVCHILAR</b>\n\n"
+    for i, d in enumerate(drivers, 1):
+        text += (
+            f"{i}. <b>{d.first_name or 'Nomalum'}</b>\n"
+            f"   \U0001f4de {d.phone}\n"
+            f"   \U0001f697 {d.total_orders or 0} zakas | \u2b50 {d.rating or 5.0:.1f}\n\n"
+        )
+
+    await update.effective_message.reply_text(text, parse_mode="HTML")
