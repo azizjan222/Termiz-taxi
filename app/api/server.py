@@ -132,6 +132,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/payments/click/complete", payments_api.click_complete)
     app.router.add_post("/api/payments/payme/create", payments_api.create_payme_payment)
     app.router.add_post("/api/payments/payme/webhook", payments_api.payme_webhook)
+    app.router.add_post("/api/driver/payments/topup", payments_api.topup_with_screenshot)
     app.router.add_get("/api/payments/{id}/status", payments_api.get_payment_status)
 
     # Push Notifications

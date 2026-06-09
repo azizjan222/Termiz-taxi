@@ -320,6 +320,116 @@ async def admin_tasdiqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
 
 
+async def app_topup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin approval for IN-APP top-ups (callback_data: apppay_ok_<id> / apppay_no_<id>).
+
+    Unlike the bot's own manual top-up (which credits the legacy JSON `balanslar`),
+    this credits the DB `Driver.balance` that the driver app reads. The JSON `balanslar`
+    is kept in sync when the driver's telegram_id already exists there.
+    """
+    query = update.callback_query
+    await query.answer()
+
+    # ADMIN-only guard.
+    if update.effective_user.id != ADMIN_ID:
+        try:
+            await query.answer("Faqat admin uchun", show_alert=True)
+        except Exception:
+            pass
+        return
+
+    data = query.data  # apppay_ok_<id> or apppay_no_<id>
+    approve = data.startswith("apppay_ok_")
+    try:
+        payment_id = int(data.rsplit("_", 1)[1])
+    except (ValueError, IndexError):
+        return
+
+    from app.api.payments import credit_driver_payment
+    from app.services.push import send_push, notify_balance_topup
+    from app.models import Payment
+
+    session = get_session()
+    try:
+        payment = session.query(Payment).filter_by(id=payment_id).first()
+        if not payment:
+            try:
+                await query.edit_message_caption(
+                    caption=f"{query.message.caption}\n\n⚠️ To'lov topilmadi (#{payment_id})",
+                    parse_mode='HTML')
+            except Exception:
+                pass
+            return
+
+        # Idempotency: don't process the same payment twice.
+        if payment.status != "pending":
+            label = "✅ Tasdiqlangan" if payment.status == "approved" else "❌ Rad etilgan"
+            try:
+                await query.edit_message_caption(
+                    caption=f"{query.message.caption}\n\nℹ️ Allaqachon: {label}",
+                    parse_mode='HTML')
+            except Exception:
+                pass
+            return
+
+        if approve:
+            amount, bonus, driver = credit_driver_payment(session, payment)
+            new_balance = driver.balance if driver else 0
+            drv_id = driver.id if driver else None
+            drv_tg = driver.telegram_id if driver else None
+            session.commit()
+
+            # Keep the legacy JSON balances in sync if this telegram_id exists there.
+            if drv_tg and drv_tg in balanslar:
+                balanslar[drv_tg] = new_balance
+                save_data()
+
+            # Notify the driver (push).
+            try:
+                if drv_id:
+                    await notify_balance_topup(session, drv_id, amount, bonus)
+            except Exception:
+                pass
+
+            amount_str = f"{amount:,}".replace(",", " ")
+            extra = f" (+50% bonus: {bonus:,} so'm)".replace(",", " ") if bonus else ""
+            try:
+                await query.edit_message_caption(
+                    caption=f"{query.message.caption}\n\n✅ Tasdiqlandi (+{amount_str} so'm{extra})",
+                    parse_mode='HTML')
+            except Exception:
+                pass
+        else:
+            payment.status = "rejected"
+            payment.processed_at = datetime.utcnow()
+            drv_id = payment.driver_id
+            session.commit()
+
+            # Notify the driver (push).
+            try:
+                if drv_id:
+                    await send_push(
+                        session,
+                        recipient_type="driver",
+                        recipient_id=drv_id,
+                        title="❌ To'lov rad etildi",
+                        body="To'lov skrinshotingiz admin tomonidan rad etildi.",
+                        data={"type": "balance_topup_rejected", "payment_id": payment_id},
+                        channel_id="balance",
+                    )
+            except Exception:
+                pass
+
+            try:
+                await query.edit_message_caption(
+                    caption=f"{query.message.caption}\n\n❌ Rad etildi",
+                    parse_mode='HTML')
+            except Exception:
+                pass
+    finally:
+        session.close()
+
+
 # ================== UMUMIY MATN ==================
 async def umumiy_matn_qabul_qilish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_access(update, context): return
@@ -1273,6 +1383,7 @@ async def run():
     app.add_handler(CallbackQueryHandler(hisob_toldirish_tugmasi, pattern="^hisob_toldirish$"))
     app.add_handler(CallbackQueryHandler(summa_tanlash, pattern="^summatanla_"))
     app.add_handler(CallbackQueryHandler(admin_tasdiqlash, pattern="^(tasdiq|rad)_"))
+    app.add_handler(CallbackQueryHandler(app_topup_callback, pattern="^apppay_(ok|no)_"))
     app.add_handler(CallbackQueryHandler(driver_pdf_callback, pattern="^drvpdf_"))
     app.add_handler(CallbackQueryHandler(zakas_amallari, pattern="^(yopish|hbekor|ybekor)_"))
     app.add_handler(CallbackQueryHandler(admin_stat_tugmalari, pattern="^stat_"))
