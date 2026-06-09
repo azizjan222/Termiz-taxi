@@ -12,34 +12,40 @@ import {
   Platform,
   ActivityIndicator,
   Clipboard,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import * as ImagePicker from 'expo-image-picker';
 
 import { Button } from '../src/components/Button';
 import {
   listMethods,
   createClickPayment,
   createPaymePayment,
+  submitTopupScreenshot,
   type PaymentMethod,
 } from '../src/api/payments';
 import { useDriverStore } from '../src/store/driver';
 import { BOT_USERNAME } from '../src/api/client';
 import { colors, typography, spacing, radius } from '../src/theme';
 
-const PRESET_AMOUNTS = [20000, 50000, 100000, 200000, 500000];
+const PRESET_AMOUNTS = [10000, 20000, 50000, 100000];
 const MIN_AMOUNT = 1000;
 
 export default function TopUpScreen() {
   const { t } = useTranslation();
   const driver = useDriverStore((s) => s.driver);
+  const loadDriver = useDriverStore((s) => s.loadDriver);
 
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [selectedMethod, setSelectedMethod] = useState<string>('card');
   const [amount, setAmount] = useState<number>(50000);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [screenshot, setScreenshot] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     listMethods()
@@ -69,6 +75,57 @@ export default function TopUpScreen() {
     Linking.openURL(`https://t.me/${BOT_USERNAME}?start=topup`);
   };
 
+  const pickScreenshot = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Ruxsat kerak', 'Skrinshot tanlash uchun galereyaga ruxsat bering.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+        allowsEditing: false,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setScreenshot(result.assets[0].uri);
+      }
+    } catch (e) {
+      Alert.alert('❌', 'Rasm tanlashda xatolik');
+    }
+  };
+
+  const submitCardTopup = async () => {
+    const amt = getActualAmount();
+    if (amt < MIN_AMOUNT) {
+      Alert.alert('❌', `Minimal summa ${formatPrice(MIN_AMOUNT)} so'm`);
+      return;
+    }
+    if (!screenshot) {
+      Alert.alert('📸 Skrinshot kerak', 'Avval to\'lov skrinshotini tanlang.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await submitTopupScreenshot(amt, screenshot);
+      setScreenshot(null);
+      // Refresh balance after submission.
+      try {
+        await loadDriver();
+      } catch {}
+      Alert.alert(
+        '✅ Yuborildi',
+        res.message || 'To\'lov skrinshoti yuborildi. Admin tasdiqlashini kuting.',
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || 'Xatolik yuz berdi';
+      Alert.alert('❌', msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleTopUp = async () => {
     const amt = getActualAmount();
     if (amt < MIN_AMOUNT) {
@@ -77,14 +134,8 @@ export default function TopUpScreen() {
     }
 
     if (selectedMethod === 'card') {
-      Alert.alert(
-        '💳 Karta orqali to\'ldirish',
-        `Karta: ${methods.find((m) => m.id === 'card')?.card_number}\n\nSumma: ${formatPrice(amt)} so'm\n\nKartaga to'lab, chekni rasm qilib botga yuboring.\nAdmin tasdiqlashi bilan balansingiz to'ldiriladi.`,
-        [
-          { text: 'Bekor qilish', style: 'cancel' },
-          { text: 'Botga o\'tish', onPress: openBot },
-        ]
-      );
+      // In-app manual flow: require a screenshot, then submit for admin approval.
+      await submitCardTopup();
       return;
     }
 
@@ -229,6 +280,56 @@ export default function TopUpScreen() {
           <View style={styles.methods}>
             {methods.map(renderMethod)}
           </View>
+
+          {/* Card manual flow: show card number + screenshot upload */}
+          {selectedMethod === 'card' && (
+            <View style={styles.cardFlow}>
+              <Text style={styles.sectionTitle}>1️⃣ Kartaga to'lang</Text>
+              <TouchableOpacity style={styles.cardNumberBox} onPress={copyCard} activeOpacity={0.8}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardNumberLabel}>Karta raqami</Text>
+                  <Text style={styles.cardNumberValue}>
+                    {methods.find((m) => m.id === 'card')?.card_number || '—'}
+                  </Text>
+                  {!!methods.find((m) => m.id === 'card')?.card_holder && (
+                    <Text style={styles.cardHolder}>
+                      {methods.find((m) => m.id === 'card')?.card_holder}
+                    </Text>
+                  )}
+                </View>
+                <Text style={styles.copyBtn}>Nusxa 📋</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.sectionTitle}>2️⃣ To'lov skrinshotini yuklang</Text>
+              <Text style={styles.cardHint}>
+                Kartaga to'lab bo'lgach, to'lov skrinshotini tanlang. Admin tasdiqlashi
+                bilan balansingiz to'ldiriladi.
+              </Text>
+
+              {screenshot ? (
+                <View style={styles.screenshotPreviewWrap}>
+                  <Image source={{ uri: screenshot }} style={styles.screenshotPreview} />
+                  <TouchableOpacity
+                    style={styles.changeShotBtn}
+                    onPress={pickScreenshot}
+                    disabled={submitting}
+                  >
+                    <Text style={styles.changeShotText}>Boshqa rasm tanlash</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.uploadBtn}
+                  onPress={pickScreenshot}
+                  disabled={submitting}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.uploadIcon}>📸</Text>
+                  <Text style={styles.uploadText}>Skrinshot yuklash</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </ScrollView>
 
         {/* Footer */}
@@ -240,10 +341,22 @@ export default function TopUpScreen() {
             </Text>
           </View>
           <Button
-            title={loading ? '...' : "To'lash"}
+            title={
+              selectedMethod === 'card'
+                ? submitting
+                  ? 'Yuborilmoqda...'
+                  : 'Yuborish'
+                : loading
+                ? '...'
+                : "To'lash"
+            }
             onPress={handleTopUp}
-            loading={loading}
-            disabled={getActualAmount() < MIN_AMOUNT}
+            loading={loading || submitting}
+            disabled={
+              getActualAmount() < MIN_AMOUNT ||
+              submitting ||
+              (selectedMethod === 'card' && !screenshot)
+            }
             variant="accent"
             fullWidth={false}
             style={{ flex: 1, marginLeft: spacing.md }}
@@ -386,4 +499,54 @@ const styles = StyleSheet.create({
   footerInfo: { flex: 0 },
   footerLabel: { ...typography.caption, color: colors.textSecondary },
   footerAmount: { ...typography.h3, color: colors.primary },
+  cardFlow: { marginTop: spacing.sm },
+  cardNumberBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    marginBottom: spacing.sm,
+  },
+  cardNumberLabel: { ...typography.caption, color: colors.textSecondary },
+  cardNumberValue: {
+    ...typography.h3,
+    color: colors.primary,
+    letterSpacing: 1,
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  cardHolder: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
+  copyBtn: { ...typography.bodyBold, color: colors.accent, marginLeft: spacing.sm },
+  cardHint: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.lg,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  uploadIcon: { fontSize: 24 },
+  uploadText: { ...typography.bodyBold, color: colors.primary },
+  screenshotPreviewWrap: { alignItems: 'center', gap: spacing.sm },
+  screenshotPreview: {
+    width: '100%',
+    height: 220,
+    borderRadius: radius.md,
+    resizeMode: 'contain',
+    backgroundColor: colors.surface,
+  },
+  changeShotBtn: { paddingVertical: spacing.xs },
+  changeShotText: { ...typography.body, color: colors.accent },
 });

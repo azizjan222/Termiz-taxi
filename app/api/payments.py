@@ -2,17 +2,65 @@
 import base64
 import hashlib
 import hmac
+import json
+import os
 import time
+import uuid
 import logging
+from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlencode
 from aiohttp import web
 
 from app import config
 from app.api.drivers import require_driver
 from app.database import get_session
-from app.models import Driver, Payment
+from app.models import Driver, Payment, Setting
 
 logger = logging.getLogger(__name__)
+
+# Where uploaded payment screenshots are stored (same volume as other uploads).
+TOPUP_UPLOAD_DIR = Path("./data/uploads")
+TOPUP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+TOPUP_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+TOPUP_MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+def credit_driver_payment(session, payment: Payment):
+    """Credit a pending payment to the driver's DB balance.
+
+    Applies the 50% first-payment bonus using the same `first_payers` Setting logic
+    as the Click/Payme flows (so a driver never gets the bonus twice). Mutates the
+    payment (status/bonus_amount/processed_at) and the driver's balance, but does NOT
+    commit - the caller is responsible for committing.
+
+    Returns a tuple: (amount, bonus, driver).
+    """
+    driver = session.query(Driver).filter_by(id=payment.driver_id).first()
+    bonus = 0
+    if driver:
+        first_payers = session.query(Setting).filter_by(key="first_payers").first()
+        first_payers_list = []
+        if first_payers and first_payers.value:
+            try:
+                first_payers_list = json.loads(first_payers.value)
+            except Exception:
+                first_payers_list = []
+
+        if driver.telegram_id and driver.telegram_id not in first_payers_list:
+            bonus = int(payment.amount * 0.5)
+            first_payers_list.append(driver.telegram_id)
+            if first_payers:
+                first_payers.value = json.dumps(first_payers_list)
+            else:
+                session.add(Setting(key="first_payers", value=json.dumps(first_payers_list)))
+
+        driver.balance = (driver.balance or 0) + payment.amount + bonus
+        payment.bonus_amount = bonus
+
+    payment.status = "approved"
+    payment.processed_at = datetime.utcnow()
+    return payment.amount, bonus, driver
 
 
 def _verify_click_signature(data: dict, action: str) -> bool:
@@ -459,3 +507,171 @@ async def get_payment_status(request: web.Request) -> web.Response:
         })
     finally:
         session.close()
+
+
+
+# ============= IN-APP MANUAL TOP-UP (card + screenshot + admin approval) =============
+
+# Distinct callback prefixes for the IN-APP top-up approval buttons. These MUST NOT
+# collide with the bot's own manual top-up handlers (tasdiq_/rad_), which credit the
+# legacy JSON `balanslar` dict. The in-app flow instead credits the DB Driver.balance.
+APP_TOPUP_OK_PREFIX = "apppay_ok_"
+APP_TOPUP_NO_PREFIX = "apppay_no_"
+
+
+@require_driver
+async def topup_with_screenshot(request: web.Request) -> web.Response:
+    """POST /api/driver/payments/topup
+
+    Multipart form-data:
+      - amount: integer (so'm)
+      - file:   the payment screenshot image
+
+    Mirrors the Telegram bot manual flow inside the app:
+      1. Save the screenshot.
+      2. Create a pending Payment row.
+      3. Send the screenshot to ADMIN_ID via the bot with Approve/Reject inline buttons
+         (callback_data uses the distinct `apppay_ok_<id>` / `apppay_no_<id>` prefix).
+      4. Admin approval credits the DB Driver.balance (see app_topup_callback in main.py).
+    """
+    driver: Driver = request["driver"]
+
+    if not request.content_type or "multipart/form-data" not in request.content_type:
+        return web.json_response(
+            {"error": "multipart/form-data kerak (amount + file)"}, status=400
+        )
+
+    amount = 0
+    file_bytes = b""
+    file_ext = ".jpg"
+
+    try:
+        reader = await request.multipart()
+        while True:
+            field = await reader.next()
+            if field is None:
+                break
+            if field.name == "amount":
+                raw = (await field.text()).strip()
+                try:
+                    amount = int(float(raw.replace(" ", "")))
+                except (TypeError, ValueError):
+                    amount = 0
+            elif field.name == "file":
+                filename = field.filename or "screenshot.jpg"
+                ext = os.path.splitext(filename)[1].lower()
+                if ext in TOPUP_ALLOWED_EXTENSIONS:
+                    file_ext = ext
+                size = 0
+                chunks = []
+                while True:
+                    chunk = await field.read_chunk()
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > TOPUP_MAX_FILE_SIZE:
+                        return web.json_response(
+                            {"error": "Fayl juda katta (max 5MB)"}, status=413
+                        )
+                    chunks.append(chunk)
+                file_bytes = b"".join(chunks)
+    except Exception as e:
+        logger.exception(f"topup multipart parse error: {e}")
+        return web.json_response({"error": "Faylni o'qishda xatolik"}, status=400)
+
+    if amount < 1000:
+        return web.json_response({"error": "Minimal summa 1000 so'm"}, status=400)
+    if not file_bytes:
+        return web.json_response({"error": "To'lov skrinshotini yuklang"}, status=400)
+
+    # Save the screenshot to disk.
+    new_filename = f"topup_{driver.id}_{uuid.uuid4().hex[:8]}{file_ext}"
+    file_path = TOPUP_UPLOAD_DIR / new_filename
+    try:
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+    except Exception as e:
+        logger.exception(f"topup save error: {e}")
+        return web.json_response({"error": "Faylni saqlashda xatolik"}, status=500)
+
+    public_url = f"/uploads/{new_filename}"
+
+    # Create a pending payment row.
+    session = get_session()
+    try:
+        payment = Payment(
+            driver_id=driver.id,
+            amount=amount,
+            status="pending",
+            photo_file_id=public_url,  # local path until the bot returns a telegram file_id
+        )
+        session.add(payment)
+        session.commit()
+        session.refresh(payment)
+        payment_id = payment.id
+        drv_name = driver.first_name or ""
+        drv_phone = driver.phone or ""
+        drv_tg = driver.telegram_id
+    finally:
+        session.close()
+
+    # Send the screenshot to the admin via the bot with Approve/Reject buttons.
+    bot = request.app.get("bot")
+    if bot is None:
+        logger.error("topup: bot is not available on app context")
+        return web.json_response({
+            "error": "Hozircha to'lovni yuborib bo'lmadi. Keyinroq urinib ko'ring.",
+        }, status=503)
+
+    try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"{APP_TOPUP_OK_PREFIX}{payment_id}")],
+            [InlineKeyboardButton("❌ Rad etish", callback_data=f"{APP_TOPUP_NO_PREFIX}{payment_id}")],
+        ])
+        amount_str = f"{amount:,}".replace(",", " ")
+        caption = (
+            "🧾 <b>YANGI TO'LOV (ILOVA)</b>\n"
+            f"👤 {drv_name}\n"
+            f"🆔 <code>{drv_tg}</code>\n"
+            f"📞 {drv_phone}\n"
+            f"💰 {amount_str} so'm\n"
+            f"🧷 Payment #{payment_id}"
+        )
+        with open(file_path, "rb") as photo:
+            sent = await bot.send_photo(
+                config.ADMIN_ID,
+                photo=photo,
+                caption=caption,
+                reply_markup=keyboard,
+                parse_mode="HTML",
+            )
+        # Persist the telegram file_id for parity with the bot flow.
+        try:
+            if sent and sent.photo:
+                tg_file_id = sent.photo[-1].file_id
+                session = get_session()
+                try:
+                    p = session.query(Payment).filter_by(id=payment_id).first()
+                    if p:
+                        p.photo_file_id = tg_file_id
+                        session.commit()
+                finally:
+                    session.close()
+        except Exception:
+            pass
+    except Exception as e:
+        logger.exception(f"topup send_photo to admin failed: {e}")
+        return web.json_response({
+            "error": "To'lovni adminga yuborishda xatolik. Keyinroq urinib ko'ring.",
+        }, status=502)
+
+    return web.json_response({
+        "success": True,
+        "payment_id": payment_id,
+        "amount": amount,
+        "status": "pending",
+        "screenshot_url": public_url,
+        "message": "To'lov skrinshoti yuborildi. Admin tasdiqlashini kuting.",
+    })
