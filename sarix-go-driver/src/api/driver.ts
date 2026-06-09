@@ -9,6 +9,8 @@ export interface Driver {
   car_model: string | null;
   car_number: string | null;
   car_color: string | null;
+  profile_photo_url?: string | null;
+  seats?: number;
   balance: number;
   rating: number;
   total_orders: number;
@@ -33,11 +35,13 @@ export interface DriverOrder {
   departure_time: string;
   status: string;
   note?: string | null;
-  passenger_phone: string;
+  passenger_phone?: string | null;
   passenger_name?: string | null;
   has_roof_rack: boolean;
   female_only: boolean;
   source: string;
+  target_driver_id?: number | null;
+  commission_charged?: boolean;
   created_at: string;
   accepted_at?: string | null;
 }
@@ -96,7 +100,7 @@ export async function listMyActive(): Promise<DriverOrder[]> {
   return response.data.orders;
 }
 
-export async function acceptOrder(id: number): Promise<{ order: DriverOrder; balance: number }> {
+export async function acceptOrder(id: number): Promise<{ order: DriverOrder; balance: number; commission_window_minutes?: number; accepted_at?: string }> {
   const response = await api.post(`/api/driver/orders/${id}/accept`);
   return response.data;
 }
@@ -113,6 +117,20 @@ export async function cancelOrder(id: number): Promise<{ success: boolean; balan
 
 export async function getBalanceHistory(): Promise<{ orders: DriverOrder[]; total_earned: number; balance: number }> {
   const response = await api.get('/api/driver/balance/history');
+  return response.data;
+}
+
+export async function uploadDriverProfilePhoto(uri: string): Promise<{ url: string }> {
+  const form = new FormData();
+  const name = uri.split('/').pop() || 'profile.jpg';
+  const ext = (name.split('.').pop() || 'jpg').toLowerCase();
+  const type = ext === 'png' ? 'image/png' : 'image/jpeg';
+  form.append('file', { uri, name, type } as any);
+  const response = await api.post<{ url: string; success: boolean }>(
+    '/api/driver/upload/profile-photo',
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
   return response.data;
 }
 

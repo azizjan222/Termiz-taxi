@@ -98,6 +98,10 @@ COMMISSION_PARCEL = _get_int("COMMISSION_PARCEL", 5000)
 COMMISSION_FULL_CAR = _get_int("COMMISSION_FULL_CAR", 30000)
 # Percent-based commission: after the free trial each order costs the driver this % of price.
 COMMISSION_PERCENT = _get_int("COMMISSION_PERCENT", 10)
+# Deferred-commission window: after a driver accepts, they get this many minutes to
+# contact/agree with the passenger. The commission is charged once the window elapses
+# (whether or not the ride was completed). The driver app shows a countdown.
+COMMISSION_WINDOW_MINUTES = _get_int("COMMISSION_WINDOW_MINUTES", 15)
 PARCEL_PRICE = _get_int("PARCEL_PRICE", 30000)
 FULL_CAR_PRICE = _get_int("FULL_CAR_PRICE", 400000)
 MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 20000)  # Minimum balance to accept any order

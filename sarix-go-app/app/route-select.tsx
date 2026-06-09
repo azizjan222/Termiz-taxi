@@ -80,7 +80,9 @@ export default function RouteSelectScreen() {
       });
     } else {
       orderStore.setField('toCity', city);
-      router.replace('/tariff');
+      // Taxi uses the strict step-by-step flow (time -> persons -> find driver).
+      // Parcel keeps the existing tariff/confirm flow.
+      router.replace(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
     }
   };
 
@@ -101,7 +103,7 @@ export default function RouteSelectScreen() {
     } else {
       orderStore.setField('toCity', matchedCity || cityPart);
       orderStore.setField('toAddress', address);
-      router.replace('/tariff');
+      router.replace(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
     }
   };
 

@@ -120,6 +120,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/driver/orders/{id}/complete", drivers_api.complete_order)
     app.router.add_post("/api/driver/orders/{id}/cancel", drivers_api.cancel_by_driver)
     app.router.add_get("/api/driver/balance/history", drivers_api.driver_balance_history)
+    app.router.add_get("/api/drivers/recommendations", drivers_api.list_recommended_drivers)
 
     # AI Assistant + Support
     app.router.add_post("/api/ai/chat", ai_api.chat)
@@ -167,6 +168,8 @@ def create_app(bot=None) -> web.Application:
     # File uploads
     app.router.add_post("/api/driver/upload/car-photo", uploads_api.upload_car_photo)
     app.router.add_post("/api/driver/upload/license", uploads_api.upload_license_photo)
+    app.router.add_post("/api/driver/upload/profile-photo", uploads_api.upload_driver_profile_photo)
+    app.router.add_post("/api/upload/profile-photo", uploads_api.upload_passenger_profile_photo)
     app.router.add_get("/uploads/{filename}", uploads_api.serve_upload)
 
     # WebSocket

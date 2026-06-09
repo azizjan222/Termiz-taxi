@@ -271,6 +271,56 @@ async def api_reject_driver(request: web.Request) -> web.Response:
 
 
 @require_admin_api
+async def api_topup_driver_balance(request: web.Request) -> web.Response:
+    """POST /admin/api/drivers/{id}/balance  Body: {"amount": 50000}
+
+    Credit a driver's balance directly from the web admin panel (group F).
+    """
+    driver_id = int(request.match_info["id"])
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    try:
+        amount = int(data.get("amount", 0))
+    except (ValueError, TypeError):
+        return web.json_response({"error": "Noto'g'ri summa"}, status=400)
+
+    if amount == 0:
+        return web.json_response({"error": "Summa 0 bo'lishi mumkin emas"}, status=400)
+
+    session = get_session()
+    try:
+        driver = session.query(Driver).filter_by(id=driver_id).first()
+        if not driver:
+            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        driver.balance = (driver.balance or 0) + amount
+        new_balance = driver.balance
+        driver_db_id = driver.id
+        session.commit()
+
+        # Best-effort push notification to the driver.
+        try:
+            if amount > 0:
+                from app.services.push import notify_balance_topup
+                await notify_balance_topup(session, driver_db_id, amount, 0)
+        except Exception:
+            pass
+
+        return web.json_response({
+            "ok": True,
+            "detail": f"Balans yangilandi: {new_balance:,} so'm".replace(",", " "),
+            "balance": new_balance,
+        })
+    except Exception as e:
+        session.rollback()
+        return web.json_response({"error": str(e)}, status=500)
+    finally:
+        session.close()
+
+
+@require_admin_api
 async def api_routes(request: web.Request) -> web.Response:
     """GET /admin/api/routes - list all routes."""
     session = get_session()
@@ -464,6 +514,7 @@ def setup_api_routes(app: web.Application):
     app.router.add_post("/admin/api/push", api_push)
     app.router.add_post("/admin/api/drivers/{id}/verify", api_verify_driver)
     app.router.add_post("/admin/api/drivers/{id}/reject", api_reject_driver)
+    app.router.add_post("/admin/api/drivers/{id}/balance", api_topup_driver_balance)
     app.router.add_get("/admin/api/drivers/{id}/pdf", api_driver_pdf)
     app.router.add_get("/admin/api/routes", api_routes)
     app.router.add_route("PUT", "/admin/api/routes/{id}", api_update_route)

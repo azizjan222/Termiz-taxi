@@ -7,6 +7,7 @@ export interface User {
   last_name: string | null;
   language: string;
   bonus_balance: number;
+  profile_photo_url?: string | null;
 }
 
 export interface RequestOtpResponse {
@@ -53,6 +54,21 @@ export async function getMe(): Promise<User> {
 
 export async function updateProfile(data: Partial<User>): Promise<{ user: User }> {
   const response = await api.patch<{ user: User; success: boolean }>('/api/auth/me', data);
+  return response.data;
+}
+
+export async function uploadProfilePhoto(uri: string): Promise<{ url: string }> {
+  const form = new FormData();
+  const name = uri.split('/').pop() || 'profile.jpg';
+  const ext = (name.split('.').pop() || 'jpg').toLowerCase();
+  const type = ext === 'png' ? 'image/png' : 'image/jpeg';
+  // React Native FormData file shape
+  form.append('file', { uri, name, type } as any);
+  const response = await api.post<{ url: string; success: boolean }>(
+    '/api/upload/profile-photo',
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
   return response.data;
 }
 

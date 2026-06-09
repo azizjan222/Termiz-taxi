@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Linking,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -14,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Button } from '../../src/components/Button';
 import { getOrder, cancelOrder, type Order } from '../../src/api/orders';
+import { API_URL } from '../../src/api/client';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 export default function OrderDetailScreen() {
@@ -119,11 +121,22 @@ export default function OrderDetailScreen() {
             <Text style={styles.driverTitle}>{t('order.driverInfo')}</Text>
 
             <View style={styles.driverRow}>
-              <View style={styles.driverAvatar}>
-                <Text style={styles.driverAvatarText}>
-                  {order.driver.first_name?.[0]?.toUpperCase() || '👨'}
-                </Text>
-              </View>
+              {order.driver.profile_photo_url ? (
+                <Image
+                  source={{
+                    uri: order.driver.profile_photo_url.startsWith('http')
+                      ? order.driver.profile_photo_url
+                      : `${API_URL}${order.driver.profile_photo_url}`,
+                  }}
+                  style={styles.driverAvatar}
+                />
+              ) : (
+                <View style={styles.driverAvatar}>
+                  <Text style={styles.driverAvatarText}>
+                    {order.driver.first_name?.[0]?.toUpperCase() || '👨'}
+                  </Text>
+                </View>
+              )}
               <View style={styles.driverInfo}>
                 <Text style={styles.driverName}>
                   {order.driver.first_name || 'Haydovchi'}

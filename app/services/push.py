@@ -137,6 +137,25 @@ async def notify_passenger_order_accepted(session: Session, order, driver):
     )
 
 
+async def notify_driver_recommended_order(session: Session, order, driver):
+    """Direct notification to a driver the passenger picked from recommendations (group D)."""
+    if not driver or not driver.push_token:
+        return
+    await send_push(
+        session,
+        recipient_type="driver",
+        recipient_id=driver.id,
+        title="⭐ Sizga maxsus zakas!",
+        body=f"{order.from_city} → {order.to_city} · {order.person_count} kishi · {order.departure_time or 'Hozir'}",
+        data={
+            "type": "new_order",
+            "order_id": order.id,
+            "direct": True,
+        },
+        channel_id="orders",
+    )
+
+
 async def notify_order_cancelled(
     session: Session, order, by: str, recipient_type: str, recipient_id: int
 ):

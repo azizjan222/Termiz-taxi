@@ -1398,6 +1398,15 @@ async def run():
     # Register callbacks for app→bot integration
     api_app["notify_drivers_callback"] = notify_drivers_about_new_app_order
 
+    # Start the deferred-commission background task (charges commission 15 min after
+    # a driver accepts an order, skipping drivers on the free trial).
+    try:
+        from app.services.commission_scheduler import start_commission_scheduler
+        start_commission_scheduler()
+        logger.info("✅ Commission scheduler started")
+    except Exception as e:
+        logger.error(f"Commission scheduler failed to start: {e}")
+
     await app.initialize()
     await app.start()
     await app.updater.start_polling()

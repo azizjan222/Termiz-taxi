@@ -32,6 +32,9 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "has_roof_rack": o.has_roof_rack,
         "female_only": o.female_only,
         "source": o.source,
+        "target_driver_id": o.target_driver_id,
+        "commission_charged": bool(o.commission_charged),
+        "passenger_name": o.passenger_name,
         "created_at": o.created_at.isoformat() if o.created_at else None,
         "accepted_at": o.accepted_at.isoformat() if o.accepted_at else None,
     }
@@ -42,8 +45,8 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         data["parcel_type"] = o.parcel_type
         data["parcel_note"] = o.parcel_note
     if include_passenger:
+        # Passenger phone is private: only revealed to the driver AFTER they accept.
         data["passenger_phone"] = o.passenger_phone
-        data["passenger_name"] = o.passenger_name
     return data
 
 
@@ -116,6 +119,13 @@ async def create_order(request: web.Request) -> web.Response:
 
     person_count = int(data.get("person_count", 1) or 1)
 
+    # Optional: passenger tapped a specific recommended driver (group D).
+    target_driver_id = data.get("target_driver_id")
+    try:
+        target_driver_id = int(target_driver_id) if target_driver_id else None
+    except (ValueError, TypeError):
+        target_driver_id = None
+
     session = get_session()
     try:
         price, commission, err = _calc_price_and_commission(
@@ -146,6 +156,7 @@ async def create_order(request: web.Request) -> web.Response:
             female_only=bool(data.get("female_only", False)),
             male_count=int(data.get("male_count", 0) or 0),
             female_count=int(data.get("female_count", 0) or 0),
+            target_driver_id=target_driver_id,
             parcel_recipient_name=data.get("parcel_recipient_name"),
             parcel_recipient_phone=data.get("parcel_recipient_phone"),
             parcel_payer=data.get("parcel_payer"),
@@ -169,9 +180,11 @@ async def create_order(request: web.Request) -> web.Response:
             ),
         ).all()
 
+        # Privacy: the broadcast/available list shows the passenger name, route and
+        # departure time but NOT the phone number (revealed only after "Qabul qilish").
         order_payload = {
             "type": "new_order",
-            "order": _serialize_order(order, include_passenger=True),
+            "order": _serialize_order(order, include_passenger=False),
         }
 
         # Send the real-time event only to eligible drivers (instead of broadcasting to all).
@@ -192,6 +205,23 @@ async def create_order(request: web.Request) -> web.Response:
             await notify_driver_new_order(session, order, online_drivers)
         except Exception as e:
             logger.error(f"Push notify drivers failed: {e}")
+
+        # If the passenger picked a recommended driver, send that driver a direct,
+        # higher-priority notification (push + WS) with the order details.
+        if target_driver_id:
+            try:
+                target = session.query(Driver).filter_by(id=target_driver_id).first()
+                if target and not target.is_blocked:
+                    if target.telegram_id:
+                        await ws_manager.send_to_driver(target.telegram_id, {
+                            "type": "new_order",
+                            "direct": True,
+                            "order": _serialize_order(order, include_passenger=False),
+                        })
+                    from app.services.push import notify_driver_recommended_order
+                    await notify_driver_recommended_order(session, order, target)
+            except Exception as e:
+                logger.error(f"Direct recommend notify failed: {e}")
 
         # Also notify the bot driver group via callback
         bot_callback = request.app.get("notify_drivers_callback")
@@ -260,6 +290,9 @@ async def get_order(request: web.Request) -> web.Response:
                     "phone": driver.phone,
                     "car_model": driver.car_model,
                     "car_number": driver.car_number,
+                    "car_color": driver.car_color,
+                    "profile_photo_url": driver.profile_photo_url,
+                    "seats": driver.seats or 4,
                     "rating": driver.rating,
                 }
         return web.json_response(result)
@@ -286,13 +319,17 @@ async def cancel_order(request: web.Request) -> web.Response:
         if order.status in ("completed", "cancelled", "expired"):
             return web.json_response({"error": "Bekor qilib bo'lmaydi"}, status=400)
 
-        # Refund driver if accepted
+        # Refund driver only if the commission was already charged (deferred 15-min
+        # window). If it hasn't been charged yet, we simply mark it so the scheduler
+        # skips it — no refund needed because nothing was deducted.
         refunded = False
-        if order.status == "accepted" and order.driver_id:
+        if order.status in ("accepted", "in_progress") and order.driver_id:
             driver = session.query(Driver).filter_by(id=order.driver_id).first()
-            if driver:
+            if driver and order.commission_charged:
                 driver.balance = (driver.balance or 0) + (order.commission or 0)
                 refunded = True
+        # Stop the scheduler from charging a cancelled order later.
+        order.commission_charged = True
 
         order.status = "cancelled"
         order.cancelled_at = datetime.utcnow()

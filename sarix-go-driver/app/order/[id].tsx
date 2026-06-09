@@ -8,18 +8,18 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '../../src/components/Button';
-import { listMyActive, completeOrder, cancelOrder, type DriverOrder } from '../../src/api/driver';
-import { useDriverStore } from '../../src/store/driver';
+import { listMyActive, completeOrder, type DriverOrder } from '../../src/api/driver';
 import { colors, typography, spacing, radius } from '../../src/theme';
+
+const CONTACT_WINDOW_MINUTES = 15;
 
 export default function OrderDetailScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const driver = useDriverStore((s) => s.driver);
-  const setDriver = useDriverStore((s) => s.setDriver);
 
   const [order, setOrder] = useState<DriverOrder | null>(null);
   const [loading, setLoading] = useState(false);
+  const [remainingSec, setRemainingSec] = useState<number | null>(null);
 
   useEffect(() => {
     listMyActive().then((orders) => {
@@ -28,7 +28,26 @@ export default function OrderDetailScreen() {
     });
   }, [id]);
 
+  // 15-minute contact-window countdown (based on accepted_at).
+  useEffect(() => {
+    if (!order?.accepted_at) {
+      setRemainingSec(null);
+      return;
+    }
+    const acceptedMs = new Date(order.accepted_at).getTime();
+    const endMs = acceptedMs + CONTACT_WINDOW_MINUTES * 60 * 1000;
+    const tick = () => {
+      const left = Math.max(0, Math.floor((endMs - Date.now()) / 1000));
+      setRemainingSec(left);
+    };
+    tick();
+    const i = setInterval(tick, 1000);
+    return () => clearInterval(i);
+  }, [order?.accepted_at]);
+
   const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const mmss = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   const callPassenger = () => {
     if (order?.passenger_phone) {
@@ -45,32 +64,9 @@ export default function OrderDetailScreen() {
           setLoading(true);
           try {
             await completeOrder(parseInt(id));
-            Alert.alert('✅', 'Yopildi! Rahmat.');
-            router.back();
-          } catch (e: any) {
-            Alert.alert(t('common.error'), e?.response?.data?.error || '');
-          } finally {
-            setLoading(false);
-          }
-        },
-      },
-    ]);
-  };
-
-  const handleCancel = () => {
-    Alert.alert(t('order.cancel'), 'Bekor qilasizmi? (Pul qaytariladi)', [
-      { text: t('common.no'), style: 'cancel' },
-      {
-        text: t('common.yes'),
-        style: 'destructive',
-        onPress: async () => {
-          setLoading(true);
-          try {
-            const res = await cancelOrder(parseInt(id));
-            if (driver) {
-              setDriver({ ...driver, balance: res.balance });
-            }
-            router.back();
+            Alert.alert('✅ Yakunlandi', 'Rahmat! Endi keyingi zakasni olishingiz mumkin.', [
+              { text: 'Keyingi zakas olish', onPress: () => router.replace('/(main)/orders') },
+            ]);
           } catch (e: any) {
             Alert.alert(t('common.error'), e?.response?.data?.error || '');
           } finally {
@@ -102,13 +98,26 @@ export default function OrderDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Status */}
-        <View style={styles.statusBanner}>
-          <Text style={styles.statusEmoji}>🚕</Text>
-          <Text style={styles.statusText}>Aktiv buyurtma</Text>
-        </View>
+        {/* 15-minute contact reminder + countdown */}
+        {remainingSec !== null && remainingSec > 0 ? (
+          <View style={styles.timerBanner}>
+            <Text style={styles.timerEmoji}>⏱</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.timerText}>Yo'lovchi bilan bog'laning</Text>
+              <Text style={styles.timerSub}>
+                {CONTACT_WINDOW_MINUTES} daqiqa ichida kelishib oling
+              </Text>
+            </View>
+            <Text style={styles.timerCountdown}>{mmss(remainingSec)}</Text>
+          </View>
+        ) : (
+          <View style={styles.statusBanner}>
+            <Text style={styles.statusEmoji}>🚕</Text>
+            <Text style={styles.statusText}>Aktiv buyurtma</Text>
+          </View>
+        )}
 
-        {/* Passenger card */}
+        {/* Passenger card — phone revealed after accept */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Yo'lovchi</Text>
           <View style={styles.passengerRow}>
@@ -121,7 +130,7 @@ export default function OrderDetailScreen() {
               <Text style={styles.passengerName}>
                 {order.passenger_name || 'Yo\'lovchi'}
               </Text>
-              <Text style={styles.passengerPhone}>{order.passenger_phone}</Text>
+              <Text style={styles.passengerPhone}>{order.passenger_phone || '—'}</Text>
             </View>
             <TouchableOpacity style={styles.callBtn} onPress={callPassenger}>
               <Text style={styles.callBtnIcon}>📞</Text>
@@ -139,6 +148,11 @@ export default function OrderDetailScreen() {
           <View style={styles.row}>
             <Text style={styles.label}>{t('order.to')}</Text>
             <Text style={styles.value}>{order.to_city}</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.row}>
+            <Text style={styles.label}>🕒 Ketish vaqti</Text>
+            <Text style={styles.value}>{order.departure_time || 'Hozir'}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
@@ -162,20 +176,13 @@ export default function OrderDetailScreen() {
         )}
       </ScrollView>
 
-      {/* Action buttons */}
+      {/* Action button — only the passenger can cancel, so the driver just finishes. */}
       <View style={styles.footer}>
         <Button
-          title={t('order.complete')}
+          title={'✅ ' + t('order.complete')}
           onPress={handleComplete}
           loading={loading}
           variant="success"
-        />
-        <View style={{ height: spacing.sm }} />
-        <Button
-          title={t('order.cancel')}
-          onPress={handleCancel}
-          variant="outline"
-          disabled={loading}
         />
       </View>
     </SafeAreaView>
@@ -206,6 +213,18 @@ const styles = StyleSheet.create({
   },
   statusEmoji: { fontSize: 28, marginRight: spacing.md },
   statusText: { ...typography.bodyBold, color: colors.warning },
+  timerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.infoLight,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+  },
+  timerEmoji: { fontSize: 28, marginRight: spacing.md },
+  timerText: { ...typography.bodyBold, color: colors.primary },
+  timerSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
+  timerCountdown: { ...typography.h2, color: colors.primary, fontVariant: ['tabular-nums'] },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
