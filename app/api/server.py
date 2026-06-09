@@ -174,6 +174,10 @@ def create_app(bot=None) -> web.Application:
     # Legacy compatibility
     app.router.add_get("/db", legacy_db)
 
+    # Admin panel
+    from app.admin import setup_admin_routes
+    setup_admin_routes(app)
+
     return app
 
 
