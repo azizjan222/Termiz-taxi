@@ -111,6 +111,7 @@ async def verify_otp_endpoint(request: web.Request) -> web.Response:
                 "last_name": user.last_name,
                 "language": user.language,
                 "bonus_balance": user.bonus_balance,
+                "profile_photo_url": user.profile_photo_url,
             },
         })
     finally:
@@ -128,6 +129,7 @@ async def me(request: web.Request) -> web.Response:
         "last_name": user.last_name,
         "language": user.language,
         "bonus_balance": user.bonus_balance,
+        "profile_photo_url": user.profile_photo_url,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     })
 
@@ -166,6 +168,7 @@ async def update_profile(request: web.Request) -> web.Response:
                 "last_name": u.last_name,
                 "language": u.language,
                 "bonus_balance": u.bonus_balance,
+                "profile_photo_url": u.profile_photo_url,
             },
         })
     finally:
@@ -255,6 +258,7 @@ async def telegram_check(request: web.Request) -> web.Response:
                 "last_name": user.last_name,
                 "language": user.language,
                 "bonus_balance": user.bonus_balance,
+                "profile_photo_url": user.profile_photo_url,
             },
         })
     finally:

@@ -50,6 +50,9 @@ export interface Order {
     phone: string;
     car_model: string | null;
     car_number: string | null;
+    car_color?: string | null;
+    profile_photo_url?: string | null;
+    seats?: number;
     rating: number;
   };
 }
@@ -71,11 +74,25 @@ export interface CreateOrderInput {
   note?: string;
   has_roof_rack?: boolean;
   female_only?: boolean;
+  target_driver_id?: number;
   parcel_recipient_name?: string;
   parcel_recipient_phone?: string;
   parcel_payer?: 'sender' | 'recipient';
   parcel_type?: string;
   parcel_note?: string;
+}
+
+export interface RecommendedDriver {
+  id: number;
+  first_name: string | null;
+  car_model: string | null;
+  car_number?: string | null;
+  car_color?: string | null;
+  profile_photo_url?: string | null;
+  seats: number;
+  rating: number;
+  departure_time: string;
+  price_per_person: number;
 }
 
 export async function listCities(): Promise<string[]> {
@@ -122,4 +139,16 @@ export async function getOrder(id: number): Promise<Order> {
 export async function cancelOrder(id: number): Promise<{ success: boolean; refunded: boolean }> {
   const response = await api.post(`/api/orders/${id}/cancel`);
   return response.data;
+}
+
+export async function getRecommendedDrivers(
+  from: string,
+  to: string,
+  persons: number = 1
+): Promise<RecommendedDriver[]> {
+  const response = await api.get<{ drivers: RecommendedDriver[] }>(
+    '/api/drivers/recommendations',
+    { params: { from, to, persons } }
+  );
+  return response.data.drivers || [];
 }

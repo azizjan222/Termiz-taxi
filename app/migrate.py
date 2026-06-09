@@ -28,9 +28,12 @@ def _apply_schema_migrations() -> int:
         ("users", "referral_count", "INTEGER DEFAULT 0"),
         ("users", "referral_bonus_earned", "INTEGER DEFAULT 0"),
         ("users", "theme", "VARCHAR(20) DEFAULT 'auto'"),
+        ("users", "profile_photo_url", "VARCHAR(500)"),
         # Driver new columns
         ("drivers", "car_photo_url", "VARCHAR(500)"),
         ("drivers", "license_photo_url", "VARCHAR(500)"),
+        ("drivers", "profile_photo_url", "VARCHAR(500)"),
+        ("drivers", "seats", "INTEGER DEFAULT 4"),
         ("drivers", "is_verified", "BOOLEAN DEFAULT 0"),
         ("drivers", "rating_count", "INTEGER DEFAULT 0"),
         ("drivers", "push_token", "VARCHAR(200)"),
@@ -42,6 +45,9 @@ def _apply_schema_migrations() -> int:
         ("drivers", "tech_passport_file_id", "VARCHAR(200)"),
         ("drivers", "car_photo_file_id", "VARCHAR(200)"),
         ("drivers", "documents_submitted", "BOOLEAN DEFAULT 0"),
+        # Order new columns
+        ("orders", "target_driver_id", "INTEGER"),
+        ("orders", "commission_charged", "BOOLEAN DEFAULT 0"),
     ]
 
     count = 0

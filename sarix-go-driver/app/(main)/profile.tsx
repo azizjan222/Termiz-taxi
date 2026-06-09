@@ -1,24 +1,53 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import * as ImagePicker from 'expo-image-picker';
 
 import { useDriverStore } from '../../src/store/driver';
 import { getSupportInfo, type SupportInfo } from '../../src/api/ai';
+import { uploadDriverProfilePhoto } from '../../src/api/driver';
+import { API_URL } from '../../src/api/client';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const driver = useDriverStore((s) => s.driver);
+  const setDriver = useDriverStore((s) => s.setDriver);
   const logout = useDriverStore((s) => s.logout);
   const [support, setSupport] = useState<SupportInfo | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     getSupportInfo().then(setSupport).catch(() => {});
   }, []);
+
+  const pickAndUploadPhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(t('common.error'), 'Galereyaga ruxsat kerak');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+      setUploading(true);
+      const { url } = await uploadDriverProfilePhoto(result.assets[0].uri);
+      if (driver) setDriver({ ...driver, profile_photo_url: url });
+    } catch (e: any) {
+      Alert.alert(t('common.error'), e?.response?.data?.error || 'Xatolik');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
@@ -51,11 +80,27 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* User card */}
         <View style={styles.userCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {driver?.first_name?.[0]?.toUpperCase() || '?'}
-            </Text>
-          </View>
+          <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.8}>
+            {driver?.profile_photo_url ? (
+              <Image
+                source={{
+                  uri: driver.profile_photo_url.startsWith('http')
+                    ? driver.profile_photo_url
+                    : `${API_URL}${driver.profile_photo_url}`,
+                }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {driver?.first_name?.[0]?.toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
+            <View style={styles.avatarEdit}>
+              <Text style={styles.avatarEditText}>{uploading ? '…' : '📷'}</Text>
+            </View>
+          </TouchableOpacity>
           <Text style={styles.userName}>
             {driver?.first_name || 'Haydovchi'}
           </Text>
@@ -212,6 +257,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   avatarText: { fontSize: 36, color: colors.white, fontWeight: '700' },
+  avatarEdit: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  avatarEditText: { fontSize: 13 },
   userName: { ...typography.h2, color: colors.primary },
   userPhone: { ...typography.body, color: colors.textSecondary, marginTop: 4 },
   balanceCard: {

@@ -8,13 +8,17 @@ import {
   Alert,
   Linking,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import * as ImagePicker from 'expo-image-picker';
 
 import { useAuthStore } from '../../src/store/auth';
 import { getSupportInfo } from '../../src/api/ai';
+import { uploadProfilePhoto } from '../../src/api/auth';
+import { API_URL } from '../../src/api/client';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 // Driver app package on Play Market
@@ -32,14 +36,40 @@ interface MenuItem {
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
+  const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
   const [supportUrl, setSupportUrl] = useState('https://t.me/tg_adminstator');
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     getSupportInfo()
       .then((info) => setSupportUrl(info.telegram_url))
       .catch(() => {});
   }, []);
+
+  const pickAndUploadPhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(t('common.error'), 'Galereyaga ruxsat kerak');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+      setUploading(true);
+      const { url } = await uploadProfilePhoto(result.assets[0].uri);
+      if (user) setUser({ ...user, profile_photo_url: url });
+    } catch (e: any) {
+      Alert.alert(t('common.error'), e?.response?.data?.error || t('errors.networkError'));
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert(t('profile.logout'), t('common.confirm') + '?', [
@@ -101,11 +131,27 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* User card */}
         <View style={styles.userCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {user?.first_name?.[0]?.toUpperCase() || '?'}
-            </Text>
-          </View>
+          <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.8}>
+            {user?.profile_photo_url ? (
+              <Image
+                source={{
+                  uri: user.profile_photo_url.startsWith('http')
+                    ? user.profile_photo_url
+                    : `${API_URL}${user.profile_photo_url}`,
+                }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {user?.first_name?.[0]?.toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
+            <View style={styles.avatarEdit}>
+              <Text style={styles.avatarEditText}>{uploading ? '…' : '📷'}</Text>
+            </View>
+          </TouchableOpacity>
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{user?.first_name || ''}</Text>
             <Text style={styles.userPhone}>{user?.phone}</Text>
@@ -181,6 +227,20 @@ const styles = StyleSheet.create({
     marginRight: spacing.md,
   },
   avatarText: { ...typography.h2, color: colors.white },
+  avatarEdit: {
+    position: 'absolute',
+    right: spacing.md - 4,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  avatarEditText: { fontSize: 11 },
   userInfo: { flex: 1 },
   userName: { ...typography.h2, color: colors.primary },
   userPhone: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },

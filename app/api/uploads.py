@@ -34,6 +34,65 @@ async def upload_license_photo(request: web.Request) -> web.Response:
     return await _handle_upload(request, driver, "license")
 
 
+async def upload_driver_profile_photo(request: web.Request) -> web.Response:
+    """POST /api/driver/upload/profile-photo - driver profile photo (group E)."""
+    driver = _get_driver_from_request(request)
+    if not driver:
+        return web.json_response({"error": "Avtorizatsiya kerak"}, status=401)
+
+    return await _handle_upload(request, driver, "profile")
+
+
+async def upload_passenger_profile_photo(request: web.Request) -> web.Response:
+    """POST /api/upload/profile-photo - passenger profile photo (group E)."""
+    from app.utils.auth import get_current_user
+    from app.models import User
+
+    user = get_current_user(request)
+    if not user:
+        return web.json_response({"error": "Avtorizatsiya kerak"}, status=401)
+
+    reader = await request.multipart()
+    field = await reader.next()
+    if not field or field.name != "file":
+        return web.json_response({"error": "file field kerak"}, status=400)
+
+    filename = field.filename or "file"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return web.json_response({
+            "error": f"Faqat {', '.join(ALLOWED_EXTENSIONS)} formatlar"
+        }, status=400)
+
+    new_filename = f"user_{user.id}_profile_{uuid.uuid4().hex[:8]}{ext}"
+    file_path = UPLOAD_DIR / new_filename
+
+    size = 0
+    with open(file_path, "wb") as f:
+        while True:
+            chunk = await field.read_chunk()
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_FILE_SIZE:
+                f.close()
+                file_path.unlink(missing_ok=True)
+                return web.json_response({"error": "Fayl juda katta (max 5MB)"}, status=413)
+            f.write(chunk)
+
+    public_url = f"/uploads/{new_filename}"
+    session = get_session()
+    try:
+        u = session.query(User).filter_by(id=user.id).first()
+        if u:
+            u.profile_photo_url = public_url
+            session.commit()
+    finally:
+        session.close()
+
+    return web.json_response({"success": True, "url": public_url, "size": size})
+
+
 async def _handle_upload(request: web.Request, driver, upload_type: str) -> web.Response:
     """Common upload handler."""
     reader = await request.multipart()
@@ -78,6 +137,8 @@ async def _handle_upload(request: web.Request, driver, upload_type: str) -> web.
                 d.car_photo_url = public_url
             elif upload_type == "license":
                 d.license_photo_url = public_url
+            elif upload_type == "profile":
+                d.profile_photo_url = public_url
             session.commit()
     finally:
         session.close()

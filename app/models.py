@@ -30,6 +30,7 @@ class User(Base):
     referral_count = Column(Integer, default=0)
     referral_bonus_earned = Column(Integer, default=0)
     theme = Column(String(20), default="auto")  # auto, light, dark
+    profile_photo_url = Column(String(500))  # uploaded passenger profile photo
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)
 
@@ -54,6 +55,8 @@ class Driver(Base):
     pinfl = Column(String(20))  # JSHSHIR (14-digit personal ID)
     car_photo_url = Column(String(500))  # uploaded photo path
     license_photo_url = Column(String(500))
+    profile_photo_url = Column(String(500))  # driver profile photo (shown to passengers)
+    seats = Column(Integer, default=4)  # how many passengers the car seats
     # Telegram file_ids of documents collected by the bot (for admin PDF export)
     license_file_id = Column(String(200))
     tech_passport_file_id = Column(String(200))
@@ -138,6 +141,12 @@ class Order(Base):
     # Driver
     driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=True)
     driver_telegram_id = Column(BigInteger, nullable=True)
+    # Recommendation: passenger tapped a specific recommended driver (direct notify target)
+    target_driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=True)
+    # Commission is deducted from the driver 15 minutes after acceptance (deferred),
+    # whether or not the ride is completed. This flag prevents double-charging and
+    # tells cancel_order whether a refund is owed.
+    commission_charged = Column(Boolean, default=False)
 
     # Status
     status = Column(String(30), default="new", index=True)

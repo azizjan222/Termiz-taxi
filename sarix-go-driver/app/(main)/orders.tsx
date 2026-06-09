@@ -136,13 +136,8 @@ export default function OrdersScreen() {
     try {
       await acceptOrder(order.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Update driver balance (no deduction during free trial)
-      if (driver && !onFreeTrial) {
-        useDriverStore.getState().setDriver({
-          ...driver,
-          balance: driver.balance - order.commission,
-        });
-      }
+      // Commission is now deferred: it is charged 15 minutes after acceptance by the
+      // backend (skipped during the free trial). So we DON'T deduct the balance here.
       router.push(`/order/${order.id}`);
     } catch (e: any) {
       const msg = e?.response?.data?.error || t('order.notFound');
@@ -197,6 +192,12 @@ export default function OrdersScreen() {
         </View>
 
         <View style={styles.cardInfo}>
+          <Text style={styles.cardInfoText}>
+            👤 {item.passenger_name || "Yo'lovchi"}
+          </Text>
+          <Text style={styles.cardInfoText}>
+            🕒 Ketish: {item.departure_time || 'Hozir'}
+          </Text>
           <Text style={styles.cardInfoText}>
             {item.service_type === 'parcel'
               ? '📦 Pochta · Narx: Kelishiladi'

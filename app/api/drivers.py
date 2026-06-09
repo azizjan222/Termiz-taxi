@@ -360,6 +360,8 @@ def _serialize_driver(d: Driver) -> dict:
         "car_model": d.car_model,
         "car_number": d.car_number,
         "car_color": d.car_color,
+        "profile_photo_url": d.profile_photo_url,
+        "seats": d.seats or 4,
         "balance": d.balance,
         "rating": d.rating,
         "total_orders": d.total_orders,
@@ -372,8 +374,14 @@ def _serialize_driver(d: Driver) -> dict:
     }
 
 
-def _serialize_order(o: Order) -> dict:
-    return {
+def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
+    """Serialize an order for the driver app.
+
+    Privacy: the passenger PHONE is only included when include_passenger=True, which
+    happens AFTER the driver accepts the order (active/detail views). In the available
+    list the driver sees the passenger NAME, the route and the departure time only.
+    """
+    data = {
         "id": o.id,
         "service_type": o.service_type,
         "from_city": o.from_city,
@@ -388,14 +396,18 @@ def _serialize_order(o: Order) -> dict:
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,
-        "passenger_phone": o.passenger_phone,
         "passenger_name": o.passenger_name,
         "has_roof_rack": o.has_roof_rack,
         "female_only": o.female_only,
         "source": o.source,
+        "target_driver_id": o.target_driver_id,
+        "commission_charged": bool(o.commission_charged),
         "created_at": o.created_at.isoformat() if o.created_at else None,
         "accepted_at": o.accepted_at.isoformat() if o.accepted_at else None,
     }
+    if include_passenger:
+        data["passenger_phone"] = o.passenger_phone
+    return data
 
 
 @require_driver
@@ -481,7 +493,7 @@ async def list_my_active(request: web.Request) -> web.Response:
             .all()
         )
         return web.json_response({
-            "orders": [_serialize_order(o) for o in orders],
+            "orders": [_serialize_order(o, include_passenger=True) for o in orders],
         })
     finally:
         session.close()
@@ -531,13 +543,15 @@ async def accept_order(request: web.Request) -> web.Response:
                     "code": "insufficient",
                 }, status=400)
 
-        # Deduct commission (skipped during the free trial), assign driver
-        if not on_free_trial:
-            d.balance -= order.commission
+        # Deferred commission (group C): we DO NOT deduct the commission now. A
+        # background task charges it 15 minutes after acceptance (whether or not the
+        # ride is completed), unless the driver is on the free trial. We still require
+        # the minimum balance above so the driver can cover the upcoming charge.
         order.driver_id = d.id
         order.driver_telegram_id = d.telegram_id
         order.status = "accepted"
         order.accepted_at = datetime.utcnow()
+        order.commission_charged = False
 
         session.commit()
         session.refresh(order)
@@ -558,10 +572,14 @@ async def accept_order(request: web.Request) -> web.Response:
         except Exception:
             pass
 
+        # Reveal the passenger phone now that the driver accepted, and tell the app the
+        # 15-minute contact window has started (countdown shown to the driver).
         return web.json_response({
             "success": True,
-            "order": _serialize_order(order),
+            "order": _serialize_order(order, include_passenger=True),
             "balance": d.balance,
+            "commission_window_minutes": config.COMMISSION_WINDOW_MINUTES,
+            "accepted_at": order.accepted_at.isoformat() if order.accepted_at else None,
         })
     finally:
         session.close()
@@ -641,10 +659,12 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
         if order.status not in ("accepted", "in_progress"):
             return web.json_response({"error": "Bekor qilib bo'lmaydi"}, status=400)
 
-        # Refund commission
+        # Refund commission only if it was already charged (deferred window). Either way,
+        # mark it charged so the scheduler won't deduct from a cancelled order.
         d = session.query(Driver).filter_by(id=driver.id).first()
-        if d:
+        if d and order.commission_charged:
             d.balance = (d.balance or 0) + (order.commission or 0)
+        order.commission_charged = True
 
         order.status = "cancelled"
         order.cancelled_at = datetime.utcnow()
@@ -700,9 +720,86 @@ async def driver_balance_history(request: web.Request) -> web.Response:
             if o.price
         )
         return web.json_response({
-            "orders": [_serialize_order(o) for o in orders],
+            "orders": [_serialize_order(o, include_passenger=True) for o in orders],
             "total_earned": total_earned,
             "balance": driver.balance,
+        })
+    finally:
+        session.close()
+
+
+# ============= DRIVER RECOMMENDATIONS (group D) =============
+from app.utils.auth import get_current_user as _get_passenger
+from app.models import Route as _Route
+
+
+async def list_recommended_drivers(request: web.Request) -> web.Response:
+    """GET /api/drivers/recommendations?from=&to=&persons=
+
+    Pragmatic recommendation model: a "recommendation" is an online + eligible driver
+    (can_accept). Returns the driver's profile photo, name, car model, seat capacity,
+    a "Hozir" departure label and the price per person for the requested route.
+    The passenger can then create an order with target_driver_id to ping that driver.
+    """
+    # Passenger auth (reuse the user JWT). Recommendations are public-ish but we still
+    # require a logged-in passenger to avoid leaking the driver roster anonymously.
+    user = _get_passenger(request)
+    if not user:
+        return web.json_response({"error": "Avtorizatsiya talab qilinadi"}, status=401)
+
+    from_city = (request.query.get("from") or "").strip()
+    to_city = (request.query.get("to") or "").strip()
+    try:
+        persons = max(1, min(int(request.query.get("persons", "1")), 10))
+    except (ValueError, TypeError):
+        persons = 1
+
+    session = get_session()
+    try:
+        price_per_person = 0
+        if from_city and to_city:
+            route = (
+                session.query(_Route)
+                .filter_by(from_city=from_city, to_city=to_city, is_active=True)
+                .first()
+            )
+            if route:
+                price_per_person = route.price_per_person or 0
+
+        now = datetime.utcnow()
+        drivers = (
+            session.query(Driver)
+            .filter(
+                Driver.is_blocked == False,  # noqa
+                Driver.is_online == True,  # noqa
+            )
+            .all()
+        )
+
+        recommendations = []
+        for d in drivers:
+            if not driver_can_accept(d, now):
+                continue
+            recommendations.append({
+                "id": d.id,
+                "first_name": d.first_name,
+                "car_model": d.car_model,
+                "car_number": d.car_number,
+                "car_color": d.car_color,
+                "profile_photo_url": d.profile_photo_url,
+                "seats": d.seats or 4,
+                "rating": d.rating or 5.0,
+                "departure_time": "Hozir",
+                "price_per_person": price_per_person,
+            })
+
+        # Most relevant first: highest rating, then most experienced.
+        recommendations.sort(
+            key=lambda r: (r.get("rating") or 0), reverse=True
+        )
+        return web.json_response({
+            "drivers": recommendations[:30],
+            "price_per_person": price_per_person,
         })
     finally:
         session.close()

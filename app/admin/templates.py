@@ -163,6 +163,7 @@ tb.innerHTML+=`<tr>
 <td>
 ${!d.is_verified?`<button class="btn btn-sm btn-success" onclick="verifyDriver(${d.id})">Tasdiqlash</button>`:''}
 ${d.is_verified?`<button class="btn btn-sm btn-danger" onclick="rejectDriver(${d.id})">Rad etish</button>`:''}
+<button class="btn btn-sm btn-outline-success" onclick="topUpDriver(${d.id})">Balans +</button>
 <button class="btn btn-sm btn-outline-primary" onclick="pushDriver(${d.id})">Push</button>
 <a class="btn btn-sm btn-outline-secondary" href="/admin/api/drivers/${d.id}/pdf" target="_blank" rel="noopener">PDF</a>
 </td></tr>`;
@@ -170,6 +171,13 @@ ${d.is_verified?`<button class="btn btn-sm btn-danger" onclick="rejectDriver(${d
 }
 function verifyDriver(id){fetch('/admin/api/drivers/'+id+'/verify',{method:'POST'}).then(()=>loadDrivers());}
 function rejectDriver(id){fetch('/admin/api/drivers/'+id+'/reject',{method:'POST'}).then(()=>loadDrivers());}
+function topUpDriver(id){
+const raw=prompt("Qancha so'm qo'shilsin? (manfiy = ayirish)");
+if(raw===null)return;
+const amount=parseInt(raw);
+if(isNaN(amount)||amount===0){alert("Noto'g'ri summa");return;}
+fetch('/admin/api/drivers/'+id+'/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount})}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'Bajarildi');loadDrivers();}).catch(()=>alert('Xato'));
+}
 function pushDriver(id){
 const msg=prompt('Xabar matni:');
 if(msg)fetch('/admin/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:'specific',recipient_id:id,recipient_type:'driver',message:msg})}).then(r=>r.json()).then(d=>alert(d.detail||'Yuborildi'));
