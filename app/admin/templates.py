@@ -40,6 +40,7 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans
 </div>
 </div>
 <script src="{bootstrap_js}"></script>
+<script>function esc(s){{if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}}</script>
 {extra_js}
 </body>
 </html>"""
@@ -122,8 +123,8 @@ const status=d.is_verified?'<span class="badge bg-success">Tasdiqlangan</span>':
 (d.documents_submitted?'<span class="badge bg-warning">Kutilmoqda</span>':'<span class="badge bg-secondary">Tasdiqlanmagan</span>');
 const online=d.is_online?'<span class="badge bg-info">Online</span>':'';
 tb.innerHTML+=`<tr>
-<td>${d.id}</td><td>${d.first_name||''} ${d.last_name||''}</td><td>${d.phone}</td>
-<td>${d.car_model||'-'}</td><td>${d.car_number||'-'}</td><td>${d.balance.toLocaleString()}</td>
+<td>${d.id}</td><td>${esc(d.first_name||'')} ${esc(d.last_name||'')}</td><td>${esc(d.phone)}</td>
+<td>${esc(d.car_model||'-')}</td><td>${esc(d.car_number||'-')}</td><td>${d.balance.toLocaleString()}</td>
 <td>${status} ${online}</td>
 <td>
 ${!d.is_verified?`<button class="btn btn-sm btn-success" onclick="verifyDriver(${d.id})">Tasdiqlash</button>`:''}
@@ -155,7 +156,7 @@ fetch('/admin/api/passengers').then(r=>r.json()).then(data=>{
 const tb=document.querySelector('#passengers-table tbody');
 tb.innerHTML='';
 data.forEach(u=>{
-tb.innerHTML+=`<tr><td>${u.id}</td><td>${u.first_name||''} ${u.last_name||''}</td><td>${u.phone}</td><td>${u.language||'uz'}</td><td>${u.bonus_balance}</td><td>${u.rating}</td><td>${u.created_at||''}</td></tr>`;
+tb.innerHTML+=`<tr><td>${u.id}</td><td>${esc(u.first_name||'')} ${esc(u.last_name||'')}</td><td>${esc(u.phone)}</td><td>${esc(u.language||'uz')}</td><td>${u.bonus_balance}</td><td>${u.rating}</td><td>${esc(u.created_at||'')}</td></tr>`;
 });
 });
 </script>"""
@@ -185,7 +186,7 @@ const tb=document.querySelector('#orders-table tbody');
 tb.innerHTML='';
 data.forEach(o=>{
 const badge={'new':'bg-primary','accepted':'bg-info','completed':'bg-success','cancelled':'bg-danger'}[o.status]||'bg-secondary';
-tb.innerHTML+=`<tr><td>${o.id}</td><td>${o.passenger_name||'-'}</td><td>${o.passenger_phone}</td><td>${o.from_city} - ${o.to_city}</td><td>${o.price.toLocaleString()}</td><td><span class="badge ${badge}">${o.status}</span></td><td>${o.created_at||''}</td></tr>`;
+tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${esc(o.passenger_phone)}</td><td>${esc(o.from_city)} - ${esc(o.to_city)}</td><td>${o.price.toLocaleString()}</td><td><span class="badge ${badge}">${esc(o.status)}</span></td><td>${esc(o.created_at||'')}</td></tr>`;
 });
 });
 }
@@ -233,7 +234,7 @@ const recipient_id=parseInt(document.getElementById('push-recipient').value)||nu
 const recipient_type=document.getElementById('push-rtype').value;
 fetch('/admin/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,message,recipient_id,recipient_type})})
 .then(r=>r.json()).then(d=>{
-document.getElementById('push-result').innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+'">'+( d.detail||d.error||'Yuborildi')+'</div>';
+document.getElementById('push-result').innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+'">'+esc(d.detail||d.error||'Yuborildi')+'</div>';
 }).catch(e=>{document.getElementById('push-result').innerHTML='<div class="alert alert-danger">Xato</div>';});
 }
 </script>"""
@@ -253,7 +254,7 @@ const tb=document.querySelector('#routes-table tbody');
 tb.innerHTML='';
 data.forEach(rt=>{
 tb.innerHTML+=`<tr>
-<td>${rt.id}</td><td>${rt.from_city}</td><td>${rt.to_city}</td>
+<td>${rt.id}</td><td>${esc(rt.from_city)}</td><td>${esc(rt.to_city)}</td>
 <td><input type="number" class="form-control form-control-sm" value="${rt.price_per_person}" id="pp-${rt.id}" style="width:100px"></td>
 <td><input type="number" class="form-control form-control-sm" value="${rt.full_car_price}" id="fc-${rt.id}" style="width:100px"></td>
 <td><input type="number" class="form-control form-control-sm" value="${rt.parcel_price}" id="pr-${rt.id}" style="width:100px"></td>
@@ -303,7 +304,7 @@ document.getElementById('set-min-balance').value=d.min_balance||20000;
 function saveSettings(){
 const body={commission_percent:parseInt(document.getElementById('set-commission').value),free_trial_days:parseInt(document.getElementById('set-trial-days').value),free_trial_limit:parseInt(document.getElementById('set-trial-limit').value),min_balance:parseInt(document.getElementById('set-min-balance').value)};
 fetch('/admin/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{
-document.getElementById('settings-result').innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+'">'+(d.detail||d.error||'Saqlandi')+'</div>';
+document.getElementById('settings-result').innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+'">'+esc(d.detail||d.error||'Saqlandi')+'</div>';
 });
 }
 </script>"""

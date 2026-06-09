@@ -1150,6 +1150,11 @@ async def run():
             "⚠️ JWT_SECRET is using the default value. Set a strong, STABLE JWT_SECRET "
             "in the environment so tokens stay valid across restarts."
         )
+    if app_config.ADMIN_USERNAME == "admin" and app_config.ADMIN_PASSWORD == "admin123":
+        logger.warning(
+            "⚠️ Admin panel is using default credentials (admin/admin123). "
+            "Set ADMIN_USERNAME and ADMIN_PASSWORD environment variables for production."
+        )
     # Log the DB target WITHOUT credentials (scheme/host only for external DBs).
     _dburl = app_config.DATABASE_URL
     if _dburl.startswith("sqlite"):
