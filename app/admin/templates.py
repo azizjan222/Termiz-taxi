@@ -91,6 +91,13 @@ DASHBOARD_HTML = """<h2>Dashboard</h2>
 <div class="col-md-3"><div class="stat-card bg-dark"><h6>Online haydovchilar</h6><h3 id="s-online">...</h3></div></div>
 <div class="col-md-3"><div class="stat-card bg-secondary"><h6>Bugungi daromad</h6><h3 id="s-rev-today">...</h3></div></div>
 <div class="col-md-3"><div class="stat-card bg-danger"><h6>Oylik daromad</h6><h3 id="s-rev-month">...</h3></div></div>
+</div>
+<h4 class="mt-4">Top 10 haydovchilar (zakaslar bo'yicha)</h4>
+<div class="table-responsive">
+<table class="table table-sm table-striped" id="top-drivers-table">
+<thead><tr><th>#</th><th>Ism</th><th>Telefon</th><th>Zakaslar</th><th>Reyting</th><th>Holat</th></tr></thead>
+<tbody></tbody>
+</table>
 </div>"""
 
 DASHBOARD_JS = """<script>
@@ -103,19 +110,45 @@ document.getElementById('s-online').textContent=d.online_drivers;
 document.getElementById('s-rev-today').textContent=d.revenue_today.toLocaleString()+' sum';
 document.getElementById('s-rev-month').textContent=d.revenue_month.toLocaleString()+' sum';
 }).catch(e=>console.error(e));
+fetch('/admin/api/top-drivers').then(r=>r.json()).then(data=>{
+const tb=document.querySelector('#top-drivers-table tbody');
+tb.innerHTML='';
+(Array.isArray(data)?data:[]).forEach((d,i)=>{
+const online=d.is_online?'<span class="badge bg-info">Online</span>':'<span class="badge bg-secondary">Oflayn</span>';
+tb.innerHTML+=`<tr><td>${i+1}</td><td>${esc((d.first_name||'')+' '+(d.last_name||''))}</td><td>${esc(d.phone||'')}</td><td>${d.total_orders||0}</td><td>${(d.rating||5).toFixed(1)}</td><td>${online}</td></tr>`;
+});
+}).catch(e=>console.error(e));
 </script>"""
 
 DRIVERS_HTML = """<h2>Haydovchilar</h2>
+<div class="mb-3">
+<select class="form-select w-auto d-inline" id="driver-filter" onchange="renderDrivers()">
+<option value="all">Barchasi</option>
+<option value="online">Onlayn</option>
+<option value="verified">Tasdiqlangan</option>
+<option value="pending">Kutilmoqda</option>
+</select>
+<span class="ms-2 text-muted" id="driver-count"></span>
+</div>
 <div class="table-responsive">
 <table class="table table-striped table-sm" id="drivers-table">
-<thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Mashina</th><th>Raqam</th><th>Balans</th><th>Holat</th><th>Amallar</th></tr></thead>
+<thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Mashina</th><th>Raqam</th><th>Balans</th><th>Zakaslar</th><th>Holat</th><th>Amallar</th></tr></thead>
 <tbody></tbody>
 </table>
 </div>"""
 
 DRIVERS_JS = """<script>
+let allDrivers=[];
 function loadDrivers(){
-fetch('/admin/api/drivers').then(r=>r.json()).then(data=>{
+fetch('/admin/api/drivers').then(r=>r.json()).then(data=>{allDrivers=Array.isArray(data)?data:[];renderDrivers();});
+}
+function renderDrivers(){
+const f=document.getElementById('driver-filter').value;
+let data=allDrivers;
+if(f==='online')data=allDrivers.filter(d=>d.is_online);
+else if(f==='verified')data=allDrivers.filter(d=>d.is_verified);
+else if(f==='pending')data=allDrivers.filter(d=>!d.is_verified&&d.documents_submitted);
+document.getElementById('driver-count').textContent=data.length+' ta';
 const tb=document.querySelector('#drivers-table tbody');
 tb.innerHTML='';
 data.forEach(d=>{
@@ -125,13 +158,14 @@ const online=d.is_online?'<span class="badge bg-info">Online</span>':'';
 tb.innerHTML+=`<tr>
 <td>${d.id}</td><td>${esc(d.first_name||'')} ${esc(d.last_name||'')}</td><td>${esc(d.phone)}</td>
 <td>${esc(d.car_model||'-')}</td><td>${esc(d.car_number||'-')}</td><td>${d.balance.toLocaleString()}</td>
+<td>${d.total_orders||0}</td>
 <td>${status} ${online}</td>
 <td>
 ${!d.is_verified?`<button class="btn btn-sm btn-success" onclick="verifyDriver(${d.id})">Tasdiqlash</button>`:''}
 ${d.is_verified?`<button class="btn btn-sm btn-danger" onclick="rejectDriver(${d.id})">Rad etish</button>`:''}
 <button class="btn btn-sm btn-outline-primary" onclick="pushDriver(${d.id})">Push</button>
+<a class="btn btn-sm btn-outline-secondary" href="/admin/api/drivers/${d.id}/pdf" target="_blank" rel="noopener">PDF</a>
 </td></tr>`;
-});
 });
 }
 function verifyDriver(id){fetch('/admin/api/drivers/'+id+'/verify',{method:'POST'}).then(()=>loadDrivers());}
@@ -165,8 +199,10 @@ ORDERS_HTML = """<h2>Buyurtmalar</h2>
 <div class="mb-3">
 <select class="form-select w-auto d-inline" id="status-filter" onchange="loadOrders()">
 <option value="all">Barchasi</option>
+<option value="active">Faol (yangi/qabul/jarayonda)</option>
 <option value="new">Yangi</option>
 <option value="accepted">Qabul qilingan</option>
+<option value="in_progress">Jarayonda</option>
 <option value="completed">Yakunlangan</option>
 <option value="cancelled">Bekor qilingan</option>
 </select>

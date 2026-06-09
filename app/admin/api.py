@@ -8,6 +8,7 @@ from app.admin.middleware import require_admin_api
 from app.database import get_session
 from app.models import User, Driver, Order, Route, Setting
 from app.services.push import send_push
+from app.services.driver_pdf import build_driver_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,11 @@ async def api_orders(request: web.Request) -> web.Response:
     session = get_session()
     try:
         query = session.query(Order)
-        if status_filter and status_filter != "all":
+        if status_filter == "active":
+            query = query.filter(
+                Order.status.in_(["new", "accepted", "in_progress"])
+            )
+        elif status_filter and status_filter != "all":
             query = query.filter(Order.status == status_filter)
         orders = query.order_by(Order.id.desc()).limit(200).all()
         result = []
@@ -369,15 +374,97 @@ async def api_update_settings(request: web.Request) -> web.Response:
         session.close()
 
 
+@require_admin_api
+async def api_driver_pdf(request: web.Request) -> web.Response:
+    """GET /admin/api/drivers/{id}/pdf - download a driver's documents as PDF.
+
+    Requires admin auth (protects driver PII). Loads the driver, builds a dict,
+    calls build_driver_pdf (which downloads the Telegram document photos using the
+    bot stored on the aiohttp app), and returns the PDF as a file download.
+    """
+    try:
+        driver_id = int(request.match_info["id"])
+    except (ValueError, KeyError):
+        return web.json_response({"error": "Noto'g'ri ID"}, status=400)
+
+    session = get_session()
+    try:
+        driver = session.query(Driver).filter_by(id=driver_id).first()
+        if not driver:
+            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        # Extract everything we need before closing the session (build is async I/O).
+        driver_data = {
+            "first_name": driver.first_name,
+            "last_name": driver.last_name,
+            "pinfl": driver.pinfl,
+            "phone": driver.phone,
+            "car_model": driver.car_model,
+            "car_number": driver.car_number,
+            "car_year": driver.car_year,
+            "telegram_id": driver.telegram_id,
+            "license_file_id": driver.license_file_id,
+            "tech_passport_file_id": driver.tech_passport_file_id,
+            "car_photo_file_id": driver.car_photo_file_id,
+        }
+    finally:
+        session.close()
+
+    bot = request.app.get("bot")
+    try:
+        pdf_bytes = await build_driver_pdf(bot, driver_data)
+    except Exception as e:
+        logger.exception("PDF build failed for driver %s: %s", driver_id, e)
+        return web.json_response(
+            {"error": f"PDF yaratishda xatolik: {e}"}, status=500
+        )
+
+    return web.Response(
+        body=pdf_bytes,
+        content_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="haydovchi_{driver_id}.pdf"',
+        },
+    )
+
+
+@require_admin_api
+async def api_top_drivers(request: web.Request) -> web.Response:
+    """GET /admin/api/top-drivers - top 10 drivers by total_orders."""
+    session = get_session()
+    try:
+        drivers = (
+            session.query(Driver)
+            .order_by(Driver.total_orders.desc())
+            .limit(10)
+            .all()
+        )
+        result = []
+        for d in drivers:
+            result.append({
+                "id": d.id,
+                "first_name": d.first_name,
+                "last_name": d.last_name,
+                "phone": d.phone,
+                "total_orders": d.total_orders or 0,
+                "rating": d.rating or 5.0,
+                "is_online": d.is_online,
+            })
+        return web.json_response(result)
+    finally:
+        session.close()
+
+
 def setup_api_routes(app: web.Application):
     """Register all admin API routes."""
     app.router.add_get("/admin/api/stats", api_stats)
     app.router.add_get("/admin/api/drivers", api_drivers)
+    app.router.add_get("/admin/api/top-drivers", api_top_drivers)
     app.router.add_get("/admin/api/passengers", api_passengers)
     app.router.add_get("/admin/api/orders", api_orders)
     app.router.add_post("/admin/api/push", api_push)
     app.router.add_post("/admin/api/drivers/{id}/verify", api_verify_driver)
     app.router.add_post("/admin/api/drivers/{id}/reject", api_reject_driver)
+    app.router.add_get("/admin/api/drivers/{id}/pdf", api_driver_pdf)
     app.router.add_get("/admin/api/routes", api_routes)
     app.router.add_route("PUT", "/admin/api/routes/{id}", api_update_route)
     app.router.add_get("/admin/api/settings", api_settings)
