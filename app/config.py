@@ -163,3 +163,7 @@ TWILIO_FROM_NUMBER = _get("TWILIO_FROM_NUMBER", "")
 
 # Telegram bot username (for deep links, no @)
 BOT_USERNAME = _get("BOT_USERNAME", "termizsariosiyotaxi_bot")
+
+# Admin panel credentials
+ADMIN_USERNAME = _get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = _get("ADMIN_PASSWORD", "admin123")

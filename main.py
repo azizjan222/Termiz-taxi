@@ -1150,6 +1150,11 @@ async def run():
             "⚠️ JWT_SECRET is using the default value. Set a strong, STABLE JWT_SECRET "
             "in the environment so tokens stay valid across restarts."
         )
+    if app_config.ADMIN_USERNAME == "admin" and app_config.ADMIN_PASSWORD == "admin123":
+        logger.warning(
+            "⚠️ Admin panel is using default credentials (admin/admin123). "
+            "Set ADMIN_USERNAME and ADMIN_PASSWORD environment variables for production."
+        )
     # Log the DB target WITHOUT credentials (scheme/host only for external DBs).
     _dburl = app_config.DATABASE_URL
     if _dburl.startswith("sqlite"):
@@ -1218,6 +1223,20 @@ async def run():
     app.add_handler(CommandHandler("export", admcmd.cmd_export))
     app.add_handler(CommandHandler("admin_help", admcmd.cmd_admin_help))
     app.add_handler(CallbackQueryHandler(admcmd.admin_callback, pattern="^adm_"))
+
+    # Push notification & management admin commands
+    app.add_handler(CommandHandler("push_all", admcmd.cmd_push_all))
+    app.add_handler(CommandHandler("push_drivers", admcmd.cmd_push_drivers))
+    app.add_handler(CommandHandler("push_passengers", admcmd.cmd_push_passengers))
+    app.add_handler(CommandHandler("push_user", admcmd.cmd_push_user))
+    app.add_handler(CommandHandler("verify", admcmd.cmd_verify))
+    app.add_handler(CommandHandler("reject", admcmd.cmd_reject))
+    app.add_handler(CommandHandler("price", admcmd.cmd_price))
+    app.add_handler(CommandHandler("commission", admcmd.cmd_commission))
+    app.add_handler(CommandHandler("online_drivers", admcmd.cmd_online_drivers))
+    app.add_handler(CommandHandler("active_orders", admcmd.cmd_active_orders))
+    app.add_handler(CommandHandler("revenue", admcmd.cmd_revenue))
+    app.add_handler(CommandHandler("top_drivers", admcmd.cmd_top_drivers))
 
     driver_reg_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^👨‍✈️ Haydovchi bo'lish$"), reg_start)],
