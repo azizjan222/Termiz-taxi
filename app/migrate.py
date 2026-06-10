@@ -10,17 +10,24 @@ from app.config import LEGACY_JSON_PATH
 
 
 def _apply_schema_migrations() -> int:
-    """Add new columns to existing tables if they don't exist (SQLite ALTER TABLE)."""
-    from sqlalchemy import text
+    """Add new columns to existing tables if they don't exist.
 
-    # PRAGMA / ALTER ... ADD COLUMN below are SQLite-specific. On Postgres (or any other
-    # engine) the full schema is created by create_all(), so skip this step entirely.
-    if engine.dialect.name != "sqlite":
-        return 0
+    Works on BOTH SQLite and Postgres. Column existence is detected with SQLAlchemy's
+    Inspector (dialect-agnostic) and types are written portably. Previously this skipped
+    Postgres entirely, leaving an existing Postgres DB missing the newer columns -> every
+    Driver/User query failed (500) and the apps hung forever on "waiting for Telegram
+    confirmation". This now migrates Postgres too.
+    """
+    from sqlalchemy import text, inspect
+
+    is_pg = engine.dialect.name == "postgresql"
+    BOOL_FALSE = "BOOLEAN DEFAULT FALSE" if is_pg else "BOOLEAN DEFAULT 0"
+    DT = "TIMESTAMP" if is_pg else "DATETIME"
+    FLT = "DOUBLE PRECISION" if is_pg else "FLOAT"
 
     migrations = [
         # User new columns
-        ("users", "rating", "FLOAT DEFAULT 5.0"),
+        ("users", "rating", f"{FLT} DEFAULT 5.0"),
         ("users", "rating_count", "INTEGER DEFAULT 0"),
         ("users", "push_token", "VARCHAR(200)"),
         ("users", "referral_code", "VARCHAR(20)"),
@@ -34,35 +41,47 @@ def _apply_schema_migrations() -> int:
         ("drivers", "license_photo_url", "VARCHAR(500)"),
         ("drivers", "profile_photo_url", "VARCHAR(500)"),
         ("drivers", "seats", "INTEGER DEFAULT 4"),
-        ("drivers", "is_verified", "BOOLEAN DEFAULT 0"),
+        ("drivers", "is_verified", BOOL_FALSE),
         ("drivers", "rating_count", "INTEGER DEFAULT 0"),
         ("drivers", "push_token", "VARCHAR(200)"),
         ("drivers", "theme", "VARCHAR(20) DEFAULT 'auto'"),
-        ("drivers", "subscription_until", "DATETIME"),
+        ("drivers", "subscription_until", DT),
         ("drivers", "car_year", "VARCHAR(10)"),
         ("drivers", "pinfl", "VARCHAR(20)"),
         ("drivers", "license_file_id", "VARCHAR(200)"),
         ("drivers", "tech_passport_file_id", "VARCHAR(200)"),
         ("drivers", "car_photo_file_id", "VARCHAR(200)"),
-        ("drivers", "documents_submitted", "BOOLEAN DEFAULT 0"),
+        ("drivers", "documents_submitted", BOOL_FALSE),
         # Order new columns
         ("orders", "target_driver_id", "INTEGER"),
-        ("orders", "commission_charged", "BOOLEAN DEFAULT 0"),
+        ("orders", "commission_charged", BOOL_FALSE),
     ]
+
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    existing_cols: dict = {}
+    for table, _, _ in migrations:
+        if table not in existing_cols:
+            existing_cols[table] = (
+                {c["name"] for c in inspector.get_columns(table)}
+                if table in table_names else set()
+            )
 
     count = 0
     with engine.connect() as conn:
         for table, column, definition in migrations:
+            if not existing_cols.get(table):
+                continue  # table will be fully built by create_all
+            if column in existing_cols[table]:
+                continue
             try:
-                # Check if column exists
-                result = conn.execute(text(f"PRAGMA table_info({table})"))
-                cols = [row[1] for row in result]
-                if column not in cols:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
-                    conn.commit()
-                    count += 1
-                    print(f"  ✓ Added {table}.{column}")
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+                conn.commit()
+                count += 1
+                existing_cols[table].add(column)
+                print(f"  ✓ Added {table}.{column}")
             except Exception as e:
+                conn.rollback()
                 print(f"  ⚠️  Skipping {table}.{column}: {e}")
 
     return count
