@@ -11,9 +11,14 @@ from app.models import User
 
 
 def create_token(user_id: int, phone: str) -> str:
-    """Create JWT token for user."""
+    """Create JWT token for user.
+
+    NOTE: `sub` MUST be a string. PyJWT >= 2.10 raises InvalidSubjectError when `sub`
+    is not a string, which previously caused every authenticated request to 401
+    ("Avtorizatsiya talab qilinadi").
+    """
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "phone": phone,
         "iat": datetime.utcnow(),
         "exp": datetime.utcnow() + timedelta(days=config.JWT_EXPIRES_DAYS),
@@ -22,9 +27,24 @@ def create_token(user_id: int, phone: str) -> str:
 
 
 def decode_token(token: str) -> Optional[dict]:
-    """Decode and validate JWT token."""
+    """Decode and validate JWT token.
+
+    `verify_sub=False` keeps older tokens (which had an integer `sub`) decodable on
+    PyJWT >= 2.10, so users issued tokens before the fix don't get logged out.
+    """
     try:
-        return jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
+        return jwt.decode(
+            token,
+            config.JWT_SECRET,
+            algorithms=[config.JWT_ALGORITHM],
+            options={"verify_sub": False},
+        )
+    except TypeError:
+        # Older PyJWT versions don't support the verify_sub option.
+        try:
+            return jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
+        except jwt.InvalidTokenError:
+            return None
     except jwt.ExpiredSignatureError:
         return None
     except jwt.InvalidTokenError:
@@ -49,6 +69,10 @@ def get_current_user(request: web.Request) -> Optional[User]:
         return None
     user_id = payload.get("sub")
     if not user_id:
+        return None
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
         return None
 
     session = get_session()
