@@ -158,7 +158,6 @@ async def cmd_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"   📞 {o.passenger_phone}\n"
         )
         if o.driver_id:
-            driver = session.query(Driver).filter_by(id=o.driver_id).first() if False else None
             text += f"   👨‍✈️ Haydovchi: {o.driver_telegram_id}\n"
         text += f"   📅 {o.created_at.strftime('%H:%M %d.%m') if o.created_at else '?'}\n\n"
 

@@ -101,13 +101,25 @@ def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
 
     from sqlalchemy import text
     try:
-        # Ensure the counter row exists (best-effort).
-        if not session.query(Setting).filter_by(key=_FREE_TRIAL_SETTING_KEY).first():
+        # Ensure the counter row exists and holds a clean integer. If it was somehow
+        # written with a non-numeric value, reset it to a safe numeric value so the
+        # CAST(value AS INTEGER) in the atomic UPDATE below can never raise.
+        row = session.query(Setting).filter_by(key=_FREE_TRIAL_SETTING_KEY).first()
+        if not row:
             try:
                 session.add(Setting(key=_FREE_TRIAL_SETTING_KEY, value="0"))
                 session.commit()
             except Exception:
                 session.rollback()
+        else:
+            try:
+                int(str(row.value).strip())
+            except (TypeError, ValueError):
+                row.value = "0"
+                try:
+                    session.commit()
+                except Exception:
+                    session.rollback()
 
         # Atomically claim a slot only if we're still under the limit.
         result = session.execute(
