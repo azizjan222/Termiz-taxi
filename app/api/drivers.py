@@ -139,9 +139,9 @@ def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
 
 
 def _create_driver_token(driver: Driver) -> str:
-    """Create JWT token for driver."""
+    """Create JWT token for driver. `sub` MUST be a string (PyJWT >= 2.10)."""
     payload = {
-        "sub": driver.id,
+        "sub": str(driver.id),
         "telegram_id": driver.telegram_id,
         "phone": driver.phone,
         "role": "driver",
@@ -153,7 +153,14 @@ def _create_driver_token(driver: Driver) -> str:
 
 def _decode_driver_token(token: str) -> dict | None:
     try:
-        payload = jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
+        try:
+            payload = jwt.decode(
+                token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM],
+                options={"verify_sub": False},
+            )
+        except TypeError:
+            # Older PyJWT without verify_sub option.
+            payload = jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
         if payload.get("role") != "driver":
             return None
         return payload
@@ -169,9 +176,14 @@ def _get_driver_from_request(request: web.Request) -> Driver | None:
     if not payload:
         return None
 
+    try:
+        driver_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
     session = get_session()
     try:
-        driver = session.query(Driver).filter_by(id=payload["sub"]).first()
+        driver = session.query(Driver).filter_by(id=driver_id).first()
         if driver and not driver.is_blocked:
             return driver
     finally:
