@@ -2,6 +2,7 @@
   "expo": {
     "name": "Sarix Go Haydovchi uchun",
     "slug": "sarix-go-driver",
+    "owner": "azizjon_xolov",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
