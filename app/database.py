@@ -44,7 +44,17 @@ engine = create_engine(
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
 )
 
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+# expire_on_commit=False is REQUIRED here. The codebase's pattern is: load an ORM
+# object, commit, close the session, then return the object and read its attributes in
+# the request handler / serializer. With the SQLAlchemy default (expire_on_commit=True),
+# commit() expires every attribute, so the first attribute access after the session is
+# closed raises DetachedInstanceError -> 500 on EVERY authenticated request
+# (get_current_user / require_driver). That made orders, online toggle, profile, payments
+# etc. all fail in both apps. Disabling expiry keeps the loaded attributes usable after
+# commit/close.
+SessionLocal = sessionmaker(
+    bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+)
 
 
 def init_db():
