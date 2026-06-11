@@ -126,15 +126,29 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
         "schema_updated": 0,
     }
 
-    # Always seed routes (even if no legacy JSON)
-    with DbContext() as session:
-        counts["routes"] = seed_routes(session)
+    # IMPORTANT: schema migration must run FIRST and in isolation. If anything else
+    # (seed_routes, grandfather, JSON import) raised before the ALTER TABLEs ran, the
+    # DB would be left missing the newer columns and every Driver/User/Order query
+    # would 500 — which looks like "orders don't work / online toggle broken" in the
+    # apps no matter how many times they're rebuilt. So we add the columns up front,
+    # guarded so one failure can't block the others.
+    try:
+        counts["schema_updated"] = _apply_schema_migrations()
+    except Exception as e:
+        print(f"❌ Schema migration error: {e}")
 
-    # Apply schema migrations for existing DB
-    counts["schema_updated"] = _apply_schema_migrations()
+    # Seed routes (isolated so a failure here can't skip later steps).
+    try:
+        with DbContext() as session:
+            counts["routes"] = seed_routes(session)
+    except Exception as e:
+        print(f"⚠️  seed_routes skipped: {e}")
 
     # One-time grandfather of existing drivers so the documents gate doesn't lock them out
-    _grandfather_existing_drivers()
+    try:
+        _grandfather_existing_drivers()
+    except Exception as e:
+        print(f"⚠️  grandfather skipped: {e}")
 
     if not os.path.exists(json_path):
         # Try local path as fallback
@@ -231,6 +245,14 @@ def run_migration():
     print("🔄 Initializing database schema...")
     init_db()
     print("✅ Schema created.")
+
+    # Add any missing columns to pre-existing tables IMMEDIATELY after create_all,
+    # before any data step, so the schema is always correct even if later steps fail.
+    try:
+        added = _apply_schema_migrations()
+        print(f"✅ Schema columns ensured (added {added}).")
+    except Exception as e:
+        print(f"❌ Schema migration error: {e}")
 
     print("🔄 Migrating legacy data...")
     counts = migrate_legacy_json()
