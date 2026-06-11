@@ -955,6 +955,27 @@ async def notify_drivers_about_new_app_order(order):
         logger.error(f"Failed to notify drivers about app order: {e}")
 
 
+async def notify_driver_order_cancelled(driver_telegram_id, order_id, refunded):
+    """Called when a passenger cancels an order in the app.
+    Send the assigned driver a Telegram DM so they don't keep waiting.
+    """
+    if not driver_telegram_id:
+        return
+    try:
+        from telegram import Bot
+        bot = Bot(token=TOKEN)
+        text = (
+            f"❌ <b>Yo'lovchi zakasni bekor qildi</b>\n"
+            f"🧷 Zakas #{order_id}"
+        )
+        if refunded:
+            text += "\n💰 Komissiya balansingizga qaytarildi."
+        await bot.send_message(chat_id=driver_telegram_id, text=text, parse_mode="HTML")
+        await bot.shutdown()
+    except Exception as e:
+        logger.error(f"Failed to notify driver about cancel: {e}")
+
+
 # ================== HAYDOVCHI RO'YXATDAN O'TISH (HUJJATLAR) ==================
 def _model_keyboard():
     pop = car_models.get_popular_models()
@@ -1397,6 +1418,7 @@ async def run():
     )
     # Register callbacks for app→bot integration
     api_app["notify_drivers_callback"] = notify_drivers_about_new_app_order
+    api_app["bot_notify_driver_cancel"] = notify_driver_order_cancelled
 
     # Start the deferred-commission background task (charges commission 15 min after
     # a driver accepts an order, skipping drivers on the free trial).

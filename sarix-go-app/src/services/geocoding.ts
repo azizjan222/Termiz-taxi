@@ -75,19 +75,34 @@ export async function geocodeAddress(query: string): Promise<GeoResult[]> {
  * Uses the Suggest API key.
  */
 export async function suggestAddress(query: string): Promise<string[]> {
-  if (!SUGGEST_KEY || query.trim().length < 2) return [];
+  if (query.trim().length < 2) return [];
+  // Primary: Yandex Suggest API (best autocomplete). If the suggest key is missing or
+  // not enabled for the Suggest API, this returns [] and we fall back to the Geocoder
+  // so the dropdown is never silently empty.
+  if (SUGGEST_KEY) {
+    try {
+      const url =
+        `https://suggest-maps.yandex.ru/v1/suggest?apikey=${SUGGEST_KEY}` +
+        `&text=${encodeURIComponent(query)}&lang=uz_UZ&results=7` +
+        // Bias results to Surxondaryo region (Termiz area)
+        `&ll=67.278,37.224&spn=2,2`;
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const data = await resp.json();
+        const results = data?.results || [];
+        const mapped = results.map(
+          (r: any) => r.title?.text + (r.subtitle?.text ? `, ${r.subtitle.text}` : '')
+        );
+        if (mapped.length > 0) return mapped;
+      }
+    } catch {
+      // fall through to geocoder fallback
+    }
+  }
+  // Fallback: use the Geocoder (different key) to produce address strings.
   try {
-    const url =
-      `https://suggest-maps.yandex.ru/v1/suggest?apikey=${SUGGEST_KEY}` +
-      `&text=${encodeURIComponent(query)}&lang=uz_UZ&results=7` +
-      // Bias results to Surxondaryo region (Termiz area)
-      `&ll=67.278,37.224&spn=2,2`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-    const results = data?.results || [];
-    return results.map(
-      (r: any) => r.title?.text + (r.subtitle?.text ? `, ${r.subtitle.text}` : '')
-    );
+    const results = await geocodeAddress(query);
+    return results.map((r) => r.address).filter(Boolean);
   } catch {
     return [];
   }
