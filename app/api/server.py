@@ -55,6 +55,44 @@ async def health(request: web.Request) -> web.Response:
     })
 
 
+async def health_db(request: web.Request) -> web.Response:
+    """Diagnostic: report whether the newer columns exist on the live DB.
+
+    Lets us confirm (without DB shell access) that the schema migration ran. If any
+    'missing' list is non-empty, Driver/User/Order queries will 500 and the apps will
+    appear broken (orders/online/etc.) — re-deploy so run_migration() can add them.
+    """
+    from app.database import engine
+    from sqlalchemy import inspect
+    expected = {
+        "drivers": ["profile_photo_url", "seats", "documents_submitted",
+                    "subscription_until", "pinfl", "car_year",
+                    "license_file_id", "tech_passport_file_id", "car_photo_file_id"],
+        "users": ["profile_photo_url"],
+        "orders": ["target_driver_id", "commission_charged"],
+    }
+    try:
+        insp = inspect(engine)
+        report = {}
+        all_ok = True
+        for table, cols in expected.items():
+            try:
+                have = {c["name"] for c in insp.get_columns(table)}
+            except Exception:
+                have = set()
+            missing = [c for c in cols if c not in have]
+            if missing:
+                all_ok = False
+            report[table] = {"missing": missing}
+        return web.json_response({
+            "dialect": engine.dialect.name,
+            "schema_ok": all_ok,
+            "tables": report,
+        }, status=200 if all_ok else 500)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
 async def legacy_db(request: web.Request) -> web.Response:
     """Backward-compatible /db endpoint that returns aggregated data.
 
@@ -86,6 +124,7 @@ def create_app(bot=None) -> web.Application:
     # Health
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
+    app.router.add_get("/health/db", health_db)
 
     # Auth
     app.router.add_post("/api/auth/request-otp", auth_api.request_otp)
