@@ -55,6 +55,89 @@ async def health(request: web.Request) -> web.Response:
     })
 
 
+async def health_selftest(request: web.Request) -> web.Response:
+    """Diagnostic: prove whether the live deploy can run the real authenticated code
+    paths (the ones that 500'd). Runs the exact load -> commit -> close -> read-attrs
+    pattern on User and Driver and reports the REAL exception text if any. No auth
+    required so we can call it from a browser.
+    """
+    import traceback
+    from app.database import get_session, SessionLocal
+    from app.models import User, Driver, Order
+
+    try:
+        eoc = SessionLocal.kw.get("expire_on_commit")
+    except Exception:
+        eoc = "unknown"
+
+    result = {
+        "expire_on_commit": eoc,
+        "checks": {},
+    }
+
+    # 1) Reproduce the detach-after-commit pattern on a User.
+    try:
+        s = get_session()
+        try:
+            u = s.query(User).first()
+            if u:
+                from datetime import datetime
+                u.last_active = datetime.utcnow()
+                s.commit()
+        finally:
+            s.close()
+        # read attributes AFTER close (this is what handlers/serializers do)
+        if u:
+            _ = (u.id, u.phone, u.first_name, u.profile_photo_url)
+            result["checks"]["user_after_commit_close"] = "ok"
+        else:
+            result["checks"]["user_after_commit_close"] = "no users yet"
+    except Exception as e:
+        result["checks"]["user_after_commit_close"] = f"FAIL: {type(e).__name__}: {e}"
+        result["user_traceback"] = traceback.format_exc()[-1500:]
+
+    # 2) Same for Driver + serialize.
+    try:
+        from app.api.drivers import _serialize_driver
+        s = get_session()
+        try:
+            d = s.query(Driver).first()
+        finally:
+            s.close()
+        if d:
+            _ = _serialize_driver(d)
+            result["checks"]["driver_serialize_after_close"] = "ok"
+        else:
+            result["checks"]["driver_serialize_after_close"] = "no drivers yet"
+    except Exception as e:
+        result["checks"]["driver_serialize_after_close"] = f"FAIL: {type(e).__name__}: {e}"
+        result["driver_traceback"] = traceback.format_exc()[-1500:]
+
+    # 3) Order serialize (used by available/active lists + create).
+    try:
+        from app.api.orders import _serialize_order
+        s = get_session()
+        try:
+            o = s.query(Order).first()
+        finally:
+            s.close()
+        if o:
+            _ = _serialize_order(o, include_passenger=True)
+            result["checks"]["order_serialize_after_close"] = "ok"
+        else:
+            result["checks"]["order_serialize_after_close"] = "no orders yet"
+    except Exception as e:
+        result["checks"]["order_serialize_after_close"] = f"FAIL: {type(e).__name__}: {e}"
+        result["order_traceback"] = traceback.format_exc()[-1500:]
+
+    all_ok = all(
+        v in ("ok",) or "no " in str(v)
+        for v in result["checks"].values()
+    )
+    result["selftest_ok"] = all_ok
+    return web.json_response(result, status=200 if all_ok else 500)
+
+
 async def legacy_db(request: web.Request) -> web.Response:
     """Backward-compatible /db endpoint that returns aggregated data.
 
@@ -86,6 +169,7 @@ def create_app(bot=None) -> web.Application:
     # Health
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
+    app.router.add_get("/health/selftest", health_selftest)
 
     # Auth
     app.router.add_post("/api/auth/request-otp", auth_api.request_otp)
