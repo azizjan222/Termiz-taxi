@@ -56,6 +56,7 @@ export default function RootLayout() {
           <Stack.Screen name="top-up" />
           <Stack.Screen name="stats" />
           <Stack.Screen name="car-photo" />
+          <Stack.Screen name="driver-info" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

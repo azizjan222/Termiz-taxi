@@ -184,6 +184,20 @@ export default function ProfileScreen() {
 
           <TouchableOpacity
             style={[styles.menuItem, styles.menuItemBorder]}
+            onPress={() => router.push('/driver-info')}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.infoLight }]}>
+              <Text style={styles.menuIconText}>📝</Text>
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.menuTitle}>Ma'lumotlarim</Text>
+              <Text style={styles.menuSub}>Ism, JSHSHIR, mashina, hujjatlar</Text>
+            </View>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, styles.menuItemBorder]}
             onPress={() => router.push('/car-photo')}
           >
             <View style={[styles.menuIcon, { backgroundColor: colors.warningLight }]}>

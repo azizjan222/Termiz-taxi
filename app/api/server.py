@@ -67,7 +67,8 @@ async def health_db(request: web.Request) -> web.Response:
     expected = {
         "drivers": ["profile_photo_url", "seats", "documents_submitted",
                     "subscription_until", "pinfl", "car_year",
-                    "license_file_id", "tech_passport_file_id", "car_photo_file_id"],
+                    "license_file_id", "tech_passport_file_id", "car_photo_file_id",
+                    "tech_passport_url"],
         "users": ["profile_photo_url"],
         "orders": ["target_driver_id", "commission_charged"],
     }
@@ -152,6 +153,8 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/driver/telegram/start", drivers_api.driver_telegram_start)
     app.router.add_get("/api/driver/telegram/check", drivers_api.driver_telegram_check)
     app.router.add_get("/api/driver/me", drivers_api.driver_me)
+    app.router.add_patch("/api/driver/me", drivers_api.driver_update_me)
+    app.router.add_get("/api/car-models", drivers_api.get_car_models)
     app.router.add_post("/api/driver/online", drivers_api.driver_set_online)
     app.router.add_get("/api/driver/orders/available", drivers_api.list_available_orders)
     app.router.add_get("/api/driver/orders/active", drivers_api.list_my_active)
@@ -207,6 +210,7 @@ def create_app(bot=None) -> web.Application:
     # File uploads
     app.router.add_post("/api/driver/upload/car-photo", uploads_api.upload_car_photo)
     app.router.add_post("/api/driver/upload/license", uploads_api.upload_license_photo)
+    app.router.add_post("/api/driver/upload/tech-passport", uploads_api.upload_tech_passport)
     app.router.add_post("/api/driver/upload/profile-photo", uploads_api.upload_driver_profile_photo)
     app.router.add_post("/api/upload/profile-photo", uploads_api.upload_passenger_profile_photo)
     app.router.add_get("/uploads/{filename}", uploads_api.serve_upload)

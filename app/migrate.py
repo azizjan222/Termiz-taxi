@@ -39,6 +39,7 @@ def _apply_schema_migrations() -> int:
         # Driver new columns
         ("drivers", "car_photo_url", "VARCHAR(500)"),
         ("drivers", "license_photo_url", "VARCHAR(500)"),
+        ("drivers", "tech_passport_url", "VARCHAR(500)"),
         ("drivers", "profile_photo_url", "VARCHAR(500)"),
         ("drivers", "seats", "INTEGER DEFAULT 4"),
         ("drivers", "is_verified", BOOL_FALSE),
