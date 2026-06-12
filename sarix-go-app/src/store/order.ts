@@ -8,6 +8,8 @@ interface OrderDraft {
   toAddress: string;
   fromLat: number | null;
   fromLon: number | null;
+  toLat: number | null;
+  toLon: number | null;
   serviceType: ServiceType;
   personCount: number;
   maleCount: number;
@@ -33,6 +35,8 @@ const initialDraft: OrderDraft = {
   toAddress: '',
   fromLat: null,
   fromLon: null,
+  toLat: null,
+  toLon: null,
   serviceType: 'taxi',
   personCount: 1,
   maleCount: 1,

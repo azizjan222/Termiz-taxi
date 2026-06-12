@@ -70,6 +70,7 @@ export default function RootLayout() {
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="route-select" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="map-select" options={{ presentation: 'modal' }} />
           <Stack.Screen name="new-order" />
           <Stack.Screen name="tariff" />
           <Stack.Screen name="confirm-order" />
