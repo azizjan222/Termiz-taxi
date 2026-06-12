@@ -103,6 +103,7 @@ export default {
     notifications: 'Билдиришномалар',
     promoCodes: 'Промокодларим',
     helpSupport: 'Ёрдам хизмати',
+    faq: 'Ёрдам / FAQ',
     becomeDriver: 'Ҳайдовчи бўлинг',
     settings: 'Созламалар',
     feedback: 'Нимани яхшилаш керак',
@@ -153,5 +154,19 @@ export default {
     openAgain: 'Телеграмни қайта очиш',
     timeout: 'Вақт тугади. Қайта уриниб кўринг.',
     expired: 'Муддати тугади. Қайта уриниб кўринг.',
+  },
+  notifHistory: {
+    title: 'Билдиришномалар',
+    empty: 'Билдиришномалар йўқ',
+    clear: 'Тозалаш',
+  },
+  faq: {
+    title: 'Ёрдам / FAQ',
+    contactSupport: 'Ёрдам хизмати билан боғланиш',
+    contactHint: 'Саволингизга жавоб топмадингизми?',
+  },
+  driverMap: {
+    title: 'Ҳайдовчи жойлашуви',
+    waiting: 'Ҳайдовчи жойлашуви кутилмоқда...',
   },
 };

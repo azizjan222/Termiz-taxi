@@ -13,6 +13,8 @@ import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 import { getAppConfig, compareVersions } from '../src/api/app-config';
 import { registerPushToken } from '../src/services/notifications';
+import { addNotificationReceivedListener } from '../src/services/notifications';
+import { addNotification } from '../src/services/notificationHistory';
 import Constants from 'expo-constants';
 
 export default function RootLayout() {
@@ -49,6 +51,21 @@ export default function RootLayout() {
     }
   }, [isAuth, ready]);
 
+  // Persist every received push notification into the in-app history.
+  useEffect(() => {
+    const sub = addNotificationReceivedListener((notification) => {
+      const content = notification?.request?.content;
+      if (!content) return;
+      addNotification({
+        title: content.title || 'Bildirishnoma',
+        body: content.body || '',
+        type: (content.data as any)?.type,
+        data: (content.data as any) || {},
+      });
+    });
+    return () => sub.remove();
+  }, []);
+
   // Show animated splash until both app is ready AND animation finished
   if (!ready || !splashDone) {
     return <AnimatedSplash onFinish={() => setSplashDone(true)} />;
@@ -81,6 +98,8 @@ export default function RootLayout() {
           <Stack.Screen name="referral" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="saved-addresses" />
+          <Stack.Screen name="notifications" />
+          <Stack.Screen name="faq" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

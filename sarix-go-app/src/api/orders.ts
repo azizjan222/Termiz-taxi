@@ -54,6 +54,9 @@ export interface Order {
     profile_photo_url?: string | null;
     seats?: number;
     rating: number;
+    current_lat?: number | null;
+    current_lon?: number | null;
+    location_updated_at?: string | null;
   };
 }
 

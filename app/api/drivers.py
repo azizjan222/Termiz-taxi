@@ -33,6 +33,33 @@ def driver_can_accept(driver: Driver, now: datetime | None = None) -> bool:
     return (driver.balance or 0) >= config.MIN_DRIVER_BALANCE
 
 
+def _today_str(now: datetime | None = None) -> str:
+    return (now or datetime.utcnow()).strftime("%Y-%m-%d")
+
+
+def compute_online_seconds_today(driver: Driver, now: datetime | None = None) -> int:
+    """Total seconds the driver has been online TODAY, including the current session.
+
+    `online_seconds_today` holds completed-session time for `online_day`. If the driver
+    is currently online (`online_since` set) and it's still the same day, add the
+    in-progress segment. Automatically returns 0 when the stored day is in the past.
+    """
+    now = now or datetime.utcnow()
+    today = _today_str(now)
+    base = driver.online_seconds_today or 0
+    # Accumulator belongs to a previous day -> today starts fresh.
+    if driver.online_day and driver.online_day != today:
+        base = 0
+    elif not driver.online_day:
+        base = base if driver.online_seconds_today else 0
+    extra = 0
+    if driver.online_since:
+        # Only count the live segment if it started today.
+        if _today_str(driver.online_since) == today:
+            extra = max(0, int((now - driver.online_since).total_seconds()))
+    return base + extra
+
+
 def _norm_phone(phone: str | None) -> str:
     """Normalize a phone to '+<digits>' for comparison."""
     digits = "".join(ch for ch in (phone or "") if ch.isdigit())
@@ -524,7 +551,11 @@ async def driver_update_me(request: web.Request) -> web.Response:
 
 @require_driver
 async def driver_set_online(request: web.Request) -> web.Response:
-    """POST /api/driver/online  Body: {"online": true}"""
+    """POST /api/driver/online  Body: {"online": true}
+
+    Also tracks today's online time: when going online we record `online_since`;
+    when going offline we add the elapsed seconds to `online_seconds_today` (resetting
+    the accumulator if the day rolled over)."""
     driver: Driver = request["driver"]
     try:
         data = await request.json()
@@ -537,10 +568,153 @@ async def driver_set_online(request: web.Request) -> web.Response:
     try:
         d = session.query(Driver).filter_by(id=driver.id).first()
         if d:
+            now = datetime.utcnow()
+            today = _today_str(now)
+
+            # Roll over the accumulator at the start of a new day.
+            if d.online_day != today:
+                d.online_seconds_today = 0
+                d.online_day = today
+
+            if online:
+                # Starting (or refreshing) an online session.
+                if not d.online_since:
+                    d.online_since = now
+            else:
+                # Going offline -> bank the elapsed segment.
+                if d.online_since:
+                    if _today_str(d.online_since) == today:
+                        elapsed = max(0, int((now - d.online_since).total_seconds()))
+                        d.online_seconds_today = (d.online_seconds_today or 0) + elapsed
+                    d.online_since = None
+
             d.is_online = online
-            d.last_active = datetime.utcnow()
+            d.last_active = now
             session.commit()
+            return web.json_response({
+                "success": True,
+                "is_online": online,
+                "online_seconds_today": compute_online_seconds_today(d, now),
+            })
         return web.json_response({"success": True, "is_online": online})
+    finally:
+        session.close()
+
+
+@require_driver
+async def driver_update_location(request: web.Request) -> web.Response:
+    """POST /api/driver/location  Body: {"lat": .., "lon": ..}
+
+    Called periodically by the driver app while on an active order. Stores the driver's
+    current position and broadcasts it over WebSocket to the passenger(s) of the
+    driver's active orders so they can watch the car move on the map in real time.
+    """
+    driver: Driver = request["driver"]
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    try:
+        lat = float(data.get("lat"))
+        lon = float(data.get("lon"))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "lat/lon kerak"}, status=400)
+
+    session = get_session()
+    active_orders = []
+    try:
+        d = session.query(Driver).filter_by(id=driver.id).first()
+        if not d:
+            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        d.current_lat = lat
+        d.current_lon = lon
+        d.location_updated_at = datetime.utcnow()
+        d.last_active = datetime.utcnow()
+        session.commit()
+
+        # Find this driver's active orders so we know which passengers to notify.
+        active_orders = (
+            session.query(Order)
+            .filter(
+                Order.driver_id == d.id,
+                Order.status.in_(["accepted", "in_progress"]),
+            )
+            .all()
+        )
+        passenger_ids = [o.passenger_id for o in active_orders if o.passenger_id]
+        order_ids = [o.id for o in active_orders]
+    finally:
+        session.close()
+
+    # Broadcast outside the DB session.
+    for o_id, p_id in zip(order_ids, passenger_ids):
+        try:
+            await ws_manager.send_to_passenger(p_id, {
+                "type": "driver_location",
+                "order_id": o_id,
+                "lat": lat,
+                "lon": lon,
+            })
+        except Exception:
+            pass
+
+    return web.json_response({"success": True})
+
+
+@require_driver
+async def driver_orders_history(request: web.Request) -> web.Response:
+    """GET /api/driver/orders/history?status=all|completed|cancelled&page=1&page_size=20
+
+    Paginated list of the driver's finished trips (completed + cancelled) for the
+    Order-history screen.
+    """
+    driver: Driver = request["driver"]
+    status_filter = request.query.get("status", "all")
+    try:
+        page = max(1, int(request.query.get("page", "1")))
+    except ValueError:
+        page = 1
+    try:
+        page_size = min(50, max(1, int(request.query.get("page_size", "20"))))
+    except ValueError:
+        page_size = 20
+
+    if status_filter == "completed":
+        statuses = ["completed"]
+    elif status_filter == "cancelled":
+        statuses = ["cancelled"]
+    else:
+        statuses = ["completed", "cancelled"]
+
+    session = get_session()
+    try:
+        q = (
+            session.query(Order)
+            .filter(Order.driver_id == driver.id, Order.status.in_(statuses))
+        )
+        total = q.count()
+        orders = (
+            q.order_by(Order.completed_at.desc(), Order.cancelled_at.desc(), Order.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        def _hist(o: Order) -> dict:
+            data = _serialize_order(o, include_passenger=True)
+            data["completed_at"] = o.completed_at.isoformat() if o.completed_at else None
+            data["cancelled_at"] = o.cancelled_at.isoformat() if o.cancelled_at else None
+            data["earned"] = (o.price or 0) - (o.commission or 0) if o.status == "completed" else 0
+            return data
+
+        return web.json_response({
+            "orders": [_hist(o) for o in orders],
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "has_more": page * page_size < total,
+        })
     finally:
         session.close()
 

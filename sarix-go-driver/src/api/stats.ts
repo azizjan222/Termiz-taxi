@@ -13,6 +13,7 @@ export interface DriverStats {
   current_balance: number;
   rating: number;
   rating_count: number;
+  online_seconds_today?: number;
   top_routes: { route: string; count: number }[];
   daily: { date: string; count: number; revenue: number; earnings: number }[];
   service_breakdown: { taxi: number; parcel: number; full_car: number };

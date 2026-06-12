@@ -316,6 +316,9 @@ async def get_order(request: web.Request) -> web.Response:
                     "profile_photo_url": driver.profile_photo_url,
                     "seats": driver.seats or 4,
                     "rating": driver.rating,
+                    "current_lat": driver.current_lat,
+                    "current_lon": driver.current_lon,
+                    "location_updated_at": driver.location_updated_at.isoformat() if driver.location_updated_at else None,
                 }
         return web.json_response(result)
     finally:

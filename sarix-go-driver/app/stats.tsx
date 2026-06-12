@@ -4,20 +4,22 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { getDriverStats, type DriverStats, type StatsPeriod } from '../src/api/stats';
 import { colors, typography, spacing, radius } from '../src/theme';
 
-const PERIODS: { value: StatsPeriod; label: string }[] = [
-  { value: 'today', label: 'Bugun' },
-  { value: 'week', label: 'Hafta' },
-  { value: 'month', label: 'Oy' },
-];
-
 export default function StatsScreen() {
+  const { t } = useTranslation();
   const [period, setPeriod] = useState<StatsPeriod>('today');
   const [stats, setStats] = useState<DriverStats | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const PERIODS: { value: StatsPeriod; label: string }[] = [
+    { value: 'today', label: t('stats.today') },
+    { value: 'week', label: t('stats.week') },
+    { value: 'month', label: t('stats.month') },
+  ];
 
   const load = async (p: StatsPeriod) => {
     setLoading(true);
@@ -32,6 +34,13 @@ export default function StatsScreen() {
   const formatPrice = (n: number) =>
     n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
+  const formatOnline = (secs: number) => {
+    const total = Math.max(0, Math.floor(secs || 0));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    return `${h} ${t('stats.hours')} ${m} ${t('stats.minutes')}`;
+  };
+
   // Build daily chart bars
   const maxDaily = stats?.daily.reduce((m, d) => Math.max(m, d.earnings), 0) || 1;
 
@@ -41,7 +50,7 @@ export default function StatsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>📊 Statistika</Text>
+        <Text style={styles.title}>📊 {t('stats.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -67,31 +76,42 @@ export default function StatsScreen() {
         <ScrollView contentContainerStyle={styles.scroll}>
           {/* Earnings card */}
           <View style={styles.earningsCard}>
-            <Text style={styles.earningsLabel}>Sof daromad</Text>
+            <Text style={styles.earningsLabel}>{t('stats.netEarnings')}</Text>
             <Text style={styles.earningsValue}>
               {formatPrice(stats.net_earnings)} so'm
             </Text>
             <View style={styles.earningsRow}>
               <Text style={styles.earningsDetail}>
-                💰 Jami: {formatPrice(stats.total_revenue)} so'm
+                💰 {t('stats.totalRevenue')}: {formatPrice(stats.total_revenue)} so'm
               </Text>
               <Text style={styles.earningsDetail}>
-                💸 Komissiya: {formatPrice(stats.total_commission)} so'm
+                💸 {t('stats.commission')}: {formatPrice(stats.total_commission)} so'm
               </Text>
             </View>
           </View>
+
+          {/* Online time today */}
+          {typeof stats.online_seconds_today === 'number' && (
+            <View style={styles.onlineCard}>
+              <Text style={styles.onlineIcon}>🟢</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.onlineLabel}>{t('stats.onlineToday')}</Text>
+                <Text style={styles.onlineValue}>{formatOnline(stats.online_seconds_today)}</Text>
+              </View>
+            </View>
+          )}
 
           {/* Stats grid */}
           <View style={styles.grid}>
             <View style={styles.gridItem}>
               <Text style={styles.gridValue}>{stats.completed_orders}</Text>
-              <Text style={styles.gridLabel}>✅ Yakunlandi</Text>
+              <Text style={styles.gridLabel}>✅ {t('stats.completed')}</Text>
             </View>
             <View style={styles.gridItem}>
               <Text style={[styles.gridValue, { color: colors.error }]}>
                 {stats.cancelled_orders}
               </Text>
-              <Text style={styles.gridLabel}>❌ Bekor</Text>
+              <Text style={styles.gridLabel}>❌ {t('stats.cancelled')}</Text>
             </View>
             <View style={styles.gridItem}>
               <Text style={styles.gridValue}>⭐ {stats.rating.toFixed(1)}</Text>
@@ -101,14 +121,14 @@ export default function StatsScreen() {
               <Text style={styles.gridValue}>
                 {formatPrice(stats.current_balance)}
               </Text>
-              <Text style={styles.gridLabel}>💰 Balans</Text>
+              <Text style={styles.gridLabel}>💰 {t('stats.balance')}</Text>
             </View>
           </View>
 
           {/* Daily chart */}
           {stats.daily.length > 0 && (
             <View style={styles.chartCard}>
-              <Text style={styles.cardTitle}>Kunlik daromad</Text>
+              <Text style={styles.cardTitle}>{t('stats.dailyChart')}</Text>
               <View style={styles.chart}>
                 {stats.daily.map((d) => {
                   const heightPct = (d.earnings / maxDaily) * 100;
@@ -135,7 +155,7 @@ export default function StatsScreen() {
           {/* Top routes */}
           {stats.top_routes.length > 0 && (
             <View style={styles.chartCard}>
-              <Text style={styles.cardTitle}>🏆 Eng ko'p yo'nalishlar</Text>
+              <Text style={styles.cardTitle}>🏆 {t('stats.topRoutes')}</Text>
               {stats.top_routes.map((r, i) => (
                 <View key={i} style={styles.routeRow}>
                   <Text style={styles.routeRank}>{i + 1}.</Text>
@@ -148,7 +168,7 @@ export default function StatsScreen() {
 
           {/* Service breakdown */}
           <View style={styles.chartCard}>
-            <Text style={styles.cardTitle}>📊 Xizmat turlari</Text>
+            <Text style={styles.cardTitle}>📊 {t('stats.services')}</Text>
             <View style={styles.serviceRow}>
               <View style={styles.serviceItem}>
                 <Text style={styles.serviceEmoji}>🚕</Text>
@@ -221,6 +241,17 @@ const styles = StyleSheet.create({
   earningsValue: { ...typography.h1, color: colors.accent, marginVertical: spacing.xs },
   earningsRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' },
   earningsDetail: { ...typography.small, color: colors.white, opacity: 0.9 },
+  onlineCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+  },
+  onlineIcon: { fontSize: 24, marginRight: spacing.md },
+  onlineLabel: { ...typography.small, color: colors.textSecondary },
+  onlineValue: { ...typography.bodyBold, color: colors.primary, marginTop: 2 },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

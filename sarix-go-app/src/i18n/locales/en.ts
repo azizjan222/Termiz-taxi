@@ -103,6 +103,7 @@ export default {
     notifications: 'Notifications',
     promoCodes: 'Promo codes',
     helpSupport: 'Help & Support',
+    faq: 'Help / FAQ',
     becomeDriver: 'Become a driver',
     settings: 'Settings',
     feedback: 'What to improve',
@@ -153,5 +154,19 @@ export default {
     openAgain: 'Open Telegram again',
     timeout: 'Timed out. Please try again.',
     expired: 'Session expired. Please try again.',
+  },
+  notifHistory: {
+    title: 'Notifications',
+    empty: 'No notifications',
+    clear: 'Clear',
+  },
+  faq: {
+    title: 'Help / FAQ',
+    contactSupport: 'Contact support',
+    contactHint: "Didn't find an answer to your question?",
+  },
+  driverMap: {
+    title: 'Driver location',
+    waiting: 'Waiting for driver location...',
   },
 };

@@ -5,7 +5,7 @@ from sqlalchemy import func
 
 from app.database import get_session
 from app.models import Order, Driver
-from app.api.drivers import _get_driver_from_request
+from app.api.drivers import _get_driver_from_request, compute_online_seconds_today
 
 
 def _period_start(period: str) -> datetime:
@@ -97,6 +97,7 @@ async def driver_stats(request: web.Request) -> web.Response:
             "current_balance": driver.balance or 0,
             "rating": driver.rating or 5.0,
             "rating_count": driver.rating_count or 0,
+            "online_seconds_today": compute_online_seconds_today(driver),
             "top_routes": [{"route": r, "count": c} for r, c in top_routes],
             "daily": daily_list,
             "service_breakdown": service_breakdown,

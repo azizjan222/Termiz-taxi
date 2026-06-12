@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, Vibration } from 'react-native';
 import Constants from 'expo-constants';
 
 import { api } from '../api/client';
@@ -9,13 +9,17 @@ import { api } from '../api/client';
 // appears in-app (via WebSocket). When the app is in the BACKGROUND/closed, the OS
 // shows the push as a pop-up automatically.
 Notifications.setNotificationHandler({
-  handleNotification: async () => {
+  handleNotification: async (notification) => {
     const inForeground = AppState.currentState === 'active';
+    // New-order alerts (scheduled locally with alert flag) must ALWAYS be loud,
+    // even when the app is in the foreground and the driver is online.
+    const isOrderAlert =
+      (notification?.request?.content?.data as any)?.alert === true;
     return {
-      shouldShowAlert: !inForeground,
-      shouldPlaySound: !inForeground,
+      shouldShowAlert: !inForeground || isOrderAlert,
+      shouldPlaySound: !inForeground || isOrderAlert,
       shouldSetBadge: true,
-      shouldShowBanner: !inForeground,
+      shouldShowBanner: !inForeground || isOrderAlert,
       shouldShowList: true,
     };
   },
@@ -101,4 +105,46 @@ export function addNotificationResponseListener(
   handler: (response: Notifications.NotificationResponse) => void
 ) {
   return Notifications.addNotificationResponseReceivedListener(handler);
+}
+
+// A long, repeating vibration pattern (ms): wait, vibrate, pause, ...
+const ALERT_VIBRATION = [0, 700, 300, 700, 300, 700, 300, 700];
+
+/**
+ * Loud alert for a NEW order while the driver is online and the app is open.
+ * Plays a system notification sound (via an immediate local notification on the
+ * high-importance "orders" channel) and triggers a strong, repeating vibration.
+ * No bundled audio asset is required — we reuse the OS notification sound.
+ */
+export async function playNewOrderAlert(opts?: { from?: string; to?: string; price?: number }) {
+  // Strong vibration (works even in silent mode on most devices).
+  try {
+    Vibration.vibrate(ALERT_VIBRATION, false);
+  } catch {}
+
+  // Immediate local notification -> produces the loud system "orders" channel sound.
+  try {
+    const body =
+      opts?.from && opts?.to
+        ? `${opts.from} → ${opts.to}${opts.price ? ` · ${opts.price} so'm` : ''}`
+        : "Yangi zakas keldi";
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '🚕 Yangi zakas!',
+        body,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        vibrate: ALERT_VIBRATION,
+        data: { alert: true, type: 'new_order' },
+        ...(Platform.OS === 'android' ? { channelId: 'orders' } : {}),
+      },
+      trigger: null, // fire immediately
+    });
+  } catch {}
+}
+
+export function stopAlert() {
+  try {
+    Vibration.cancel();
+  } catch {}
 }

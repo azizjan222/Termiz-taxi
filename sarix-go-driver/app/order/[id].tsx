@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Linking, Alert,
+  Linking, Alert, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import * as Location from 'expo-location';
 
 import { Button } from '../../src/components/Button';
-import { listMyActive, completeOrder, type DriverOrder } from '../../src/api/driver';
+import { listMyActive, completeOrder, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 const CONTACT_WINDOW_MINUTES = 15;
+const LOCATION_INTERVAL_MS = 10000; // send driver location every ~10s while active
 
 export default function OrderDetailScreen() {
   const { t } = useTranslation();
@@ -48,6 +50,69 @@ export default function OrderDetailScreen() {
   const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const mmss = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+  // While the order is active, periodically send the driver's GPS location to the
+  // backend, which broadcasts it to the passenger so they see the car move in real time.
+  useEffect(() => {
+    if (!order || !['accepted', 'in_progress'].includes(order.status)) return;
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const sendOnce = async () => {
+      try {
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (!cancelled) {
+          await updateDriverLocation(pos.coords.latitude, pos.coords.longitude);
+        }
+      } catch {}
+    };
+
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted' || cancelled) return;
+        await sendOnce();
+        interval = setInterval(sendOnce, LOCATION_INTERVAL_MS);
+      } catch {}
+    })();
+
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+  }, [order?.id, order?.status]);
+
+  const openNavigation = async () => {
+    const lat = order?.from_lat;
+    const lon = order?.from_lon;
+    if (lat == null || lon == null) {
+      Alert.alert(t('common.error'), "Yo'lovchining joylashuvi mavjud emas");
+      return;
+    }
+    // Try Yandex Navigator, then Yandex Maps, then a universal geo/Google fallback.
+    const candidates = [
+      `yandexnavi://build_route_on_map?lat_to=${lat}&lon_to=${lon}`,
+      `yandexmaps://maps.yandex.ru/?rtext=~${lat},${lon}&rtt=auto`,
+      Platform.OS === 'ios'
+        ? `https://maps.apple.com/?daddr=${lat},${lon}`
+        : `geo:${lat},${lon}?q=${lat},${lon}`,
+      `https://yandex.com/maps/?rtext=~${lat}%2C${lon}&rtt=auto`,
+      `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`,
+    ];
+    for (const url of candidates) {
+      try {
+        const ok = await Linking.canOpenURL(url);
+        if (ok) {
+          await Linking.openURL(url);
+          return;
+        }
+      } catch {}
+    }
+    // Last resort: open the web Google Maps link.
+    Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`).catch(() => {});
+  };
 
   const callPassenger = () => {
     if (order?.passenger_phone) {
@@ -185,6 +250,10 @@ export default function OrderDetailScreen() {
 
       {/* Action button — only the passenger can cancel, so the driver just finishes. */}
       <View style={styles.footer}>
+        <TouchableOpacity style={styles.navBtn} onPress={openNavigation} activeOpacity={0.85}>
+          <Text style={styles.navBtnIcon}>🧭</Text>
+          <Text style={styles.navBtnText}>{t('order.navigation')}</Text>
+        </TouchableOpacity>
         <Button
           title={'✅ ' + t('order.complete')}
           onPress={handleComplete}
@@ -286,4 +355,15 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.divider,
   },
+  navBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.sm,
+  },
+  navBtnIcon: { fontSize: 20, marginRight: spacing.sm },
+  navBtnText: { ...typography.button, color: colors.white },
 });

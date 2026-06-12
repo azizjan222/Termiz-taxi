@@ -72,6 +72,18 @@ class Driver(Base):
     total_orders = Column(Integer, default=0)
     push_token = Column(String(200))  # Expo push token
     theme = Column(String(20), default="auto")
+    # Live location (sent by the driver app every ~10s while on an active order).
+    # Broadcast to the passenger so they can see the driver moving on the map.
+    current_lat = Column(Float)
+    current_lon = Column(Float)
+    location_updated_at = Column(DateTime)
+    # Online-time tracking. `online_since` is set when the driver toggles online;
+    # when they go offline (or stats are read) the elapsed time is added to
+    # `online_seconds_today`. `online_day` is the YYYY-MM-DD the accumulator belongs
+    # to, so it resets automatically at the start of a new day.
+    online_seconds_today = Column(Integer, default=0)
+    online_since = Column(DateTime)
+    online_day = Column(String(10))
     # Free/paid subscription: while subscription_until > now, the driver pays NO
     # commission and does not need the minimum balance to accept orders.
     subscription_until = Column(DateTime, nullable=True)
