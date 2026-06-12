@@ -53,6 +53,13 @@ def _apply_schema_migrations() -> int:
         ("drivers", "tech_passport_file_id", "VARCHAR(200)"),
         ("drivers", "car_photo_file_id", "VARCHAR(200)"),
         ("drivers", "documents_submitted", BOOL_FALSE),
+        # Live location + online-time tracking
+        ("drivers", "current_lat", FLT),
+        ("drivers", "current_lon", FLT),
+        ("drivers", "location_updated_at", DT),
+        ("drivers", "online_seconds_today", "INTEGER DEFAULT 0"),
+        ("drivers", "online_since", DT),
+        ("drivers", "online_day", "VARCHAR(10)"),
         # Order new columns
         ("orders", "target_driver_id", "INTEGER"),
         ("orders", "commission_charged", BOOL_FALSE),

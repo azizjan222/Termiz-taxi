@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
-  TouchableOpacity, Alert, Switch, Vibration,
+  TouchableOpacity, Alert, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -11,6 +11,8 @@ import * as Haptics from 'expo-haptics';
 import { listAvailableOrders, acceptOrder, setOnline as apiSetOnline, type DriverOrder } from '../../src/api/driver';
 import { useDriverStore } from '../../src/store/driver';
 import { WS_URL } from '../../src/api/client';
+import { playNewOrderAlert } from '../../src/services/notifications';
+import { addNotification } from '../../src/services/notificationHistory';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 export default function OrdersScreen() {
@@ -66,9 +68,20 @@ export default function OrdersScreen() {
             if (prev.find((o) => o.id === msg.order.id)) return prev;
             return [msg.order, ...prev];
           });
-          // Vibrate + haptic feedback
-          Vibration.vibrate([0, 200, 100, 200]);
+          // Loud sound + strong vibration + haptic feedback for the new order.
+          playNewOrderAlert({
+            from: msg.order.from_city,
+            to: msg.order.to_city,
+            price: msg.order.price,
+          });
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          // Save to the in-app notifications history.
+          addNotification({
+            title: '🚕 Yangi zakas',
+            body: `${msg.order.from_city} → ${msg.order.to_city}${msg.order.price ? ` · ${msg.order.price} so'm` : ''}`,
+            type: 'new_order',
+            data: { order_id: msg.order.id },
+          });
         } else if (msg.type === 'order_cancelled') {
           setOrders((prev) => prev.filter((o) => o.id !== msg.order_id));
         }

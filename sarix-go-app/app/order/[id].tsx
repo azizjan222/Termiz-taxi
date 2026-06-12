@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,20 +14,31 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '../../src/components/Button';
+import YandexMap, { type MapMarker } from '../../src/components/YandexMap';
 import { getOrder, cancelOrder, type Order } from '../../src/api/orders';
-import { API_URL } from '../../src/api/client';
+import { getOrderRatingStatus } from '../../src/api/ratings';
+import { useAuthStore } from '../../src/store/auth';
+import { API_URL, WS_URL } from '../../src/api/client';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 export default function OrderDetailScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const user = useAuthStore((s) => s.user);
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [driverLoc, setDriverLoc] = useState<{ lat: number; lon: number } | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const ratedHandledRef = useRef(false);
 
   const load = async () => {
     try {
       const data = await getOrder(parseInt(id));
       setOrder(data);
+      // Seed the driver marker from the last-known location returned by the API.
+      if (data.driver?.current_lat != null && data.driver?.current_lon != null) {
+        setDriverLoc((prev) => prev || { lat: data.driver!.current_lat!, lon: data.driver!.current_lon! });
+      }
     } catch {
     } finally {
       setLoading(false);
@@ -40,6 +51,40 @@ export default function OrderDetailScreen() {
     const i = setInterval(load, 10000);
     return () => clearInterval(i);
   }, [id]);
+
+  // Live driver location over WebSocket while the trip is active.
+  useEffect(() => {
+    if (!user) return;
+    const ws = new WebSocket(`${WS_URL}?role=passenger&id=${user.id}`);
+    wsRef.current = ws;
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'driver_location' && msg.order_id?.toString() === id) {
+          setDriverLoc({ lat: msg.lat, lon: msg.lon });
+        }
+      } catch {}
+    };
+    ws.onerror = () => {};
+    return () => ws.close();
+  }, [user, id]);
+
+  // After completion, prompt the passenger to rate the driver (once, if not rated yet).
+  useEffect(() => {
+    if (!order || order.status !== 'completed' || !order.driver || ratedHandledRef.current) return;
+    ratedHandledRef.current = true;
+    (async () => {
+      try {
+        const { rated } = await getOrderRatingStatus(parseInt(id));
+        if (!rated) {
+          router.replace({
+            pathname: '/rate-driver',
+            params: { orderId: id, driverName: order.driver?.first_name || '' },
+          });
+        }
+      } catch {}
+    })();
+  }, [order?.status, id]);
 
   const formatPrice = (p: number) =>
     p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -114,6 +159,29 @@ export default function OrderDetailScreen() {
             {t(`status.${order.status}`)}
           </Text>
         </View>
+
+        {/* Live driver location map (while the trip is active) */}
+        {isActive && order.driver && (driverLoc || (order.from_lat != null && order.from_lon != null)) && (
+          <View style={styles.mapCard}>
+            <YandexMap
+              style={styles.map}
+              initialLat={driverLoc?.lat ?? order.from_lat ?? undefined}
+              initialLon={driverLoc?.lon ?? order.from_lon ?? undefined}
+              initialZoom={14}
+              markers={[
+                ...(driverLoc
+                  ? [{ id: 'driver', lat: driverLoc.lat, lon: driverLoc.lon, label: '🚕', color: '#0E1B3D' } as MapMarker]
+                  : []),
+                ...(order.from_lat != null && order.from_lon != null
+                  ? [{ id: 'pickup', lat: order.from_lat, lon: order.from_lon, label: '📍', color: '#F4C430' } as MapMarker]
+                  : []),
+              ]}
+            />
+            <Text style={styles.mapHint}>
+              {driverLoc ? `🚕 ${t('driverMap.title')}` : t('driverMap.waiting')}
+            </Text>
+          </View>
+        )}
 
         {/* Driver info */}
         {order.driver && (
@@ -232,6 +300,21 @@ const styles = StyleSheet.create({
   },
   statusEmoji: { fontSize: 28, marginRight: spacing.md },
   statusText: { ...typography.h3, color: colors.white },
+  mapCard: {
+    height: 240,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+  },
+  map: { flex: 1 },
+  mapHint: {
+    ...typography.small,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.white,
+  },
   driverCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,

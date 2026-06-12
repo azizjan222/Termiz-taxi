@@ -103,6 +103,7 @@ export default {
     notifications: 'Bildirishnomalar',
     promoCodes: 'Promokodlarim',
     helpSupport: 'Yordam xizmati',
+    faq: 'Yordam / FAQ',
     becomeDriver: "Haydovchi bo'ling",
     settings: 'Sozlamalar',
     feedback: 'Nimani yaxshilash kerak',
@@ -206,5 +207,19 @@ export default {
     title: 'Yangilanish kerak',
     message: 'Iltimos, ilovani yangi versiyaga yangilang. Eski versiya ishlamaydi.',
     button: 'Play Market\'da yangilash',
+  },
+  notifHistory: {
+    title: 'Bildirishnomalar',
+    empty: 'Bildirishnomalar yo\'q',
+    clear: 'Tozalash',
+  },
+  faq: {
+    title: 'Yordam / FAQ',
+    contactSupport: 'Yordam xizmati bilan bog\'lanish',
+    contactHint: 'Savolingizga javob topmadingizmi?',
+  },
+  driverMap: {
+    title: 'Haydovchi joylashuvi',
+    waiting: 'Haydovchi joylashuvi kutilmoqda...',
   },
 };

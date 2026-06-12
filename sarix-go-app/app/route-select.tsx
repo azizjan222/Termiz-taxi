@@ -13,6 +13,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { listCities } from '../src/api/orders';
+import { listAddresses, type SavedAddress } from '../src/api/addresses';
 import { suggestAddress } from '../src/services/geocoding';
 import { useOrderStore } from '../src/store/order';
 import { colors, typography, spacing, radius } from '../src/theme';
@@ -27,11 +28,15 @@ export default function RouteSelectScreen() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
 
   useEffect(() => {
     listCities()
       .then(setCities)
       .catch(() => setCities([]));
+    listAddresses()
+      .then(setSavedAddresses)
+      .catch(() => setSavedAddresses([]));
   }, []);
 
   // Debounced address search
@@ -107,6 +112,34 @@ export default function RouteSelectScreen() {
     }
   };
 
+  // Quick-pick a saved address (Uy / Ish): set the city + full address (and coords).
+  const handleSelectSaved = (addr: SavedAddress) => {
+    const matchedCity =
+      cities.find((c) => addr.address.toLowerCase().includes(c.toLowerCase())) ||
+      addr.address.split(',')[0].trim();
+
+    if (mode === 'from') {
+      orderStore.setField('fromCity', matchedCity);
+      orderStore.setField('fromAddress', addr.address);
+      if (addr.latitude != null) orderStore.setField('fromLat', addr.latitude);
+      if (addr.longitude != null) orderStore.setField('fromLon', addr.longitude);
+      router.replace({ pathname: '/route-select', params: { mode: 'to' } });
+    } else {
+      orderStore.setField('toCity', matchedCity);
+      orderStore.setField('toAddress', addr.address);
+      if (addr.latitude != null) orderStore.setField('toLat', addr.latitude);
+      if (addr.longitude != null) orderStore.setField('toLon', addr.longitude);
+      router.replace(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
+    }
+  };
+
+  const savedIcon = (label?: string | null) => {
+    const l = (label || '').toLowerCase();
+    if (l.includes('uy') || l.includes('home') || l.includes('дом')) return '🏠';
+    if (l.includes('ish') || l.includes('work') || l.includes('работ')) return '💼';
+    return '📍';
+  };
+
   const title =
     mode === 'from' ? t('cities.selectFrom') : t('cities.selectTo');
 
@@ -148,6 +181,28 @@ export default function RouteSelectScreen() {
         <Text style={styles.mapBtnText}>Xaritadan tanlash</Text>
         <Text style={styles.mapBtnArrow}>›</Text>
       </TouchableOpacity>
+
+      {/* Saved addresses quick-pick (Uy / Ish) */}
+      {savedAddresses.length > 0 && (
+        <View style={styles.savedSection}>
+          <Text style={styles.savedTitle}>⭐ {t('profile.savedAddresses')}</Text>
+          <View style={styles.savedRow}>
+            {savedAddresses.slice(0, 6).map((a) => (
+              <TouchableOpacity
+                key={a.id}
+                style={styles.savedChip}
+                onPress={() => handleSelectSaved(a)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.savedChipIcon}>{savedIcon(a.label)}</Text>
+                <Text style={styles.savedChipLabel} numberOfLines={1}>
+                  {a.label || a.address.split(',')[0]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
 
       {/* Yandex Suggest results */}
       {showSuggestions && suggestions.length > 0 && (
@@ -248,6 +303,30 @@ const styles = StyleSheet.create({
   mapBtnIcon: { fontSize: 20, marginRight: spacing.sm },
   mapBtnText: { flex: 1, ...typography.bodyBold, color: colors.primary },
   mapBtnArrow: { fontSize: 24, color: colors.textMuted },
+  savedSection: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+  },
+  savedTitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  savedRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  savedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    maxWidth: '48%',
+  },
+  savedChipIcon: { fontSize: 16, marginRight: spacing.xs },
+  savedChipLabel: { ...typography.caption, color: colors.text, fontWeight: '600', flexShrink: 1 },
   suggestSection: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,

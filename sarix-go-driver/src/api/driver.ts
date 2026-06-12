@@ -129,6 +129,35 @@ export async function getBalanceHistory(): Promise<{ orders: DriverOrder[]; tota
   return response.data;
 }
 
+export interface DriverHistoryOrder extends DriverOrder {
+  completed_at?: string | null;
+  cancelled_at?: string | null;
+  earned?: number;
+}
+
+export interface OrdersHistoryResponse {
+  orders: DriverHistoryOrder[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_more: boolean;
+}
+
+export async function getOrdersHistory(
+  status: 'all' | 'completed' | 'cancelled' = 'all',
+  page = 1
+): Promise<OrdersHistoryResponse> {
+  const response = await api.get<OrdersHistoryResponse>('/api/driver/orders/history', {
+    params: { status, page },
+  });
+  return response.data;
+}
+
+/** Send the driver's current location to the backend (broadcast to the passenger). */
+export async function updateDriverLocation(lat: number, lon: number): Promise<void> {
+  await api.post('/api/driver/location', { lat, lon });
+}
+
 export async function uploadDriverProfilePhoto(uri: string): Promise<{ url: string }> {
   const form = new FormData();
   const name = uri.split('/').pop() || 'profile.jpg';

@@ -103,6 +103,7 @@ export default {
     notifications: 'Уведомления',
     promoCodes: 'Промокоды',
     helpSupport: 'Служба поддержки',
+    faq: 'Помощь / FAQ',
     becomeDriver: 'Стать водителем',
     settings: 'Настройки',
     feedback: 'Что улучшить',
@@ -153,5 +154,19 @@ export default {
     openAgain: 'Открыть Telegram снова',
     timeout: 'Время вышло. Попробуйте снова.',
     expired: 'Сессия истекла. Попробуйте снова.',
+  },
+  notifHistory: {
+    title: 'Уведомления',
+    empty: 'Нет уведомлений',
+    clear: 'Очистить',
+  },
+  faq: {
+    title: 'Помощь / FAQ',
+    contactSupport: 'Связаться со службой поддержки',
+    contactHint: 'Не нашли ответ на свой вопрос?',
+  },
+  driverMap: {
+    title: 'Местоположение водителя',
+    waiting: 'Ожидание местоположения водителя...',
   },
 };

@@ -176,8 +176,36 @@ export default function ProfileScreen() {
               <Text style={styles.menuIconText}>📊</Text>
             </View>
             <View style={styles.menuText}>
-              <Text style={styles.menuTitle}>Statistika</Text>
+              <Text style={styles.menuTitle}>{t('stats.title')}</Text>
               <Text style={styles.menuSub}>Daromad va zakaslar</Text>
+            </View>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, styles.menuItemBorder]}
+            onPress={() => router.push('/order-history')}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.successLight }]}>
+              <Text style={styles.menuIconText}>📋</Text>
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.menuTitle}>{t('profile.orderHistory')}</Text>
+              <Text style={styles.menuSub}>Yakunlangan / bekor qilingan</Text>
+            </View>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, styles.menuItemBorder]}
+            onPress={() => router.push('/notifications')}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.warningLight }]}>
+              <Text style={styles.menuIconText}>🔔</Text>
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.menuTitle}>{t('profile.notifications')}</Text>
+              <Text style={styles.menuSub}>Bildirishnomalar tarixi</Text>
             </View>
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
@@ -225,7 +253,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.menuItem}
+            style={[styles.menuItem, styles.menuItemBorder]}
             onPress={openSupport}
           >
             <View style={[styles.menuIcon, { backgroundColor: colors.infoLight }]}>
@@ -236,6 +264,34 @@ export default function ProfileScreen() {
               <Text style={styles.menuSub}>
                 {support ? `@${support.telegram_username}` : t('profile.supportHint')}
               </Text>
+            </View>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, styles.menuItemBorder]}
+            onPress={() => router.push('/faq')}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.accentLight }]}>
+              <Text style={styles.menuIconText}>❓</Text>
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.menuTitle}>{t('profile.faq')}</Text>
+              <Text style={styles.menuSub}>Ko'p so'raladigan savollar</Text>
+            </View>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push('/settings')}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.infoLight }]}>
+              <Text style={styles.menuIconText}>⚙️</Text>
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.menuTitle}>{t('profile.settings')}</Text>
+              <Text style={styles.menuSub}>Til, mavzu</Text>
             </View>
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
