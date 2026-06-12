@@ -91,6 +91,8 @@ export default function NewOrderScreen() {
         to_address: orderStore.toAddress,
         from_lat: orderStore.fromLat || undefined,
         from_lon: orderStore.fromLon || undefined,
+        to_lat: orderStore.toLat || undefined,
+        to_lon: orderStore.toLon || undefined,
         person_count: persons,
         male_count: orderStore.maleCount,
         female_count: orderStore.femaleCount,
@@ -172,7 +174,6 @@ export default function NewOrderScreen() {
                 onPress={() => {
                   orderStore.setField('personCount', n);
                   orderStore.setField('serviceType', 'taxi');
-                  orderStore.setField('maleCount', n);
                 }}
                 activeOpacity={0.85}
               >
@@ -183,6 +184,65 @@ export default function NewOrderScreen() {
             );
           })}
         </View>
+
+        {/* Yo'lovchilar jinsi (gender counters — informational) */}
+        <Text style={styles.sectionTitle}>Yo'lovchilar jinsi</Text>
+        <View style={styles.genderCard}>
+          <View style={styles.genderRow}>
+            <Text style={styles.genderLabel}>👨 Erkak</Text>
+            <View style={styles.stepper}>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() =>
+                  orderStore.setField('maleCount', Math.max(0, orderStore.maleCount - 1))
+                }
+                activeOpacity={0.7}
+              >
+                <Text style={styles.stepBtnText}>−</Text>
+              </TouchableOpacity>
+              <Text style={styles.stepValue}>{orderStore.maleCount}</Text>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() =>
+                  orderStore.setField('maleCount', Math.min(10, orderStore.maleCount + 1))
+                }
+                activeOpacity={0.7}
+              >
+                <Text style={styles.stepBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.genderDivider} />
+
+          <View style={styles.genderRow}>
+            <Text style={styles.genderLabel}>👩 Ayol</Text>
+            <View style={styles.stepper}>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() =>
+                  orderStore.setField('femaleCount', Math.max(0, orderStore.femaleCount - 1))
+                }
+                activeOpacity={0.7}
+              >
+                <Text style={styles.stepBtnText}>−</Text>
+              </TouchableOpacity>
+              <Text style={styles.stepValue}>{orderStore.femaleCount}</Text>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() =>
+                  orderStore.setField('femaleCount', Math.min(10, orderStore.femaleCount + 1))
+                }
+                activeOpacity={0.7}
+              >
+                <Text style={styles.stepBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+        <Text style={styles.genderHint}>
+          Ixtiyoriy — haydovchi uchun ma'lumot ({orderStore.maleCount + orderStore.femaleCount} kishi belgilandi)
+        </Text>
 
         {/* Price preview */}
         <View style={styles.priceCard}>
@@ -314,6 +374,43 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.white, borderColor: colors.accent },
   chipText: { ...typography.bodyBold, color: colors.textSecondary },
   chipTextSelected: { color: colors.primary },
+  genderCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  genderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+  },
+  genderLabel: { ...typography.bodyBold, color: colors.text },
+  genderDivider: { height: 1, backgroundColor: colors.divider },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  stepBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepBtnText: { fontSize: 22, color: colors.primary, fontWeight: '700', lineHeight: 24 },
+  stepValue: {
+    ...typography.bodyBold,
+    color: colors.primary,
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  genderHint: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+  },
   priceCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',

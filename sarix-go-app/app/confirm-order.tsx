@@ -68,6 +68,8 @@ export default function ConfirmOrderScreen() {
         to_address: orderStore.toAddress,
         from_lat: orderStore.fromLat || undefined,
         from_lon: orderStore.fromLon || undefined,
+        to_lat: orderStore.toLat || undefined,
+        to_lon: orderStore.toLon || undefined,
         person_count: orderStore.personCount,
         male_count: orderStore.maleCount,
         female_count: orderStore.femaleCount,

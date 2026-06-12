@@ -136,6 +136,19 @@ export default function RouteSelectScreen() {
         )}
       </View>
 
+      {/* Pick on map (xaritadan tanlash) */}
+      <TouchableOpacity
+        style={styles.mapBtn}
+        onPress={() =>
+          router.push({ pathname: '/map-select', params: { mode } })
+        }
+        activeOpacity={0.85}
+      >
+        <Text style={styles.mapBtnIcon}>🗺</Text>
+        <Text style={styles.mapBtnText}>Xaritadan tanlash</Text>
+        <Text style={styles.mapBtnArrow}>›</Text>
+      </TouchableOpacity>
+
       {/* Yandex Suggest results */}
       {showSuggestions && suggestions.length > 0 && (
         <View style={styles.suggestSection}>
@@ -220,6 +233,21 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: spacing.sm, fontSize: 18 },
   searchInput: { flex: 1, ...typography.body, color: colors.text },
+  mapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  mapBtnIcon: { fontSize: 20, marginRight: spacing.sm },
+  mapBtnText: { flex: 1, ...typography.bodyBold, color: colors.primary },
+  mapBtnArrow: { fontSize: 24, color: colors.textMuted },
   suggestSection: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
