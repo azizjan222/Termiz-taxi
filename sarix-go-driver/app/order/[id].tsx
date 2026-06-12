@@ -103,9 +103,11 @@ export default function OrderDetailScreen() {
           <View style={styles.timerBanner}>
             <Text style={styles.timerEmoji}>⏱</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.timerText}>Yo'lovchi bilan bog'laning</Text>
+              <Text style={styles.timerText}>
+                Yo'lovchi bilan {CONTACT_WINDOW_MINUTES} daqiqa ichida bog'laning
+              </Text>
               <Text style={styles.timerSub}>
-                {CONTACT_WINDOW_MINUTES} daqiqa ichida kelishib oling
+                Zakasni qabul qildingiz — yo'lovchiga qo'ng'iroq qilib kelishib oling
               </Text>
             </View>
             <Text style={styles.timerCountdown}>{mmss(remainingSec)}</Text>
@@ -174,6 +176,11 @@ export default function OrderDetailScreen() {
             <Text style={styles.noteText}>{order.note}</Text>
           </View>
         )}
+
+        {/* Accident-liability disclaimer */}
+        <Text style={styles.disclaimer}>
+          Yo'lda yuz beradigan baxtsiz hodisalar uchun Sarix Go javobgar emas.
+        </Text>
       </ScrollView>
 
       {/* Action button — only the passenger can cancel, so the driver just finishes. */}
@@ -267,6 +274,13 @@ const styles = StyleSheet.create({
   value: { ...typography.bodyBold, color: colors.text },
   divider: { height: 1, backgroundColor: colors.divider },
   noteText: { ...typography.body, color: colors.text },
+  disclaimer: {
+    ...typography.small,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.md,
+  },
   footer: {
     padding: spacing.lg,
     borderTopWidth: 1,

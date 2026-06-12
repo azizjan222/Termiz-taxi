@@ -55,6 +55,7 @@ def _apply_schema_migrations() -> int:
         # Order new columns
         ("orders", "target_driver_id", "INTEGER"),
         ("orders", "commission_charged", BOOL_FALSE),
+        ("orders", "commission_collected", BOOL_FALSE),
     ]
 
     inspector = inspect(engine)

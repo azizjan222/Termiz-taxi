@@ -26,10 +26,13 @@ async def api_stats(request: web.Request) -> web.Response:
         ).count()
         online_drivers = session.query(Driver).filter_by(is_online=True).count()
 
-        # Revenue today
+        # Revenue today — only commission that was ACTUALLY collected (deducted from a
+        # driver's balance). Orders taken by drivers on the free trial are never
+        # collected, so they count as 0 and don't inflate the money reports.
         today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         rev_today_result = session.query(Order).filter(
             Order.status == "completed",
+            Order.commission_collected == True,  # noqa: E712
             Order.completed_at >= today_start,
         ).all()
         revenue_today = sum(o.commission or 0 for o in rev_today_result)
@@ -38,6 +41,7 @@ async def api_stats(request: web.Request) -> web.Response:
         month_start = today_start.replace(day=1)
         rev_month_result = session.query(Order).filter(
             Order.status == "completed",
+            Order.commission_collected == True,  # noqa: E712
             Order.completed_at >= month_start,
         ).all()
         revenue_month = sum(o.commission or 0 for o in rev_month_result)
@@ -136,6 +140,10 @@ async def api_orders(request: web.Request) -> web.Response:
                 "person_count": o.person_count,
                 "price": o.price or 0,
                 "commission": o.commission or 0,
+                # Effective commission for money reports: 0 unless actually collected
+                # (drivers on the free trial are shown as 0 to avoid stats confusion).
+                "commission_collected": bool(o.commission_collected),
+                "commission_effective": (o.commission or 0) if o.commission_collected else 0,
                 "status": o.status,
                 "driver_id": o.driver_id,
                 "created_at": o.created_at.isoformat() if o.created_at else None,

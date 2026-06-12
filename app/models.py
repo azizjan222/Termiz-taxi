@@ -147,6 +147,11 @@ class Order(Base):
     # whether or not the ride is completed. This flag prevents double-charging and
     # tells cancel_order whether a refund is owed.
     commission_charged = Column(Boolean, default=False)
+    # True ONLY when the commission was actually deducted from the driver's balance.
+    # During the free trial the scheduler marks commission_charged=True WITHOUT deducting
+    # money, so commission_collected stays False -> trial orders count as 0 commission in
+    # all money reports (admin dashboard, bot /revenue) and don't confuse the stats.
+    commission_collected = Column(Boolean, default=False)
 
     # Status
     status = Column(String(30), default="new", index=True)

@@ -122,6 +122,7 @@ tb.innerHTML+=`<tr><td>${i+1}</td><td>${esc((d.first_name||'')+' '+(d.last_name|
 
 DRIVERS_HTML = """<h2>Haydovchilar</h2>
 <div class="mb-3">
+<input type="text" class="form-control w-auto d-inline" id="driver-search" placeholder="Ism yoki telefon bo'yicha qidirish..." oninput="renderDrivers()" style="min-width:280px">
 <select class="form-select w-auto d-inline" id="driver-filter" onchange="renderDrivers()">
 <option value="all">Barchasi</option>
 <option value="online">Onlayn</option>
@@ -148,6 +149,13 @@ let data=allDrivers;
 if(f==='online')data=allDrivers.filter(d=>d.is_online);
 else if(f==='verified')data=allDrivers.filter(d=>d.is_verified);
 else if(f==='pending')data=allDrivers.filter(d=>!d.is_verified&&d.documents_submitted);
+const qEl=document.getElementById('driver-search');
+const q=qEl?qEl.value.trim().toLowerCase():'';
+if(q){data=data.filter(d=>{
+const name=((d.first_name||'')+' '+(d.last_name||'')).toLowerCase();
+const phone=String(d.phone||'').toLowerCase();
+return name.includes(q)||phone.includes(q);
+});}
 document.getElementById('driver-count').textContent=data.length+' ta';
 const tb=document.querySelector('#drivers-table tbody');
 tb.innerHTML='';
@@ -186,6 +194,10 @@ loadDrivers();
 </script>"""
 
 PASSENGERS_HTML = """<h2>Yo'lovchilar</h2>
+<div class="mb-3">
+<input type="text" class="form-control w-auto d-inline" id="passenger-search" placeholder="Ism yoki telefon bo'yicha qidirish..." oninput="renderPassengers()" style="min-width:280px">
+<span class="ms-2 text-muted" id="passenger-count"></span>
+</div>
 <div class="table-responsive">
 <table class="table table-striped table-sm" id="passengers-table">
 <thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Til</th><th>Bonus</th><th>Reyting</th><th>Ro'yxatdan o'tgan</th></tr></thead>
@@ -194,12 +206,27 @@ PASSENGERS_HTML = """<h2>Yo'lovchilar</h2>
 </div>"""
 
 PASSENGERS_JS = """<script>
-fetch('/admin/api/passengers').then(r=>r.json()).then(data=>{
+let allPassengers=[];
+function renderPassengers(){
+const qEl=document.getElementById('passenger-search');
+const q=qEl?qEl.value.trim().toLowerCase():'';
+let data=allPassengers;
+if(q){data=data.filter(u=>{
+const name=((u.first_name||'')+' '+(u.last_name||'')).toLowerCase();
+const phone=String(u.phone||'').toLowerCase();
+return name.includes(q)||phone.includes(q);
+});}
+const cnt=document.getElementById('passenger-count');
+if(cnt)cnt.textContent=data.length+' ta';
 const tb=document.querySelector('#passengers-table tbody');
 tb.innerHTML='';
 data.forEach(u=>{
 tb.innerHTML+=`<tr><td>${u.id}</td><td>${esc(u.first_name||'')} ${esc(u.last_name||'')}</td><td>${esc(u.phone)}</td><td>${esc(u.language||'uz')}</td><td>${u.bonus_balance}</td><td>${u.rating}</td><td>${esc(u.created_at||'')}</td></tr>`;
 });
+}
+fetch('/admin/api/passengers').then(r=>r.json()).then(data=>{
+allPassengers=Array.isArray(data)?data:[];
+renderPassengers();
 });
 </script>"""
 
@@ -217,7 +244,7 @@ ORDERS_HTML = """<h2>Buyurtmalar</h2>
 </div>
 <div class="table-responsive">
 <table class="table table-striped table-sm" id="orders-table">
-<thead><tr><th>ID</th><th>Yo'lovchi</th><th>Telefon</th><th>Yo'nalish</th><th>Narx</th><th>Holat</th><th>Sana</th></tr></thead>
+<thead><tr><th>ID</th><th>Yo'lovchi</th><th>Telefon</th><th>Yo'nalish</th><th>Narx</th><th>Komissiya</th><th>Holat</th><th>Sana</th></tr></thead>
 <tbody></tbody>
 </table>
 </div>"""
@@ -230,7 +257,9 @@ const tb=document.querySelector('#orders-table tbody');
 tb.innerHTML='';
 data.forEach(o=>{
 const badge={'new':'bg-primary','accepted':'bg-info','completed':'bg-success','cancelled':'bg-danger'}[o.status]||'bg-secondary';
-tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${esc(o.passenger_phone)}</td><td>${esc(o.from_city)} - ${esc(o.to_city)}</td><td>${o.price.toLocaleString()}</td><td><span class="badge ${badge}">${esc(o.status)}</span></td><td>${esc(o.created_at||'')}</td></tr>`;
+const comm=(o.commission_effective||0);
+const commHtml=comm>0?comm.toLocaleString():'<span class="text-muted">0</span>';
+tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${esc(o.passenger_phone)}</td><td>${esc(o.from_city)} - ${esc(o.to_city)}</td><td>${o.price.toLocaleString()}</td><td>${commHtml}</td><td><span class="badge ${badge}">${esc(o.status)}</span></td><td>${esc(o.created_at||'')}</td></tr>`;
 });
 });
 }

@@ -23,8 +23,21 @@ export default function SearchingScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const user = useAuthStore((s) => s.user);
   const [status, setStatus] = useState<string>('new');
+  const [elapsed, setElapsed] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const pulseAnim = useRef(new Animated.Value(0)).current;
+
+  // Elapsed timer (counts up mm:ss while waiting for a driver)
+  useEffect(() => {
+    const startedAt = Date.now();
+    const i = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(i);
+  }, []);
+
+  const mmss = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   useEffect(() => {
     // Pulse animation
@@ -143,8 +156,12 @@ export default function SearchingScreen() {
         </View>
 
         <Text style={styles.title}>{t('order.searching')}</Text>
+        <Text style={styles.timer}>{mmss(elapsed)}</Text>
         <Text style={styles.subtitle}>
-          Tez orada haydovchi topiladi
+          Haydovchi qidirilmoqda... Haydovchi zakasni qabul qilishi bilan tez orada siz bilan bog'lanadi.
+        </Text>
+        <Text style={styles.disclaimer}>
+          Yo'lda yuz beradigan baxtsiz hodisalar uchun Sarix Go javobgar emas.
         </Text>
       </View>
 
@@ -190,11 +207,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: { ...typography.h2, color: colors.white, textAlign: 'center' },
+  timer: {
+    ...typography.h1,
+    color: colors.white,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    fontVariant: ['tabular-nums'],
+  },
   subtitle: {
     ...typography.body,
     color: colors.white,
     opacity: 0.8,
     marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+  disclaimer: {
+    ...typography.small,
+    color: colors.white,
+    opacity: 0.6,
+    marginTop: spacing.lg,
     textAlign: 'center',
   },
   footer: { padding: spacing.lg },

@@ -128,7 +128,7 @@ async def notify_passenger_order_accepted(session: Session, order, driver):
         recipient_type="user",
         recipient_id=order.passenger_id,
         title="✅ Haydovchi topildi!",
-        body=f"{driver.first_name or 'Haydovchi'} - {driver.car_model or 'Mashina'} sizga ketmoqda",
+        body=f"{driver.first_name or 'Haydovchi'} ({driver.car_model or 'Mashina'}) tez orada siz bilan bog'lanadi",
         data={
             "type": "order_accepted",
             "order_id": order.id,
