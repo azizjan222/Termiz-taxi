@@ -1042,11 +1042,13 @@ async def cmd_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         today_revenue = session.query(func.coalesce(func.sum(Order.commission), 0)).filter(
             Order.status == "completed",
+            Order.commission_collected == True,  # noqa: E712
             Order.completed_at >= today_start,
         ).scalar()
 
         month_revenue = session.query(func.coalesce(func.sum(Order.commission), 0)).filter(
             Order.status == "completed",
+            Order.commission_collected == True,  # noqa: E712
             Order.completed_at >= month_start,
         ).scalar()
 

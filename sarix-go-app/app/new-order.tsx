@@ -8,6 +8,9 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Modal,
+  TextInput,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -41,6 +44,13 @@ export default function NewOrderScreen() {
   const [recs, setRecs] = useState<RecommendedDriver[]>([]);
   const [recsLoading, setRecsLoading] = useState(false);
   const [submitting, setSubmitting] = useState<number | 'find' | null>(null);
+
+  // Bottom action-bar sheets
+  const [paymentSheet, setPaymentSheet] = useState(false);
+  const [optionsSheet, setOptionsSheet] = useState(false);
+  // "Boshqa odam" (ordering for someone else) — kept locally, folded into the note.
+  const [otherName, setOtherName] = useState('');
+  const [otherPhone, setOtherPhone] = useState('');
 
   const from = orderStore.fromCity || '';
   const to = orderStore.toCity || '';
@@ -83,6 +93,12 @@ export default function NewOrderScreen() {
     if (!from || !to) return;
     setSubmitting(targetDriverId ?? 'find');
     try {
+      // Fold the optional "Boshqa odam" (someone else) details into the driver note.
+      let note = orderStore.note || '';
+      if (otherName.trim() || otherPhone.trim()) {
+        const other = `Boshqa odam: ${otherName.trim()} ${otherPhone.trim()}`.trim();
+        note = note ? `${note}\n${other}` : other;
+      }
       const result = await createOrder({
         service_type: 'taxi',
         from_city: from,
@@ -97,6 +113,9 @@ export default function NewOrderScreen() {
         male_count: orderStore.maleCount,
         female_count: orderStore.femaleCount,
         departure_time: orderStore.departureTime,
+        note: note || undefined,
+        has_roof_rack: orderStore.hasRoofRack,
+        female_only: orderStore.femaleOnly,
         target_driver_id: targetDriverId,
       });
       orderStore.reset();
@@ -252,17 +271,41 @@ export default function NewOrderScreen() {
           </Text>
         </View>
 
-        {/* 🔍 Haydovchi topish */}
-        <TouchableOpacity
-          style={styles.findBtn}
-          onPress={() => submit()}
-          disabled={submitting !== null}
-          activeOpacity={0.9}
-        >
-          <Text style={styles.findBtnText}>
-            {submitting === 'find' ? '...' : '🔍 Haydovchi topish'}
-          </Text>
-        </TouchableOpacity>
+        {/* Action bar: Naqd (left) · Haydovchi topish (center) · ⋮ extra options (right) */}
+        <View style={styles.actionBar}>
+          <TouchableOpacity
+            style={styles.payBtn}
+            onPress={() => setPaymentSheet(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.payIcon}>💵</Text>
+            <Text style={styles.payLabel}>Naqd</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.findBtn}
+            onPress={() => submit()}
+            disabled={submitting !== null}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.findBtnText}>
+              {submitting === 'find' ? '...' : '🔍 Haydovchi topish'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.dotsBtn}
+            onPress={() => setOptionsSheet(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.dotsIcon}>⋮</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Accident-liability disclaimer */}
+        <Text style={styles.disclaimer}>
+          Yo'lda yuz beradigan baxtsiz hodisalar uchun Sarix Go javobgar emas.
+        </Text>
 
         {/* Tavsiyalar (recommendations) */}
         <View style={styles.recHeader}>
@@ -315,6 +358,126 @@ export default function NewOrderScreen() {
           })
         )}
       </ScrollView>
+
+      {/* Payment method sheet — only cash is selectable for now */}
+      <Modal
+        visible={paymentSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPaymentSheet(false)}
+      >
+        <TouchableOpacity
+          style={styles.sheetBackdrop}
+          activeOpacity={1}
+          onPress={() => setPaymentSheet(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>To'lov usuli</Text>
+
+            <TouchableOpacity
+              style={[styles.payOption, styles.payOptionSelected]}
+              onPress={() => {
+                orderStore.setField('paymentMethod', 'cash');
+                setPaymentSheet(false);
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.payOptionIcon}>💵</Text>
+              <Text style={styles.payOptionText}>Naqd</Text>
+              <Text style={styles.payOptionCheck}>✓</Text>
+            </TouchableOpacity>
+
+            <View style={styles.payOptionDisabled}>
+              <Text style={styles.payOptionIcon}>💳</Text>
+              <Text style={styles.payOptionTextDisabled}>Karta</Text>
+            </View>
+            <Text style={styles.sheetNote}>
+              Karta orqali to'lov keyinroq qo'shiladi
+            </Text>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Extra options sheet (⋮) */}
+      <Modal
+        visible={optionsSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOptionsSheet(false)}
+      >
+        <TouchableOpacity
+          style={styles.sheetBackdrop}
+          activeOpacity={1}
+          onPress={() => setOptionsSheet(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Qo'shimcha</Text>
+
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {/* Haydovchi uchun izoh */}
+              <Text style={styles.optLabel}>Haydovchi uchun izoh</Text>
+              <TextInput
+                style={styles.optInput}
+                placeholder="Masalan: 2-uy oldida kuting"
+                placeholderTextColor={colors.textSecondary}
+                value={orderStore.note}
+                onChangeText={(v) => orderStore.setField('note', v)}
+                multiline
+              />
+
+              {/* Boshqa odam */}
+              <Text style={styles.optLabel}>Boshqa odam uchun buyurtma</Text>
+              <View style={styles.optRowInputs}>
+                <TextInput
+                  style={[styles.optInput, { flex: 1, marginRight: spacing.sm }]}
+                  placeholder="Ism"
+                  placeholderTextColor={colors.textSecondary}
+                  value={otherName}
+                  onChangeText={setOtherName}
+                />
+                <TextInput
+                  style={[styles.optInput, { flex: 1 }]}
+                  placeholder="Telefon"
+                  placeholderTextColor={colors.textSecondary}
+                  value={otherPhone}
+                  onChangeText={setOtherPhone}
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              {/* Salonida ayol kishi bor */}
+              <View style={styles.optToggleRow}>
+                <Text style={styles.optToggleText}>Salonida ayol kishi bor</Text>
+                <Switch
+                  value={orderStore.femaleOnly}
+                  onValueChange={(v) => orderStore.setField('femaleOnly', v)}
+                  trackColor={{ true: colors.accent }}
+                />
+              </View>
+
+              {/* Tomida yukxona bor */}
+              <View style={styles.optToggleRow}>
+                <Text style={styles.optToggleText}>Tomida yukxona bor</Text>
+                <Switch
+                  value={orderStore.hasRoofRack}
+                  onValueChange={(v) => orderStore.setField('hasRoofRack', v)}
+                  trackColor={{ true: colors.accent }}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.optDoneBtn}
+                onPress={() => setOptionsSheet(false)}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.optDoneText}>Saqlash</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -423,13 +586,124 @@ const styles = StyleSheet.create({
   priceLabel: { ...typography.caption, color: colors.textSecondary },
   priceValue: { ...typography.h2, color: colors.primary },
   findBtn: {
+    flex: 1,
     backgroundColor: colors.accent,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
-    marginBottom: spacing.xl,
   },
   findBtnText: { ...typography.h3, color: colors.primary },
+  actionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  payBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginRight: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    minWidth: 56,
+  },
+  payIcon: { fontSize: 22, color: colors.success },
+  payLabel: { ...typography.small, color: colors.success, fontWeight: '700' },
+  dotsBtn: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
+  dotsIcon: { fontSize: 26, color: colors.primary, fontWeight: '700' },
+  disclaimer: {
+    ...typography.small,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+    paddingHorizontal: spacing.md,
+  },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    padding: spacing.lg,
+    maxHeight: '80%',
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  sheetTitle: { ...typography.h3, color: colors.primary, marginBottom: spacing.md },
+  sheetNote: { ...typography.small, color: colors.textSecondary, marginTop: spacing.sm },
+  payOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: colors.surface,
+    marginBottom: spacing.sm,
+  },
+  payOptionSelected: { borderColor: colors.success, backgroundColor: colors.white },
+  payOptionDisabled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    opacity: 0.5,
+  },
+  payOptionIcon: { fontSize: 22, marginRight: spacing.md },
+  payOptionText: { ...typography.bodyBold, color: colors.text, flex: 1 },
+  payOptionTextDisabled: { ...typography.bodyBold, color: colors.textSecondary, flex: 1 },
+  payOptionCheck: { ...typography.h3, color: colors.success },
+  optLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  optInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    ...typography.body,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  optRowInputs: { flexDirection: 'row' },
+  optToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  optToggleText: { ...typography.body, color: colors.text },
+  optDoneBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    marginTop: spacing.lg,
+  },
+  optDoneText: { ...typography.h3, color: colors.primary },
   recHeader: {
     flexDirection: 'row',
     alignItems: 'center',

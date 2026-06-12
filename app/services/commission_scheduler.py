@@ -65,6 +65,8 @@ def charge_due_commissions(now: datetime | None = None) -> int:
             commission = order.commission or 0
             if commission > 0:
                 driver.balance = (driver.balance or 0) - commission
+                # Money was actually deducted -> count it in revenue/stats.
+                order.commission_collected = True
             order.commission_charged = True
             charged += 1
 
