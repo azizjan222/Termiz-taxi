@@ -5,12 +5,31 @@ from aiohttp import web
 from sqlalchemy import or_
 
 from app.database import get_session
-from app.models import Order, Route, Driver, User, OrderHistory
+from app.models import Order, Route, Driver, User, OrderHistory, Setting
 from app.utils.auth import require_auth
 from app.api.websocket import ws_manager
 from app import config
 
 logger = logging.getLogger(__name__)
+
+
+def get_commission_percent(session) -> int:
+    """Return the live commission percentage used to price each order.
+
+    Reads the authoritative value from the Setting table (key "commission_percent"),
+    which is what the web admin Settings page and the bot /commission command write.
+    Falls back to config.COMMISSION_PERCENT when the setting is missing or invalid, so
+    changing it in the admin panel/bot immediately affects new orders.
+    """
+    try:
+        row = session.query(Setting).filter_by(key="commission_percent").first()
+        if row and row.value is not None and str(row.value).strip() != "":
+            pct = int(float(str(row.value).strip()))
+            if 0 <= pct <= 100:
+                return pct
+    except Exception:
+        pass
+    return config.COMMISSION_PERCENT
 
 
 def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
@@ -57,6 +76,8 @@ def _calc_price_and_commission(
 
     Commission = COMMISSION_PERCENT of the order price (default 10%). This is the amount
     deducted from a driver's balance per accepted order once their free trial has ended.
+    The percentage is read live from the Setting table (admin panel / bot /commission),
+    falling back to config.COMMISSION_PERCENT.
     """
     route = (
         session.query(Route)
@@ -77,7 +98,8 @@ def _calc_price_and_commission(
         persons = max(1, min(person_count, 10))
         price = route.price_per_person * persons
 
-    commission = int(round(price * config.COMMISSION_PERCENT / 100.0))
+    commission_percent = get_commission_percent(session)
+    commission = int(round(price * commission_percent / 100.0))
     return price, commission, None
 
 

@@ -442,6 +442,7 @@ async def cmd_admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📊 <b>Statistika</b>\n"
         "/stats - Umumiy statistika\n"
         "/drivers - Haydovchilar (top 20)\n"
+        "/driver ID|telefon - Bitta haydovchining to'liq ma'lumoti\n"
         "/users - Yo'lovchilar\n"
         "/orders - Faol zakaslar\n"
         "/history - Oxirgi tarix\n"
@@ -454,6 +455,7 @@ async def cmd_admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💰 <b>Boshqaruv</b>\n"
         "/balance ID SUMMA - Balans qo'shish/ayirish\n"
         "/pul ID SUMMA - (eski versiya, ishlaydi)\n"
+        "/add_driver telefon Ism [raqam] [model] - Yangi haydovchi qo'shish\n"
         "/find phone - Foydalanuvchini qidirish\n"
         "/verify telegram_id - Haydovchini tasdiqlash\n"
         "/reject telegram_id - Haydovchini rad etish\n"
@@ -1084,3 +1086,157 @@ async def cmd_top_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     await update.effective_message.reply_text(text, parse_mode="HTML")
+
+
+
+# ============ /driver <id|phone> - Bitta haydovchining to'liq ma'lumoti ============
+def _norm_phone_cmd(phone) -> str:
+    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    return ("+" + digits) if digits else ""
+
+
+def _find_driver(session, identifier: str):
+    """Find a driver by DB id, telegram_id, or phone (any format)."""
+    ident = (identifier or "").strip()
+    if not ident:
+        return None
+    if ident.isdigit():
+        n = int(ident)
+        d = session.query(Driver).filter_by(id=n).first()
+        if d:
+            return d
+        d = session.query(Driver).filter_by(telegram_id=n).first()
+        if d:
+            return d
+    target = _norm_phone_cmd(ident)
+    if target:
+        for d in session.query(Driver).all():
+            dp = _norm_phone_cmd(d.phone)
+            if dp == target or (len(target) >= 7 and dp.endswith(target.lstrip("+"))):
+                return d
+    return None
+
+
+
+async def cmd_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show one driver's FULL info as text. Usage: /driver <id|telegram_id|phone>"""
+    if not is_admin(update.effective_user.id):
+        return
+
+    args = context.args
+    if not args:
+        await update.effective_message.reply_text(
+            "Foydalanish: <code>/driver ID_yoki_telefon</code>\n"
+            "Masalan: <code>/driver 12</code> yoki <code>/driver +998901234567</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    with DbContext() as session:
+        d = _find_driver(session, args[0])
+        if not d:
+            await update.effective_message.reply_text(
+                f"\u274c Haydovchi topilmadi: {args[0]}"
+            )
+            return
+
+        sub = d.subscription_until.strftime("%Y-%m-%d") if d.subscription_until else "-"
+        docs = []
+        if d.license_file_id or d.license_photo_url:
+            docs.append("guvohnoma")
+        if d.tech_passport_file_id or d.tech_passport_url:
+            docs.append("texpasport")
+        if d.car_photo_file_id or d.car_photo_url:
+            docs.append("mashina rasmi")
+        docs_str = ", ".join(docs) if docs else "yo'q"
+
+        text = (
+            f"\U0001f468\u200d\u2708\ufe0f <b>HAYDOVCHI #{d.id}</b>\n\n"
+            f"\U0001f464 Ism: <b>{d.first_name or '-'} {d.last_name or ''}</b>\n"
+            f"\U0001f194 JSHSHIR: <code>{d.pinfl or '-'}</code>\n"
+            f"\U0001f4de Telefon: {d.phone or '-'}\n"
+            f"\U0001f4f1 Telegram ID: <code>{d.telegram_id}</code>\n\n"
+            f"\U0001f697 Mashina: {d.car_model or '-'} \u00b7 {d.car_number or '-'}\n"
+            f"\U0001f4c5 Yili: {d.car_year or '-'}\n"
+            f"\U0001fa91 O'rindiqlar: {d.seats or 4}\n\n"
+            f"\U0001f4b0 Balans: <b>{fmt(d.balance or 0)} so'm</b>\n"
+            f"\u2b50 Reyting: {d.rating or 5.0:.1f} ({d.rating_count or 0})\n"
+            f"\U0001f6d5 Zakaslar: {d.total_orders or 0}\n\n"
+            f"\u2705 Tasdiqlangan: {'Ha' if d.is_verified else 'Yoq'}\n"
+            f"\U0001f4c4 Hujjat yuborilgan: {'Ha' if d.documents_submitted else 'Yoq'} ({docs_str})\n"
+            f"\U0001f7e2 Online: {'Ha' if d.is_online else 'Yoq'}\n"
+            f"\U0001f6ab Bloklangan: {'Ha' if d.is_blocked else 'Yoq'}\n"
+            f"\U0001f4c6 Obuna tugashi: {sub}\n"
+        )
+        tg_id = d.telegram_id
+
+    kb = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("\U0001f4c4 PDF yuklab olish", callback_data=f"drvpdf_{tg_id}")]]
+    )
+    await update.effective_message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+
+# ============ /add_driver - Bot orqali haydovchi qo'shish ============
+async def cmd_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Create a driver row from the bot (when app registration is hard).
+
+    Usage: /add_driver <phone> <first_name> [car_number] [car_model...]
+    The driver is created with documents_submitted=True so they can use the app at once.
+    """
+    if not is_admin(update.effective_user.id):
+        return
+
+    args = context.args
+    if not args or len(args) < 2:
+        await update.effective_message.reply_text(
+            "Foydalanish:\n"
+            "<code>/add_driver telefon Ism [mashina_raqami] [model...]</code>\n\n"
+            "Masalan:\n"
+            "<code>/add_driver +998901234567 Akmal 90A123BC Gentra</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    phone = _norm_phone_cmd(args[0])
+    if not phone or len(phone) < 9:
+        await update.effective_message.reply_text("\u274c To'g'ri telefon raqam kerak")
+        return
+
+    first_name = args[1]
+    car_number = args[2].upper() if len(args) >= 3 else None
+    car_model = " ".join(args[3:]) if len(args) >= 4 else None
+
+    with DbContext() as session:
+        for existing in session.query(Driver).all():
+            if _norm_phone_cmd(existing.phone) == phone:
+                await update.effective_message.reply_text(
+                    f"\u274c Bu telefon bilan haydovchi mavjud: "
+                    f"{existing.first_name or '-'} (ID {existing.id})"
+                )
+                return
+
+        # telegram_id is NOT NULL & unique; synthesize one from the phone digits.
+        synth_tg = int(phone.lstrip("+") or "0")
+        driver = Driver(
+            telegram_id=synth_tg,
+            phone=phone,
+            first_name=first_name,
+            car_number=car_number,
+            car_model=car_model,
+            documents_submitted=True,
+            is_verified=True,
+        )
+        session.add(driver)
+        session.flush()
+        new_id = driver.id
+
+    await update.effective_message.reply_text(
+        f"\u2705 <b>Haydovchi qo'shildi</b>\n\n"
+        f"\U0001f464 {first_name}\n"
+        f"\U0001f4de {phone}\n"
+        f"\U0001f697 {car_model or '-'} \u00b7 {car_number or '-'}\n"
+        f"\U0001f194 ID: <code>{new_id}</code>\n\n"
+        f"Haydovchi endi ilovaga kira oladi (OTP orqali login).",
+        parse_mode="HTML",
+    )

@@ -122,6 +122,34 @@ tb.innerHTML+=`<tr><td>${i+1}</td><td>${esc((d.first_name||'')+' '+(d.last_name|
 
 DRIVERS_HTML = """<h2>Haydovchilar</h2>
 <div class="mb-3">
+<button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#new-driver-form">➕ Yangi haydovchi</button>
+</div>
+<div class="collapse mb-3" id="new-driver-form">
+<div class="card card-body">
+<h5>Yangi haydovchi qo'shish</h5>
+<div class="row g-2">
+<div class="col-md-3"><input class="form-control" id="nd-phone" placeholder="Telefon * (+998...)"></div>
+<div class="col-md-3"><input class="form-control" id="nd-first" placeholder="Ism"></div>
+<div class="col-md-3"><input class="form-control" id="nd-last" placeholder="Familiya"></div>
+<div class="col-md-3"><input class="form-control" id="nd-pinfl" placeholder="JSHSHIR (14 raqam)"></div>
+<div class="col-md-3"><input class="form-control" id="nd-carnum" placeholder="Mashina raqami"></div>
+<div class="col-md-3"><input class="form-control" id="nd-model" placeholder="Modeli" list="car-models-list"></div>
+<div class="col-md-3"><input class="form-control" id="nd-year" placeholder="Yili (masalan 2018)"></div>
+<div class="col-md-3"><input class="form-control" id="nd-tgid" placeholder="Telegram ID (ixtiyoriy)"></div>
+</div>
+<datalist id="car-models-list"></datalist>
+<div class="form-check mt-2">
+<input class="form-check-input" type="checkbox" id="nd-verified">
+<label class="form-check-label" for="nd-verified">Darhol tasdiqlangan (is_verified)</label>
+</div>
+<div class="mt-2">
+<button class="btn btn-success" onclick="createDriver()">Saqlash</button>
+<span class="ms-2" id="nd-result"></span>
+</div>
+<small class="text-muted mt-1">Hujjatlar (documents_submitted) avtomatik True qilinadi — haydovchi darhol ilovaga kira oladi.</small>
+</div>
+</div>
+<div class="mb-3">
 <input type="text" class="form-control w-auto d-inline" id="driver-search" placeholder="Ism yoki telefon bo'yicha qidirish..." oninput="renderDrivers()" style="min-width:280px">
 <select class="form-select w-auto d-inline" id="driver-filter" onchange="renderDrivers()">
 <option value="all">Barchasi</option>
@@ -136,6 +164,16 @@ DRIVERS_HTML = """<h2>Haydovchilar</h2>
 <thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Mashina</th><th>Raqam</th><th>Balans</th><th>Zakaslar</th><th>Holat</th><th>Amallar</th></tr></thead>
 <tbody></tbody>
 </table>
+</div>
+<!-- Driver details modal -->
+<div class="modal fade" id="driver-detail-modal" tabindex="-1">
+<div class="modal-dialog modal-lg">
+<div class="modal-content">
+<div class="modal-header"><h5 class="modal-title">Haydovchi ma'lumotlari</h5>
+<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body" id="driver-detail-body">Yuklanmoqda...</div>
+</div>
+</div>
 </div>"""
 
 DRIVERS_JS = """<script>
@@ -143,6 +181,11 @@ let allDrivers=[];
 function loadDrivers(){
 fetch('/admin/api/drivers').then(r=>r.json()).then(data=>{allDrivers=Array.isArray(data)?data:[];renderDrivers();});
 }
+// Populate the car-model datalist (same list as the bot/app) for the new-driver form.
+fetch('/api/car-models').then(r=>r.json()).then(d=>{
+const dl=document.getElementById('car-models-list');
+if(dl&&d&&Array.isArray(d.models)){dl.innerHTML=d.models.map(m=>`<option value="${esc(m)}">`).join('');}
+}).catch(()=>{});
 function renderDrivers(){
 const f=document.getElementById('driver-filter').value;
 let data=allDrivers;
@@ -169,6 +212,7 @@ tb.innerHTML+=`<tr>
 <td>${d.total_orders||0}</td>
 <td>${status} ${online}</td>
 <td>
+<button class="btn btn-sm btn-outline-dark" onclick="showDriver(${d.id})">Batafsil</button>
 ${!d.is_verified?`<button class="btn btn-sm btn-success" onclick="verifyDriver(${d.id})">Tasdiqlash</button>`:''}
 ${d.is_verified?`<button class="btn btn-sm btn-danger" onclick="rejectDriver(${d.id})">Rad etish</button>`:''}
 <button class="btn btn-sm btn-outline-success" onclick="topUpDriver(${d.id})">Balans +</button>
@@ -176,6 +220,55 @@ ${d.is_verified?`<button class="btn btn-sm btn-danger" onclick="rejectDriver(${d
 <a class="btn btn-sm btn-outline-secondary" href="/admin/api/drivers/${d.id}/pdf" target="_blank" rel="noopener">PDF</a>
 </td></tr>`;
 });
+}
+function row(label,val){return `<tr><th style="width:40%">${esc(label)}</th><td>${esc(val==null||val===''?'-':String(val))}</td></tr>`;}
+function showDriver(id){
+const modalEl=document.getElementById('driver-detail-modal');
+const body=document.getElementById('driver-detail-body');
+body.innerHTML='Yuklanmoqda...';
+const modal=new bootstrap.Modal(modalEl);modal.show();
+fetch('/admin/api/drivers/'+id).then(r=>r.json()).then(d=>{
+if(d.error){body.innerHTML='<div class="alert alert-danger">'+esc(d.error)+'</div>';return;}
+let photos='';
+const kinds=[['license','Haydovchilik guvohnomasi',d.has_license],['tech_passport','Texnik pasport',d.has_tech_passport],['car','Mashina surati',d.has_car_photo]];
+kinds.forEach(([k,label,has])=>{
+if(has){photos+=`<div class="col-md-4 text-center mb-2"><div class="small text-muted">${esc(label)}</div>`+
+`<a href="/admin/api/drivers/${id}/photo/${k}" target="_blank" rel="noopener"><img src="/admin/api/drivers/${id}/photo/${k}" style="max-width:100%;max-height:160px;border:1px solid #ddd;border-radius:6px" loading="lazy"></a></div>`;}
+else{photos+=`<div class="col-md-4 text-center mb-2"><div class="small text-muted">${esc(label)}</div><div class="text-muted">Yuborilmagan</div></div>`;}
+});
+body.innerHTML=`<table class="table table-sm table-bordered">
+${row('ID',d.id)}${row('Telegram ID',d.telegram_id)}${row('Ism',d.first_name)}${row('Familiya',d.last_name)}
+${row('JSHSHIR',d.pinfl)}${row('Telefon',d.phone)}${row('Mashina modeli',d.car_model)}${row('Mashina raqami',d.car_number)}
+${row('Yili',d.car_year)}${row('Rangi',d.car_color)}${row('O\\'rindiqlar',d.seats)}
+${row('Balans',(d.balance||0).toLocaleString()+" so'm")}${row('Reyting',(d.rating||5).toFixed(1)+' ('+(d.rating_count||0)+')')}
+${row('Zakaslar',d.total_orders)}${row('Tasdiqlangan',d.is_verified?'Ha':'Yo\\'q')}${row('Hujjatlar yuborilgan',d.documents_submitted?'Ha':'Yo\\'q')}
+${row('Online',d.is_online?'Ha':'Yo\\'q')}${row('Bloklangan',d.is_blocked?'Ha':'Yo\\'q')}
+${row('Obuna tugashi',d.subscription_until||'-')}${row('Ro\\'yxatdan o\\'tgan',d.created_at)}
+</table>
+<h6>Hujjatlar</h6><div class="row">${photos}</div>
+<a class="btn btn-sm btn-outline-secondary mt-2" href="/admin/api/drivers/${id}/pdf" target="_blank" rel="noopener">📄 PDF yuklab olish</a>`;
+}).catch(()=>{body.innerHTML='<div class="alert alert-danger">Xatolik</div>';});
+}
+function createDriver(){
+const body={
+phone:document.getElementById('nd-phone').value.trim(),
+first_name:document.getElementById('nd-first').value.trim(),
+last_name:document.getElementById('nd-last').value.trim(),
+pinfl:document.getElementById('nd-pinfl').value.trim(),
+car_number:document.getElementById('nd-carnum').value.trim(),
+car_model:document.getElementById('nd-model').value.trim(),
+car_year:document.getElementById('nd-year').value.trim(),
+telegram_id:document.getElementById('nd-tgid').value.trim(),
+is_verified:document.getElementById('nd-verified').checked
+};
+if(!body.phone){alert('Telefon raqam kerak');return;}
+const res=document.getElementById('nd-result');
+res.textContent='...';
+fetch('/admin/api/drivers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+.then(r=>r.json().then(d=>({ok:r.ok,d}))).then(({ok,d})=>{
+res.innerHTML='<span class="text-'+(ok?'success':'danger')+'">'+esc(d.detail||d.error||'')+'</span>';
+if(ok){['nd-phone','nd-first','nd-last','nd-pinfl','nd-carnum','nd-model','nd-year','nd-tgid'].forEach(i=>document.getElementById(i).value='');document.getElementById('nd-verified').checked=false;loadDrivers();}
+}).catch(()=>{res.innerHTML='<span class="text-danger">Xato</span>';});
 }
 function verifyDriver(id){fetch('/admin/api/drivers/'+id+'/verify',{method:'POST'}).then(()=>loadDrivers());}
 function rejectDriver(id){fetch('/admin/api/drivers/'+id+'/reject',{method:'POST'}).then(()=>loadDrivers());}

@@ -1344,6 +1344,8 @@ async def run():
     from app import admin_commands as admcmd
     app.add_handler(CommandHandler("stats", admcmd.cmd_stats))
     app.add_handler(CommandHandler("drivers", admcmd.cmd_drivers))
+    app.add_handler(CommandHandler("driver", admcmd.cmd_driver))
+    app.add_handler(CommandHandler("add_driver", admcmd.cmd_add_driver))
     app.add_handler(CommandHandler("users", admcmd.cmd_users))
     app.add_handler(CommandHandler("orders", admcmd.cmd_orders))
     app.add_handler(CommandHandler("find", admcmd.cmd_find))

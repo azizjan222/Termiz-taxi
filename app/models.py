@@ -55,6 +55,7 @@ class Driver(Base):
     pinfl = Column(String(20))  # JSHSHIR (14-digit personal ID)
     car_photo_url = Column(String(500))  # uploaded photo path
     license_photo_url = Column(String(500))
+    tech_passport_url = Column(String(500))  # uploaded tech-passport image (in-app form)
     profile_photo_url = Column(String(500))  # driver profile photo (shown to passengers)
     seats = Column(Integer, default=4)  # how many passengers the car seats
     # Telegram file_ids of documents collected by the bot (for admin PDF export)

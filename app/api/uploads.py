@@ -34,6 +34,15 @@ async def upload_license_photo(request: web.Request) -> web.Response:
     return await _handle_upload(request, driver, "license")
 
 
+async def upload_tech_passport(request: web.Request) -> web.Response:
+    """POST /api/driver/upload/tech-passport - tech passport (texnik pasport) image."""
+    driver = _get_driver_from_request(request)
+    if not driver:
+        return web.json_response({"error": "Avtorizatsiya kerak"}, status=401)
+
+    return await _handle_upload(request, driver, "tech_passport")
+
+
 async def upload_driver_profile_photo(request: web.Request) -> web.Response:
     """POST /api/driver/upload/profile-photo - driver profile photo (group E)."""
     driver = _get_driver_from_request(request)
@@ -137,6 +146,8 @@ async def _handle_upload(request: web.Request, driver, upload_type: str) -> web.
                 d.car_photo_url = public_url
             elif upload_type == "license":
                 d.license_photo_url = public_url
+            elif upload_type == "tech_passport":
+                d.tech_passport_url = public_url
             elif upload_type == "profile":
                 d.profile_photo_url = public_url
             session.commit()

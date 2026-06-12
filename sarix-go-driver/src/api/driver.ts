@@ -6,15 +6,24 @@ export interface Driver {
   phone: string;
   first_name: string | null;
   last_name: string | null;
+  pinfl?: string | null;
   car_model: string | null;
   car_number: string | null;
   car_color: string | null;
+  car_year?: string | null;
   profile_photo_url?: string | null;
+  license_photo_url?: string | null;
+  tech_passport_url?: string | null;
+  car_photo_url?: string | null;
+  has_license_doc?: boolean;
+  has_tech_passport_doc?: boolean;
   seats?: number;
   balance: number;
   rating: number;
   total_orders: number;
   is_online: boolean;
+  documents_submitted?: boolean;
+  is_verified?: boolean;
   subscription_until?: string | null;
   has_active_subscription?: boolean;
   subscription_days_left?: number;
@@ -132,6 +141,63 @@ export async function uploadDriverProfilePhoto(uri: string): Promise<{ url: stri
     { headers: { 'Content-Type': 'multipart/form-data' } }
   );
   return response.data;
+}
+
+
+// ===== In-app registration-completion form (after bot sign-up; NO car photo) =====
+
+export interface DriverInfoUpdate {
+  first_name?: string;
+  last_name?: string;
+  pinfl?: string;
+  car_number?: string;
+  car_model?: string;
+  car_year?: string;
+}
+
+export async function updateDriverInfo(data: DriverInfoUpdate): Promise<{ success: boolean; driver: Driver }> {
+  const response = await api.patch('/api/driver/me', data);
+  return response.data;
+}
+
+function buildImageForm(uri: string, fallback: string): FormData {
+  const form = new FormData();
+  const name = uri.split('/').pop() || fallback;
+  const ext = (name.split('.').pop() || 'jpg').toLowerCase();
+  const type = ext === 'png' ? 'image/png' : 'image/jpeg';
+  form.append('file', { uri, name, type } as any);
+  return form;
+}
+
+export async function uploadTechPassport(uri: string): Promise<{ url: string }> {
+  const response = await api.post<{ url: string; success: boolean }>(
+    '/api/driver/upload/tech-passport',
+    buildImageForm(uri, 'techpassport.jpg'),
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
+}
+
+export async function uploadLicenseImage(uri: string): Promise<{ url: string }> {
+  const response = await api.post<{ url: string; success: boolean }>(
+    '/api/driver/upload/license',
+    buildImageForm(uri, 'license.jpg'),
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
+}
+
+export interface CarModelsResponse {
+  models: string[];
+  popular: string[];
+}
+
+export async function getCarModels(): Promise<CarModelsResponse> {
+  const response = await api.get<CarModelsResponse>('/api/car-models');
+  return {
+    models: response.data.models || [],
+    popular: response.data.popular || [],
+  };
 }
 
 

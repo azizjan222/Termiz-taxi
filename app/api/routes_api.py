@@ -7,6 +7,13 @@ from app.seed_data import SURXONDARYO_CITIES
 from app import config
 
 
+def _commission_pct(session) -> int:
+    """Live commission percent (admin/bot-editable) used for price quotes; mirrors
+    app.api.orders.get_commission_percent so quotes match actual order commission."""
+    from app.api.orders import get_commission_percent
+    return get_commission_percent(session)
+
+
 async def list_cities(request: web.Request) -> web.Response:
     """GET /api/routes/cities - list available cities."""
     return web.json_response({
@@ -80,11 +87,11 @@ async def get_route_price(request: web.Request) -> web.Response:
             negotiable = True
         elif service == "full_car":
             price = route.full_car_price
-            commission = int(round(price * config.COMMISSION_PERCENT / 100.0))
+            commission = int(round(price * _commission_pct(session) / 100.0))
             negotiable = False
         else:  # taxi
             price = route.price_per_person * persons
-            commission = int(round(price * config.COMMISSION_PERCENT / 100.0))
+            commission = int(round(price * _commission_pct(session) / 100.0))
             negotiable = False
 
         return web.json_response({

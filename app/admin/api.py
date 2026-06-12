@@ -73,9 +73,11 @@ async def api_drivers(request: web.Request) -> web.Response:
                 "phone": d.phone,
                 "first_name": d.first_name,
                 "last_name": d.last_name,
+                "pinfl": d.pinfl,
                 "car_model": d.car_model,
                 "car_number": d.car_number,
                 "car_color": d.car_color,
+                "car_year": d.car_year,
                 "balance": d.balance or 0,
                 "is_online": d.is_online,
                 "is_verified": d.is_verified,
@@ -84,6 +86,10 @@ async def api_drivers(request: web.Request) -> web.Response:
                 "rating": d.rating,
                 "total_orders": d.total_orders or 0,
                 "created_at": d.created_at.isoformat() if d.created_at else None,
+                # Document availability (Telegram file or uploaded image) for the details view.
+                "has_license": bool(d.license_file_id or d.license_photo_url),
+                "has_tech_passport": bool(d.tech_passport_file_id or d.tech_passport_url),
+                "has_car_photo": bool(d.car_photo_file_id or d.car_photo_url),
             })
         return web.json_response(result)
     finally:
@@ -512,10 +518,187 @@ async def api_top_drivers(request: web.Request) -> web.Response:
         session.close()
 
 
+@require_admin_api
+async def api_driver_detail(request: web.Request) -> web.Response:
+    """GET /admin/api/drivers/{id} - full details of one driver."""
+    try:
+        driver_id = int(request.match_info["id"])
+    except (ValueError, KeyError):
+        return web.json_response({"error": "Noto'g'ri ID"}, status=400)
+
+    session = get_session()
+    try:
+        d = session.query(Driver).filter_by(id=driver_id).first()
+        if not d:
+            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        return web.json_response({
+            "id": d.id,
+            "telegram_id": d.telegram_id,
+            "phone": d.phone,
+            "first_name": d.first_name,
+            "last_name": d.last_name,
+            "pinfl": d.pinfl,
+            "car_model": d.car_model,
+            "car_number": d.car_number,
+            "car_color": d.car_color,
+            "car_year": d.car_year,
+            "seats": d.seats or 4,
+            "balance": d.balance or 0,
+            "rating": d.rating or 5.0,
+            "rating_count": d.rating_count or 0,
+            "total_orders": d.total_orders or 0,
+            "is_online": d.is_online,
+            "is_verified": d.is_verified,
+            "is_blocked": d.is_blocked,
+            "documents_submitted": d.documents_submitted,
+            "subscription_until": d.subscription_until.isoformat() if d.subscription_until else None,
+            "profile_photo_url": d.profile_photo_url,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+            "last_active": d.last_active.isoformat() if d.last_active else None,
+            "has_license": bool(d.license_file_id or d.license_photo_url),
+            "has_tech_passport": bool(d.tech_passport_file_id or d.tech_passport_url),
+            "has_car_photo": bool(d.car_photo_file_id or d.car_photo_url),
+        })
+    finally:
+        session.close()
+
+
+@require_admin_api
+async def api_driver_photo(request: web.Request) -> web.Response:
+    """GET /admin/api/drivers/{id}/photo/{kind} - serve a driver document photo.
+
+    kind: license | tech_passport | car. Prefers an uploaded image (served from
+    /uploads), otherwise downloads the Telegram file the bot stored at registration.
+    """
+    try:
+        driver_id = int(request.match_info["id"])
+    except (ValueError, KeyError):
+        return web.json_response({"error": "Noto'g'ri ID"}, status=400)
+    kind = request.match_info.get("kind", "")
+    if kind not in ("license", "tech_passport", "car"):
+        return web.json_response({"error": "Noto'g'ri turi"}, status=400)
+
+    session = get_session()
+    try:
+        d = session.query(Driver).filter_by(id=driver_id).first()
+        if not d:
+            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        url_map = {
+            "license": d.license_photo_url,
+            "tech_passport": d.tech_passport_url,
+            "car": d.car_photo_url,
+        }
+        file_id_map = {
+            "license": d.license_file_id,
+            "tech_passport": d.tech_passport_file_id,
+            "car": d.car_photo_file_id,
+        }
+        uploaded_url = url_map.get(kind)
+        file_id = file_id_map.get(kind)
+    finally:
+        session.close()
+
+    # 1) Uploaded image on local disk (served by the public /uploads route).
+    if uploaded_url:
+        from app.api.uploads import UPLOAD_DIR
+        fname = uploaded_url.rsplit("/", 1)[-1]
+        fpath = UPLOAD_DIR / fname
+        if fpath.exists():
+            return web.FileResponse(fpath)
+
+    # 2) Telegram file stored by the bot at registration.
+    if file_id:
+        bot = request.app.get("bot")
+        if bot:
+            try:
+                tg_file = await bot.get_file(file_id)
+                data = await tg_file.download_as_bytearray()
+                return web.Response(body=bytes(data), content_type="image/jpeg")
+            except Exception as e:
+                logger.warning("Could not download driver photo %s: %s", file_id, e)
+
+    return web.Response(status=404)
+
+
+def _norm_phone_admin(phone) -> str:
+    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    return ("+" + digits) if digits else ""
+
+
+@require_admin_api
+async def api_create_driver(request: web.Request) -> web.Response:
+    """POST /admin/api/drivers - create a driver from the web admin panel.
+
+    Body: phone (required), first_name, last_name, pinfl, car_number, car_model,
+    car_year, telegram_id (optional), is_verified (bool). The driver is created with
+    documents_submitted=True so they can use the app immediately. Duplicate phone /
+    telegram_id is rejected.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    phone = _norm_phone_admin(data.get("phone"))
+    if not phone or len(phone) < 9:
+        return web.json_response({"error": "To'g'ri telefon raqam kerak"}, status=400)
+
+    telegram_id = data.get("telegram_id")
+    try:
+        telegram_id = int(telegram_id) if telegram_id not in (None, "", 0, "0") else None
+    except (ValueError, TypeError):
+        telegram_id = None
+
+    session = get_session()
+    try:
+        # Duplicate check by telegram_id or normalized phone.
+        if telegram_id:
+            if session.query(Driver).filter_by(telegram_id=telegram_id).first():
+                return web.json_response(
+                    {"error": "Bu Telegram ID bilan haydovchi mavjud"}, status=409
+                )
+        for existing in session.query(Driver).all():
+            if _norm_phone_admin(existing.phone) == phone:
+                return web.json_response(
+                    {"error": "Bu telefon raqam bilan haydovchi mavjud"}, status=409
+                )
+
+        # telegram_id is NOT NULL & unique in the model; synthesize one from the phone
+        # digits when the admin didn't supply a real Telegram id.
+        tg = telegram_id or int(phone.lstrip("+") or "0")
+        driver = Driver(
+            telegram_id=tg,
+            phone=phone,
+            first_name=(str(data.get("first_name") or "")).strip() or None,
+            last_name=(str(data.get("last_name") or "")).strip() or None,
+            pinfl=("".join(ch for ch in str(data.get("pinfl") or "") if ch.isdigit())) or None,
+            car_number=(str(data.get("car_number") or "")).strip().upper() or None,
+            car_model=(str(data.get("car_model") or "")).strip() or None,
+            car_year=(str(data.get("car_year") or "")).strip() or None,
+            documents_submitted=True,
+            is_verified=bool(data.get("is_verified", False)),
+        )
+        session.add(driver)
+        session.commit()
+        session.refresh(driver)
+        return web.json_response({
+            "ok": True,
+            "detail": "Haydovchi qo'shildi",
+            "id": driver.id,
+        }, status=201)
+    except Exception as e:
+        session.rollback()
+        return web.json_response({"error": str(e)}, status=500)
+    finally:
+        session.close()
+
+
 def setup_api_routes(app: web.Application):
-    """Register all admin API routes."""
     app.router.add_get("/admin/api/stats", api_stats)
     app.router.add_get("/admin/api/drivers", api_drivers)
+    app.router.add_post("/admin/api/drivers", api_create_driver)
+    app.router.add_get("/admin/api/drivers/{id}", api_driver_detail)
+    app.router.add_get("/admin/api/drivers/{id}/photo/{kind}", api_driver_photo)
     app.router.add_get("/admin/api/top-drivers", api_top_drivers)
     app.router.add_get("/admin/api/passengers", api_passengers)
     app.router.add_get("/admin/api/orders", api_orders)

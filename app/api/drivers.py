@@ -203,6 +203,19 @@ def require_driver(handler):
     return wrapper
 
 
+async def get_car_models(request: web.Request) -> web.Response:
+    """GET /api/car-models - the same car-model list the bot offers at registration.
+
+    Public (no auth) so the driver app's model picker matches the bot exactly.
+    Returns {"models": [...all...], "popular": [...popular...]}.
+    """
+    from app import car_models as _cm
+    return web.json_response({
+        "models": _cm.get_all_models(),
+        "popular": _cm.get_popular_models(),
+    })
+
+
 async def driver_login(request: web.Request) -> web.Response:
     """POST /api/driver/login (DEPRECATED - use request-otp/verify-otp)
     Legacy endpoint that logs in driver by telegram_id.
@@ -381,10 +394,18 @@ def _serialize_driver(d: Driver) -> dict:
         "phone": d.phone,
         "first_name": d.first_name,
         "last_name": d.last_name,
+        "pinfl": d.pinfl,
         "car_model": d.car_model,
         "car_number": d.car_number,
         "car_color": d.car_color,
+        "car_year": d.car_year,
         "profile_photo_url": d.profile_photo_url,
+        "license_photo_url": d.license_photo_url,
+        "tech_passport_url": d.tech_passport_url,
+        "car_photo_url": d.car_photo_url,
+        # Whether the registration documents/photos collected by the bot are present.
+        "has_license_doc": bool(d.license_file_id or d.license_photo_url),
+        "has_tech_passport_doc": bool(d.tech_passport_file_id or d.tech_passport_url),
         "seats": d.seats or 4,
         "balance": d.balance,
         "rating": d.rating,
@@ -438,6 +459,67 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
 async def driver_me(request: web.Request) -> web.Response:
     driver: Driver = request["driver"]
     return web.json_response(_serialize_driver(driver))
+
+
+@require_driver
+async def driver_update_me(request: web.Request) -> web.Response:
+    """PATCH /api/driver/me - update the driver's own registration details.
+
+    Used by the in-app driver-info form (filled after bot registration). Accepts any of:
+    first_name, last_name, pinfl, car_number, car_model, car_year. The car photo is NOT
+    handled here (driver photo / tech-passport / license are separate upload endpoints).
+    Saving never locks the driver out: documents_submitted is left untouched.
+    """
+    driver: Driver = request["driver"]
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    from app import car_models as _cm
+
+    session = get_session()
+    try:
+        d = session.query(Driver).filter_by(id=driver.id).first()
+        if not d:
+            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+
+        if "first_name" in data:
+            d.first_name = (str(data.get("first_name") or "")).strip() or None
+        if "last_name" in data:
+            d.last_name = (str(data.get("last_name") or "")).strip() or None
+        if "pinfl" in data:
+            pinfl = "".join(ch for ch in str(data.get("pinfl") or "") if ch.isdigit())
+            if pinfl and len(pinfl) != 14:
+                return web.json_response(
+                    {"error": "JSHSHIR 14 ta raqamdan iborat bo'lishi kerak"}, status=400
+                )
+            d.pinfl = pinfl or None
+        if "car_number" in data:
+            d.car_number = (str(data.get("car_number") or "")).strip().upper() or None
+        if "car_model" in data:
+            model = (str(data.get("car_model") or "")).strip()
+            if model and not _cm.is_valid_model(model):
+                return web.json_response(
+                    {"error": "Bu model qabul qilinmaydi"}, status=400
+                )
+            d.car_model = model or None
+        if "car_year" in data:
+            year = (str(data.get("car_year") or "")).strip()
+            if year:
+                if not (year.isdigit() and 1980 <= int(year) <= datetime.utcnow().year + 1):
+                    return web.json_response({"error": "Yilni to'g'ri kiriting"}, status=400)
+            d.car_year = year or None
+
+        d.last_active = datetime.utcnow()
+        session.commit()
+        session.refresh(d)
+        return web.json_response({"success": True, "driver": _serialize_driver(d)})
+    except Exception as e:
+        session.rollback()
+        return web.json_response({"error": str(e)}, status=500)
+    finally:
+        session.close()
 
 
 @require_driver
