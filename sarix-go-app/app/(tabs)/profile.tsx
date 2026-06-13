@@ -125,6 +125,7 @@ export default function ProfileScreen() {
     { icon: '👤', labelKey: 'profile.helpSupport', onPress: openSupport },
     { icon: '⚙️', labelKey: 'profile.settings', onPress: () => router.push('/settings') },
     { icon: '💡', labelKey: 'profile.feedback', onPress: openSupport },
+    { icon: '📄', labelKey: 'Foydalanish shartlari va maxfiylik siyosati', onPress: () => router.push('/terms') },
   ];
 
   return (

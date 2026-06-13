@@ -283,7 +283,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.menuItem}
+            style={[styles.menuItem, styles.menuItemBorder]}
             onPress={() => router.push('/settings')}
           >
             <View style={[styles.menuIcon, { backgroundColor: colors.infoLight }]}>
@@ -292,6 +292,20 @@ export default function ProfileScreen() {
             <View style={styles.menuText}>
               <Text style={styles.menuTitle}>{t('profile.settings')}</Text>
               <Text style={styles.menuSub}>Til, mavzu</Text>
+            </View>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push('/terms')}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.surface }]}>
+              <Text style={styles.menuIconText}>📄</Text>
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.menuTitle}>Foydalanish shartlari va maxfiylik siyosati</Text>
+              <Text style={styles.menuSub}>Shartlar va maxfiylik</Text>
             </View>
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>

@@ -302,11 +302,6 @@ export default function NewOrderScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Accident-liability disclaimer */}
-        <Text style={styles.disclaimer}>
-          Yo'lda yuz beradigan baxtsiz hodisalar uchun Sarix Go javobgar emas.
-        </Text>
-
         {/* Tavsiyalar (recommendations) */}
         <View style={styles.recHeader}>
           <Text style={styles.sectionTitle}>Tavsiyalar</Text>
@@ -620,13 +615,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   dotsIcon: { fontSize: 26, color: colors.primary, fontWeight: '700' },
-  disclaimer: {
-    ...typography.small,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.xl,
-    paddingHorizontal: spacing.md,
-  },
   sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',

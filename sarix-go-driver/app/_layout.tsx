@@ -80,6 +80,7 @@ export default function RootLayout() {
           <Stack.Screen name="notifications" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="faq" />
+          <Stack.Screen name="terms" />
           <Stack.Screen name="car-photo" />
           <Stack.Screen name="driver-info" />
         </Stack>
