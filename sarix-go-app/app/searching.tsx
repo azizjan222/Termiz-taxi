@@ -160,9 +160,6 @@ export default function SearchingScreen() {
         <Text style={styles.subtitle}>
           Haydovchi qidirilmoqda... Haydovchi zakasni qabul qilishi bilan tez orada siz bilan bog'lanadi.
         </Text>
-        <Text style={styles.disclaimer}>
-          Yo'lda yuz beradigan baxtsiz hodisalar uchun Sarix Go javobgar emas.
-        </Text>
       </View>
 
       <View style={styles.footer}>
@@ -219,13 +216,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     opacity: 0.8,
     marginTop: spacing.sm,
-    textAlign: 'center',
-  },
-  disclaimer: {
-    ...typography.small,
-    color: colors.white,
-    opacity: 0.6,
-    marginTop: spacing.lg,
     textAlign: 'center',
   },
   footer: { padding: spacing.lg },
