@@ -1,0 +1,120 @@
+/**
+ * Location service.
+ * Wraps `expo-location` behind a small, typed, UI-agnostic API that requests
+ * permission, checks whether device location services are enabled, and acquires
+ * the device's current coordinates, returning a discriminated `DetectResult`.
+ *
+ * The service never throws: every path resolves to a `DetectResult` variant so
+ * callers can branch on `status` without try/catch.
+ */
+import * as Location from 'expo-location';
+
+/** Successful acquisition of the device coordinates. */
+export interface DetectSuccess {
+  status: 'success';
+  lat: number;
+  lon: number;
+  /** Horizontal accuracy in meters (null if unknown). */
+  accuracy: number | null;
+}
+
+/** Discriminated error variants for a failed detection. */
+export type DetectError =
+  | { status: 'permission-denied' } // OS permission not granted
+  | { status: 'services-disabled' } // device location services turned off
+  | { status: 'timeout' } // no fix within the Detection_Timeout
+  | { status: 'error'; message?: string }; // any other acquisition failure
+
+/** Result of a location detection attempt. */
+export type DetectResult = DetectSuccess | DetectError;
+
+/** Options controlling a detection attempt. */
+export interface DetectOptions {
+  /** Maximum time to wait for a fix, in milliseconds. Defaults to 15000. */
+  timeoutMs?: number;
+}
+
+/** Default Detection_Timeout, in milliseconds. */
+const DEFAULT_TIMEOUT_MS = 15000;
+
+/**
+ * Detect the device's current location.
+ *
+ * Performs the full permission -> services-enabled -> bounded acquisition flow:
+ *  1. Reads the current foreground permission. If it is already denied and the OS
+ *     will not allow re-prompting (`canAskAgain === false`), short-circuits to
+ *     `permission-denied` without issuing a new request (R2.5).
+ *  2. When the permission is not yet granted, requests it; if the request does not
+ *     return `granted`, resolves to `permission-denied` (R2.1, R2.3). An already
+ *     granted permission proceeds without re-requesting (R2.4).
+ *  3. Checks whether device location services are enabled; if not, resolves to
+ *     `services-disabled` (R3.5).
+ *  4. Acquires a single current position with `Balanced` accuracy, raced against a
+ *     `timeoutMs` timer (default 15000). The first fix resolves to `success`
+ *     (R3.1, R3.2); the timer winning resolves to `timeout` (R3.4, R7.5).
+ *
+ * The whole flow is wrapped in try/catch so any thrown error resolves to
+ * `{ status: 'error', message }` and the service never throws (R7.2).
+ *
+ * @param opts Optional detection options. `timeoutMs` defaults to 15000.
+ * @returns A `DetectResult` discriminated union describing the outcome.
+ */
+export async function detectLocation(opts?: DetectOptions): Promise<DetectResult> {
+  const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    // 1. Read the current permission (R2.5).
+    const current = await Location.getForegroundPermissionsAsync();
+    if (current.status !== 'granted') {
+      // Already denied and the OS will not allow re-prompting: do not re-request.
+      if (current.status === 'denied' && current.canAskAgain === false) {
+        return { status: 'permission-denied' };
+      }
+      // 2. Undetermined (or still requestable): request permission (R2.1, R2.3).
+      const requested = await Location.requestForegroundPermissionsAsync();
+      if (requested.status !== 'granted') {
+        return { status: 'permission-denied' };
+      }
+    }
+    // Otherwise the permission is already granted: proceed without re-requesting (R2.4).
+
+    // 3. Ensure device location services are enabled (R3.5).
+    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    if (!servicesEnabled) {
+      return { status: 'services-disabled' };
+    }
+
+    // 4. Acquire a single bounded position fix (R3.1, R3.2, R3.4, R7.5).
+    const TIMEOUT = Symbol('location-timeout');
+    const positionPromise = Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+    const timeoutPromise = new Promise<typeof TIMEOUT>((resolve) => {
+      timer = setTimeout(() => resolve(TIMEOUT), timeoutMs);
+    });
+
+    const outcome = await Promise.race([positionPromise, timeoutPromise]);
+
+    if (outcome === TIMEOUT) {
+      return { status: 'timeout' };
+    }
+
+    const { coords } = outcome;
+    return {
+      status: 'success',
+      lat: coords.latitude,
+      lon: coords.longitude,
+      accuracy: coords.accuracy ?? null,
+    };
+  } catch (err) {
+    // Any thrown error collapses into the `error` variant (R7.2).
+    const message = err instanceof Error ? err.message : String(err);
+    return { status: 'error', message };
+  } finally {
+    // Clear the timeout timer to avoid leaks regardless of which branch won.
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}

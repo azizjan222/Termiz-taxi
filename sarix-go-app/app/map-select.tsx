@@ -9,8 +9,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
-import YandexMap from '../src/components/YandexMap';
+import YandexMap, { YandexMapHandle } from '../src/components/YandexMap';
 import { reverseGeocode } from '../src/services/geocoding';
+import { detectLocation } from '../src/services/location';
 import { listCities } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
 import { colors, typography, spacing, radius } from '../src/theme';
@@ -18,6 +19,16 @@ import { colors, typography, spacing, radius } from '../src/theme';
 // Termiz, Surxondaryo (default center)
 const DEFAULT_LAT = 37.224;
 const DEFAULT_LON = 67.278;
+
+// Detection tuning constants
+const DETECTION_TIMEOUT_MS = 15000; // Detection_Timeout (R3.2, R3.4, R7.5)
+const ACCURACY_THRESHOLD_M = 100; // Accuracy_Threshold (R4.x, R7.1)
+const DETECT_ZOOM = 16; // street-level zoom (R4.3)
+
+type Notice = {
+  kind: 'permission' | 'services' | 'timeout' | 'error' | 'low-accuracy' | 'no-address';
+  text: string;
+};
 
 /**
  * Map-based location picker (xarita orqali tanlash).
@@ -41,7 +52,10 @@ export default function MapSelectScreen() {
   });
   const [address, setAddress] = useState<string>('');
   const [resolving, setResolving] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
 
+  const mapRef = useRef<YandexMapHandle>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reqIdRef = useRef(0);
 
@@ -80,14 +94,73 @@ export default function MapSelectScreen() {
   }, []);
 
   const handleCameraMove = (lat: number, lon: number) => {
+    setNotice(null);
     setCenter({ lat, lon });
     resolveAddress(lat, lon);
   };
 
   const handleMapPress = (lat: number, lon: number) => {
+    setNotice(null);
     setCenter({ lat, lon });
     resolveAddress(lat, lon);
   };
+
+  // Orchestrate: permission -> acquisition -> accuracy-check -> recenter -> reverse-geocode.
+  // The Location_Service collapses every failure into a typed DetectResult variant; here we
+  // map each variant to an inline notice and never move the map center on failure.
+  const handleDetectLocation = useCallback(async () => {
+    if (detecting) return; // ignore concurrent taps (R1.4)
+    setNotice(null);
+    setDetecting(true);
+    try {
+      const result = await detectLocation({ timeoutMs: DETECTION_TIMEOUT_MS });
+      switch (result.status) {
+        case 'success': {
+          const acc = result.accuracy;
+          if (acc != null && acc > ACCURACY_THRESHOLD_M) {
+            // Low-accuracy fix: keep the existing center and prompt manual adjust (R4.4, R4.5, R7.1).
+            setNotice({
+              kind: 'low-accuracy',
+              text: 'GPS aniqligi past — nuqtani qoʻlda toʻgʻrilang',
+            });
+            return;
+          }
+          // Within threshold (or unknown): recenter at street-level zoom and auto-fill address.
+          setCenter({ lat: result.lat, lon: result.lon }); // R4.1, R4.2
+          mapRef.current?.setCenter(result.lat, result.lon, DETECT_ZOOM); // R4.3
+          resolveAddress(result.lat, result.lon); // R5.1 (reuses 500 ms debounce)
+          break;
+        }
+        case 'permission-denied':
+          setNotice({
+            kind: 'permission',
+            text:
+              'Joylashuvni aniqlash uchun ruxsat kerak. Xaritadan qoʻlda ham tanlashingiz mumkin.',
+          });
+          break;
+        case 'services-disabled':
+          setNotice({
+            kind: 'services',
+            text: 'Qurilmada joylashuv xizmati oʻchiq. Iltimos, yoqing.',
+          });
+          break;
+        case 'timeout':
+          setNotice({
+            kind: 'timeout',
+            text: 'Joylashuv aniqlanmadi (vaqt tugadi). Qaytadan urinib koʻring.',
+          });
+          break;
+        case 'error':
+          setNotice({
+            kind: 'error',
+            text: 'Joylashuvni aniqlab boʻlmadi. Xaritadan qoʻlda tanlang.',
+          });
+          break;
+      }
+    } finally {
+      setDetecting(false); // always restore idle state (R6.3, R6.4)
+    }
+  }, [detecting, resolveAddress]);
 
   // Try to find a known city/district inside the resolved address; otherwise
   // fall back to the first locality component of the address.
@@ -139,6 +212,7 @@ export default function MapSelectScreen() {
 
       <View style={styles.mapWrap}>
         <YandexMap
+          ref={mapRef}
           initialLat={center.lat}
           initialLon={center.lon}
           initialZoom={13}
@@ -157,6 +231,24 @@ export default function MapSelectScreen() {
             Xaritani suring yoki bosing
           </Text>
         </View>
+
+        {/* Location_Detection_Button: detect the device's current location (R1.x, R6.1) */}
+        <TouchableOpacity
+          style={styles.detectBtn}
+          onPress={handleDetectLocation}
+          activeOpacity={0.85}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Mening joylashuvim"
+          accessibilityState={{ busy: detecting }}
+        >
+          {detecting ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Text style={styles.detectIcon}>🎯</Text>
+          )}
+          <Text style={styles.detectLabel}>Mening joylashuvim</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Bottom card: resolved address + confirm */}
@@ -177,6 +269,14 @@ export default function MapSelectScreen() {
             </Text>
           )}
         </View>
+
+        {/* Inline detection notice (permission/services/timeout/error/low-accuracy). */}
+        {notice && (
+          <View style={styles.noticeRow}>
+            <Text style={styles.noticeIcon}>ⓘ</Text>
+            <Text style={styles.noticeText}>{notice.text}</Text>
+          </View>
+        )}
 
         <TouchableOpacity
           style={styles.confirmBtn}
@@ -220,6 +320,40 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   hintBadgeText: { ...typography.small, color: colors.white },
+  detectBtn: {
+    position: 'absolute',
+    right: spacing.md,
+    bottom: spacing.md,
+    minWidth: 44,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    // subtle elevation to lift the control above the map
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  detectIcon: { fontSize: 18, marginRight: spacing.xs },
+  detectLabel: { ...typography.caption, fontWeight: '600', color: colors.primary, marginLeft: spacing.xs },
+  noticeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.sm,
+  },
+  noticeIcon: { ...typography.caption, color: colors.warning, marginRight: spacing.sm, fontWeight: '700' },
+  noticeText: { flex: 1, ...typography.caption, color: colors.text },
   bottomCard: {
     backgroundColor: colors.white,
     borderTopLeftRadius: radius.lg,
