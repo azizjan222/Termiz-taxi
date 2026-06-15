@@ -161,11 +161,14 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* TEMP: invite-a-friend promo hidden — re-enable later */}
         {/* Promo banner */}
+        {/*
         <View style={styles.promo}>
           <Text style={styles.promoIcon}>🎁</Text>
           <Text style={styles.promoText}>{t('profile.inviteFriends')}</Text>
         </View>
+        */}
 
         {/* Menu */}
         <View style={styles.menu}>
