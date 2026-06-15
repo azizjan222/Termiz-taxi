@@ -19,12 +19,22 @@ import {
   deriveMarkers,
   deriveInitialCenter,
   deriveShouldDrawRoute,
+  haversineMeters,
+  formatDistance,
+  formatEta,
+  ETA_AVG_SPEED_KMH,
   type Coords,
 } from '../../src/components/driverMap.helpers';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 const CONTACT_WINDOW_MINUTES = 15;
-const LOCATION_INTERVAL_MS = 10000; // send driver location every ~10s while active
+// Live-distance watcher tuning: update the display on meter-level movement while
+// throttling the backend broadcast to its existing ~10s cadence.
+const WATCH_DISTANCE_INTERVAL_M = 10; // meters of movement that trigger an update
+const WATCH_TIME_INTERVAL_MS = 2000;  // floor between updates (smoothing)
+const BACKEND_MIN_INTERVAL_MS = 10000; // preserve the existing ~10s broadcast cadence
+// Toggle for the optional ETA hint shown next to the live distance.
+const ETA_HINT_ENABLED = true;
 
 export default function OrderDetailScreen() {
   const { t } = useTranslation();
@@ -38,6 +48,10 @@ export default function OrderDetailScreen() {
   const mapRef = useRef<YandexMapHandle>(null);
   const [driverCoords, setDriverCoords] = useState<Coords | null>(null);
   const [mapReady, setMapReady] = useState(false);
+
+  // Live-location watcher lifecycle (kept in refs so re-renders don't restart it).
+  const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const lastSentAtRef = useRef(0);
 
   useEffect(() => {
     listMyActive().then((orders) => {
@@ -67,21 +81,26 @@ export default function OrderDetailScreen() {
   const mmss = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-  // While the order is active, periodically send the driver's GPS location to the
-  // backend, which broadcasts it to the passenger so they see the car move in real time.
+  // While the order is active, continuously watch the driver's GPS position. The
+  // display, driver marker, and route refresh on every meter-level update, while the
+  // backend broadcast (updateDriverLocation) is throttled to its existing ~10s cadence
+  // so we don't increase backend traffic. A single subscription is kept at all times.
   useEffect(() => {
     if (!order || !['accepted', 'in_progress'].includes(order.status)) return;
     let cancelled = false;
-    let interval: ReturnType<typeof setInterval> | null = null;
 
-    const sendOnce = async () => {
+    const onPosition = async (pos: Location.LocationObject) => {
+      if (cancelled) return;
       try {
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        if (!cancelled) {
-          setDriverCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-          await updateDriverLocation(pos.coords.latitude, pos.coords.longitude);
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        // Always refresh the local display (distance, marker, route).
+        setDriverCoords({ lat, lon });
+        // Throttle the backend broadcast to preserve the ~10s cadence.
+        const now = Date.now();
+        if (now - lastSentAtRef.current >= BACKEND_MIN_INTERVAL_MS) {
+          await updateDriverLocation(lat, lon);
+          lastSentAtRef.current = now;
         }
       } catch {}
     };
@@ -90,14 +109,27 @@ export default function OrderDetailScreen() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted' || cancelled) return;
-        await sendOnce();
-        interval = setInterval(sendOnce, LOCATION_INTERVAL_MS);
+        const sub = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: WATCH_TIME_INTERVAL_MS,
+            distanceInterval: WATCH_DISTANCE_INTERVAL_M,
+          },
+          onPosition,
+        );
+        // If we were torn down while awaiting, remove immediately to keep <=1 active.
+        if (cancelled) {
+          sub.remove();
+          return;
+        }
+        subscriptionRef.current = sub;
       } catch {}
     })();
 
     return () => {
       cancelled = true;
-      if (interval) clearInterval(interval);
+      subscriptionRef.current?.remove();
+      subscriptionRef.current = null;
     };
   }, [order?.id, order?.status]);
 
@@ -174,6 +206,33 @@ export default function OrderDetailScreen() {
         </View>
       </SafeAreaView>
     );
+  }
+
+  // Live driver->pickup distance, derived per render so it always reflects the latest
+  // driverCoords (consistent with the driver marker and driver->pickup route).
+  const pickup = derivePickup(order);
+  const distanceMeters = driverCoords && pickup ? haversineMeters(driverCoords, pickup) : NaN;
+  // Display precedence: HIDDEN (not active) -> PICKUP_MISSING -> LOADING -> LABEL.
+  let distanceContent: React.ReactNode = null;
+  if (deriveMapVisible(order)) {
+    if (pickup === null) {
+      distanceContent = (
+        <Text style={styles.value}>📍 Yo'lovchi joylashuvi mavjud emas</Text>
+      );
+    } else if (!driverCoords) {
+      distanceContent = <Text style={styles.value}>📍 Masofa hisoblanmoqda...</Text>;
+    } else {
+      const etaHint =
+        ETA_HINT_ENABLED && Number.isFinite(distanceMeters)
+          ? ` · ~${formatEta(distanceMeters, ETA_AVG_SPEED_KMH)}`
+          : '';
+      distanceContent = (
+        <Text style={[styles.value, { color: colors.info }]}>
+          📍 {formatDistance(distanceMeters)}
+          {etaHint}
+        </Text>
+      );
+    }
   }
 
   return (
@@ -279,6 +338,15 @@ export default function OrderDetailScreen() {
               {formatPrice(order.price)} so'm
             </Text>
           </View>
+          {distanceContent && (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <Text style={styles.label}>🛣 Masofa</Text>
+                {distanceContent}
+              </View>
+            </>
+          )}
         </View>
 
         {order.note && (

@@ -106,3 +106,86 @@ export function buildNavCandidates(lat: number, lon: number, os: 'ios' | 'androi
     `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`,
   ];
 }
+
+
+// ---------------------------------------------------------------------------
+// Live distance helpers (driver-live-distance feature)
+//
+// Pure, TOTAL functions that compute and format the driver->pickup distance.
+// They never throw on null/NaN/Infinity: haversineMeters returns a NaN "no
+// distance" sentinel and formatDistance/formatEta return a safe "—" fallback so
+// callers can guard cheaply with Number.isFinite. No React imports.
+// ---------------------------------------------------------------------------
+
+// Earth mean radius in meters, used by the haversine great-circle formula.
+const EARTH_RADIUS_M = 6371000;
+
+// Assumed average speed (km/h) for the optional ETA hint.
+export const ETA_AVG_SPEED_KMH = 30;
+
+/**
+ * Great-circle distance in meters between two coordinate pairs (haversine
+ * formula, Earth radius 6,371,000 m).
+ *
+ * TOTAL: returns NaN (the "no distance" sentinel) when either point is null or
+ * contains a non-finite lat/lon, so callers can guard with Number.isFinite
+ * before formatting. Always returns a finite, non-negative value when both
+ * points are finite. Never throws; does not mutate its inputs.
+ */
+export function haversineMeters(a: Coords | null, b: Coords | null): number {
+  if (!a || !b) return NaN;
+  if (!isFiniteCoord(a.lat, a.lon) || !isFiniteCoord(b.lat, b.lon)) return NaN;
+
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLon = Math.sin(dLon / 2);
+  const h =
+    sinDLat * sinDLat +
+    Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+
+  const meters = EARTH_RADIUS_M * c;
+  // Clamp tiny negative artefacts of floating-point math to zero.
+  return meters < 0 ? 0 : meters;
+}
+
+/**
+ * Human-friendly distance label.
+ *   meters >= 1000      -> `${(meters / 1000).toFixed(1)} km`  (e.g. "3.2 km")
+ *   0 <= meters < 1000  -> `${Math.round(meters)} m`           (e.g. "450 m")
+ *   NaN / negative / non-finite -> "—" (non-empty safe fallback)
+ * Never throws.
+ */
+export function formatDistance(meters: number): string {
+  if (typeof meters !== 'number' || !Number.isFinite(meters) || meters < 0) {
+    return '—';
+  }
+  if (meters >= 1000) {
+    return `${(meters / 1000).toFixed(1)} km`;
+  }
+  return `${Math.round(meters)} m`;
+}
+
+/**
+ * Optional coarse ETA hint derived from a distance and an assumed average speed.
+ * minutes = (meters / 1000) / avgSpeedKmh * 60, rounded to the nearest minute.
+ *   zero distance         -> "0 daqiqa"
+ *   invalid input (NaN/negative/non-finite distance or non-positive/non-finite
+ *   speed) -> "—" (non-empty safe fallback)
+ * Non-negative; never throws.
+ */
+export function formatEta(meters: number, avgSpeedKmh: number): string {
+  if (typeof meters !== 'number' || !Number.isFinite(meters) || meters < 0) {
+    return '—';
+  }
+  if (typeof avgSpeedKmh !== 'number' || !Number.isFinite(avgSpeedKmh) || avgSpeedKmh <= 0) {
+    return '—';
+  }
+  const minutes = Math.round((meters / 1000) / avgSpeedKmh * 60);
+  return `${minutes} daqiqa`;
+}
