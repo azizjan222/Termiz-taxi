@@ -56,6 +56,16 @@
           "imageWidth": 200,
           "backgroundColor": "#0E1B3D"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": [
+              "https://www.jitpack.io"
+            ]
+          }
+        }
       ]
     ],
     "experiments": {
