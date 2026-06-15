@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Linking, Alert, Platform,
@@ -10,6 +10,17 @@ import * as Location from 'expo-location';
 
 import { Button } from '../../src/components/Button';
 import { listMyActive, completeOrder, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
+import YandexMap, { type YandexMapHandle } from '../../src/components/YandexMap';
+import {
+  buildNavCandidates,
+  derivePickup,
+  deriveMapVisible,
+  derivePickupUnavailable,
+  deriveMarkers,
+  deriveInitialCenter,
+  deriveShouldDrawRoute,
+  type Coords,
+} from '../../src/components/driverMap.helpers';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 const CONTACT_WINDOW_MINUTES = 15;
@@ -22,6 +33,11 @@ export default function OrderDetailScreen() {
   const [order, setOrder] = useState<DriverOrder | null>(null);
   const [loading, setLoading] = useState(false);
   const [remainingSec, setRemainingSec] = useState<number | null>(null);
+
+  // Imperative handle + live driver position for the in-app pickup map.
+  const mapRef = useRef<YandexMapHandle>(null);
+  const [driverCoords, setDriverCoords] = useState<Coords | null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     listMyActive().then((orders) => {
@@ -64,6 +80,7 @@ export default function OrderDetailScreen() {
           accuracy: Location.Accuracy.Balanced,
         });
         if (!cancelled) {
+          setDriverCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
           await updateDriverLocation(pos.coords.latitude, pos.coords.longitude);
         }
       } catch {}
@@ -84,6 +101,21 @@ export default function OrderDetailScreen() {
     };
   }, [order?.id, order?.status]);
 
+  // Keep the in-app map in sync with the driver's movement: once the map is ready,
+  // draw/refit the driver->pickup route when both points exist, otherwise just center
+  // on the pickup. Reacts to every driverCoords change (the existing ~10s loop).
+  useEffect(() => {
+    if (!mapReady) return;
+    const pickup = derivePickup(order);
+    const driver = driverCoords;
+    if (deriveShouldDrawRoute(driver, pickup)) {
+      mapRef.current?.drawRoute([driver!.lat, driver!.lon], [pickup!.lat, pickup!.lon]);
+      mapRef.current?.fitBounds(deriveMarkers(pickup, driver));
+    } else if (pickup) {
+      mapRef.current?.setCenter(pickup.lat, pickup.lon);
+    }
+  }, [mapReady, driverCoords, order?.from_lat, order?.from_lon]);
+
   const openNavigation = async () => {
     const lat = order?.from_lat;
     const lon = order?.from_lon;
@@ -92,15 +124,7 @@ export default function OrderDetailScreen() {
       return;
     }
     // Try Yandex Navigator, then Yandex Maps, then a universal geo/Google fallback.
-    const candidates = [
-      `yandexnavi://build_route_on_map?lat_to=${lat}&lon_to=${lon}`,
-      `yandexmaps://maps.yandex.ru/?rtext=~${lat},${lon}&rtt=auto`,
-      Platform.OS === 'ios'
-        ? `https://maps.apple.com/?daddr=${lat},${lon}`
-        : `geo:${lat},${lon}?q=${lat},${lon}`,
-      `https://yandex.com/maps/?rtext=~${lat}%2C${lon}&rtt=auto`,
-      `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`,
-    ];
+    const candidates = buildNavCandidates(lat, lon, Platform.OS === 'ios' ? 'ios' : 'android');
     for (const url of candidates) {
       try {
         const ok = await Linking.canOpenURL(url);
@@ -181,6 +205,28 @@ export default function OrderDetailScreen() {
           <View style={styles.statusBanner}>
             <Text style={styles.statusEmoji}>🚕</Text>
             <Text style={styles.statusText}>Aktiv buyurtma</Text>
+          </View>
+        )}
+
+        {/* In-app pickup map — driver position, pickup pin, and driver->pickup route. */}
+        {deriveMapVisible(order) && (
+          <View style={styles.mapCard}>
+            <YandexMap
+              ref={mapRef}
+              initialLat={deriveInitialCenter(derivePickup(order), driverCoords).lat}
+              initialLon={deriveInitialCenter(derivePickup(order), driverCoords).lon}
+              initialZoom={14}
+              markers={deriveMarkers(derivePickup(order), driverCoords)}
+              onMapReady={() => setMapReady(true)}
+              style={StyleSheet.absoluteFill}
+            />
+            {derivePickupUnavailable(order) && (
+              <View style={styles.mapUnavailable} pointerEvents="none">
+                <Text style={styles.mapUnavailableText}>
+                  📍 Yo'lovchi joylashuvi xaritada mavjud emas
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -274,6 +320,26 @@ const styles = StyleSheet.create({
   title: { ...typography.h3, color: colors.primary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  mapCard: {
+    height: 220,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+  },
+  mapUnavailable: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  mapUnavailableText: { ...typography.caption, color: colors.textSecondary },
   statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
