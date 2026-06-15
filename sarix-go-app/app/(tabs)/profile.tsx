@@ -116,7 +116,8 @@ export default function ProfileScreen() {
     { icon: '👨‍✈️', labelKey: 'profile.becomeDriver', onPress: openDriverApp, highlight: true },
     { icon: '📋', labelKey: 'profile.orderHistory', onPress: () => router.push('/(tabs)/history') },
     { icon: '📍', labelKey: 'profile.savedAddresses', onPress: () => router.push('/saved-addresses') },
-    { icon: '🎁', labelKey: 'profile.inviteFriends', onPress: () => router.push('/referral') },
+    // TEMP: invite-a-friend disabled for now — re-enable later (keyin qo'shamiz)
+    // { icon: '🎁', labelKey: 'profile.inviteFriends', onPress: () => router.push('/referral') },
     { icon: '💳', labelKey: 'profile.paymentMethods', onPress: () => Alert.alert('Soon') },
     { icon: '🔔', labelKey: 'profile.notifications', onPress: () => router.push('/notifications') },
     { icon: '🏷', labelKey: 'profile.promoCodes', onPress: () => Alert.alert('Soon') },
