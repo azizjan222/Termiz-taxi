@@ -3,7 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, AppState } from 'react-native';
 
 import { initI18n } from '../src/i18n';
 import { useDriverStore } from '../src/store/driver';
@@ -11,6 +11,7 @@ import { useThemeStore } from '../src/store/theme';
 import { colors } from '../src/theme';
 import { registerPushToken, addNotificationReceivedListener } from '../src/services/notifications';
 import { addNotification } from '../src/services/notificationHistory';
+import * as realtime from '../src/services/realtime';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 
 export default function RootLayout() {
@@ -18,6 +19,7 @@ export default function RootLayout() {
   const [splashDone, setSplashDone] = useState(false);
   const loadDriver = useDriverStore((s) => s.loadDriver);
   const isAuth = useDriverStore((s) => s.isAuthenticated);
+  const driver = useDriverStore((s) => s.driver);
   const themeInit = useThemeStore((s) => s.init);
 
   useEffect(() => {
@@ -35,6 +37,34 @@ export default function RootLayout() {
       registerPushToken().catch(() => {});
     }
   }, [isAuth, ready]);
+
+  // App-wide realtime order socket: connect once the driver is authenticated,
+  // disconnect on logout / id loss. The manager is a singleton, so this lives
+  // outside any one screen and survives tab/screen changes.
+  useEffect(() => {
+    if (isAuth && driver?.telegram_id) {
+      realtime.connect(driver.telegram_id);
+      return () => {
+        realtime.disconnect();
+      };
+    }
+  }, [isAuth, driver?.telegram_id]);
+
+  // Reconnect when the app returns to the foreground and the socket is not OPEN
+  // (the manager is idempotent, so a redundant call is a no-op).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (
+        nextState === 'active' &&
+        useDriverStore.getState().isAuthenticated &&
+        !realtime.isOpen()
+      ) {
+        const id = useDriverStore.getState().driver?.telegram_id;
+        if (id) realtime.connect(id);
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   // Persist every received push notification into the in-app history.
   useEffect(() => {
