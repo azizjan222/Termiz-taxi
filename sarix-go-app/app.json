@@ -2,7 +2,6 @@
   "expo": {
     "name": "Sarix Go Termiz Sariosiyo Taxi",
     "slug": "sarix-go-passenger",
-    "owner": "azizjon_xolov",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
