@@ -10,9 +10,7 @@ import * as Haptics from 'expo-haptics';
 
 import { listAvailableOrders, acceptOrder, setOnline as apiSetOnline, type DriverOrder } from '../../src/api/driver';
 import { useDriverStore } from '../../src/store/driver';
-import { WS_URL } from '../../src/api/client';
-import { playNewOrderAlert } from '../../src/services/notifications';
-import { addNotification } from '../../src/services/notificationHistory';
+import { useRealtimeStore } from '../../src/store/realtime';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 export default function OrdersScreen() {
@@ -26,8 +24,11 @@ export default function OrdersScreen() {
   const [accepting, setAccepting] = useState<number | null>(null);
   const [canReceive, setCanReceive] = useState(true);
   const [receiveMsg, setReceiveMsg] = useState('');
-  const wsRef = useRef<WebSocket | null>(null);
   const canReceiveRef = useRef(true);
+  // Last realtime event we've already consumed (by monotonic seq) so we never
+  // re-process the same event on an unrelated re-render.
+  const lastSeqRef = useRef(0);
+  const lastEvent = useRealtimeStore((s) => s.lastEvent);
 
   useEffect(() => {
     canReceiveRef.current = canReceive;
@@ -52,48 +53,25 @@ export default function OrdersScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // WebSocket for real-time new orders
+  // Consume real-time events from the app-wide realtime store. The socket itself
+  // lives in src/services/realtime.ts and is mounted in app/_layout.tsx, so the
+  // loud alert + delivery work on any screen. Here we only update the list.
   useEffect(() => {
-    if (!driver?.telegram_id) return;
-    const ws = new WebSocket(`${WS_URL}?role=driver&id=${driver.telegram_id}`);
-    wsRef.current = ws;
+    if (!lastEvent || lastEvent.seq <= lastSeqRef.current) return;
+    lastSeqRef.current = lastEvent.seq;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'new_order' && msg.order) {
-          // No balance / no trial -> ignore incoming orders (defense in depth).
-          if (!canReceiveRef.current) return;
-          setOrders((prev) => {
-            if (prev.find((o) => o.id === msg.order.id)) return prev;
-            return [msg.order, ...prev];
-          });
-          // Loud sound + strong vibration + haptic feedback for the new order.
-          playNewOrderAlert({
-            from: msg.order.from_city,
-            to: msg.order.to_city,
-            price: msg.order.price,
-          });
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          // Save to the in-app notifications history.
-          addNotification({
-            title: '🚕 Yangi zakas',
-            body: `${msg.order.from_city} → ${msg.order.to_city}${msg.order.price ? ` · ${msg.order.price} so'm` : ''}`,
-            type: 'new_order',
-            data: { order_id: msg.order.id },
-          });
-        } else if (msg.type === 'order_cancelled') {
-          setOrders((prev) => prev.filter((o) => o.id !== msg.order_id));
-        }
-      } catch {}
-    };
-
-    ws.onerror = () => {};
-
-    return () => {
-      ws.close();
-    };
-  }, [driver?.telegram_id]);
+    if (lastEvent.kind === 'new_order' && lastEvent.order) {
+      // No balance / no trial -> ignore incoming orders (defense in depth).
+      if (!canReceiveRef.current) return;
+      const order = lastEvent.order;
+      setOrders((prev) => {
+        if (prev.find((o) => o.id === order.id)) return prev;
+        return [order, ...prev];
+      });
+    } else if (lastEvent.kind === 'order_cancelled') {
+      setOrders((prev) => prev.filter((o) => o.id !== lastEvent.orderId));
+    }
+  }, [lastEvent]);
 
   const toggleOnline = async (val: boolean) => {
     setOnlineLocal(val);
