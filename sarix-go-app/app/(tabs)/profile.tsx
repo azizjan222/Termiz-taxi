@@ -9,6 +9,9 @@ import {
   Linking,
   Platform,
   Image,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -17,7 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { useAuthStore } from '../../src/store/auth';
 import { getSupportInfo } from '../../src/api/ai';
-import { uploadProfilePhoto } from '../../src/api/auth';
+import { uploadProfilePhoto, updateProfile } from '../../src/api/auth';
 import { API_URL } from '../../src/api/client';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
@@ -40,6 +43,9 @@ export default function ProfileScreen() {
   const logout = useAuthStore((s) => s.logout);
   const [supportUrl, setSupportUrl] = useState('https://t.me/tg_adminstator');
   const [uploading, setUploading] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     getSupportInfo()
@@ -68,6 +74,31 @@ export default function ProfileScreen() {
       Alert.alert(t('common.error'), e?.response?.data?.error || t('errors.networkError'));
     } finally {
       setUploading(false);
+    }
+  };
+
+  const openEditModal = () => {
+    setNameDraft(user?.first_name || '');
+    setEditVisible(true);
+  };
+
+  const handleSaveProfile = async () => {
+    const firstName = nameDraft.trim();
+    if (!firstName) {
+      Alert.alert(t('common.error'), 'Ismni kiriting');
+      return;
+    }
+    try {
+      setSaving(true);
+      const { user: updated } = await updateProfile({ first_name: firstName });
+      if (user) {
+        setUser({ ...user, ...updated, first_name: updated?.first_name ?? firstName });
+      }
+      setEditVisible(false);
+    } catch (e: any) {
+      Alert.alert(t('common.error'), e?.response?.data?.error || t('errors.networkError'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -132,6 +163,17 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll}>
+        {/* Header with edit-profile button (top-right) */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={openEditModal}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.editButtonText}>✏️ Tahrirlash</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* User card */}
         <View style={styles.userCard}>
           <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.8}>
@@ -211,6 +253,82 @@ export default function ProfileScreen() {
           {t('profile.version', { version: '1.0.0' })}
         </Text>
       </ScrollView>
+
+      {/* Edit profile modal */}
+      <Modal
+        visible={editVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Profilni to'g'rilash</Text>
+
+            {/* Avatar preview + change photo */}
+            <TouchableOpacity
+              style={styles.modalAvatarWrap}
+              onPress={pickAndUploadPhoto}
+              activeOpacity={0.8}
+            >
+              {user?.profile_photo_url ? (
+                <Image
+                  source={{
+                    uri: user.profile_photo_url.startsWith('http')
+                      ? user.profile_photo_url
+                      : `${API_URL}${user.profile_photo_url}`,
+                  }}
+                  style={styles.modalAvatar}
+                />
+              ) : (
+                <View style={styles.modalAvatar}>
+                  <Text style={styles.avatarText}>
+                    {user?.first_name?.[0]?.toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={pickAndUploadPhoto} disabled={uploading}>
+              <Text style={styles.modalPhotoBtn}>
+                {uploading ? '…' : "Rasmni o'zgartirish"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Name input */}
+            <Text style={styles.modalLabel}>{t('profile.name', 'Ism')}</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={nameDraft}
+              onChangeText={setNameDraft}
+              placeholder="Ism"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="words"
+            />
+
+            {/* Actions */}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={() => setEditVisible(false)}
+                disabled={saving}
+              >
+                <Text style={styles.modalBtnCancelText}>Bekor qilish</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnSave]}
+                onPress={handleSaveProfile}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <Text style={styles.modalBtnSaveText}>Saqlash</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -218,6 +336,21 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+  },
+  editButtonText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -308,4 +441,64 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.md,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    alignItems: 'center',
+  },
+  modalTitle: { ...typography.h2, color: colors.text, marginBottom: spacing.md },
+  modalAvatarWrap: { marginBottom: spacing.sm },
+  modalAvatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalPhotoBtn: {
+    ...typography.bodyBold,
+    color: colors.primary,
+    marginBottom: spacing.md,
+  },
+  modalLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    alignSelf: 'flex-start',
+    marginBottom: spacing.xs,
+  },
+  modalInput: {
+    ...typography.body,
+    color: colors.text,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: colors.divider,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  modalActions: { flexDirection: 'row', gap: spacing.md, width: '100%' },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnCancel: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  modalBtnCancelText: { ...typography.bodyBold, color: colors.textSecondary },
+  modalBtnSave: { backgroundColor: colors.primary },
+  modalBtnSaveText: { ...typography.bodyBold, color: colors.white },
 });
