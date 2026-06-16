@@ -3,12 +3,12 @@ import { TextStyle } from 'react-native';
 export const typography = {
   h1: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: '800',
     lineHeight: 36,
   } as TextStyle,
   h2: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
     lineHeight: 30,
   } as TextStyle,
   h3: {
@@ -53,9 +53,9 @@ export const spacing = {
 };
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
+  sm: 10,
+  md: 14,
+  lg: 20,
+  xl: 28,
   pill: 999,
 };
