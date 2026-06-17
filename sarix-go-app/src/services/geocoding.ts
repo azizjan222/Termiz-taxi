@@ -24,6 +24,14 @@ const JS_API_KEY =
   (Constants.expoConfig?.extra as any)?.yandexJsApiKey ||
   '';
 
+// IMPORTANT: the Yandex HTTP Geocoder & Suggest APIs only accept a fixed set of
+// languages: ru_RU, uk_UA, be_BY, en_RU, en_US, tr_TR. "uz_UZ" is NOT supported
+// and makes the request fail with HTTP 400 -> the address never resolves
+// ("Manzil topilmadi"). The interactive JS map (api-maps.yandex.ru) does accept
+// uz_UZ, which is why the map renders but reverse-geocoding used to fail.
+// Russian gives the most complete address coverage for the Termiz/Surxondaryo region.
+const GEO_LANG = 'ru_RU';
+
 export interface GeoResult {
   address: string;
   lat: number;
@@ -40,7 +48,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string |
     try {
       const url =
         `https://geocode-maps.yandex.ru/1.x/?apikey=${key}` +
-        `&format=json&geocode=${lon},${lat}&lang=uz_UZ&results=1`;
+        `&format=json&geocode=${lon},${lat}&lang=${GEO_LANG}&results=1`;
       const resp = await fetch(url);
       if (!resp.ok) continue; // 403/anything -> try the next key
       const data = await resp.json();
@@ -67,7 +75,7 @@ export async function geocodeAddress(query: string): Promise<GeoResult[]> {
     try {
       const url =
         `https://geocode-maps.yandex.ru/1.x/?apikey=${key}` +
-        `&format=json&geocode=${encodeURIComponent(query)}&lang=uz_UZ&results=5`;
+        `&format=json&geocode=${encodeURIComponent(query)}&lang=${GEO_LANG}&results=5`;
       const resp = await fetch(url);
       if (!resp.ok) continue; // 403/anything -> try the next key
       const data = await resp.json();
@@ -103,7 +111,7 @@ export async function suggestAddress(query: string): Promise<string[]> {
     try {
       const url =
         `https://suggest-maps.yandex.ru/v1/suggest?apikey=${SUGGEST_KEY}` +
-        `&text=${encodeURIComponent(query)}&lang=uz_UZ&results=7` +
+        `&text=${encodeURIComponent(query)}&lang=${GEO_LANG}&results=7` +
         // Bias results to Surxondaryo region (Termiz area)
         `&ll=67.278,37.224&spn=2,2`;
       const resp = await fetch(url);
