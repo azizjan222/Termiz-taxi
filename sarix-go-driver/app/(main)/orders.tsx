@@ -4,6 +4,7 @@ import {
   TouchableOpacity, Alert, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
@@ -11,7 +12,7 @@ import * as Haptics from 'expo-haptics';
 import { listAvailableOrders, acceptOrder, setOnline as apiSetOnline, type DriverOrder } from '../../src/api/driver';
 import { useDriverStore } from '../../src/store/driver';
 import { useRealtimeStore } from '../../src/store/realtime';
-import { colors, typography, spacing, radius } from '../../src/theme';
+import { colors, typography, spacing, radius, gradients } from '../../src/theme';
 
 export default function OrdersScreen() {
   const { t } = useTranslation();
@@ -156,13 +157,16 @@ export default function OrdersScreen() {
   };
 
   const renderOrder = ({ item }: { item: DriverOrder }) => {
+    const onFreeTrial = !!driver?.has_active_subscription;
     const insufficientBalance =
-      !driver?.has_active_subscription && (driver?.balance || 0) < item.commission;
+      !onFreeTrial && (driver?.balance || 0) < item.commission;
     return (
       <View style={[styles.card, item.female_only && styles.cardFemale]}>
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderLeft}>
-            <Text style={styles.serviceIcon}>{getServiceIcon(item.service_type)}</Text>
+            <View style={styles.serviceIconTile}>
+              <Text style={styles.serviceIcon}>{getServiceIcon(item.service_type)}</Text>
+            </View>
             <Text style={styles.timeAgo}>{formatTimeAgo(item.created_at)} oldin</Text>
           </View>
           {item.source === 'app' && (
@@ -172,14 +176,21 @@ export default function OrdersScreen() {
           )}
         </View>
 
-        <View style={styles.routeRow}>
-          <View style={styles.routeDot} />
-          <Text style={styles.routeText}>{item.from_city}</Text>
-        </View>
-        <View style={styles.routeLine} />
-        <View style={styles.routeRow}>
-          <View style={[styles.routeDot, { backgroundColor: colors.accent }]} />
-          <Text style={styles.routeText}>{item.to_city}</Text>
+        <View style={styles.routeBlock}>
+          <View style={styles.routeRow}>
+            <View style={styles.routeDot} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.routeText}>{item.from_city}</Text>
+              <Text style={styles.routeSub}>Manzil</Text>
+            </View>
+          </View>
+          <View style={styles.routeConnector} />
+          <View style={styles.routeRow}>
+            <View style={[styles.routeDot, { backgroundColor: colors.accent }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.routeText}>{item.to_city}</Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.cardInfo}>
@@ -204,22 +215,38 @@ export default function OrdersScreen() {
         <View style={styles.cardFooter}>
           <View>
             <Text style={styles.commissionLabel}>{t('order.commission')}</Text>
-            <Text style={[styles.commissionValue, insufficientBalance && { color: colors.error }]}>
-              -{formatPrice(item.commission)} so'm
-            </Text>
+            <View style={styles.commissionRow}>
+              <Text
+                style={[
+                  styles.commissionValue,
+                  insufficientBalance && { color: colors.error },
+                  onFreeTrial && styles.commissionStruck,
+                ]}
+              >
+                -{formatPrice(item.commission)} so'm
+              </Text>
+              {onFreeTrial && (
+                <View style={styles.bonusTag}>
+                  <Text style={styles.bonusTagText}>🎁 Bonus</Text>
+                </View>
+              )}
+            </View>
           </View>
           <TouchableOpacity
-            style={[
-              styles.acceptBtn,
-              insufficientBalance && styles.acceptBtnDisabled,
-            ]}
             onPress={() => handleAccept(item)}
             disabled={insufficientBalance || accepting === item.id}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <Text style={styles.acceptBtnText}>
-              {accepting === item.id ? '...' : t('order.accept')}
-            </Text>
+            <LinearGradient
+              colors={insufficientBalance ? ([colors.border, colors.border] as const) : gradients.gold}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.acceptBtn, insufficientBalance && styles.acceptBtnDisabled]}
+            >
+              <Text style={styles.acceptBtnText}>
+                {accepting === item.id ? '...' : `${t('order.accept')} →`}
+              </Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
@@ -229,18 +256,7 @@ export default function OrdersScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>{t('home.available')}</Text>
-          {driver?.has_active_subscription ? (
-            <Text style={styles.trialBadge}>
-              🎁 Bepul davr: {driver.subscription_days_left ?? 0} kun qoldi
-            </Text>
-          ) : (
-            <Text style={styles.balance}>
-              💰 {formatPrice(driver?.balance || 0)} so'm
-            </Text>
-          )}
-        </View>
+        <Text style={styles.title}>{t('home.available')}</Text>
         <View style={styles.onlineSwitch}>
           <Text style={[styles.onlineLabel, isOnline && styles.onlineLabelActive]}>
             {isOnline ? t('home.online') : t('home.offline')}
@@ -253,6 +269,21 @@ export default function OrdersScreen() {
           />
         </View>
       </View>
+
+      {driver?.has_active_subscription ? (
+        <View style={styles.trialBanner}>
+          <Text style={styles.trialBannerIcon}>🎁</Text>
+          <Text style={styles.trialBannerText}>
+            Bepul davr: {driver.subscription_days_left ?? 0} kun qoldi
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.balancePill}>
+          <Text style={styles.balancePillText}>
+            💰 {formatPrice(driver?.balance || 0)} so'm
+          </Text>
+        </View>
+      )}
 
       {!canReceive && (
         <TouchableOpacity
@@ -294,20 +325,45 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.white,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.surface,
   },
-  title: { ...typography.h2, color: colors.primary },
-  balance: { ...typography.caption, color: colors.success, marginTop: 2, fontWeight: '700' },
-  trialBadge: { ...typography.caption, color: colors.accent, marginTop: 2, fontWeight: '700' },
+  title: { ...typography.h1, color: colors.text },
+  trialBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: '#FFF6DA',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.accentLight,
+    alignSelf: 'flex-start',
+  },
+  trialBannerIcon: { fontSize: 16 },
+  trialBannerText: { ...typography.caption, color: colors.accentDark, fontWeight: '700' },
+  balancePill: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    backgroundColor: colors.successLight,
+    borderRadius: radius.pill,
+    alignSelf: 'flex-start',
+  },
+  balancePillText: { ...typography.caption, color: colors.success, fontWeight: '700' },
   topupBanner: {
-    backgroundColor: '#FDECEC',
+    backgroundColor: colors.errorLight,
     borderColor: '#F5B5B5',
     borderWidth: 1,
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
     padding: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -321,11 +377,14 @@ const styles = StyleSheet.create({
   list: { padding: spacing.md },
   card: {
     backgroundColor: colors.white,
-    borderRadius: radius.lg,
+    borderRadius: 20,
     padding: spacing.md,
     marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.divider,
+    shadowColor: '#0E1730',
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
   cardFemale: { borderLeftWidth: 4, borderLeftColor: '#EC4899' },
   cardHeader: {
@@ -335,35 +394,50 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  serviceIcon: { fontSize: 22 },
+  serviceIconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceIcon: { fontSize: 20 },
   timeAgo: { ...typography.small, color: colors.textMuted },
   sourceBadge: {
     backgroundColor: colors.infoLight,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
   },
   sourceBadgeText: { ...typography.small, color: colors.info, fontWeight: '700' },
-  routeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+  routeBlock: { paddingVertical: spacing.xs },
+  routeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 2 },
   routeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: colors.success,
     marginRight: spacing.sm,
   },
-  routeLine: {
+  routeConnector: {
     width: 2,
-    height: 16,
+    height: 18,
+    borderRadius: 1,
     backgroundColor: colors.border,
-    marginLeft: 4,
+    borderStyle: 'dotted',
+    borderLeftWidth: 2,
+    borderLeftColor: colors.border,
+    marginLeft: 5,
   },
   routeText: { ...typography.bodyBold, color: colors.text },
+  routeSub: { ...typography.small, color: colors.textMuted },
   cardInfo: {
     backgroundColor: colors.surface,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
     marginVertical: spacing.sm,
+    gap: 2,
   },
   cardInfoText: { ...typography.caption, color: colors.text },
   note: { ...typography.small, color: colors.textSecondary, marginTop: 4, fontStyle: 'italic' },
@@ -374,15 +448,31 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   commissionLabel: { ...typography.small, color: colors.textSecondary },
-  commissionValue: { ...typography.bodyBold, color: colors.error, marginTop: 2 },
+  commissionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 2 },
+  commissionValue: { ...typography.bodyBold, color: colors.error },
+  commissionStruck: {
+    textDecorationLine: 'line-through',
+    color: colors.textMuted,
+  },
+  bonusTag: {
+    backgroundColor: colors.successLight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  bonusTagText: { ...typography.small, color: colors.success, fontWeight: '700' },
   acceptBtn: {
-    backgroundColor: colors.accent,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: radius.md,
+    shadowColor: colors.accentDark,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
-  acceptBtnDisabled: { backgroundColor: colors.border },
-  acceptBtnText: { ...typography.bodyBold, color: colors.primary },
+  acceptBtnDisabled: { shadowOpacity: 0, elevation: 0 },
+  acceptBtnText: { ...typography.bodyBold, color: '#0E1B3D' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyEmoji: { fontSize: 72, marginBottom: spacing.md },
   emptyText: { ...typography.body, color: colors.textSecondary },
