@@ -40,6 +40,31 @@ export function derivePickup(order: DriverOrder | null): Coords | null {
   return { lat: lat as number, lon: lon as number };
 }
 
+/** Destination coords from the order, or null when to_lat/to_lon are not both finite. */
+export function deriveDestination(order: DriverOrder | null): Coords | null {
+  if (!order) return null;
+  const lat = order.to_lat;
+  const lon = order.to_lon;
+  if (!isFiniteCoord(lat, lon)) return null;
+  return { lat: lat as number, lon: lon as number };
+}
+
+/** True once the passenger is on board (status in_progress) — i.e. heading to the destination. */
+export function isEnRouteToDestination(order: DriverOrder | null): boolean {
+  return !!order && order.status === 'in_progress';
+}
+
+/**
+ * The CURRENT navigation target, which depends on the trip stage:
+ *  - status 'in_progress' (passenger picked up) -> destination (to_lat/to_lon)
+ *  - otherwise (heading to the passenger)        -> pickup (from_lat/from_lon)
+ * Returns null when the relevant coordinates are missing/non-finite.
+ */
+export function deriveTarget(order: DriverOrder | null): Coords | null {
+  if (isEnRouteToDestination(order)) return deriveDestination(order);
+  return derivePickup(order);
+}
+
 /** True only when the order is loaded AND its status is active. */
 export function deriveMapVisible(order: DriverOrder | null): boolean {
   if (!order) return false;

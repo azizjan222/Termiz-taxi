@@ -9,13 +9,13 @@ import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 
 import { Button } from '../../src/components/Button';
-import { listMyActive, completeOrder, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
+import { listMyActive, completeOrder, startTrip, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
 import YandexMap, { type YandexMapHandle } from '../../src/components/YandexMap';
 import {
   buildNavCandidates,
-  derivePickup,
+  deriveTarget,
+  isEnRouteToDestination,
   deriveMapVisible,
-  derivePickupUnavailable,
   deriveMarkers,
   deriveInitialCenter,
   deriveShouldDrawRoute,
@@ -133,28 +133,37 @@ export default function OrderDetailScreen() {
     };
   }, [order?.id, order?.status]);
 
-  // Keep the in-app map in sync with the driver's movement: once the map is ready,
-  // draw/refit the driver->pickup route when both points exist, otherwise just center
-  // on the pickup. Reacts to every driverCoords change (the existing ~10s loop).
+  // Keep the in-app map in sync with the driver's movement. The target depends on the
+  // trip stage: BEFORE pickup (accepted) it's the passenger's location; AFTER pickup
+  // (in_progress) it's the destination. Draw/refit the driver->target route when both
+  // points exist, otherwise just center on the target.
   useEffect(() => {
     if (!mapReady) return;
-    const pickup = derivePickup(order);
+    const target = deriveTarget(order);
     const driver = driverCoords;
-    if (deriveShouldDrawRoute(driver, pickup)) {
-      mapRef.current?.drawRoute([driver!.lat, driver!.lon], [pickup!.lat, pickup!.lon]);
-      mapRef.current?.fitBounds(deriveMarkers(pickup, driver));
-    } else if (pickup) {
-      mapRef.current?.setCenter(pickup.lat, pickup.lon);
+    if (deriveShouldDrawRoute(driver, target)) {
+      mapRef.current?.drawRoute([driver!.lat, driver!.lon], [target!.lat, target!.lon]);
+      mapRef.current?.fitBounds(deriveMarkers(target, driver));
+    } else if (target) {
+      mapRef.current?.setCenter(target.lat, target.lon);
     }
-  }, [mapReady, driverCoords, order?.from_lat, order?.from_lon]);
+  }, [mapReady, driverCoords, order?.status, order?.from_lat, order?.from_lon, order?.to_lat, order?.to_lon]);
 
   const openNavigation = async () => {
-    const lat = order?.from_lat;
-    const lon = order?.from_lon;
-    if (lat == null || lon == null) {
-      Alert.alert(t('common.error'), "Yo'lovchining joylashuvi mavjud emas");
+    // Navigate to the current stage target: passenger pickup before pickup,
+    // destination once the passenger is on board.
+    const target = deriveTarget(order);
+    if (!target) {
+      Alert.alert(
+        t('common.error'),
+        isEnRouteToDestination(order)
+          ? 'Manzil joylashuvi mavjud emas'
+          : "Yo'lovchining joylashuvi mavjud emas",
+      );
       return;
     }
+    const lat = target.lat;
+    const lon = target.lon;
     // Try Yandex Navigator, then Yandex Maps, then a universal geo/Google fallback.
     const candidates = buildNavCandidates(lat, lon, Platform.OS === 'ios' ? 'ios' : 'android');
     for (const url of candidates) {
@@ -174,6 +183,30 @@ export default function OrderDetailScreen() {
     if (order?.passenger_phone) {
       Linking.openURL(`tel:${order.passenger_phone}`);
     }
+  };
+
+  const handleStartTrip = () => {
+    Alert.alert(
+      "Yo'lovchini oldingizmi?",
+      "Yo'lovchini olganingizdan keyin manzilga yo'l ko'rsatiladi.",
+      [
+        { text: t('common.no'), style: 'cancel' },
+        {
+          text: 'Ha, oldim',
+          onPress: async () => {
+            setLoading(true);
+            try {
+              const res = await startTrip(parseInt(id));
+              if (res?.order) setOrder(res.order);
+            } catch (e: any) {
+              Alert.alert(t('common.error'), e?.response?.data?.error || '');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleComplete = () => {
@@ -208,16 +241,19 @@ export default function OrderDetailScreen() {
     );
   }
 
-  // Live driver->pickup distance, derived per render so it always reflects the latest
-  // driverCoords (consistent with the driver marker and driver->pickup route).
-  const pickup = derivePickup(order);
-  const distanceMeters = driverCoords && pickup ? haversineMeters(driverCoords, pickup) : NaN;
-  // Display precedence: HIDDEN (not active) -> PICKUP_MISSING -> LOADING -> LABEL.
+  // Live driver->target distance, derived per render so it always reflects the latest
+  // driverCoords. The target is the pickup before pickup, the destination after.
+  const enRoute = isEnRouteToDestination(order);
+  const target = deriveTarget(order);
+  const distanceMeters = driverCoords && target ? haversineMeters(driverCoords, target) : NaN;
+  // Display precedence: HIDDEN (not active) -> TARGET_MISSING -> LOADING -> LABEL.
   let distanceContent: React.ReactNode = null;
   if (deriveMapVisible(order)) {
-    if (pickup === null) {
+    if (target === null) {
       distanceContent = (
-        <Text style={styles.value}>📍 Yo'lovchi joylashuvi mavjud emas</Text>
+        <Text style={styles.value}>
+          📍 {enRoute ? 'Manzil joylashuvi mavjud emas' : "Yo'lovchi joylashuvi mavjud emas"}
+        </Text>
       );
     } else if (!driverCoords) {
       distanceContent = <Text style={styles.value}>📍 Masofa hisoblanmoqda...</Text>;
@@ -246,8 +282,16 @@ export default function OrderDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* 15-minute contact reminder + countdown */}
-        {remainingSec !== null && remainingSec > 0 ? (
+        {/* Stage banner: en route to destination (passenger on board) vs heading to pickup. */}
+        {enRoute ? (
+          <View style={styles.destBanner}>
+            <Text style={styles.timerEmoji}>🧭</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.destBannerText}>Yo'lovchini manzilga olib boring</Text>
+              <Text style={styles.timerSub}>{order.to_address || order.to_city}</Text>
+            </View>
+          </View>
+        ) : remainingSec !== null && remainingSec > 0 ? (
           <View style={styles.timerBanner}>
             <Text style={styles.timerEmoji}>⏱</Text>
             <View style={{ flex: 1 }}>
@@ -263,26 +307,27 @@ export default function OrderDetailScreen() {
         ) : (
           <View style={styles.statusBanner}>
             <Text style={styles.statusEmoji}>🚕</Text>
-            <Text style={styles.statusText}>Aktiv buyurtma</Text>
+            <Text style={styles.statusText}>Yo'lovchining oldiga boring</Text>
           </View>
         )}
 
-        {/* In-app pickup map — driver position, pickup pin, and driver->pickup route. */}
+        {/* In-app map — driver position, target pin, and driver->target route.
+            Target = passenger pickup before pickup, destination once on board. */}
         {deriveMapVisible(order) && (
           <View style={styles.mapCard}>
             <YandexMap
               ref={mapRef}
-              initialLat={deriveInitialCenter(derivePickup(order), driverCoords).lat}
-              initialLon={deriveInitialCenter(derivePickup(order), driverCoords).lon}
+              initialLat={deriveInitialCenter(target, driverCoords).lat}
+              initialLon={deriveInitialCenter(target, driverCoords).lon}
               initialZoom={14}
-              markers={deriveMarkers(derivePickup(order), driverCoords)}
+              markers={deriveMarkers(target, driverCoords)}
               onMapReady={() => setMapReady(true)}
               style={StyleSheet.absoluteFill}
             />
-            {derivePickupUnavailable(order) && (
+            {target === null && (
               <View style={styles.mapUnavailable} pointerEvents="none">
                 <Text style={styles.mapUnavailableText}>
-                  📍 Yo'lovchi joylashuvi xaritada mavjud emas
+                  📍 {enRoute ? 'Manzil xaritada mavjud emas' : "Yo'lovchi joylashuvi xaritada mavjud emas"}
                 </Text>
               </View>
             )}
@@ -313,13 +358,17 @@ export default function OrderDetailScreen() {
         {/* Route */}
         <View style={[styles.card, { marginTop: spacing.md }]}>
           <View style={styles.row}>
-            <Text style={styles.label}>{t('order.from')}</Text>
-            <Text style={styles.value}>{order.from_city}</Text>
+            <Text style={styles.label}>{!enRoute ? '📍 ' : ''}{t('order.from')}</Text>
+            <Text style={[styles.value, !enRoute && { color: colors.info }]} numberOfLines={2}>
+              {order.from_address || order.from_city}
+            </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>{t('order.to')}</Text>
-            <Text style={styles.value}>{order.to_city}</Text>
+            <Text style={styles.label}>{enRoute ? '🏁 ' : ''}{t('order.to')}</Text>
+            <Text style={[styles.value, enRoute && { color: colors.info }]} numberOfLines={2}>
+              {order.to_address || order.to_city}
+            </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
@@ -357,18 +406,29 @@ export default function OrderDetailScreen() {
         )}
       </ScrollView>
 
-      {/* Action button — only the passenger can cancel, so the driver just finishes. */}
+      {/* Action button — staged: accepted -> "picked up passenger", in_progress -> finish. */}
       <View style={styles.footer}>
         <TouchableOpacity style={styles.navBtn} onPress={openNavigation} activeOpacity={0.85}>
           <Text style={styles.navBtnIcon}>🧭</Text>
-          <Text style={styles.navBtnText}>{t('order.navigation')}</Text>
+          <Text style={styles.navBtnText}>
+            {enRoute ? 'Manzilga yo\'l' : t('order.navigation')}
+          </Text>
         </TouchableOpacity>
-        <Button
-          title={'✅ ' + t('order.complete')}
-          onPress={handleComplete}
-          loading={loading}
-          variant="success"
-        />
+        {enRoute ? (
+          <Button
+            title={'✅ ' + t('order.complete')}
+            onPress={handleComplete}
+            loading={loading}
+            variant="success"
+          />
+        ) : (
+          <Button
+            title={"✅ Yo'lovchini oldim"}
+            onPress={handleStartTrip}
+            loading={loading}
+            variant="primary"
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -418,6 +478,15 @@ const styles = StyleSheet.create({
   },
   statusEmoji: { fontSize: 28, marginRight: spacing.md },
   statusText: { ...typography.bodyBold, color: colors.warning },
+  destBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.successLight,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+  },
+  destBannerText: { ...typography.bodyBold, color: colors.success },
   timerBanner: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -38,6 +38,8 @@ export interface DriverOrder {
   to_address?: string | null;
   from_lat?: number | null;
   from_lon?: number | null;
+  to_lat?: number | null;
+  to_lon?: number | null;
   person_count: number;
   price: number;
   commission: number;
@@ -116,6 +118,15 @@ export async function acceptOrder(id: number): Promise<{ order: DriverOrder; bal
 
 export async function completeOrder(id: number): Promise<{ success: boolean }> {
   const response = await api.post(`/api/driver/orders/${id}/complete`);
+  return response.data;
+}
+
+/**
+ * Mark the passenger as picked up: transitions the order accepted -> in_progress
+ * so the app switches its map/navigation from the pickup point to the destination.
+ */
+export async function startTrip(id: number): Promise<{ success: boolean; order: DriverOrder }> {
+  const response = await api.post(`/api/driver/orders/${id}/start`);
   return response.data;
 }
 

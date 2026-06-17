@@ -42,6 +42,8 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "to_address": o.to_address,
         "from_lat": o.from_lat,
         "from_lon": o.from_lon,
+        "to_lat": o.to_lat,
+        "to_lon": o.to_lon,
         "person_count": o.person_count,
         "price": o.price,
         "commission": o.commission,
