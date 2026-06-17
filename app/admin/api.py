@@ -285,6 +285,68 @@ async def api_reject_driver(request: web.Request) -> web.Response:
 
 
 @require_admin_api
+async def api_block_driver(request: web.Request) -> web.Response:
+    """POST /admin/api/drivers/{id}/block - block a driver (cannot log in / receive orders)."""
+    driver_id = int(request.match_info["id"])
+    session = get_session()
+    try:
+        driver = session.query(Driver).filter_by(id=driver_id).first()
+        if not driver:
+            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        driver.is_blocked = True
+        driver.is_online = False  # take them offline immediately when blocked
+        driver_db_id = driver.id
+        session.commit()
+        # Best-effort push so the driver knows.
+        try:
+            await send_push(
+                session,
+                recipient_type="driver",
+                recipient_id=driver_db_id,
+                title="Akkaunt bloklandi",
+                body="Akkauntingiz administrator tomonidan bloklandi. Savollar uchun qo'llab-quvvatlashga murojaat qiling.",
+            )
+        except Exception:
+            pass
+        return web.json_response({"ok": True, "detail": "Haydovchi bloklandi"})
+    except Exception as e:
+        session.rollback()
+        return web.json_response({"error": str(e)}, status=500)
+    finally:
+        session.close()
+
+
+@require_admin_api
+async def api_unblock_driver(request: web.Request) -> web.Response:
+    """POST /admin/api/drivers/{id}/unblock - lift a driver's block."""
+    driver_id = int(request.match_info["id"])
+    session = get_session()
+    try:
+        driver = session.query(Driver).filter_by(id=driver_id).first()
+        if not driver:
+            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        driver.is_blocked = False
+        driver_db_id = driver.id
+        session.commit()
+        try:
+            await send_push(
+                session,
+                recipient_type="driver",
+                recipient_id=driver_db_id,
+                title="Blok bekor qilindi",
+                body="Akkauntingiz blokdan chiqarildi. Endi zakaslarni qabul qilishingiz mumkin.",
+            )
+        except Exception:
+            pass
+        return web.json_response({"ok": True, "detail": "Blok bekor qilindi"})
+    except Exception as e:
+        session.rollback()
+        return web.json_response({"error": str(e)}, status=500)
+    finally:
+        session.close()
+
+
+@require_admin_api
 async def api_topup_driver_balance(request: web.Request) -> web.Response:
     """POST /admin/api/drivers/{id}/balance  Body: {"amount": 50000}
 
@@ -705,6 +767,8 @@ def setup_api_routes(app: web.Application):
     app.router.add_post("/admin/api/push", api_push)
     app.router.add_post("/admin/api/drivers/{id}/verify", api_verify_driver)
     app.router.add_post("/admin/api/drivers/{id}/reject", api_reject_driver)
+    app.router.add_post("/admin/api/drivers/{id}/block", api_block_driver)
+    app.router.add_post("/admin/api/drivers/{id}/unblock", api_unblock_driver)
     app.router.add_post("/admin/api/drivers/{id}/balance", api_topup_driver_balance)
     app.router.add_get("/admin/api/drivers/{id}/pdf", api_driver_pdf)
     app.router.add_get("/admin/api/routes", api_routes)

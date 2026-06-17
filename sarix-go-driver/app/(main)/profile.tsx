@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Image,
+  Modal, TextInput, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,7 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { useDriverStore } from '../../src/store/driver';
 import { getSupportInfo, type SupportInfo } from '../../src/api/ai';
-import { uploadDriverProfilePhoto } from '../../src/api/driver';
+import { uploadDriverProfilePhoto, updateDriverInfo } from '../../src/api/driver';
 import { API_URL } from '../../src/api/client';
 import { colors, typography, spacing, radius, gradients } from '../../src/theme';
 
@@ -21,6 +22,10 @@ export default function ProfileScreen() {
   const logout = useDriverStore((s) => s.logout);
   const [support, setSupport] = useState<SupportInfo | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [firstNameDraft, setFirstNameDraft] = useState('');
+  const [lastNameDraft, setLastNameDraft] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     getSupportInfo().then(setSupport).catch(() => {});
@@ -51,6 +56,36 @@ export default function ProfileScreen() {
   };
 
   const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+  const openEditModal = () => {
+    setFirstNameDraft(driver?.first_name || '');
+    setLastNameDraft(driver?.last_name || '');
+    setEditVisible(true);
+  };
+
+  const handleSaveProfile = async () => {
+    const firstName = firstNameDraft.trim();
+    const lastName = lastNameDraft.trim();
+    if (!firstName) {
+      Alert.alert(t('common.error'), 'Ismni kiriting');
+      return;
+    }
+    try {
+      setSaving(true);
+      const { driver: updated } = await updateDriverInfo({
+        first_name: firstName,
+        last_name: lastName,
+      });
+      if (driver) {
+        setDriver({ ...driver, ...updated });
+      }
+      setEditVisible(false);
+    } catch (e: any) {
+      Alert.alert(t('common.error'), e?.response?.data?.error || 'Xatolik');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert(t('profile.logout'), t('common.confirm') + '?', [
@@ -88,7 +123,7 @@ export default function ProfileScreen() {
         >
           <TouchableOpacity
             style={styles.editPill}
-            onPress={pickAndUploadPhoto}
+            onPress={openEditModal}
             activeOpacity={0.85}
           >
             <Text style={styles.editPillText}>✏️ Profilni tahrirlash</Text>
@@ -354,6 +389,91 @@ export default function ProfileScreen() {
           <Text style={styles.version}>Versiya 1.0.0</Text>
         </View>
       </ScrollView>
+
+      {/* Edit profile modal */}
+      <Modal
+        visible={editVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Profilni to'g'rilash</Text>
+
+            {/* Avatar preview + change photo */}
+            <TouchableOpacity
+              style={styles.modalAvatarWrap}
+              onPress={pickAndUploadPhoto}
+              activeOpacity={0.8}
+            >
+              {driver?.profile_photo_url ? (
+                <Image
+                  source={{
+                    uri: driver.profile_photo_url.startsWith('http')
+                      ? driver.profile_photo_url
+                      : `${API_URL}${driver.profile_photo_url}`,
+                  }}
+                  style={styles.modalAvatar}
+                />
+              ) : (
+                <View style={styles.modalAvatar}>
+                  <Text style={styles.avatarText}>
+                    {driver?.first_name?.[0]?.toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={pickAndUploadPhoto} disabled={uploading}>
+              <Text style={styles.modalPhotoBtn}>
+                {uploading ? '…' : "Rasmni o'zgartirish"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Name inputs */}
+            <Text style={styles.modalLabel}>Ism</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={firstNameDraft}
+              onChangeText={setFirstNameDraft}
+              placeholder="Ism"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="words"
+            />
+            <Text style={styles.modalLabel}>Familiya</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={lastNameDraft}
+              onChangeText={setLastNameDraft}
+              placeholder="Familiya"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="words"
+            />
+
+            {/* Actions */}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={() => setEditVisible(false)}
+                disabled={saving}
+              >
+                <Text style={styles.modalBtnCancelText}>Bekor qilish</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnSave]}
+                onPress={handleSaveProfile}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <Text style={styles.modalBtnSaveText}>Saqlash</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -522,4 +642,64 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.md,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    alignItems: 'center',
+  },
+  modalTitle: { ...typography.h2, color: colors.text, marginBottom: spacing.md },
+  modalAvatarWrap: { marginBottom: spacing.sm },
+  modalAvatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalPhotoBtn: {
+    ...typography.bodyBold,
+    color: colors.primary,
+    marginBottom: spacing.md,
+  },
+  modalLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    alignSelf: 'flex-start',
+    marginBottom: spacing.xs,
+  },
+  modalInput: {
+    ...typography.body,
+    color: colors.text,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: colors.divider,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  modalActions: { flexDirection: 'row', gap: spacing.md, width: '100%', marginTop: spacing.sm },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnCancel: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  modalBtnCancelText: { ...typography.bodyBold, color: colors.textSecondary },
+  modalBtnSave: { backgroundColor: colors.primary },
+  modalBtnSaveText: { ...typography.bodyBold, color: colors.white },
 });

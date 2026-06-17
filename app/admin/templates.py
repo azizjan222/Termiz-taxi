@@ -207,7 +207,7 @@ const status=d.is_verified?'<span class="badge bg-success">Tasdiqlangan</span>':
 (d.documents_submitted?'<span class="badge bg-warning">Kutilmoqda</span>':'<span class="badge bg-secondary">Tasdiqlanmagan</span>');
 const online=d.is_online?'<span class="badge bg-info">Online</span>':'';
 tb.innerHTML+=`<tr>
-<td>${d.id}</td><td>${esc(d.first_name||'')} ${esc(d.last_name||'')}</td><td>${esc(d.phone)}</td>
+<td>${d.id}</td><td>${esc(d.first_name||'')} ${esc(d.last_name||'')} ${d.is_blocked?'<span class="badge bg-danger">🚫 Bloklangan</span>':''}</td><td>${esc(d.phone)}</td>
 <td>${esc(d.car_model||'-')}</td><td>${esc(d.car_number||'-')}</td><td>${d.balance.toLocaleString()}</td>
 <td>${d.total_orders||0}</td>
 <td>${status} ${online}</td>
@@ -217,6 +217,9 @@ ${!d.is_verified?`<button class="btn btn-sm btn-success" onclick="verifyDriver($
 ${d.is_verified?`<button class="btn btn-sm btn-danger" onclick="rejectDriver(${d.id})">Rad etish</button>`:''}
 <button class="btn btn-sm btn-outline-success" onclick="topUpDriver(${d.id})">Balans +</button>
 <button class="btn btn-sm btn-outline-primary" onclick="pushDriver(${d.id})">Push</button>
+${d.is_blocked
+  ? `<button class="btn btn-sm btn-success" onclick="unblockDriver(${d.id})">Blokdan chiqarish</button>`
+  : `<button class="btn btn-sm btn-outline-danger" onclick="blockDriver(${d.id})">Bloklash</button>`}
 <a class="btn btn-sm btn-outline-secondary" href="/admin/api/drivers/${d.id}/pdf" target="_blank" rel="noopener">PDF</a>
 </td></tr>`;
 });
@@ -282,6 +285,18 @@ fetch('/admin/api/drivers/'+id+'/balance',{method:'POST',headers:{'Content-Type'
 function pushDriver(id){
 const msg=prompt('Xabar matni:');
 if(msg)fetch('/admin/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:'specific',recipient_id:id,recipient_type:'driver',message:msg})}).then(r=>r.json()).then(d=>alert(d.detail||'Yuborildi'));
+}
+function blockDriver(id){
+  if(!confirm('Haydovchini bloklashni tasdiqlaysizmi? U zakas ola olmaydi va ilovaga kira olmaydi.'))return;
+  fetch('/admin/api/drivers/'+id+'/block',{method:'POST'})
+    .then(r=>r.json()).then(d=>{alert(d.detail||d.error||'OK');loadDrivers();})
+    .catch(()=>alert('Xatolik'));
+}
+function unblockDriver(id){
+  if(!confirm('Haydovchini blokdan chiqaramizmi?'))return;
+  fetch('/admin/api/drivers/'+id+'/unblock',{method:'POST'})
+    .then(r=>r.json()).then(d=>{alert(d.detail||d.error||'OK');loadDrivers();})
+    .catch(()=>alert('Xatolik'));
 }
 loadDrivers();
 </script>"""
