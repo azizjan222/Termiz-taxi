@@ -4,24 +4,24 @@
  */
 export const colors = {
   // Primary brand
-  primary: '#0E1B3D',         // Logo background - chuqur ko'k
-  primaryLight: '#1A2B5C',    // Header/cards
-  primaryDark: '#081127',     // Pressed states
+  primary: '#6C4DF6',         // Vibrant violet - matches mockup
+  primaryLight: '#8A6BFF',    // Header/cards
+  primaryDark: '#5A3DE0',     // Pressed states
 
-  // Accent (yellow from logo)
-  accent: '#F4C430',          // Sariq - CTA buttons
-  accentLight: '#FFD75A',     // Hover/highlight
-  accentDark: '#D4A920',      // Pressed
+  // Accent (gold)
+  accent: '#FFC400',          // Bright gold - CTA buttons
+  accentLight: '#FFD451',     // Hover/highlight
+  accentDark: '#E3A800',      // Pressed
 
   // Neutrals
   white: '#FFFFFF',
   background: '#FFFFFF',
-  surface: '#F5F7FA',         // Card backgrounds
-  border: '#E5E7EB',
-  divider: '#F1F3F5',
+  surface: '#F4F6FB',         // Card backgrounds
+  border: '#E7E9F2',
+  divider: '#EEF1F8',
 
   // Text
-  text: '#0E1B3D',            // Primary text (matches brand blue)
+  text: '#0E1730',            // Primary text
   textSecondary: '#6B7280',   // Secondary text
   textMuted: '#9CA3AF',       // Hints/placeholders
   textOnPrimary: '#FFFFFF',
@@ -40,13 +40,19 @@ export const colors = {
   // Status (for orders)
   statusNew: '#3B82F6',
   statusAccepted: '#F59E0B',
-  statusInProgress: '#8B5CF6',
+  statusInProgress: '#6C4DF6',
   statusCompleted: '#10B981',
   statusCancelled: '#EF4444',
 
   // Map
   mapMarker: '#F4C430',
-  mapRoute: '#0E1B3D',
+  mapRoute: '#6C4DF6',
 } as const;
 
 export type ColorKey = keyof typeof colors;
+
+export const gradients = {
+  purple: ['#7B61FF', '#5B3DF5'] as const,
+  gold: ['#FFD23F', '#FFB300'] as const,
+  header: ['#FFE08A', '#FFC400'] as const,
+};
