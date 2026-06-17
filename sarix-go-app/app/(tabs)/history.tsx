@@ -55,28 +55,46 @@ export default function HistoryScreen() {
     });
   };
 
-  const renderOrder = ({ item }: { item: Order }) => (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => router.push(`/order/${item.id}`)}
-      activeOpacity={0.85}
-    >
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardRoute}>
-          {item.from_city} → {item.to_city}
-        </Text>
-        <View style={[styles.badge, styles[`badge_${item.status}`]]}>
-          <Text style={styles.badgeText}>{t(`status.${item.status}`)}</Text>
+  const renderOrder = ({ item }: { item: Order }) => {
+    const isParcel = item.service_type === 'parcel';
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => router.push(`/order/${item.id}`)}
+        activeOpacity={0.85}
+      >
+        <View
+          style={[
+            styles.iconTile,
+            { backgroundColor: isParcel ? colors.warningLight : '#FFF3CC' },
+          ]}
+        >
+          <Text style={styles.iconTileText}>{isParcel ? '📦' : '🚕'}</Text>
         </View>
-      </View>
-      <View style={styles.cardBody}>
-        <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
-        <Text style={styles.cardPrice}>
-          {formatPrice(item.price)} so'm
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+
+        <View style={styles.cardMiddle}>
+          <Text style={styles.cardRoute} numberOfLines={1}>
+            {item.from_city} → {item.to_city}
+          </Text>
+          <View style={styles.cardDateRow}>
+            <Text style={styles.cardDateIcon}>📅</Text>
+            <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardRight}>
+          <View style={[styles.badge, styles[`badge_${item.status}`]]}>
+            <Text style={[styles.badgeText, styles[`badgeText_${item.status}`]]}>
+              {t(`status.${item.status}`)}
+            </Text>
+          </View>
+          <Text style={styles.cardPrice}>{formatPrice(item.price)} so'm</Text>
+        </View>
+
+        <Text style={styles.chevron}>›</Text>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -88,6 +106,7 @@ export default function HistoryScreen() {
         <TouchableOpacity
           style={[styles.tab, activeTab === 'taxi' && styles.tabActive]}
           onPress={() => setActiveTab('taxi')}
+          activeOpacity={0.8}
         >
           <Text
             style={[
@@ -101,6 +120,7 @@ export default function HistoryScreen() {
         <TouchableOpacity
           style={[styles.tab, activeTab === 'parcel' && styles.tabActive]}
           onPress={() => setActiveTab('parcel')}
+          activeOpacity={0.8}
         >
           <Text
             style={[
@@ -124,6 +144,7 @@ export default function HistoryScreen() {
           keyExtractor={(o) => o.id.toString()}
           renderItem={renderOrder}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={loadOrders} />
           }
@@ -134,49 +155,74 @@ export default function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.white },
+  container: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  title: { ...typography.h2, color: colors.primary },
+  title: { ...typography.h2, color: colors.text },
   tabs: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
     marginHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    padding: 4,
     marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   tab: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     alignItems: 'center',
-    borderRadius: radius.sm,
-  },
-  tabActive: { backgroundColor: colors.white },
-  tabText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
-  tabTextActive: { color: colors.primary },
-  list: { padding: spacing.lg, paddingTop: 0 },
-  card: {
+    borderRadius: radius.pill,
     backgroundColor: colors.white,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.divider,
+    borderColor: colors.border,
   },
-  cardHeader: {
+  tabActive: {
+    backgroundColor: '#FFF3CC',
+    borderColor: colors.accent,
+  },
+  tabText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  tabTextActive: { color: colors.textOnAccent, fontWeight: '700' },
+  list: { padding: spacing.lg, paddingTop: spacing.xs },
+  card: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    shadowColor: '#0E1730',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
-  cardRoute: { ...typography.bodyBold, color: colors.text, flex: 1 },
-  cardBody: {
+  iconTile: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  iconTileText: { fontSize: 24 },
+  cardMiddle: { flex: 1, marginRight: spacing.sm },
+  cardRoute: { ...typography.bodyBold, color: colors.text },
+  cardDateRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 4,
   },
-  cardDate: { ...typography.caption, color: colors.textSecondary },
-  cardPrice: { ...typography.bodyBold, color: colors.primary },
+  cardDateIcon: { fontSize: 11, marginRight: 4 },
+  cardDate: { ...typography.small, color: colors.textSecondary },
+  cardRight: { alignItems: 'flex-end' },
+  cardPrice: { ...typography.bodyBold, color: colors.primary, marginTop: 6 },
+  chevron: {
+    fontSize: 22,
+    color: colors.textMuted,
+    fontWeight: '300',
+    marginLeft: spacing.sm,
+  },
   badge: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
@@ -189,6 +235,12 @@ const styles = StyleSheet.create({
   badge_cancelled: { backgroundColor: colors.errorLight },
   badge_expired: { backgroundColor: colors.errorLight },
   badgeText: { ...typography.small, fontWeight: '700', color: colors.text },
+  badgeText_new: { color: colors.info },
+  badgeText_accepted: { color: colors.warning },
+  badgeText_in_progress: { color: colors.warning },
+  badgeText_completed: { color: colors.success },
+  badgeText_cancelled: { color: colors.error },
+  badgeText_expired: { color: colors.error },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyEmoji: { fontSize: 64, marginBottom: spacing.md },
   emptyText: { ...typography.body, color: colors.textSecondary },
