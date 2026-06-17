@@ -6,12 +6,12 @@ name: Build Driver App (Android)
 # After it finishes, download the APK from https://expo.dev -> project -> Builds.
 
 on:
+  # Manual only. Full native builds are slow and consume EAS build quota.
+  # Day-to-day JS/asset changes now ship instantly via the "OTA Update Driver
+  # App" workflow. Run THIS workflow only when native code/config changes:
+  # new native dependency, app.json plugins/permissions, SDK upgrade, or a
+  # version bump (which also requires a fresh build for OTA runtimeVersion).
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'sarix-go-driver/**'
-      - '.github/workflows/build-driver.yml'
 
 jobs:
   build:

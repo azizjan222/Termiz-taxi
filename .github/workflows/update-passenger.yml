@@ -1,0 +1,59 @@
+name: OTA Update Passenger App
+
+# Over-the-air (OTA) JS update via EAS Update. Publishes the new JavaScript
+# bundle to the "preview" channel WITHOUT a full native rebuild. Existing
+# installed apps pick up the change on next launch.
+#
+# IMPORTANT: OTA can only ship JS/asset changes. Native changes (new native
+# dependency, app.json plugins/permissions, SDK upgrade, version bump) still
+# require a full build via the "Build Passenger App" workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: "Update message"
+        required: false
+        default: "Manual OTA update"
+  push:
+    branches: [main]
+    paths:
+      - 'sarix-go-app/**'
+      - '.github/workflows/update-passenger.yml'
+
+jobs:
+  update:
+    name: Publish OTA Update (Passenger)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sarix-go-app
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Align dependencies to Expo SDK
+        run: npx expo install --fix
+
+      - name: Link EAS project under your account
+        run: eas init --non-interactive --force
+
+      - name: Publish OTA update to the preview channel
+        run: |
+          eas update --branch preview --non-interactive \
+            --message "${{ github.event.inputs.message || github.event.head_commit.message || github.sha }}"
