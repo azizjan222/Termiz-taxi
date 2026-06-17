@@ -7,6 +7,7 @@ from sqlalchemy import or_
 from app.database import get_session
 from app.models import Order, Route, Driver, User, OrderHistory, Setting
 from app.utils.auth import require_auth
+from app.utils.timefmt import iso_utc
 from app.api.websocket import ws_manager
 from app import config
 
@@ -54,8 +55,8 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "target_driver_id": o.target_driver_id,
         "commission_charged": bool(o.commission_charged),
         "passenger_name": o.passenger_name,
-        "created_at": o.created_at.isoformat() if o.created_at else None,
-        "accepted_at": o.accepted_at.isoformat() if o.accepted_at else None,
+        "created_at": iso_utc(o.created_at),
+        "accepted_at": iso_utc(o.accepted_at),
     }
     if o.service_type == "parcel":
         data["parcel_recipient_name"] = o.parcel_recipient_name
@@ -318,7 +319,7 @@ async def get_order(request: web.Request) -> web.Response:
                     "rating": driver.rating,
                     "current_lat": driver.current_lat,
                     "current_lon": driver.current_lon,
-                    "location_updated_at": driver.location_updated_at.isoformat() if driver.location_updated_at else None,
+                    "location_updated_at": iso_utc(driver.location_updated_at),
                 }
         return web.json_response(result)
     finally:
