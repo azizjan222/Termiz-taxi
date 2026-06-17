@@ -39,6 +39,7 @@ export default function NotificationsScreen() {
   const iconFor = (type?: string) => {
     switch (type) {
       case 'order_accepted': return '✅';
+      case 'order_started': return '🚕';
       case 'order_completed': return '🏁';
       case 'order_cancelled': return '❌';
       case 'balance_topup': return '💰';

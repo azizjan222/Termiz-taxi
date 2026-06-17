@@ -463,6 +463,8 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "to_address": o.to_address,
         "from_lat": o.from_lat,
         "from_lon": o.from_lon,
+        "to_lat": o.to_lat,
+        "to_lon": o.to_lon,
         "person_count": o.person_count,
         "price": o.price,
         "commission": o.commission,
@@ -865,6 +867,54 @@ async def accept_order(request: web.Request) -> web.Response:
             "balance": d.balance,
             "commission_window_minutes": config.COMMISSION_WINDOW_MINUTES,
             "accepted_at": iso_utc(order.accepted_at),
+        })
+    finally:
+        session.close()
+
+
+@require_driver
+async def start_trip(request: web.Request) -> web.Response:
+    """POST /api/driver/orders/{id}/start
+
+    The driver has reached the passenger and picked them up. Transitions the
+    order accepted -> in_progress so the driver app switches its map/navigation
+    from the pickup location (where the passenger waits) to the destination.
+    """
+    driver: Driver = request["driver"]
+    order_id = int(request.match_info["id"])
+
+    session = get_session()
+    try:
+        order = (
+            session.query(Order)
+            .filter_by(id=order_id, driver_id=driver.id)
+            .first()
+        )
+        if not order:
+            return web.json_response({"error": "Buyurtma topilmadi"}, status=404)
+        # Idempotent: starting an already-started trip is a no-op success.
+        if order.status == "in_progress":
+            return web.json_response({
+                "success": True,
+                "order": _serialize_order(order, include_passenger=True),
+            })
+        if order.status != "accepted":
+            return web.json_response({"error": "Safarni boshlab bo'lmaydi"}, status=400)
+
+        order.status = "in_progress"
+        session.commit()
+        session.refresh(order)
+
+        # Let the passenger know the driver picked them up and the trip started.
+        if order.passenger_id:
+            await ws_manager.send_to_passenger(order.passenger_id, {
+                "type": "order_started",
+                "order_id": order.id,
+            })
+
+        return web.json_response({
+            "success": True,
+            "order": _serialize_order(order, include_passenger=True),
         })
     finally:
         session.close()
