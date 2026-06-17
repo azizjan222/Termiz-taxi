@@ -112,8 +112,10 @@ export async function suggestAddress(query: string): Promise<string[]> {
       const url =
         `https://suggest-maps.yandex.ru/v1/suggest?apikey=${SUGGEST_KEY}` +
         `&text=${encodeURIComponent(query)}&lang=${GEO_LANG}&results=7` +
-        // Bias results to Surxondaryo region (Termiz area)
-        `&ll=67.278,37.224&spn=2,2`;
+        // Bias results to the whole Surxondaryo region (centered between Termiz and
+        // Denov) so streets, buildings, villages and intersections across the
+        // region surface, not just central Termiz.
+        `&ll=67.6,37.9&spn=1.8,1.6`;
       const resp = await fetch(url);
       if (resp.ok) {
         const data = await resp.json();
