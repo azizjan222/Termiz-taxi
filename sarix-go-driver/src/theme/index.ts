@@ -1,20 +1,20 @@
 export const colors = {
-  primary: '#0E1B3D',
-  primaryLight: '#1A2B5C',
-  primaryDark: '#081127',
-  accent: '#F4C430',
-  accentLight: '#FFD75A',
-  accentDark: '#D4A920',
+  primary: '#6C4DF6',
+  primaryLight: '#8A6BFF',
+  primaryDark: '#5A3DE0',
+  accent: '#FFC400',
+  accentLight: '#FFD451',
+  accentDark: '#E3A800',
   white: '#FFFFFF',
   background: '#FFFFFF',
-  surface: '#F5F7FA',
-  border: '#E5E7EB',
-  divider: '#F1F3F5',
-  text: '#0E1B3D',
+  surface: '#F4F6FB',
+  border: '#E7E9F2',
+  divider: '#EEF1F8',
+  text: '#0E1730',
   textSecondary: '#6B7280',
   textMuted: '#9CA3AF',
   textOnPrimary: '#FFFFFF',
-  textOnAccent: '#0E1B3D',
+  textOnAccent: '#0E1730',
   success: '#10B981',
   successLight: '#D1FAE5',
   error: '#EF4444',
@@ -38,3 +38,9 @@ export const typography = {
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48 };
 export const radius = { sm: 8, md: 12, lg: 16, xl: 24, pill: 999 };
+
+export const gradients = {
+  purple: ['#7B61FF', '#5B3DF5'] as const,
+  gold: ['#FFD23F', '#FFB300'] as const,
+  navy: ['#0E1B3D', '#1B2B5A'] as const,
+};
