@@ -1,6 +1,6 @@
 """Admin panel JSON API endpoints."""
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from aiohttp import web
 

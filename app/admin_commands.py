@@ -1,5 +1,5 @@
 """Admin Telegram commands for managing apps via bot."""
-from datetime import datetime, timedelta
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
@@ -566,7 +566,7 @@ def _build_drivers_pdf() -> bytes:
     pdf.set_font(font, "B", 9)
     pdf.set_fill_color(14, 27, 61)
     pdf.set_text_color(255, 255, 255)
-    for h, w in zip(headers, widths):
+    for h, w in zip(headers, widths, strict=True):
         pdf.cell(w, 8, h, border=1, align="C", fill=True)
     pdf.ln()
 

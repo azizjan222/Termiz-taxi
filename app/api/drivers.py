@@ -642,13 +642,17 @@ async def driver_update_location(request: web.Request) -> web.Response:
             )
             .all()
         )
-        passenger_ids = [o.passenger_id for o in active_orders if o.passenger_id]
-        order_ids = [o.id for o in active_orders]
+        # Build (order_id, passenger_id) pairs together so they stay aligned even
+        # when some orders have no passenger_id (a plain zip of two separately
+        # filtered lists could misalign and notify the wrong passenger).
+        order_passenger_pairs = [
+            (o.id, o.passenger_id) for o in active_orders if o.passenger_id
+        ]
     finally:
         session.close()
 
     # Broadcast outside the DB session.
-    for o_id, p_id in zip(order_ids, passenger_ids):
+    for o_id, p_id in order_passenger_pairs:
         try:
             await ws_manager.send_to_passenger(p_id, {
                 "type": "driver_location",
@@ -1029,10 +1033,6 @@ async def list_recommended_drivers(request: web.Request) -> web.Response:
 
     from_city = (request.query.get("from") or "").strip()
     to_city = (request.query.get("to") or "").strip()
-    try:
-        persons = max(1, min(int(request.query.get("persons", "1")), 10))
-    except (ValueError, TypeError):
-        persons = 1
 
     session = get_session()
     try:

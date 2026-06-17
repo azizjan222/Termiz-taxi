@@ -1,10 +1,9 @@
 """Driver statistics endpoints."""
 from datetime import datetime, timedelta
 from aiohttp import web
-from sqlalchemy import func
 
 from app.database import get_session
-from app.models import Order, Driver
+from app.models import Order
 from app.api.drivers import _get_driver_from_request, compute_online_seconds_today
 
 
