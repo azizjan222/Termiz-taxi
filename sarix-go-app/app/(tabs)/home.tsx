@@ -136,6 +136,13 @@ export default function HomeScreen() {
             <Text style={styles.serviceArrow}>›</Text>
           </View>
         </TouchableOpacity>
+
+        {/* TEMP: invite-a-friend promo hidden on home — re-enable later (keyin qo'shamiz) */}
+        {/*
+        <View style={styles.promoCard}>
+          <Text style={styles.promoText}>🎁 {t('profile.inviteFriends')}</Text>
+        </View>
+        */}
       </ScrollView>
     </SafeAreaView>
   );

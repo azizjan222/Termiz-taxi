@@ -14,6 +14,11 @@ import { addNotification } from './notificationHistory';
 // dead socket, and publishes incoming events into the realtime store. Living
 // outside any one screen means real-time order delivery (and the loud alert)
 // keeps working regardless of which screen is mounted.
+//
+// Every socket callback is guarded with an identity check (`socket !== ws`) so
+// a superseded/stale socket can never drive reconnects or fire duplicate
+// alerts, and connect() cancels any pending reconnect so we never end up with
+// two concurrent connections.
 // ---------------------------------------------------------------------------
 
 let socket: WebSocket | null = null;
@@ -50,7 +55,7 @@ function startKeepAlive() {
   lastActivity = Date.now();
   pingTimer = setInterval(() => {
     // If we haven't seen any traffic within the window, the socket is likely
-    // half-open/dead — force a close so the onclose handler reconnects.
+    // half-open/dead - force a close so the onclose handler reconnects.
     if (Date.now() - lastActivity > ACTIVITY_TIMEOUT_MS) {
       try {
         socket?.close();
@@ -117,12 +122,14 @@ function open(telegramId: string) {
   socket = ws;
 
   ws.onopen = () => {
+    if (socket !== ws) return; // superseded by a newer socket
     backoffIndex = 0;
     useRealtimeStore.getState().setStatus('open');
     startKeepAlive();
   };
 
   ws.onmessage = (event) => {
+    if (socket !== ws) return; // ignore messages from a superseded socket
     lastActivity = Date.now();
     try {
       handleMessage(event.data);
@@ -130,14 +137,15 @@ function open(telegramId: string) {
   };
 
   ws.onerror = () => {
-    // onclose will normally follow and drive the reconnect; guard anyway.
+    if (socket !== ws) return; // superseded; let the owner handle its own lifecycle
     clearPingTimer();
-    scheduleReconnect();
+    // onclose normally follows and drives the reconnect.
   };
 
   ws.onclose = () => {
+    if (socket !== ws) return; // superseded by a newer socket; do nothing
     clearPingTimer();
-    if (socket === ws) socket = null;
+    socket = null;
     if (intentionalClose) {
       useRealtimeStore.getState().setStatus('closed');
       return;
@@ -148,8 +156,9 @@ function open(telegramId: string) {
 
 /**
  * Connect the app-wide socket for the given driver. Idempotent: if a socket is
- * already CONNECTING/OPEN for the same id this is a no-op; if the id changed the
- * existing socket is closed and a new one opened.
+ * already CONNECTING/OPEN for the same id this is a no-op. Otherwise it cancels
+ * any pending reconnect, supersedes any existing socket, and opens a fresh one -
+ * guaranteeing there is never more than one concurrent connection.
  */
 export function connect(telegramId: number | string) {
   const id = String(telegramId);
@@ -163,17 +172,19 @@ export function connect(telegramId: number | string) {
     return;
   }
 
-  // A different id (or no live socket): tear down any existing socket first.
-  if (socket && currentId !== id) {
+  // Cancel any pending backoff reconnect (e.g. AppState foreground racing a
+  // scheduled reconnect) and supersede any existing socket. Setting `socket`
+  // to null first makes the old socket's async onclose a no-op (identity guard),
+  // so it cannot schedule its own reconnect.
+  clearReconnectTimer();
+  if (socket) {
     const old = socket;
     socket = null;
-    intentionalClose = true;
-    clearReconnectTimer();
-    clearPingTimer();
     try {
       old.close();
     } catch {}
   }
+  clearPingTimer();
 
   currentId = id;
   backoffIndex = 0;

@@ -2,7 +2,6 @@
   "expo": {
     "name": "Sarix Go Termiz Sariosiyo Taxi",
     "slug": "sarix-go-passenger",
-    "owner": "azizjon_xolov",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -56,6 +55,16 @@
           "image": "./assets/splash.png",
           "imageWidth": 200,
           "backgroundColor": "#0E1B3D"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": [
+              "https://www.jitpack.io"
+            ]
+          }
         }
       ]
     ],

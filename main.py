@@ -1017,9 +1017,9 @@ def _save_registered_driver_to_db(uid: int, phone: str, data: dict):
         d.car_number = data.get('car_number')
         d.car_model = data.get('car_model')
         d.car_year = data.get('car_year')
-        d.license_file_id = data.get('license_file_id')
-        d.tech_passport_file_id = data.get('tech_passport_file_id')
-        d.car_photo_file_id = data.get('car_photo_file_id')
+        # Documents are NOT collected by the bot anymore; they are uploaded in the app
+        # (driver-info screen). Do not touch the *_file_id fields here so app uploads
+        # are never overwritten.
         d.documents_submitted = True
         session.commit()
     except Exception as e:
@@ -1129,7 +1129,8 @@ async def reg_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resize_keyboard=True, one_time_keyboard=True)
     await update.message.reply_text(
         "👨‍✈️ <b>Haydovchi ro'yxatdan o'tish</b>\n\n"
-        "Bir necha qadam: ism, familiya, JSHSHIR, mashina ma'lumotlari va hujjat suratlari.\n\n"
+        "Bir necha qadam: ism, familiya, JSHSHIR va mashina ma'lumotlari.\n"
+        "Hujjatlarni keyinroq ilovada yuklaysiz.\n\n"
         "1️⃣ Telefon raqamingizni yuboring:",
         parse_mode='HTML', reply_markup=tugma)
     return D_PHONE
@@ -1219,41 +1220,11 @@ async def reg_year(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❗ Yilni to'g'ri kiriting (1980-{cur + 1}):")
         return D_YEAR
     context.user_data['reg']['car_year'] = txt
-    await update.message.reply_text("8️⃣ Texnik pasport (texpasport) suratini yuboring 📄:")
-    return D_TECHPASS
 
-
-async def reg_techpass(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text == "❌ Bekor qilish":
-        return await reg_cancel(update, context)
-    if not update.message.photo:
-        await update.message.reply_text("❗ Iltimos, texpasport suratini rasm sifatida yuboring:")
-        return D_TECHPASS
-    context.user_data['reg']['tech_passport_file_id'] = update.message.photo[-1].file_id
-    await update.message.reply_text("9️⃣ Mashina fotosuratini yuboring 🚗:")
-    return D_CARPHOTO
-
-
-async def reg_carphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text == "❌ Bekor qilish":
-        return await reg_cancel(update, context)
-    if not update.message.photo:
-        await update.message.reply_text("❗ Iltimos, mashina suratini yuboring:")
-        return D_CARPHOTO
-    context.user_data['reg']['car_photo_file_id'] = update.message.photo[-1].file_id
-    await update.message.reply_text("🔟 Haydovchilik guvohnomasi suratini yuboring 🪪:")
-    return D_LICENSE
-
-
-async def reg_license(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text == "❌ Bekor qilish":
-        return await reg_cancel(update, context)
-    if not update.message.photo:
-        await update.message.reply_text("❗ Iltimos, guvohnoma suratini yuboring:")
-        return D_LICENSE
+    # Finalize registration WITHOUT requesting any documents.
+    # Documents are uploaded later in the app ("Ma'lumotlarim" / driver-info screen).
     uid = update.effective_user.id
     reg = context.user_data.get('reg', {})
-    reg['license_file_id'] = update.message.photo[-1].file_id
     phone = reg.get('phone') or haydovchilar.get(uid)
 
     haydovchilar[uid] = phone
@@ -1266,7 +1237,8 @@ async def reg_license(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "✅ <b>Ro'yxatdan o'tdingiz!</b>\n\n"
-        "Endi haydovchi ilovasiga kirishingiz mumkin. 📱\n"
+        "Hujjatlaringizni ilovadagi \"Ma'lumotlarim\" bo'limida yuklang "
+        "(Texnik pasport va Haydovchilik guvohnomasi). 📱\n"
         "Hujjatlaringiz administrator tomonidan tekshiriladi.",
         parse_mode='HTML', reply_markup=ReplyKeyboardRemove())
     await _notify_admin_new_driver(context.bot, uid, phone, reg)
@@ -1381,9 +1353,6 @@ async def run():
             D_CARNUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_carnum)],
             D_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_model)],
             D_YEAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_year)],
-            D_TECHPASS: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), reg_techpass)],
-            D_CARPHOTO: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), reg_carphoto)],
-            D_LICENSE: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), reg_license)],
         },
         fallbacks=[
             CommandHandler("cancel", reg_cancel),

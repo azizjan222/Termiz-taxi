@@ -17,6 +17,13 @@ const SUGGEST_KEY =
   (Constants.expoConfig?.extra as any)?.yandexSuggestKey ||
   '';
 
+// JS Maps API key — used as a fallback for the HTTP Geocoder when the dedicated
+// geocoder key is rejected (some Yandex keys are enabled for both APIs).
+const JS_API_KEY =
+  process.env.EXPO_PUBLIC_YANDEX_JS_API_KEY ||
+  (Constants.expoConfig?.extra as any)?.yandexJsApiKey ||
+  '';
+
 export interface GeoResult {
   address: string;
   lat: number;
@@ -27,47 +34,60 @@ export interface GeoResult {
  * Reverse geocode: coordinates → human-readable address.
  */
 export async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
-  if (!GEOCODER_KEY) return null;
-  try {
-    const url =
-      `https://geocode-maps.yandex.ru/1.x/?apikey=${GEOCODER_KEY}` +
-      `&format=json&geocode=${lon},${lat}&lang=uz_UZ&results=1`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-    const feature =
-      data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
-    if (!feature) return null;
-    return feature.metaDataProperty?.GeocoderMetaData?.text || feature.name || null;
-  } catch {
-    return null;
+  const keys = Array.from(new Set([GEOCODER_KEY, JS_API_KEY].filter(Boolean)));
+  if (keys.length === 0) return null;
+  for (const key of keys) {
+    try {
+      const url =
+        `https://geocode-maps.yandex.ru/1.x/?apikey=${key}` +
+        `&format=json&geocode=${lon},${lat}&lang=uz_UZ&results=1`;
+      const resp = await fetch(url);
+      if (!resp.ok) continue; // 403/anything -> try the next key
+      const data = await resp.json();
+      const feature =
+        data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
+      const text =
+        feature?.metaDataProperty?.GeocoderMetaData?.text || feature?.name;
+      if (text) return text;
+    } catch {
+      // try the next key
+    }
   }
+  return null;
 }
 
 /**
  * Forward geocode: address text → coordinates.
  */
 export async function geocodeAddress(query: string): Promise<GeoResult[]> {
-  if (!GEOCODER_KEY || !query.trim()) return [];
-  try {
-    const url =
-      `https://geocode-maps.yandex.ru/1.x/?apikey=${GEOCODER_KEY}` +
-      `&format=json&geocode=${encodeURIComponent(query)}&lang=uz_UZ&results=5`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-    const members =
-      data?.response?.GeoObjectCollection?.featureMember || [];
-    return members.map((m: any) => {
-      const obj = m.GeoObject;
-      const [lon, lat] = (obj.Point?.pos || '0 0').split(' ').map(Number);
-      return {
-        address: obj.metaDataProperty?.GeocoderMetaData?.text || obj.name,
-        lat,
-        lon,
-      };
-    });
-  } catch {
-    return [];
+  if (!query.trim()) return [];
+  const keys = Array.from(new Set([GEOCODER_KEY, JS_API_KEY].filter(Boolean)));
+  if (keys.length === 0) return [];
+  for (const key of keys) {
+    try {
+      const url =
+        `https://geocode-maps.yandex.ru/1.x/?apikey=${key}` +
+        `&format=json&geocode=${encodeURIComponent(query)}&lang=uz_UZ&results=5`;
+      const resp = await fetch(url);
+      if (!resp.ok) continue; // 403/anything -> try the next key
+      const data = await resp.json();
+      const members =
+        data?.response?.GeoObjectCollection?.featureMember || [];
+      if (members.length === 0) continue; // nothing from this key -> try the next
+      return members.map((m: any) => {
+        const obj = m.GeoObject;
+        const [lon, lat] = (obj.Point?.pos || '0 0').split(' ').map(Number);
+        return {
+          address: obj.metaDataProperty?.GeocoderMetaData?.text || obj.name,
+          lat,
+          lon,
+        };
+      });
+    } catch {
+      // try the next key
+    }
   }
+  return [];
 }
 
 /**

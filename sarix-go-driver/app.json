@@ -2,7 +2,6 @@
   "expo": {
     "name": "Sarix Go Haydovchi uchun",
     "slug": "sarix-go-driver",
-    "owner": "azizjon_xolov",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -42,6 +41,16 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Sarix Go Driver joylashuvni kuzatadi"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": [
+              "https://www.jitpack.io"
+            ]
+          }
         }
       ]
     ],

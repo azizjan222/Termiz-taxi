@@ -25,17 +25,17 @@ export const colors = {
   textSecondary: '#6B7280',   // Secondary text
   textMuted: '#9CA3AF',       // Hints/placeholders
   textOnPrimary: '#FFFFFF',
-  textOnAccent: '#0E1B3D',
+  textOnAccent: '#0E1730',
 
   // Semantic
-  success: '#10B981',
-  successLight: '#D1FAE5',
-  error: '#EF4444',
-  errorLight: '#FEE2E2',
-  warning: '#F59E0B',
-  warningLight: '#FEF3C7',
-  info: '#3B82F6',
-  infoLight: '#DBEAFE',
+  success: '#12B886',
+  successLight: '#D3F9EC',
+  error: '#FA5252',
+  errorLight: '#FFE3E3',
+  warning: '#FAB005',
+  warningLight: '#FFF3BF',
+  info: '#4DABF7',
+  infoLight: '#D0EBFF',
 
   // Status (for orders)
   statusNew: '#3B82F6',
