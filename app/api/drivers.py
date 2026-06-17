@@ -6,6 +6,7 @@ import jwt
 from app.database import get_session
 from app.models import Driver, Order, OrderHistory, Setting
 from app.api.websocket import ws_manager
+from app.utils.timefmt import iso_utc
 from app import config
 
 
@@ -440,7 +441,7 @@ def _serialize_driver(d: Driver) -> dict:
         "is_online": d.is_online,
         "documents_submitted": bool(d.documents_submitted),
         "is_verified": bool(d.is_verified),
-        "subscription_until": d.subscription_until.isoformat() if d.subscription_until else None,
+        "subscription_until": iso_utc(d.subscription_until),
         "has_active_subscription": _subscription_active(d),
         "subscription_days_left": _subscription_days_left(d),
     }
@@ -476,8 +477,8 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "source": o.source,
         "target_driver_id": o.target_driver_id,
         "commission_charged": bool(o.commission_charged),
-        "created_at": o.created_at.isoformat() if o.created_at else None,
-        "accepted_at": o.accepted_at.isoformat() if o.accepted_at else None,
+        "created_at": iso_utc(o.created_at),
+        "accepted_at": iso_utc(o.accepted_at),
     }
     if include_passenger:
         data["passenger_phone"] = o.passenger_phone
@@ -644,13 +645,17 @@ async def driver_update_location(request: web.Request) -> web.Response:
             )
             .all()
         )
-        passenger_ids = [o.passenger_id for o in active_orders if o.passenger_id]
-        order_ids = [o.id for o in active_orders]
+        # Build (order_id, passenger_id) pairs together so they stay aligned even
+        # when some orders have no passenger_id (a plain zip of two separately
+        # filtered lists could misalign and notify the wrong passenger).
+        order_passenger_pairs = [
+            (o.id, o.passenger_id) for o in active_orders if o.passenger_id
+        ]
     finally:
         session.close()
 
     # Broadcast outside the DB session.
-    for o_id, p_id in zip(order_ids, passenger_ids):
+    for o_id, p_id in order_passenger_pairs:
         try:
             await ws_manager.send_to_passenger(p_id, {
                 "type": "driver_location",
@@ -705,8 +710,8 @@ async def driver_orders_history(request: web.Request) -> web.Response:
 
         def _hist(o: Order) -> dict:
             data = _serialize_order(o, include_passenger=True)
-            data["completed_at"] = o.completed_at.isoformat() if o.completed_at else None
-            data["cancelled_at"] = o.cancelled_at.isoformat() if o.cancelled_at else None
+            data["completed_at"] = iso_utc(o.completed_at)
+            data["cancelled_at"] = iso_utc(o.cancelled_at)
             data["earned"] = (o.price or 0) - (o.commission or 0) if o.status == "completed" else 0
             return data
 
@@ -861,7 +866,7 @@ async def accept_order(request: web.Request) -> web.Response:
             "order": _serialize_order(order, include_passenger=True),
             "balance": d.balance,
             "commission_window_minutes": config.COMMISSION_WINDOW_MINUTES,
-            "accepted_at": order.accepted_at.isoformat() if order.accepted_at else None,
+            "accepted_at": iso_utc(order.accepted_at),
         })
     finally:
         session.close()
@@ -1079,10 +1084,6 @@ async def list_recommended_drivers(request: web.Request) -> web.Response:
 
     from_city = (request.query.get("from") or "").strip()
     to_city = (request.query.get("to") or "").strip()
-    try:
-        persons = max(1, min(int(request.query.get("persons", "1")), 10))
-    except (ValueError, TypeError):
-        persons = 1
 
     session = get_session()
     try:

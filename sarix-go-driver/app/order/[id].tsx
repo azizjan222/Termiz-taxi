@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Linking, Alert, Platform,
+  Linking, Alert, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 
-import { Button } from '../../src/components/Button';
 import { listMyActive, completeOrder, startTrip, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
 import YandexMap, { type YandexMapHandle } from '../../src/components/YandexMap';
 import {
@@ -25,7 +25,7 @@ import {
   ETA_AVG_SPEED_KMH,
   type Coords,
 } from '../../src/components/driverMap.helpers';
-import { colors, typography, spacing, radius } from '../../src/theme';
+import { colors, typography, spacing, radius, gradients } from '../../src/theme';
 
 const CONTACT_WINDOW_MINUTES = 15;
 // Live-distance watcher tuning: update the display on meter-level movement while
@@ -415,19 +415,35 @@ export default function OrderDetailScreen() {
           </Text>
         </TouchableOpacity>
         {enRoute ? (
-          <Button
-            title={'✅ ' + t('order.complete')}
-            onPress={handleComplete}
-            loading={loading}
-            variant="success"
-          />
+          <TouchableOpacity onPress={handleComplete} disabled={loading} activeOpacity={0.85}>
+            <LinearGradient
+              colors={gradients.gold}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.completeBtn}
+            >
+              {loading ? (
+                <ActivityIndicator color="#0E1B3D" />
+              ) : (
+                <Text style={styles.completeBtnText}>✅ {t('order.complete')}</Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
         ) : (
-          <Button
-            title={"✅ Yo'lovchini oldim"}
-            onPress={handleStartTrip}
-            loading={loading}
-            variant="primary"
-          />
+          <TouchableOpacity onPress={handleStartTrip} disabled={loading} activeOpacity={0.85}>
+            <LinearGradient
+              colors={gradients.navy}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.completeBtn}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={[styles.completeBtnText, { color: '#FFFFFF' }]}>✅ Yo'lovchini oldim</Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
         )}
       </View>
     </SafeAreaView>
@@ -435,25 +451,38 @@ export default function OrderDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.white },
+  container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    backgroundColor: colors.white,
   },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
-  title: { ...typography.h3, color: colors.primary },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  backIcon: { fontSize: 26, color: colors.primary },
+  title: { ...typography.h3, color: colors.text },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
   mapCard: {
     height: 220,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     overflow: 'hidden',
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
+    shadowColor: '#0E1730',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
   mapUnavailable: {
     position: 'absolute',
@@ -473,7 +502,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.warningLight,
     padding: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     marginBottom: spacing.md,
   },
   statusEmoji: { fontSize: 28, marginRight: spacing.md },
@@ -490,19 +519,24 @@ const styles = StyleSheet.create({
   timerBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.infoLight,
+    backgroundColor: '#0E1B3D',
     padding: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     marginBottom: spacing.md,
   },
   timerEmoji: { fontSize: 28, marginRight: spacing.md },
-  timerText: { ...typography.bodyBold, color: colors.primary },
-  timerSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
-  timerCountdown: { ...typography.h2, color: colors.primary, fontVariant: ['tabular-nums'] },
+  timerText: { ...typography.bodyBold, color: colors.white },
+  timerSub: { ...typography.small, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+  timerCountdown: { ...typography.h2, color: colors.accent, fontVariant: ['tabular-nums'] },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    backgroundColor: colors.white,
+    borderRadius: radius.xl,
     padding: spacing.md,
+    shadowColor: '#0E1730',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   cardTitle: {
     ...typography.bodyBold,
@@ -545,16 +579,29 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
+    backgroundColor: colors.white,
   },
   navBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: '#0E1B3D',
     paddingVertical: spacing.md,
     borderRadius: radius.md,
     marginBottom: spacing.sm,
   },
   navBtnIcon: { fontSize: 20, marginRight: spacing.sm },
   navBtnText: { ...typography.button, color: colors.white },
+  completeBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    shadowColor: colors.accentDark,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  completeBtnText: { ...typography.button, color: '#0E1B3D' },
 });

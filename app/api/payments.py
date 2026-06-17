@@ -223,7 +223,7 @@ async def click_prepare(request: web.Request) -> web.Response:
 
     # Verify signature
     if not _verify_click_signature(data_dict, "0"):
-        logger.warning(f"Click prepare: invalid signature")
+        logger.warning("Click prepare: invalid signature")
         return web.json_response({"error": -1, "error_note": "Invalid signature"})
 
     transaction_param = data.get("merchant_trans_id")
@@ -258,7 +258,7 @@ async def click_complete(request: web.Request) -> web.Response:
 
     # Verify signature
     if not _verify_click_signature(data_dict, "1"):
-        logger.warning(f"Click complete: invalid signature")
+        logger.warning("Click complete: invalid signature")
         return web.json_response({"error": -1, "error_note": "Invalid signature"})
 
     transaction_param = data.get("merchant_trans_id")

@@ -3,7 +3,6 @@ from aiohttp import web
 
 from app.database import get_session
 from app.models import User, Driver
-from app.utils.auth import require_auth
 from app.api.drivers import _get_driver_from_request
 
 

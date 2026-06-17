@@ -27,9 +27,8 @@ from telegram.ext import (
 from app import config as app_config
 from app.database import init_db, get_session
 from app.api.server import start_api_server
-from app.api.websocket import ws_manager
 from app.migrate import run_migration
-from app.models import Driver as DBDriver, User as DBUser, Order as DBOrder, OrderHistory as DBHistory
+from app.models import Driver as DBDriver
 from app import car_models
 from app.services.driver_pdf import build_driver_pdf
 

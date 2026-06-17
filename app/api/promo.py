@@ -22,7 +22,6 @@ async def validate_promo(request: web.Request) -> web.Response:
     Body: {"code": "WELCOME10"}
     Returns discount info without applying.
     """
-    user: User = request["user"]
     try:
         data = await request.json()
     except Exception:

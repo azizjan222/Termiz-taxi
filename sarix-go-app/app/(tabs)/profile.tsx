@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,6 +24,7 @@ import { getSupportInfo } from '../../src/api/ai';
 import { uploadProfilePhoto, updateProfile } from '../../src/api/auth';
 import { API_URL } from '../../src/api/client';
 import { colors, typography, spacing, radius } from '../../src/theme';
+import { gradients } from '../../src/theme/colors';
 
 // Driver app package on Play Market
 const DRIVER_APP_PACKAGE = 'uz.sarixgo.driver';
@@ -35,6 +37,21 @@ interface MenuItem {
   onPress: () => void;
   highlight?: boolean;
 }
+
+// Tinted background per menu item (matches mockup colored icon tiles)
+const ICON_TINTS: Record<string, string> = {
+  'profile.orderHistory': '#FFF3CC',     // gold
+  'profile.savedAddresses': colors.errorLight,   // red/pink
+  'profile.paymentMethods': '#FFF3CC',   // gold
+  'profile.notifications': colors.warningLight,  // yellow
+  'profile.promoCodes': colors.successLight,     // green
+  'ai.title': '#EDE7FF',                 // purple
+  'profile.faq': colors.errorLight,      // red
+  'profile.helpSupport': colors.infoLight,        // blue
+  'profile.settings': colors.divider,    // gray
+  'profile.feedback': colors.warningLight,
+  'Foydalanish shartlari va maxfiylik siyosati': colors.successLight, // green (terms)
+};
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
@@ -160,23 +177,28 @@ export default function ProfileScreen() {
     { icon: '📄', labelKey: 'Foydalanish shartlari va maxfiylik siyosati', onPress: () => router.push('/terms') },
   ];
 
+  const becomeDriver = menu.find((m) => m.highlight);
+  const regularItems = menu.filter((m) => !m.highlight);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Header with edit-profile button (top-right) */}
-        <View style={styles.header}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* Header band */}
+        <LinearGradient
+          colors={['#F2EEFF', '#FFFFFF']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.headerBand}
+        >
           <TouchableOpacity
-            style={styles.editButton}
+            style={styles.editPill}
             onPress={openEditModal}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
           >
-            <Text style={styles.editButtonText}>✏️ Tahrirlash</Text>
+            <Text style={styles.editPillText}>✏️ Tahrirlash</Text>
           </TouchableOpacity>
-        </View>
 
-        {/* User card */}
-        <View style={styles.userCard}>
-          <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.8}>
+          <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.85}>
             {user?.profile_photo_url ? (
               <Image
                 source={{
@@ -197,11 +219,10 @@ export default function ProfileScreen() {
               <Text style={styles.avatarEditText}>{uploading ? '…' : '📷'}</Text>
             </View>
           </TouchableOpacity>
-          <View style={styles.userInfo}>
-            <Text style={styles.userName}>{user?.first_name || ''}</Text>
-            <Text style={styles.userPhone}>{user?.phone}</Text>
-          </View>
-        </View>
+
+          <Text style={styles.userName}>{user?.first_name || ''}</Text>
+          <Text style={styles.userPhone}>{user?.phone}</Text>
+        </LinearGradient>
 
         {/* TEMP: invite-a-friend promo hidden — re-enable later */}
         {/* Promo banner */}
@@ -212,35 +233,50 @@ export default function ProfileScreen() {
         </View>
         */}
 
+        {/* Become driver — prominent gold banner */}
+        {becomeDriver && (
+          <TouchableOpacity
+            onPress={becomeDriver.onPress}
+            activeOpacity={0.9}
+            style={styles.driverWrap}
+          >
+            <LinearGradient
+              colors={gradients.gold}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.driverBanner}
+            >
+              <View style={styles.driverIconTile}>
+                <Text style={styles.driverIcon}>{becomeDriver.icon}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.driverTitle}>{t(becomeDriver.labelKey)}</Text>
+                <Text style={styles.driverSubtitle}>{t('becomeDriver.subtitle')}</Text>
+              </View>
+              <Text style={styles.driverArrow}>›</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+
         {/* Menu */}
         <View style={styles.menu}>
-          {menu.map((item, i) => (
+          {regularItems.map((item, i) => (
             <TouchableOpacity
               key={i}
-              style={[
-                styles.menuItem,
-                i < menu.length - 1 && styles.menuItemBorder,
-                item.highlight && styles.menuItemHighlight,
-              ]}
+              style={styles.menuItem}
               onPress={item.onPress}
               activeOpacity={0.7}
             >
-              <Text style={[styles.menuIcon, item.highlight && styles.menuIconHighlight]}>
-                {item.icon}
-              </Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.menuLabel, item.highlight && styles.menuLabelHighlight]}>
-                  {t(item.labelKey)}
-                </Text>
-                {item.highlight && (
-                  <Text style={styles.menuSubLabel}>
-                    {t('becomeDriver.subtitle')}
-                  </Text>
-                )}
+              <View
+                style={[
+                  styles.menuIconTile,
+                  { backgroundColor: ICON_TINTS[item.labelKey] || colors.surface },
+                ]}
+              >
+                <Text style={styles.menuIcon}>{item.icon}</Text>
               </View>
-              <Text style={[styles.menuArrow, item.highlight && styles.menuArrowHighlight]}>
-                ›
-              </Text>
+              <Text style={styles.menuLabel}>{t(item.labelKey)}</Text>
+              <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -334,54 +370,54 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.white },
-  scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+  container: { flex: 1, backgroundColor: colors.surface },
+  scroll: { paddingBottom: spacing.xxl },
+  headerBand: {
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    borderBottomLeftRadius: radius.xl,
+    borderBottomRightRadius: radius.xl,
   },
-  editButton: {
+  editPill: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.xs,
+    backgroundColor: '#EDE7FF',
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
-    backgroundColor: colors.accent,
   },
-  editButtonText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
-  userCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-  },
+  editPillText: { ...typography.small, color: colors.primary, fontWeight: '700' },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    borderWidth: 3,
+    borderColor: colors.white,
   },
-  avatarText: { ...typography.h2, color: colors.white },
+  avatarText: { ...typography.h1, color: colors.white },
   avatarEdit: {
     position: 'absolute',
-    right: spacing.md - 4,
-    bottom: -2,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    right: 0,
+    bottom: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.divider,
   },
-  avatarEditText: { fontSize: 11 },
-  userInfo: { flex: 1 },
-  userName: { ...typography.h2, color: colors.primary },
+  avatarEditText: { fontSize: 13 },
+  userName: { ...typography.h2, color: colors.text, marginTop: spacing.md },
   userPhone: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   promo: {
     flexDirection: 'row',
@@ -393,42 +429,69 @@ const styles = StyleSheet.create({
   },
   promoIcon: { fontSize: 24, marginRight: spacing.md },
   promoText: { flex: 1, ...typography.body, color: colors.white },
-  menu: {
-    backgroundColor: colors.white,
+  driverWrap: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    borderRadius: radius.lg,
+    shadowColor: colors.accentDark,
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  driverBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: radius.lg,
+  },
+  driverIconTile: {
+    width: 48,
+    height: 48,
     borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.divider,
-    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  driverIcon: { fontSize: 26 },
+  driverTitle: { ...typography.bodyBold, color: colors.textOnAccent, fontWeight: '700' },
+  driverSubtitle: {
+    ...typography.small,
+    color: colors.textOnAccent,
+    opacity: 0.8,
+    marginTop: 2,
+  },
+  driverArrow: { fontSize: 26, color: colors.textOnAccent, fontWeight: '700' },
+  menu: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    gap: spacing.sm,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.sm + 4,
     paddingHorizontal: spacing.md,
+    shadowColor: '#0E1730',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  menuItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
+  menuIconTile: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
   },
-  menuItemHighlight: {
-    backgroundColor: colors.accent,
-  },
-  menuIcon: { fontSize: 22, marginRight: spacing.md, width: 28 },
-  menuIconHighlight: { fontSize: 26 },
-  menuLabel: { ...typography.body, color: colors.text },
-  menuLabelHighlight: {
-    ...typography.bodyBold,
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  menuSubLabel: {
-    ...typography.small,
-    color: colors.primary,
-    opacity: 0.7,
-    marginTop: 2,
-  },
+  menuIcon: { fontSize: 20 },
+  menuLabel: { ...typography.body, color: colors.text, flex: 1 },
   menuArrow: { fontSize: 24, color: colors.textMuted, fontWeight: '300' },
-  menuArrowHighlight: { color: colors.primary, fontWeight: '700' },
   logoutButton: {
     marginTop: spacing.lg,
     padding: spacing.md,

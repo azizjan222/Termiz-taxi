@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import {
   createOrder,
@@ -26,9 +27,13 @@ import {
 import { useOrderStore } from '../src/store/order';
 import { API_URL } from '../src/api/client';
 import { colors, typography, spacing, radius } from '../src/theme';
+import { gradients } from '../src/theme/colors';
 
 // Step 3 — departure time presets (Ketadigan vaqti)
 const TIME_OPTIONS = ['Hozir', '30 daqiqadan', '1 soatdan', '2 soatdan', 'Ertaga'];
+
+// Accent for female stepper controls (pink)
+const PINK = '#EC4899';
 
 function absoluteUrl(path?: string | null): string | undefined {
   if (!path) return undefined;
@@ -144,36 +149,45 @@ export default function NewOrderScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Steps 1 & 2 summary: Qayerdan → Qayerga */}
         <View style={styles.card}>
-          <View style={styles.routeRow}>
-            <View style={styles.dotFrom} />
+          <View style={styles.routeBody}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.stepLabel}>1. Qayerdan</Text>
-              <Text style={styles.routeValue}>{from}</Text>
+              <View style={styles.routeRow}>
+                <View style={styles.dotFrom} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepLabel}>1. Qayerdan</Text>
+                  <Text style={styles.routeValue}>{from}</Text>
+                </View>
+              </View>
+              <View style={styles.routeConnector} />
+              <View style={styles.routeRow}>
+                <View style={styles.dotTo} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepLabel}>2. Qayerga</Text>
+                  <Text style={styles.routeValue}>{to}</Text>
+                </View>
+              </View>
             </View>
-          </View>
-          <View style={styles.routeLine} />
-          <View style={styles.routeRow}>
-            <View style={styles.dotTo} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stepLabel}>2. Qayerga</Text>
-              <Text style={styles.routeValue}>{to}</Text>
+
+            {/* Swap (visual only — no dedicated swap handler in the store) */}
+            <View style={styles.swapBtn}>
+              <Text style={styles.swapIcon}>↕</Text>
             </View>
           </View>
         </View>
 
         {/* Step 3: Ketadigan vaqti */}
-        <Text style={styles.sectionTitle}>3. Ketadigan vaqti</Text>
+        <Text style={styles.sectionTitle}>🕒  3. Ketadigan vaqti</Text>
         <View style={styles.chipRow}>
           {TIME_OPTIONS.map((opt) => {
             const selected = orderStore.departureTime === opt;
             return (
               <TouchableOpacity
                 key={opt}
-                style={[styles.chip, selected && styles.chipSelected]}
+                style={[styles.chip, selected ? styles.timeChipSelected : styles.chipUnselected]}
                 onPress={() => orderStore.setField('departureTime', opt)}
                 activeOpacity={0.85}
               >
-                <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                <Text style={[styles.chipText, selected && styles.timeChipTextSelected]}>
                   {opt}
                 </Text>
               </TouchableOpacity>
@@ -182,23 +196,36 @@ export default function NewOrderScreen() {
         </View>
 
         {/* Step 4: Yo'lovchi soni */}
-        <Text style={styles.sectionTitle}>4. Yo'lovchi soni</Text>
+        <Text style={styles.sectionTitle}>👤  4. Yo'lovchi soni</Text>
         <View style={styles.chipRow}>
           {[1, 2, 3, 4].map((n) => {
             const selected = persons === n;
+            const onPress = () => {
+              orderStore.setField('personCount', n);
+              orderStore.setField('serviceType', 'taxi');
+            };
+            if (selected) {
+              return (
+                <TouchableOpacity key={n} onPress={onPress} activeOpacity={0.85}>
+                  <LinearGradient
+                    colors={gradients.purple}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.personChipSelected}
+                  >
+                    <Text style={styles.personChipTextSelected}>👤 {n}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              );
+            }
             return (
               <TouchableOpacity
                 key={n}
-                style={[styles.personChip, selected && styles.chipSelected]}
-                onPress={() => {
-                  orderStore.setField('personCount', n);
-                  orderStore.setField('serviceType', 'taxi');
-                }}
+                style={styles.personChip}
+                onPress={onPress}
                 activeOpacity={0.85}
               >
-                <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                  👤 {n}
-                </Text>
+                <Text style={styles.personChipText}>👤 {n}</Text>
               </TouchableOpacity>
             );
           })}
@@ -208,10 +235,15 @@ export default function NewOrderScreen() {
         <Text style={styles.sectionTitle}>Yo'lovchilar jinsi</Text>
         <View style={styles.genderCard}>
           <View style={styles.genderRow}>
-            <Text style={styles.genderLabel}>👨 Erkak</Text>
+            <View style={styles.genderLeft}>
+              <View style={[styles.genderIconCircle, { backgroundColor: '#EDE9FE' }]}>
+                <Text style={styles.genderEmoji}>👨</Text>
+              </View>
+              <Text style={styles.genderLabel}>Erkak</Text>
+            </View>
             <View style={styles.stepper}>
               <TouchableOpacity
-                style={styles.stepBtn}
+                style={[styles.stepBtn, styles.maleBtn]}
                 onPress={() =>
                   orderStore.setField('maleCount', Math.max(0, orderStore.maleCount - 1))
                 }
@@ -221,7 +253,7 @@ export default function NewOrderScreen() {
               </TouchableOpacity>
               <Text style={styles.stepValue}>{orderStore.maleCount}</Text>
               <TouchableOpacity
-                style={styles.stepBtn}
+                style={[styles.stepBtn, styles.maleBtn]}
                 onPress={() =>
                   orderStore.setField('maleCount', Math.min(10, orderStore.maleCount + 1))
                 }
@@ -235,10 +267,15 @@ export default function NewOrderScreen() {
           <View style={styles.genderDivider} />
 
           <View style={styles.genderRow}>
-            <Text style={styles.genderLabel}>👩 Ayol</Text>
+            <View style={styles.genderLeft}>
+              <View style={[styles.genderIconCircle, { backgroundColor: '#FCE7F3' }]}>
+                <Text style={styles.genderEmoji}>👩</Text>
+              </View>
+              <Text style={styles.genderLabel}>Ayol</Text>
+            </View>
             <View style={styles.stepper}>
               <TouchableOpacity
-                style={styles.stepBtn}
+                style={[styles.stepBtn, styles.femaleBtn]}
                 onPress={() =>
                   orderStore.setField('femaleCount', Math.max(0, orderStore.femaleCount - 1))
                 }
@@ -248,7 +285,7 @@ export default function NewOrderScreen() {
               </TouchableOpacity>
               <Text style={styles.stepValue}>{orderStore.femaleCount}</Text>
               <TouchableOpacity
-                style={styles.stepBtn}
+                style={[styles.stepBtn, styles.femaleBtn]}
                 onPress={() =>
                   orderStore.setField('femaleCount', Math.min(10, orderStore.femaleCount + 1))
                 }
@@ -264,12 +301,17 @@ export default function NewOrderScreen() {
         </Text>
 
         {/* Price preview */}
-        <View style={styles.priceCard}>
-          <Text style={styles.priceLabel}>{t('order.price')}</Text>
-          <Text style={styles.priceValue}>
+        <LinearGradient
+          colors={gradients.purple}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.priceBar}
+        >
+          <Text style={styles.priceBarLabel}>{t('order.price')}</Text>
+          <Text style={styles.priceBarValue}>
             {quote ? `${formatPrice(quote.price)} so'm` : '...'}
           </Text>
-        </View>
+        </LinearGradient>
 
         {/* Action bar: Naqd (left) · Haydovchi topish (center) · ⋮ extra options (right) */}
         <View style={styles.actionBar}>
@@ -283,14 +325,21 @@ export default function NewOrderScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.findBtn}
+            style={styles.findBtnWrap}
             onPress={() => submit()}
             disabled={submitting !== null}
             activeOpacity={0.9}
           >
-            <Text style={styles.findBtnText}>
-              {submitting === 'find' ? '...' : '🔍 Haydovchi topish'}
-            </Text>
+            <LinearGradient
+              colors={gradients.gold}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.findBtn}
+            >
+              <Text style={styles.findBtnText}>
+                {submitting === 'find' ? '...' : '🔍 Haydovchi topish'}
+              </Text>
+            </LinearGradient>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -478,7 +527,7 @@ export default function NewOrderScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.white },
+  container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -488,14 +537,22 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   backIcon: { fontSize: 28, color: colors.primary },
-  title: { ...typography.h3, color: colors.primary },
+  title: { ...typography.h3, color: colors.text },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+
+  // From / To card
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    backgroundColor: colors.white,
+    borderRadius: 20,
     padding: spacing.md,
     marginBottom: spacing.lg,
+    shadowColor: '#0E1730',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 3,
   },
+  routeBody: { flexDirection: 'row', alignItems: 'center' },
   routeRow: { flexDirection: 'row', alignItems: 'center' },
   dotFrom: {
     width: 12, height: 12, borderRadius: 6,
@@ -505,38 +562,71 @@ const styles = StyleSheet.create({
     width: 12, height: 12, borderRadius: 6,
     backgroundColor: colors.accent, marginRight: spacing.md,
   },
-  routeLine: {
-    width: 2, height: 18, backgroundColor: colors.border,
-    marginLeft: 5, marginVertical: 4,
+  routeConnector: {
+    width: 0,
+    height: 22,
+    borderLeftWidth: 2,
+    borderStyle: 'dotted',
+    borderColor: colors.border,
+    marginLeft: 5,
+    marginVertical: 2,
   },
-  stepLabel: { ...typography.small, color: colors.textSecondary },
+  stepLabel: { ...typography.small, color: colors.textMuted },
   routeValue: { ...typography.bodyBold, color: colors.text },
-  sectionTitle: { ...typography.h3, color: colors.primary, marginBottom: spacing.md },
+  swapBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.md,
+  },
+  swapIcon: { fontSize: 22, color: colors.primary, fontWeight: '700' },
+
+  // Section titles
+  sectionTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.md },
+
+  // Chips
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
   chip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
     borderRadius: radius.pill,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 1.5,
   },
+  chipUnselected: { backgroundColor: colors.white, borderColor: colors.border },
+  timeChipSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+  chipText: { ...typography.bodyBold, color: colors.text },
+  timeChipTextSelected: { color: colors.textOnAccent },
+
+  // Person chips
   personChip: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.white,
     borderRadius: radius.pill,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: colors.border,
   },
-  chipSelected: { backgroundColor: colors.white, borderColor: colors.accent },
-  chipText: { ...typography.bodyBold, color: colors.textSecondary },
-  chipTextSelected: { color: colors.primary },
+  personChipSelected: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+  },
+  personChipText: { ...typography.bodyBold, color: colors.text },
+  personChipTextSelected: { ...typography.bodyBold, color: colors.white },
+
+  // Gender card
   genderCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
     marginBottom: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   genderRow: {
     flexDirection: 'row',
@@ -544,6 +634,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.md,
   },
+  genderLeft: { flexDirection: 'row', alignItems: 'center' },
+  genderIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  genderEmoji: { fontSize: 20 },
   genderLabel: { ...typography.bodyBold, color: colors.text },
   genderDivider: { height: 1, backgroundColor: colors.divider },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
@@ -551,16 +651,15 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.white,
-    borderWidth: 2,
-    borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepBtnText: { fontSize: 22, color: colors.primary, fontWeight: '700', lineHeight: 24 },
+  maleBtn: { backgroundColor: colors.primary },
+  femaleBtn: { backgroundColor: PINK },
+  stepBtnText: { fontSize: 22, color: colors.white, fontWeight: '700', lineHeight: 24 },
   stepValue: {
     ...typography.bodyBold,
-    color: colors.primary,
+    color: colors.text,
     minWidth: 24,
     textAlign: 'center',
   },
@@ -569,29 +668,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.lg,
   },
-  priceCard: {
+
+  // Price bar
+  priceBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     marginBottom: spacing.md,
   },
-  priceLabel: { ...typography.caption, color: colors.textSecondary },
-  priceValue: { ...typography.h2, color: colors.primary },
-  findBtn: {
-    flex: 1,
-    backgroundColor: colors.accent,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-  },
-  findBtnText: { ...typography.h3, color: colors.primary },
+  priceBarLabel: { ...typography.bodyBold, color: colors.white },
+  priceBarValue: { ...typography.h2, color: colors.white },
+
+  // Action bar
   actionBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.lg,
   },
   payBtn: {
     alignItems: 'center',
@@ -600,21 +695,37 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     marginRight: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    minWidth: 56,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minWidth: 60,
+    height: 52,
   },
-  payIcon: { fontSize: 22, color: colors.success },
+  payIcon: { fontSize: 20, color: colors.success },
   payLabel: { ...typography.small, color: colors.success, fontWeight: '700' },
+  findBtnWrap: { flex: 1 },
+  findBtn: {
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 52,
+  },
+  findBtnText: { ...typography.h3, color: colors.textOnAccent },
   dotsBtn: {
-    width: 48,
-    height: 48,
+    width: 52,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   dotsIcon: { fontSize: 26, color: colors.primary, fontWeight: '700' },
+
+  // Sheets
   sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -691,7 +802,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.lg,
   },
-  optDoneText: { ...typography.h3, color: colors.primary },
+  optDoneText: { ...typography.h3, color: colors.textOnAccent },
   recHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -706,7 +817,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: colors.divider,
+    borderColor: colors.border,
   },
   recAvatar: { width: 52, height: 52, borderRadius: 26, marginRight: spacing.md },
   recAvatarPlaceholder: {
@@ -721,5 +832,5 @@ const styles = StyleSheet.create({
   recRight: { alignItems: 'flex-end' },
   recPriceLabel: { ...typography.small, color: colors.textSecondary },
   recPrice: { ...typography.bodyBold, color: colors.primary },
-  recPick: { ...typography.small, color: colors.accent, marginTop: 4, fontWeight: '700' },
+  recPick: { ...typography.small, color: colors.accentDark, marginTop: 4, fontWeight: '700' },
 });
