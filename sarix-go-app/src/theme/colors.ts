@@ -4,26 +4,26 @@
  */
 export const colors = {
   // Primary brand
-  primary: '#1B3BB3',         // Logo background - chuqur ko'k
-  primaryLight: '#3354D4',    // Header/cards
-  primaryDark: '#142C86',     // Pressed states
+  primary: '#6C4DF6',         // Vibrant violet - matches mockup
+  primaryLight: '#8A6BFF',    // Header/cards
+  primaryDark: '#5A3DE0',     // Pressed states
 
-  // Accent (yellow from logo)
-  accent: '#FFC42E',          // Sariq - CTA buttons
-  accentLight: '#FFD65C',     // Hover/highlight
-  accentDark: '#E3A91A',      // Pressed
+  // Accent (gold)
+  accent: '#FFC400',          // Bright gold - CTA buttons
+  accentLight: '#FFD451',     // Hover/highlight
+  accentDark: '#E3A800',      // Pressed
 
   // Neutrals
   white: '#FFFFFF',
   background: '#FFFFFF',
-  surface: '#F2F5FC',         // Card backgrounds
-  border: '#E5E9F2',
+  surface: '#F4F6FB',         // Card backgrounds
+  border: '#E7E9F2',
   divider: '#EEF1F8',
 
   // Text
-  text: '#0E1730',            // Primary text (matches brand blue)
-  textSecondary: '#5A6580',   // Secondary text
-  textMuted: '#9AA5B8',       // Hints/placeholders
+  text: '#0E1730',            // Primary text
+  textSecondary: '#6B7280',   // Secondary text
+  textMuted: '#9CA3AF',       // Hints/placeholders
   textOnPrimary: '#FFFFFF',
   textOnAccent: '#0E1730',
 
@@ -38,15 +38,21 @@ export const colors = {
   infoLight: '#D0EBFF',
 
   // Status (for orders)
-  statusNew: '#4DABF7',
-  statusAccepted: '#FAB005',
-  statusInProgress: '#7C5CFC',
-  statusCompleted: '#12B886',
-  statusCancelled: '#FA5252',
+  statusNew: '#3B82F6',
+  statusAccepted: '#F59E0B',
+  statusInProgress: '#6C4DF6',
+  statusCompleted: '#10B981',
+  statusCancelled: '#EF4444',
 
   // Map
-  mapMarker: '#FFC42E',
-  mapRoute: '#1B3BB3',
+  mapMarker: '#F4C430',
+  mapRoute: '#6C4DF6',
 } as const;
 
 export type ColorKey = keyof typeof colors;
+
+export const gradients = {
+  purple: ['#7B61FF', '#5B3DF5'] as const,
+  gold: ['#FFD23F', '#FFB300'] as const,
+  header: ['#FFE08A', '#FFC400'] as const,
+};
