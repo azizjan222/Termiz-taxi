@@ -161,6 +161,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/driver/orders/active", drivers_api.list_my_active)
     app.router.add_get("/api/driver/orders/history", drivers_api.driver_orders_history)
     app.router.add_post("/api/driver/orders/{id}/accept", drivers_api.accept_order)
+    app.router.add_post("/api/driver/orders/{id}/start", drivers_api.start_trip)
     app.router.add_post("/api/driver/orders/{id}/complete", drivers_api.complete_order)
     app.router.add_post("/api/driver/orders/{id}/cancel", drivers_api.cancel_by_driver)
     app.router.add_get("/api/driver/balance/history", drivers_api.driver_balance_history)

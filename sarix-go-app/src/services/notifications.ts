@@ -92,7 +92,7 @@ export async function unregisterPushToken(): Promise<void> {
 }
 
 export type NotificationData = {
-  type?: 'new_order' | 'order_accepted' | 'order_cancelled' | 'order_completed' | 'balance_topup';
+  type?: 'new_order' | 'order_accepted' | 'order_started' | 'order_cancelled' | 'order_completed' | 'balance_topup';
   order_id?: number;
   by?: string;
   amount?: number;
@@ -103,6 +103,32 @@ export function addNotificationReceivedListener(
   handler: (notification: Notifications.Notification) => void
 ) {
   return Notifications.addNotificationReceivedListener(handler);
+}
+
+/**
+ * Present a local notification immediately (trigger: null). Used for in-app
+ * realtime events that arrive over the WebSocket while the app is open — e.g.
+ * the driver picking up the passenger — so the passenger still gets a visible,
+ * audible heads-up notification (the foreground handler shows alert + sound).
+ */
+export async function presentLocalNotification(
+  title: string,
+  body: string,
+  data: Record<string, any> = {},
+  channelId: string = 'orders'
+): Promise<void> {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data,
+        sound: 'default',
+        ...(Platform.OS === 'android' ? { channelId } : {}),
+      },
+      trigger: null,
+    });
+  } catch {}
 }
 
 export function addNotificationResponseListener(

@@ -15,9 +15,9 @@ import { useTranslation } from 'react-i18next';
 
 import { listCities } from '../src/api/orders';
 import { listAddresses, type SavedAddress } from '../src/api/addresses';
-import { suggestAddress } from '../src/services/geocoding';
-import { reverseGeocode } from '../src/services/geocoding';
+import { suggestAddress, geocodeAddress, reverseGeocode } from '../src/services/geocoding';
 import { detectLocation } from '../src/services/location';
+import { searchSurxondaryoPlaces, type LocalPlace } from '../src/data/surxondaryoPlaces';
 import { useOrderStore } from '../src/store/order';
 import { colors, typography, spacing, radius } from '../src/theme';
 
@@ -171,6 +171,44 @@ export default function RouteSelectScreen() {
     }
   }, [gpsBusy, cities, mode, orderStore]);
 
+  // Pick a curated Surxondaryo place (tuman / shahar / mahalla / joy). Best-effort
+  // geocode (region-biased) to also fill coordinates for driver navigation; if it
+  // fails we still proceed with the name only (same as Yandex suggestions).
+  const handleSelectPlace = useCallback(
+    async (place: LocalPlace) => {
+      let addressText = place.name;
+      let lat: number | undefined;
+      let lon: number | undefined;
+      try {
+        const results = await geocodeAddress(`${place.name}, Surxondaryo`);
+        if (results.length > 0) {
+          addressText = results[0].address || place.name;
+          lat = results[0].lat;
+          lon = results[0].lon;
+        }
+      } catch {
+        // keep name-only fallback
+      }
+      const matchedCity =
+        cities.find((c) => addressText.toLowerCase().includes(c.toLowerCase())) || place.name;
+
+      if (mode === 'from') {
+        orderStore.setField('fromCity', matchedCity);
+        orderStore.setField('fromAddress', addressText);
+        if (lat != null) orderStore.setField('fromLat', lat);
+        if (lon != null) orderStore.setField('fromLon', lon);
+        router.replace({ pathname: '/route-select', params: { mode: 'to' } });
+      } else {
+        orderStore.setField('toCity', matchedCity);
+        orderStore.setField('toAddress', addressText);
+        if (lat != null) orderStore.setField('toLat', lat);
+        if (lon != null) orderStore.setField('toLon', lon);
+        router.replace(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
+      }
+    },
+    [cities, mode, orderStore]
+  );
+
   const savedIcon = (label?: string | null) => {
     const l = (label || '').toLowerCase();
     if (l.includes('uy') || l.includes('home') || l.includes('дом')) return '🏠';
@@ -180,6 +218,28 @@ export default function RouteSelectScreen() {
 
   const title =
     mode === 'from' ? t('cities.selectFrom') : t('cities.selectTo');
+
+  // Combined, browsable pick list: backend cities first, then curated
+  // Surxondaryo places (districts / towns / mahallas / landmarks). Headers are
+  // rendered as rows so everything scrolls together. Full street/building/village/
+  // intersection coverage comes from the Yandex Suggest section above.
+  const localPlaces = searchSurxondaryoPlaces(search, cities);
+  type Row =
+    | { type: 'header'; key: string; label: string }
+    | { type: 'city'; key: string; name: string }
+    | { type: 'place'; key: string; place: LocalPlace };
+  const rows: Row[] = [];
+  if (filteredCities.length > 0) {
+    rows.push({ type: 'header', key: 'h-cities', label: '🚕 Tumanlar va shaharlar' });
+    filteredCities.forEach((c) => rows.push({ type: 'city', key: `c-${c}`, name: c }));
+  }
+  if (localPlaces.length > 0) {
+    rows.push({ type: 'header', key: 'h-places', label: '🏘 Surxondaryo: mahalla va joylar' });
+    localPlaces.forEach((p) => rows.push({ type: 'place', key: `p-${p.name}`, place: p }));
+  }
+
+  const placeIcon = (g: LocalPlace['group']) =>
+    g === 'place' ? '📌' : g === 'town' ? '🏙' : g === 'district' ? '🚕' : '🏘';
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -279,35 +339,51 @@ export default function RouteSelectScreen() {
         </View>
       )}
 
-      {/* City list */}
+      {/* Combined pick list: cities + curated Surxondaryo places */}
       <FlatList
-        data={filteredCities}
-        keyExtractor={(c) => c}
-        ListHeaderComponent={
-          filteredCities.length > 0 ? (
-            <Text style={styles.sectionTitle}>🚕 Tumanlar</Text>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.cityItem}
-            onPress={() => handleSelectCity(item)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.cityIcon}>
-              <Text>📍</Text>
-            </View>
-            <Text style={styles.cityName}>{item}</Text>
-            <Text style={styles.cityArrow}>›</Text>
-          </TouchableOpacity>
-        )}
+        data={rows}
+        keyExtractor={(item) => item.key}
+        renderItem={({ item }) => {
+          if (item.type === 'header') {
+            return <Text style={styles.sectionTitle}>{item.label}</Text>;
+          }
+          if (item.type === 'city') {
+            return (
+              <TouchableOpacity
+                style={styles.cityItem}
+                onPress={() => handleSelectCity(item.name)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.cityIcon}>
+                  <Text>📍</Text>
+                </View>
+                <Text style={styles.cityName}>{item.name}</Text>
+                <Text style={styles.cityArrow}>›</Text>
+              </TouchableOpacity>
+            );
+          }
+          return (
+            <TouchableOpacity
+              style={styles.cityItem}
+              onPress={() => handleSelectPlace(item.place)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.cityIcon}>
+                <Text>{placeIcon(item.place.group)}</Text>
+              </View>
+              <Text style={styles.cityName}>{item.place.name}</Text>
+              <Text style={styles.cityArrow}>›</Text>
+            </TouchableOpacity>
+          );
+        }}
         contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>
               {search.length > 0
-                ? "Topilmadi. Yandex qidiruvdan foydalaning."
-                : "Yuklanmoqda..."}
+                ? 'Topilmadi. Yandex qidiruvdan yoki xaritadan foydalaning.'
+                : 'Yuklanmoqda...'}
             </Text>
           </View>
         }
