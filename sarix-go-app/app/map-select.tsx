@@ -22,7 +22,7 @@ const DEFAULT_LON = 67.278;
 
 // Detection tuning constants
 const DETECTION_TIMEOUT_MS = 15000; // Detection_Timeout (R3.2, R3.4, R7.5)
-const ACCURACY_THRESHOLD_M = 100; // Accuracy_Threshold (R4.x, R7.1)
+const ACCURACY_THRESHOLD_M = 10; // desired precision radius (m): fixes worse than this only show an advisory hint
 const DETECT_ZOOM = 16; // street-level zoom (R4.3)
 
 type Notice = {
@@ -117,18 +117,21 @@ export default function MapSelectScreen() {
       switch (result.status) {
         case 'success': {
           const acc = result.accuracy;
-          if (acc != null && acc > ACCURACY_THRESHOLD_M) {
-            // Low-accuracy fix: keep the existing center and prompt manual adjust (R4.4, R4.5, R7.1).
-            setNotice({
-              kind: 'low-accuracy',
-              text: 'GPS aniqligi past — nuqtani qoʻlda toʻgʻrilang',
-            });
-            return;
-          }
-          // Within threshold (or unknown): recenter at street-level zoom and auto-fill address.
+          // Always recenter on the detected fix and resolve its address — even when the
+          // fix is less precise than the desired 10 m radius. Previously a low-accuracy
+          // fix returned early WITHOUT resolving, so the card showed "manzil aniqlanmadi"
+          // even though the map had moved to the user's location.
           setCenter({ lat: result.lat, lon: result.lon }); // R4.1, R4.2
           mapRef.current?.setCenter(result.lat, result.lon, DETECT_ZOOM); // R4.3
           resolveAddress(result.lat, result.lon); // R5.1 (reuses 500 ms debounce)
+          // Advisory only (non-blocking): hint to fine-tune the pin when the fix is
+          // less precise than the desired radius. The address is still resolved above.
+          if (acc != null && acc > ACCURACY_THRESHOLD_M) {
+            setNotice({
+              kind: 'low-accuracy',
+              text: 'GPS aniqligi past boʻlishi mumkin — kerak boʻlsa nuqtani qoʻlda toʻgʻrilang',
+            });
+          }
           break;
         }
         case 'permission-denied':

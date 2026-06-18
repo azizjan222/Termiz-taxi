@@ -49,8 +49,8 @@ const DEFAULT_TIMEOUT_MS = 15000;
  *     granted permission proceeds without re-requesting (R2.4).
  *  3. Checks whether device location services are enabled; if not, resolves to
  *     `services-disabled` (R3.5).
- *  4. Acquires a single current position with `Balanced` accuracy, raced against a
- *     `timeoutMs` timer (default 15000). The first fix resolves to `success`
+ *  4. Acquires a single current position with `High` accuracy (~10 m radius), raced
+ *     against a `timeoutMs` timer (default 15000). The first fix resolves to `success`
  *     (R3.1, R3.2); the timer winning resolves to `timeout` (R3.4, R7.5).
  *
  * The whole flow is wrapped in try/catch so any thrown error resolves to
@@ -86,9 +86,12 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
     }
 
     // 4. Acquire a single bounded position fix (R3.1, R3.2, R3.4, R7.5).
+    // High accuracy targets a ~10 m radius (vs Balanced ~100 m), so the detected
+    // point — and the address resolved from it — closely matches where the user
+    // actually stands.
     const TIMEOUT = Symbol('location-timeout');
     const positionPromise = Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
+      accuracy: Location.Accuracy.High,
     });
     const timeoutPromise = new Promise<typeof TIMEOUT>((resolve) => {
       timer = setTimeout(() => resolve(TIMEOUT), timeoutMs);
