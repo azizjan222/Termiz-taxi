@@ -46,6 +46,7 @@ export default function NewOrderScreen() {
   const orderStore = useOrderStore();
 
   const [quote, setQuote] = useState<PriceQuote | null>(null);
+  const [routeUnavailable, setRouteUnavailable] = useState(false);
   const [recs, setRecs] = useState<RecommendedDriver[]>([]);
   const [recsLoading, setRecsLoading] = useState(false);
   const [submitting, setSubmitting] = useState<number | 'find' | null>(null);
@@ -68,9 +69,20 @@ export default function NewOrderScreen() {
   useEffect(() => {
     let active = true;
     if (!from || !to) return;
+    setRouteUnavailable(false);
     getPriceQuote(from, to, 'taxi', persons)
-      .then((q) => active && setQuote(q))
-      .catch(() => active && setQuote(null));
+      .then((q) => {
+        if (!active) return;
+        setQuote(q);
+        setRouteUnavailable(false);
+      })
+      .catch((e: any) => {
+        if (!active) return;
+        setQuote(null);
+        // 404 => this from->to pair has no defined route ("Bu yo'nalish hozircha mavjud emas").
+        // Other errors (network, etc.) are NOT treated as "unavailable".
+        setRouteUnavailable(e?.response?.status === 404);
+      });
     return () => {
       active = false;
     };
@@ -96,6 +108,10 @@ export default function NewOrderScreen() {
 
   const submit = async (targetDriverId?: number) => {
     if (!from || !to) return;
+    if (routeUnavailable) {
+      Alert.alert('Diqqat', 'Bu yoʻnalish hozircha mavjud emas');
+      return;
+    }
     setSubmitting(targetDriverId ?? 'find');
     try {
       // Fold the optional "Boshqa odam" (someone else) details into the driver note.
@@ -300,18 +316,30 @@ export default function NewOrderScreen() {
           Ixtiyoriy — haydovchi uchun ma'lumot ({orderStore.maleCount + orderStore.femaleCount} kishi belgilandi)
         </Text>
 
-        {/* Price preview */}
-        <LinearGradient
-          colors={gradients.purple}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.priceBar}
-        >
-          <Text style={styles.priceBarLabel}>{t('order.price')}</Text>
-          <Text style={styles.priceBarValue}>
-            {quote ? `${formatPrice(quote.price)} so'm` : '...'}
-          </Text>
-        </LinearGradient>
+        {/* Price preview (or "route unavailable" banner) */}
+        {routeUnavailable ? (
+          <View style={styles.unavailableBar}>
+            <Text style={styles.unavailableIcon}>🚫</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.unavailableTitle}>Bu yoʻnalish hozircha mavjud emas</Text>
+              <Text style={styles.unavailableSub}>
+                Iltimos, boshqa manzil tanlang yoki keyinroq urinib koʻring.
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <LinearGradient
+            colors={gradients.purple}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.priceBar}
+          >
+            <Text style={styles.priceBarLabel}>{t('order.price')}</Text>
+            <Text style={styles.priceBarValue}>
+              {quote ? `${formatPrice(quote.price)} so'm` : '...'}
+            </Text>
+          </LinearGradient>
+        )}
 
         {/* Action bar: Naqd (left) · Haydovchi topish (center) · ⋮ extra options (right) */}
         <View style={styles.actionBar}>
@@ -325,9 +353,9 @@ export default function NewOrderScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.findBtnWrap}
+            style={[styles.findBtnWrap, routeUnavailable && styles.btnDisabled]}
             onPress={() => submit()}
-            disabled={submitting !== null}
+            disabled={submitting !== null || routeUnavailable}
             activeOpacity={0.9}
           >
             <LinearGradient
@@ -365,9 +393,9 @@ export default function NewOrderScreen() {
             return (
               <TouchableOpacity
                 key={d.id}
-                style={styles.recCard}
+                style={[styles.recCard, routeUnavailable && styles.btnDisabled]}
                 onPress={() => submit(d.id)}
-                disabled={submitting !== null}
+                disabled={submitting !== null || routeUnavailable}
                 activeOpacity={0.85}
               >
                 {photo ? (
@@ -681,6 +709,20 @@ const styles = StyleSheet.create({
   },
   priceBarLabel: { ...typography.bodyBold, color: colors.white },
   priceBarValue: { ...typography.h2, color: colors.white },
+  unavailableBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.errorLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.error,
+  },
+  unavailableIcon: { fontSize: 24, marginRight: spacing.md },
+  unavailableTitle: { ...typography.bodyBold, color: colors.error },
+  unavailableSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  btnDisabled: { opacity: 0.4 },
 
   // Action bar
   actionBar: {

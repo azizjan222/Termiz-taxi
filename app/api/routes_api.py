@@ -76,7 +76,7 @@ async def get_route_price(request: web.Request) -> web.Response:
         )
         if not route:
             return web.json_response(
-                {"error": f"Yo'nalish topilmadi: {from_city} → {to_city}"},
+                {"error": "Bu yoʻnalish hozircha mavjud emas"},
                 status=404,
             )
 
