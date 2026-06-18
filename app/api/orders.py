@@ -88,7 +88,7 @@ def _calc_price_and_commission(
         .first()
     )
     if not route:
-        return 0, 0, f"Yo'nalish topilmadi: {from_city} → {to_city}"
+        return 0, 0, "Bu yoʻnalish hozircha mavjud emas"
 
     if service_type == "parcel":
         # Parcel price is negotiated directly between the passenger and the driver.
