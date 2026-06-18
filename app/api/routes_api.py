@@ -35,6 +35,7 @@ async def list_routes(request: web.Request) -> web.Response:
                     "price_per_person": r.price_per_person,
                     "full_car_price": r.full_car_price,
                     "parcel_price": r.parcel_price,
+                    "distance_km": r.distance_km,
                 }
                 for r in routes
             ],

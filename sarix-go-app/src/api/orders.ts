@@ -10,6 +10,7 @@ export interface Route {
   price_per_person: number;
   full_car_price: number;
   parcel_price: number;
+  distance_km?: number;
 }
 
 export interface PriceQuote {

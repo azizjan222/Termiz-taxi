@@ -23,10 +23,12 @@ export default function HomeScreen() {
 
   const startOrder = (type: 'taxi' | 'parcel') => {
     orderStore.setField('serviceType', type);
-    router.push({
-      pathname: '/route-select',
-      params: { mode: 'from' },
-    });
+    if (type === 'taxi') {
+      // Yandex-style: open the map order entry (auto-detect location + "Qayerga borasiz?").
+      router.push('/order-entry');
+    } else {
+      router.push({ pathname: '/route-select', params: { mode: 'from' } });
+    }
   };
 
   return (
