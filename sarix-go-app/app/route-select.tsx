@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -14,7 +15,8 @@ import { useTranslation } from 'react-i18next';
 
 import { listCities } from '../src/api/orders';
 import { listAddresses, type SavedAddress } from '../src/api/addresses';
-import { suggestAddress, geocodeAddress } from '../src/services/geocoding';
+import { suggestAddress, geocodeAddress, reverseGeocode } from '../src/services/geocoding';
+import { detectLocation } from '../src/services/location';
 import { searchSurxondaryoPlaces, type LocalPlace } from '../src/data/surxondaryoPlaces';
 import { useOrderStore } from '../src/store/order';
 import { colors, typography, spacing, radius } from '../src/theme';
@@ -30,6 +32,7 @@ export default function RouteSelectScreen() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [gpsBusy, setGpsBusy] = useState(false);
 
   useEffect(() => {
     listCities()
@@ -133,6 +136,40 @@ export default function RouteSelectScreen() {
       router.replace(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
     }
   };
+
+  // Detect the device location, reverse-geocode it, and apply it to the active
+  // field (Qayerdan in 'from' mode, Qayerga in 'to' mode), then continue.
+  const handleUseGps = useCallback(async () => {
+    if (gpsBusy) return;
+    setGpsBusy(true);
+    try {
+      const res = await detectLocation({ timeoutMs: 15000 });
+      if (res.status !== 'success') {
+        Alert.alert('Joylashuv', "Joylashuvni aniqlab boʻlmadi. Xaritadan tanlang.");
+        return;
+      }
+      const addr = await reverseGeocode(res.lat, res.lon);
+      const text = addr || 'Joriy joylashuv';
+      const matchedCity =
+        (addr && cities.find((c) => addr.toLowerCase().includes(c.toLowerCase()))) ||
+        text.split(',')[0].trim();
+      if (mode === 'from') {
+        orderStore.setField('fromCity', matchedCity);
+        orderStore.setField('fromAddress', text);
+        orderStore.setField('fromLat', res.lat);
+        orderStore.setField('fromLon', res.lon);
+        router.replace({ pathname: '/route-select', params: { mode: 'to' } });
+      } else {
+        orderStore.setField('toCity', matchedCity);
+        orderStore.setField('toAddress', text);
+        orderStore.setField('toLat', res.lat);
+        orderStore.setField('toLon', res.lon);
+        router.replace(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
+      }
+    } finally {
+      setGpsBusy(false);
+    }
+  }, [gpsBusy, cities, mode, orderStore]);
 
   // Pick a curated Surxondaryo place (tuman / shahar / mahalla / joy). Best-effort
   // geocode (region-biased) to also fill coordinates for driver navigation; if it
@@ -241,6 +278,21 @@ export default function RouteSelectScreen() {
         <Text style={styles.mapBtnIcon}>🗺</Text>
         <Text style={styles.mapBtnText}>Xaritadan tanlash</Text>
         <Text style={styles.mapBtnArrow}>›</Text>
+      </TouchableOpacity>
+
+      {/* Sizning joylashuvingiz — use current GPS location for the active field */}
+      <TouchableOpacity
+        style={styles.gpsRow}
+        onPress={handleUseGps}
+        activeOpacity={0.8}
+        disabled={gpsBusy}
+      >
+        <Text style={styles.gpsIcon}>➤</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.gpsTitle}>Sizning joylashuvingiz</Text>
+          <Text style={styles.gpsSub}>GPS orqali aniqlaymiz</Text>
+        </View>
+        {gpsBusy && <ActivityIndicator size="small" color={colors.primary} />}
       </TouchableOpacity>
 
       {/* Saved addresses quick-pick (Uy / Ish) */}
@@ -380,6 +432,21 @@ const styles = StyleSheet.create({
   mapBtnIcon: { fontSize: 20, marginRight: spacing.sm },
   mapBtnText: { flex: 1, ...typography.bodyBold, color: colors.primary },
   mapBtnArrow: { fontSize: 24, color: colors.textMuted },
+  gpsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  gpsIcon: {
+    fontSize: 18,
+    color: colors.primary,
+    marginRight: spacing.md,
+    transform: [{ rotate: '-45deg' }],
+  },
+  gpsTitle: { ...typography.bodyBold, color: colors.text },
+  gpsSub: { ...typography.caption, color: colors.textSecondary },
   savedSection: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,

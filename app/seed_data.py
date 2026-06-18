@@ -10,31 +10,32 @@
 # Sariosiyo/Uzun <-> Qumqo'rg'on: 70,000
 
 INITIAL_ROUTES = [
+    # (from_city, to_city, price_per_person, distance_km)
     # Termizdan
-    ("Termiz", "Sariosiyo", 90000),
-    ("Termiz", "Uzun", 90000),
-    ("Termiz", "Denov", 80000),
-    ("Termiz", "Sho'rchi", 70000),
+    ("Termiz", "Sariosiyo", 90000, 150),
+    ("Termiz", "Uzun", 90000, 140),
+    ("Termiz", "Denov", 80000, 120),
+    ("Termiz", "Sho'rchi", 70000, 85),
 
     # Termizga (qaytish)
-    ("Sariosiyo", "Termiz", 90000),
-    ("Uzun", "Termiz", 90000),
-    ("Denov", "Termiz", 80000),
-    ("Sho'rchi", "Termiz", 70000),
+    ("Sariosiyo", "Termiz", 90000, 150),
+    ("Uzun", "Termiz", 90000, 140),
+    ("Denov", "Termiz", 80000, 120),
+    ("Sho'rchi", "Termiz", 70000, 85),
 
     # Sariosiyodan
-    ("Sariosiyo", "Jarqo'rg'on", 80000),
-    ("Sariosiyo", "Qumqo'rg'on", 70000),
+    ("Sariosiyo", "Jarqo'rg'on", 80000, 50),
+    ("Sariosiyo", "Qumqo'rg'on", 70000, 75),
 
     # Uzundan
-    ("Uzun", "Jarqo'rg'on", 80000),
-    ("Uzun", "Qumqo'rg'on", 70000),
+    ("Uzun", "Jarqo'rg'on", 80000, 55),
+    ("Uzun", "Qumqo'rg'on", 70000, 70),
 
     # Qaytish
-    ("Jarqo'rg'on", "Sariosiyo", 80000),
-    ("Qumqo'rg'on", "Sariosiyo", 70000),
-    ("Jarqo'rg'on", "Uzun", 80000),
-    ("Qumqo'rg'on", "Uzun", 70000),
+    ("Jarqo'rg'on", "Sariosiyo", 80000, 50),
+    ("Qumqo'rg'on", "Sariosiyo", 70000, 75),
+    ("Jarqo'rg'on", "Uzun", 80000, 55),
+    ("Qumqo'rg'on", "Uzun", 70000, 70),
 ]
 
 
@@ -58,16 +59,20 @@ def seed_routes(session):
 
     existing = session.query(Route).count()
     if existing > 0:
+        # Table already seeded — make sure distances are populated for older rows
+        # so the "long-haul districts (>= 70 km)" picker has data to work with.
+        backfill_route_distances(session)
         return 0
 
     count = 0
-    for from_city, to_city, price in INITIAL_ROUTES:
+    for from_city, to_city, price, distance_km in INITIAL_ROUTES:
         route = Route(
             from_city=from_city,
             to_city=to_city,
             price_per_person=price,
             full_car_price=400000,
             parcel_price=30000,
+            distance_km=distance_km,
             is_active=True,
         )
         session.add(route)
@@ -75,3 +80,23 @@ def seed_routes(session):
 
     session.commit()
     return count
+
+
+def backfill_route_distances(session):
+    """Set distance_km on existing routes that are missing it (legacy rows seeded
+    before distances were added). Idempotent."""
+    from app.models import Route
+
+    updated = 0
+    for from_city, to_city, _price, distance_km in INITIAL_ROUTES:
+        route = (
+            session.query(Route)
+            .filter_by(from_city=from_city, to_city=to_city)
+            .first()
+        )
+        if route and (not route.distance_km or route.distance_km <= 0):
+            route.distance_km = distance_km
+            updated += 1
+    if updated:
+        session.commit()
+    return updated
