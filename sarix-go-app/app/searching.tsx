@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,26 +6,62 @@ import {
   Animated,
   Easing,
   Alert,
+  ScrollView,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '../src/components/Button';
-import { Logo } from '../src/components/Logo';
 import { getOrder, cancelOrder } from '../src/api/orders';
 import { useAuthStore } from '../src/store/auth';
 import { WS_URL } from '../src/api/client';
 import { colors, typography, spacing, radius } from '../src/theme';
 
+const { width: SCREEN_W } = Dimensions.get('window');
+
+// Promo / info banners shown while the passenger waits. They auto-rotate
+// (right -> left) every 7s and can also be swiped manually.
+type Banner = { emoji: string; title: string; text: string; bg: string };
+const BANNERS: Banner[] = [
+  {
+    emoji: '🚖',
+    title: 'Buyurtmangiz qabul qilindi',
+    text: 'Sarix Go yaqin atrofdagi haydovchilarni qidirmoqda — biroz kuting.',
+    bg: '#EDE7FF',
+  },
+  {
+    emoji: '☀️',
+    title: 'Issiqda kutib oʻtirmaysiz',
+    text: 'Taksini koʻchada kutmang — haydovchi oʻzi uyingiz oldidan olib ketadi.',
+    bg: '#FFF3CC',
+  },
+  {
+    emoji: '💳',
+    title: 'Narx oldindan aniq',
+    text: 'Savdolashish yoʻq — narx buyurtma berishdan oldin koʻrsatiladi. Naqd yoki karta.',
+    bg: '#D1FAE5',
+  },
+];
+
+const AUTO_ROTATE_MS = 7000;
+
 export default function SearchingScreen() {
   const { t } = useTranslation();
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const user = useAuthStore((s) => s.user);
-  const [status, setStatus] = useState<string>('new');
+  const [status, setStatus] = useState<'new' | 'accepted'>('new');
   const [elapsed, setElapsed] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const pulseAnim = useRef(new Animated.Value(0)).current;
+
+  // --- Banner carousel state ---
+  const bannerRef = useRef<ScrollView>(null);
+  const [bannerIndex, setBannerIndex] = useState(0);
+  const bannerIndexRef = useRef(0);
 
   // Elapsed timer (counts up mm:ss while waiting for a driver)
   useEffect(() => {
@@ -39,9 +75,9 @@ export default function SearchingScreen() {
   const mmss = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
+  // Pulse animation (only meaningful while searching)
   useEffect(() => {
-    // Pulse animation
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1,
@@ -56,10 +92,33 @@ export default function SearchingScreen() {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
   }, []);
 
-  // Connect to WebSocket
+  // Auto-rotate banners right -> left every 7s.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const next = (bannerIndexRef.current + 1) % BANNERS.length;
+      bannerIndexRef.current = next;
+      setBannerIndex(next);
+      bannerRef.current?.scrollTo({ x: next * SCREEN_W, animated: true });
+    }, AUTO_ROTATE_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const onBannerScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const i = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+      bannerIndexRef.current = i;
+      setBannerIndex(i);
+    },
+    []
+  );
+
+  // Connect to WebSocket — on accept, show the "driver found" status and then
+  // move to the live order screen after a short pause (so the message is seen).
   useEffect(() => {
     if (!user) return;
     const ws = new WebSocket(`${WS_URL}?role=passenger&id=${user.id}`);
@@ -70,7 +129,6 @@ export default function SearchingScreen() {
         const msg = JSON.parse(event.data);
         if (msg.type === 'order_accepted' && msg.order_id?.toString() === orderId) {
           setStatus('accepted');
-          router.replace(`/order/${orderId}`);
         }
       } catch {}
     };
@@ -80,23 +138,28 @@ export default function SearchingScreen() {
     };
   }, [user, orderId]);
 
-  // Polling fallback
+  // Polling fallback (in case the WS event is missed).
   useEffect(() => {
     const id = parseInt(orderId);
     if (!id) return;
-
     const poll = async () => {
       try {
         const order = await getOrder(id);
         if (order.status === 'accepted' || order.status === 'in_progress') {
-          router.replace(`/order/${id}`);
+          setStatus('accepted');
         }
       } catch {}
     };
-
     const interval = setInterval(poll, 5000);
     return () => clearInterval(interval);
   }, [orderId]);
+
+  // Once a driver is found, auto-open the live order screen after a short pause.
+  useEffect(() => {
+    if (status !== 'accepted') return;
+    const tmo = setTimeout(() => router.replace(`/order/${orderId}`), 3500);
+    return () => clearTimeout(tmo);
+  }, [status, orderId]);
 
   const handleCancel = () => {
     Alert.alert(t('order.cancelOrder'), t('common.confirm') + '?', [
@@ -116,107 +179,156 @@ export default function SearchingScreen() {
     ]);
   };
 
-  const scale = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.4],
-  });
-  const opacity = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.6, 0],
-  });
+  const found = status === 'accepted';
+
+  const scale = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] });
+  const opacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] });
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.content}>
-        <View style={styles.pulseContainer}>
-          <Animated.View
-            style={[
-              styles.pulse,
-              { transform: [{ scale }], opacity },
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.pulse,
-              {
-                transform: [{ scale: pulseAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1.2, 1.6],
-                }) }],
-                opacity: pulseAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.3, 0],
-                }),
-              },
-            ]}
-          />
-          <View style={styles.center}>
-            <Logo size="md" variant="light" />
+      {/* Status header (compact — does not cover the whole screen) */}
+      <View style={styles.statusCard}>
+        <View style={styles.statusIconWrap}>
+          {!found && (
+            <Animated.View style={[styles.pulse, { transform: [{ scale }], opacity }]} />
+          )}
+          <View style={[styles.statusIcon, found && styles.statusIconFound]}>
+            <Text style={styles.statusEmoji}>{found ? '✅' : '🔍'}</Text>
           </View>
         </View>
 
-        <Text style={styles.title}>{t('order.searching')}</Text>
-        <Text style={styles.timer}>{mmss(elapsed)}</Text>
-        <Text style={styles.subtitle}>
-          Haydovchi qidirilmoqda... Haydovchi zakasni qabul qilishi bilan tez orada siz bilan bog'lanadi.
-        </Text>
+        <Text style={styles.sentLabel}>✓ Zakas yuborildi</Text>
+
+        {found ? (
+          <>
+            <Text style={styles.statusTitle}>Holat: Haydovchi topildi</Text>
+            <Text style={styles.statusSub}>Tez orada siz bilan bogʻlanadi…</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.statusTitle}>Holat: Haydovchi qidirilmoqda</Text>
+            <Text style={styles.timer}>{mmss(elapsed)}</Text>
+            <Text style={styles.statusSub}>
+              Haydovchi zakasni qabul qilishi bilan xabar beramiz.
+            </Text>
+          </>
+        )}
+      </View>
+
+      {/* Swipeable, auto-rotating info banners */}
+      <View style={styles.bannerArea}>
+        <ScrollView
+          ref={bannerRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={onBannerScrollEnd}
+          scrollEventThrottle={16}
+        >
+          {BANNERS.map((b, i) => (
+            <View key={i} style={styles.bannerPage}>
+              <View style={[styles.banner, { backgroundColor: b.bg }]}>
+                <Text style={styles.bannerEmoji}>{b.emoji}</Text>
+                <Text style={styles.bannerTitle}>{b.title}</Text>
+                <Text style={styles.bannerText}>{b.text}</Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+        {/* Dots */}
+        <View style={styles.dots}>
+          {BANNERS.map((_, i) => (
+            <View key={i} style={[styles.dot, i === bannerIndex && styles.dotActive]} />
+          ))}
+        </View>
       </View>
 
       <View style={styles.footer}>
-        <Button
-          title={t('order.cancelOrder')}
-          onPress={handleCancel}
-          variant="outline"
-        />
+        {found ? (
+          <Button title="Buyurtmani koʻrish" onPress={() => router.replace(`/order/${orderId}`)} />
+        ) : (
+          <Button title={t('order.cancelOrder')} onPress={handleCancel} variant="outline" />
+        )}
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.primary },
-  content: {
-    flex: 1,
+  container: { flex: 1, backgroundColor: colors.background },
+  statusCard: {
     alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
   },
-  pulseContainer: {
-    width: 200,
-    height: 200,
+  statusIconWrap: {
+    width: 96,
+    height: 96,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
   },
   pulse: {
     position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: colors.accent,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primary,
   },
-  center: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: colors.white,
+  statusIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { ...typography.h2, color: colors.white, textAlign: 'center' },
+  statusIconFound: { backgroundColor: colors.success },
+  statusEmoji: { fontSize: 32 },
+  sentLabel: { ...typography.caption, color: colors.success, fontWeight: '700', marginBottom: spacing.xs },
+  statusTitle: { ...typography.h3, color: colors.text, textAlign: 'center' },
   timer: {
-    ...typography.h1,
-    color: colors.white,
+    ...typography.h2,
+    color: colors.primary,
     textAlign: 'center',
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
     fontVariant: ['tabular-nums'],
   },
-  subtitle: {
+  statusSub: {
     ...typography.body,
-    color: colors.white,
-    opacity: 0.8,
-    marginTop: spacing.sm,
+    color: colors.textSecondary,
     textAlign: 'center',
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
   },
+  bannerArea: { flex: 1, justifyContent: 'center' },
+  bannerPage: {
+    width: SCREEN_W,
+    paddingHorizontal: spacing.lg,
+    justifyContent: 'center',
+  },
+  banner: {
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    minHeight: 160,
+    justifyContent: 'center',
+  },
+  bannerEmoji: { fontSize: 40, marginBottom: spacing.sm },
+  bannerTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.xs },
+  bannerText: { ...typography.body, color: colors.text, opacity: 0.8 },
+  dots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    gap: 6,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.divider,
+  },
+  dotActive: { backgroundColor: colors.primary, width: 20 },
   footer: { padding: spacing.lg },
 });
