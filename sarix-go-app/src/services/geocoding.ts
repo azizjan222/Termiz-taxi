@@ -32,6 +32,12 @@ const JS_API_KEY =
 // Russian gives the most complete address coverage for the Termiz/Surxondaryo region.
 const GEO_LANG = 'ru_RU';
 
+// The Geosuggest (autocomplete) API uses a TWO-letter ISO 639-1 code (e.g. "uz"),
+// unlike the HTTP Geocoder which needs the 5-letter "ru_RU" form and does NOT
+// support Uzbek. Geosuggest DOES support Uzbek, so address suggestions come back
+// in Uzbek (e.g. "Mustaqillik koʻchasi") instead of Russian.
+const SUGGEST_LANG = 'uz';
+
 export interface GeoResult {
   address: string;
   lat: number;
@@ -111,7 +117,7 @@ export async function suggestAddress(query: string): Promise<string[]> {
     try {
       const url =
         `https://suggest-maps.yandex.ru/v1/suggest?apikey=${SUGGEST_KEY}` +
-        `&text=${encodeURIComponent(query)}&lang=${GEO_LANG}&results=7` +
+        `&text=${encodeURIComponent(query)}&lang=${SUGGEST_LANG}&results=7` +
         // Bias results to the whole Surxondaryo region (centered between Termiz and
         // Denov) so streets, buildings, villages and intersections across the
         // region surface, not just central Termiz.
