@@ -21,7 +21,9 @@ ENV/
 *.sqlite3
 
 # Data files (preserve structure but ignore content during dev)
-data/
+# Anchored to the repo root so it only ignores the backend's runtime data dir
+# (e.g. ./data/*.sqlite) and NOT app source dirs like sarix-go-app/src/data/.
+/data/
 taksi_baza.json
 
 # IDE
