@@ -57,10 +57,9 @@ export default function LoginScreen() {
             ]);
           } else if (r.status === 'documents_required') {
             stopPolling(); setTgWaiting(false);
-            Alert.alert("📄 Hujjatlar kerak", r.message || "Ilovaga kirish uchun botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").", [
-              { text: 'Bekor qilish', style: 'cancel' },
-              { text: "Botga o'tish", onPress: openBot },
-            ]);
+            // Authenticated, but documents still needed -> collect them IN THE APP.
+            if (r.driver) setDriver(r.driver);
+            router.replace('/driver-documents');
           } else if (r.status === 'blocked') {
             stopPolling(); setTgWaiting(false); setError(r.message || 'Bloklangan');
           } else if (r.status === 'expired') {

@@ -154,6 +154,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/driver/telegram/check", drivers_api.driver_telegram_check)
     app.router.add_get("/api/driver/me", drivers_api.driver_me)
     app.router.add_patch("/api/driver/me", drivers_api.driver_update_me)
+    app.router.add_post("/api/driver/documents/submit", drivers_api.submit_documents)
     app.router.add_get("/api/car-models", drivers_api.get_car_models)
     app.router.add_post("/api/driver/online", drivers_api.driver_set_online)
     app.router.add_post("/api/driver/location", drivers_api.driver_update_location)

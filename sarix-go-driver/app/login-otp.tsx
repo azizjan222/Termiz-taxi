@@ -46,7 +46,12 @@ export default function LoginOtpScreen() {
     try {
       const res = await verifyDriverOtp(phone, c);
       setDriver(res.driver);
-      router.replace('/(main)/orders');
+      // If documents are still required, collect them in-app first.
+      if ((res as any).documents_required || res.driver?.documents_required) {
+        router.replace('/driver-documents');
+      } else {
+        router.replace('/(main)/orders');
+      }
     } catch (e: any) {
       const msg = e?.response?.data?.error || "Kod noto'g'ri";
       setError(msg);

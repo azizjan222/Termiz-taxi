@@ -99,8 +99,10 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" />
+          <Stack.Screen name="language" />
           <Stack.Screen name="login" />
           <Stack.Screen name="login-otp" />
+          <Stack.Screen name="driver-documents" />
           <Stack.Screen name="(main)" />
           <Stack.Screen name="order/[id]" />
           <Stack.Screen name="ai-chat" options={{ presentation: 'modal' }} />
