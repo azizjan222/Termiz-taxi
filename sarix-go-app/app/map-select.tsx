@@ -22,7 +22,7 @@ const DEFAULT_LON = 67.278;
 
 // Detection tuning constants
 const DETECTION_TIMEOUT_MS = 15000; // Detection_Timeout (R3.2, R3.4, R7.5)
-const ACCURACY_THRESHOLD_M = 10; // desired precision radius (m): fixes worse than this only show an advisory hint
+const ACCURACY_THRESHOLD_M = 5; // desired precision radius (m): fixes worse than this only show an advisory hint
 const DETECT_ZOOM = 16; // street-level zoom (R4.3)
 
 type Notice = {
