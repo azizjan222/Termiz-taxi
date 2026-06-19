@@ -274,10 +274,17 @@ async def driver_login(request: web.Request) -> web.Response:
 
         if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
                 and not _is_test_driver(driver.phone)):
+            # Documents are still required. Instead of locking the driver out (and
+            # sending them to the bot), authenticate them anyway — issue a token —
+            # and flag the response so the app opens the in-app document upload
+            # screen. The driver can finish onboarding entirely inside the app.
+            token = _create_driver_token(driver)
             return web.json_response({
-                "error": "Ilovaga kirish uchun avval botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
-                "code": "documents_required",
-            }, status=403)
+                "success": True,
+                "documents_required": True,
+                "token": token,
+                "driver": _serialize_driver(driver),
+            })
 
         _grant_free_trial_if_eligible(session, driver)
         token = _create_driver_token(driver)
@@ -394,10 +401,17 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
 
         if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
                 and not _is_test_driver(driver.phone)):
+            # Documents are still required. Instead of locking the driver out (and
+            # sending them to the bot), authenticate them anyway — issue a token —
+            # and flag the response so the app opens the in-app document upload
+            # screen. The driver can finish onboarding entirely inside the app.
+            token = _create_driver_token(driver)
             return web.json_response({
-                "error": "Ilovaga kirish uchun avval botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
-                "code": "documents_required",
-            }, status=403)
+                "success": True,
+                "documents_required": True,
+                "token": token,
+                "driver": _serialize_driver(driver),
+            })
 
         from datetime import datetime
         driver.last_active = datetime.utcnow()
@@ -440,11 +454,53 @@ def _serialize_driver(d: Driver) -> dict:
         "total_orders": d.total_orders,
         "is_online": d.is_online,
         "documents_submitted": bool(d.documents_submitted),
+        # True when the app must show the in-app document upload screen before
+        # granting access (config gate, not yet submitted, not a test driver).
+        "documents_required": bool(
+            config.REQUIRE_DRIVER_DOCUMENTS
+            and not d.documents_submitted
+            and not _is_test_driver(d.phone)
+        ),
         "is_verified": bool(d.is_verified),
         "subscription_until": iso_utc(d.subscription_until),
         "has_active_subscription": _subscription_active(d),
         "subscription_days_left": _subscription_days_left(d),
     }
+
+
+@require_driver
+async def submit_documents(request: web.Request) -> web.Response:
+    """POST /api/driver/documents/submit
+
+    Marks the driver's documents as submitted AFTER they've uploaded the required
+    photos in the app (license + tech passport + car photo). This replaces the old
+    bot-only document flow: the driver can now finish onboarding inside the app.
+    """
+    driver: Driver = request["driver"]
+    session = get_session()
+    try:
+        d = session.query(Driver).filter_by(id=driver.id).first()
+        if not d:
+            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        # Require the key documents to be present before unlocking app access.
+        missing = []
+        if not d.license_photo_url:
+            missing.append("haydovchilik guvohnomasi")
+        if not d.tech_passport_url:
+            missing.append("texnik pasport")
+        if not d.car_photo_url:
+            missing.append("mashina rasmi")
+        if missing:
+            return web.json_response(
+                {"error": "Avval quyidagilarni yuklang: " + ", ".join(missing)},
+                status=400,
+            )
+        d.documents_submitted = True
+        session.commit()
+        session.refresh(d)
+        return web.json_response({"success": True, "driver": _serialize_driver(d)})
+    finally:
+        session.close()
 
 
 def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
@@ -1202,10 +1258,19 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
 
         if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
                 and not _is_test_driver(driver.phone)):
+            # Issue a token so the driver can upload documents inside the app
+            # (instead of being redirected to the bot).
+            if tg_id and not driver.telegram_id:
+                driver.telegram_id = tg_id
+            driver.last_active = datetime.utcnow()
+            db.commit()
+            db.refresh(driver)
+            jwt_token = _create_driver_token(driver)
             return web.json_response({
                 "status": "documents_required",
-                "message": "Ilovaga kirish uchun botda hujjatlaringizni yuboring (\"Haydovchi bo'lish\").",
-                "bot_username": _cfg.BOT_USERNAME,
+                "token": jwt_token,
+                "driver": _serialize_driver(driver),
+                "message": "Ilovada hujjatlaringizni yuklang.",
             })
 
         # Link telegram_id if missing

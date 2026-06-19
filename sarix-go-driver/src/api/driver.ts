@@ -23,6 +23,7 @@ export interface Driver {
   total_orders: number;
   is_online: boolean;
   documents_submitted?: boolean;
+  documents_required?: boolean;
   is_verified?: boolean;
   subscription_until?: string | null;
   has_active_subscription?: boolean;
@@ -227,6 +228,24 @@ export async function uploadLicenseImage(uri: string): Promise<{ url: string }> 
   return response.data;
 }
 
+export async function uploadCarPhoto(uri: string): Promise<{ url: string }> {
+  const response = await api.post<{ url: string; success: boolean }>(
+    '/api/driver/upload/car-photo',
+    buildImageForm(uri, 'car.jpg'),
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
+}
+
+/**
+ * Finalize in-app document submission: unlocks app access once the required
+ * photos (license + tech passport + car) are uploaded. Returns the updated driver.
+ */
+export async function submitDocuments(): Promise<{ success: boolean; driver: Driver }> {
+  const response = await api.post('/api/driver/documents/submit');
+  return response.data;
+}
+
 export interface CarModelsResponse {
   models: string[];
   popular: string[];
@@ -267,7 +286,12 @@ export async function telegramCheck(token: string): Promise<TgCheckResponse> {
   const response = await api.get<TgCheckResponse>('/api/driver/telegram/check', {
     params: { token },
   });
-  if (response.data.status === 'verified' && response.data.token) {
+  // Store the token both when fully verified AND when documents are still required,
+  // so the driver can upload their documents in-app (authenticated requests).
+  if (
+    (response.data.status === 'verified' || response.data.status === 'documents_required') &&
+    response.data.token
+  ) {
     await setAuthToken(response.data.token);
   }
   return response.data;
