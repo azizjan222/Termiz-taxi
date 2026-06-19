@@ -1,25 +1,20 @@
-name: OTA Update Passenger App
-
-# Over-the-air (OTA) JS update via EAS Update. Publishes the new JavaScript
-# bundle to the "preview" channel WITHOUT a full native rebuild. Existing
-# installed apps pick up the change on next launch.
+# OTA Update Passenger App
 #
-# IMPORTANT: OTA can only ship JS/asset changes. Native changes (new native
-# dependency, app.json plugins/permissions, SDK upgrade, version bump) still
-# require a full build via the "Build Passenger App" workflow.
+# DISABLED: Over-the-air updates are turned off. expo-updates was removed from the
+# app (it was auto-publishing unverified bundles to installed apps on every merge,
+# which broke launch/login). This workflow is manual-only and will NOT run on push.
+# OTA can be re-enabled later only after a STABLE EAS projectId is committed to
+# app.json (extra.eas.projectId) so builds and updates target the same project.
+name: OTA Update Passenger App (DISABLED)
 
 on:
+  # Manual only. Does NOT auto-run on push (that auto-push bricked installed apps).
   workflow_dispatch:
     inputs:
       message:
         description: "Update message"
         required: false
         default: "Manual OTA update"
-  push:
-    branches: [main]
-    paths:
-      - 'sarix-go-app/**'
-      - '.github/workflows/update-passenger.yml'
 
 jobs:
   update:
