@@ -86,12 +86,11 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
     }
 
     // 4. Acquire a single bounded position fix (R3.1, R3.2, R3.4, R7.5).
-    // High accuracy targets a ~10 m radius (vs Balanced ~100 m), so the detected
-    // point — and the address resolved from it — closely matches where the user
-    // actually stands.
+    // Highest accuracy targets the tightest possible radius (~5 m) so the detected
+    // point — and the address resolved from it — matches where the user stands.
     const TIMEOUT = Symbol('location-timeout');
     const positionPromise = Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.High,
+      accuracy: Location.Accuracy.Highest,
     });
     const timeoutPromise = new Promise<typeof TIMEOUT>((resolve) => {
       timer = setTimeout(() => resolve(TIMEOUT), timeoutMs);

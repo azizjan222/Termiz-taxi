@@ -147,7 +147,7 @@ const LOGO_SIZE = width * 0.4;
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 999,
@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.h1,
-    color: colors.white,
+    color: colors.primary,
     textAlign: 'center',
     marginTop: spacing.xl,
     letterSpacing: 2,
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     ...typography.body,
-    color: colors.accent,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.xs,
     letterSpacing: 1,

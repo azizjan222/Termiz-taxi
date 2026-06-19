@@ -80,7 +80,7 @@ export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 999,
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   logo: { width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: LOGO_SIZE * 0.22 },
   title: {
     ...typography.h1,
-    color: colors.white,
+    color: colors.primary,
     textAlign: 'center',
     marginTop: spacing.xl,
     letterSpacing: 2,
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     ...typography.body,
-    color: colors.accent,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.xs,
     letterSpacing: 1,

@@ -149,6 +149,8 @@ export default function OrderEntryScreen() {
     router.push(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
   };
 
+  const isParcel = orderStore.serviceType === 'parcel';
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Map */}
@@ -173,7 +175,7 @@ export default function OrderEntryScreen() {
             </View>
           ) : (
             <Text style={styles.topAddr} numberOfLines={1}>
-              {address || 'Joylashuv aniqlanmadi'}
+              {address || `📍 ${center.lat.toFixed(5)}, ${center.lon.toFixed(5)}`}
             </Text>
           )}
         </View>
@@ -203,12 +205,14 @@ export default function OrderEntryScreen() {
       <View style={styles.sheet}>
         <View style={styles.sheetHandle} />
         <View style={styles.sheetHeader}>
-          <Text style={styles.sheetLogo}>🚕</Text>
-          <Text style={styles.sheetTitle}>Taksi</Text>
+          <Text style={styles.sheetLogo}>{isParcel ? '📦' : '🚕'}</Text>
+          <Text style={styles.sheetTitle}>{isParcel ? 'Pochta' : 'Taksi'}</Text>
         </View>
 
         <TouchableOpacity style={styles.whereToBtn} onPress={handleWhereTo} activeOpacity={0.85}>
-          <Text style={styles.whereToText}>Qayerga borasiz?</Text>
+          <Text style={styles.whereToText}>
+            {isParcel ? 'Pochtani qayerga yuboramiz?' : 'Qayerga borasiz?'}
+          </Text>
           <View style={styles.whereToArrow}>
             <Text style={styles.whereToArrowText}>›</Text>
           </View>

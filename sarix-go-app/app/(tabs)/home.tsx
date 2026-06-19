@@ -23,12 +23,9 @@ export default function HomeScreen() {
 
   const startOrder = (type: 'taxi' | 'parcel') => {
     orderStore.setField('serviceType', type);
-    if (type === 'taxi') {
-      // Yandex-style: open the map order entry (auto-detect location + "Qayerga borasiz?").
-      router.push('/order-entry');
-    } else {
-      router.push({ pathname: '/route-select', params: { mode: 'from' } });
-    }
+    // Both taxi and parcel use the Yandex-style map order entry (auto-detect
+    // location + destination). The labels inside adapt to the service type.
+    router.push('/order-entry');
   };
 
   return (
