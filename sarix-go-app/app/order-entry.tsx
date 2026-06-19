@@ -54,11 +54,19 @@ export default function OrderEntryScreen() {
     debounceRef.current = setTimeout(async () => {
       const reqId = ++reqIdRef.current;
       try {
-        const result = await reverseGeocode(lat, lon);
+        // Primary: in-map ymaps.geocode (works with the JS key + Uzbek locale).
+        // Fallback: HTTP geocoder (needs a Geocoder-enabled key).
+        let result: string | null = null;
+        try {
+          result = (await mapRef.current?.reverseGeocode(lat, lon)) ?? null;
+        } catch {}
+        if (!result) {
+          try {
+            result = await reverseGeocode(lat, lon);
+          } catch {}
+        }
         if (reqId !== reqIdRef.current) return;
         setAddress(result || '');
-      } catch {
-        if (reqId === reqIdRef.current) setAddress('');
       } finally {
         if (reqId === reqIdRef.current) setResolving(false);
       }

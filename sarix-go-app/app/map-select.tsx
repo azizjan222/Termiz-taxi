@@ -65,12 +65,19 @@ export default function MapSelectScreen() {
     debounceRef.current = setTimeout(async () => {
       const reqId = ++reqIdRef.current;
       try {
-        const result = await reverseGeocode(lat, lon);
+        // Primary: in-map ymaps.geocode (JS key + Uzbek locale); fallback: HTTP geocoder.
+        let result: string | null = null;
+        try {
+          result = (await mapRef.current?.reverseGeocode(lat, lon)) ?? null;
+        } catch {}
+        if (!result) {
+          try {
+            result = await reverseGeocode(lat, lon);
+          } catch {}
+        }
         // Ignore stale responses
         if (reqId !== reqIdRef.current) return;
         setAddress(result || '');
-      } catch {
-        if (reqId === reqIdRef.current) setAddress('');
       } finally {
         if (reqId === reqIdRef.current) setResolving(false);
       }
