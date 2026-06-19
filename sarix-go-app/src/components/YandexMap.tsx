@@ -28,6 +28,13 @@ export interface YandexMapHandle {
   setCenter: (lat: number, lon: number, zoom?: number) => void;
   fitBounds: (markers: MapMarker[]) => void;
   drawRoute: (from: [number, number], to: [number, number]) => void;
+  /**
+   * Reverse-geocode a coordinate using the in-map Yandex JS API (ymaps.geocode).
+   * This reuses the SAME (working) JS API key that renders the map and the map's
+   * uz_UZ locale, so it returns Uzbek address names WITHOUT needing a separate
+   * HTTP Geocoder key. Resolves to the address string, or null if unavailable.
+   */
+  reverseGeocode: (lat: number, lon: number) => Promise<string | null>;
 }
 
 // JavaScript Maps API key (for the WebView map). This is DIFFERENT from the Geocoder key.
@@ -61,10 +68,26 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
     webViewRef.current?.injectJavaScript(js);
   };
 
+  // Pending in-map reverse-geocode requests, keyed by an incrementing id.
+  const geocodeReqId = useRef(0);
+  const pendingGeocodes = useRef<
+    Map<number, { resolve: (v: string | null) => void; timer: ReturnType<typeof setTimeout> }>
+  >(new Map());
+
   useImperativeHandle(ref, () => ({
     setCenter: (lat, lon, zoom) => sendCommand({ type: 'setCenter', lat, lon, zoom }),
     fitBounds: (markers) => sendCommand({ type: 'fitBounds', markers }),
     drawRoute: (from, to) => sendCommand({ type: 'drawRoute', from, to }),
+    reverseGeocode: (lat, lon) =>
+      new Promise<string | null>((resolve) => {
+        const reqId = ++geocodeReqId.current;
+        const timer = setTimeout(() => {
+          pendingGeocodes.current.delete(reqId);
+          resolve(null);
+        }, 8000);
+        pendingGeocodes.current.set(reqId, { resolve, timer });
+        sendCommand({ type: 'geocode', reqId, lat, lon });
+      }),
   }));
 
   // Update markers when props change
@@ -95,6 +118,15 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
         case 'cameraMove':
           props.onCameraMove?.(data.lat, data.lon, data.zoom);
           break;
+        case 'geocodeResult': {
+          const p = pendingGeocodes.current.get(data.reqId);
+          if (p) {
+            clearTimeout(p.timer);
+            pendingGeocodes.current.delete(data.reqId);
+            p.resolve(data.address ? String(data.address) : null);
+          }
+          break;
+        }
       }
     } catch {}
   };
@@ -305,12 +337,33 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     });
   }
 
+  // Reverse-geocode using the in-map JS API (same working key + uz_UZ locale).
+  function reverseGeocode(reqId, lat, lon) {
+    try {
+      ymaps.geocode([lat, lon], { results: 1 }).then(function(res) {
+        var obj = res.geoObjects.get(0);
+        var text = '';
+        if (obj) {
+          try { text = obj.getAddressLine(); } catch (e) {}
+          if (!text) { try { text = obj.properties.get('text'); } catch (e) {} }
+          if (!text) { try { text = obj.properties.get('name'); } catch (e) {} }
+        }
+        send({ type: 'geocodeResult', reqId: reqId, address: text || '' });
+      }, function(err) {
+        send({ type: 'geocodeResult', reqId: reqId, address: '', error: String(err) });
+      });
+    } catch (e) {
+      send({ type: 'geocodeResult', reqId: reqId, address: '', error: String(e) });
+    }
+  }
+
   window.handleCommand = function(cmd) {
     switch (cmd.type) {
       case 'setCenter': setCenter(cmd.lat, cmd.lon, cmd.zoom); break;
       case 'setMarkers': setMarkers(cmd.markers || []); break;
       case 'fitBounds': fitBounds(cmd.markers || []); break;
       case 'drawRoute': drawRoute(cmd.from, cmd.to); break;
+      case 'geocode': reverseGeocode(cmd.reqId, cmd.lat, cmd.lon); break;
     }
   };
 
