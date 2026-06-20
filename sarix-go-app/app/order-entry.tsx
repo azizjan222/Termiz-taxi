@@ -289,6 +289,22 @@ export default function OrderEntryScreen() {
         {gpsBusy && <ActivityIndicator size="small" color={colors.primary} />}
       </TouchableOpacity>
 
+      {/* Xaritadan tanlash — pick the active field on the map */}
+      <TouchableOpacity
+        style={styles.mapRow}
+        onPress={() => router.push({ pathname: '/map-select', params: { mode: active } })}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.mapRowIcon}>🗺</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.gpsTitle}>Xaritadan tanlash</Text>
+          <Text style={styles.gpsSub}>
+            {active === 'from' ? fromHint : toHint} — xaritada belgilang
+          </Text>
+        </View>
+        <Text style={styles.cityArrow}>›</Text>
+      </TouchableOpacity>
+
       {/* Saved addresses */}
       {savedAddresses.length > 0 && (
         <View style={styles.savedSection}>
@@ -473,6 +489,17 @@ const styles = StyleSheet.create({
   },
   gpsTitle: { ...typography.bodyBold, color: colors.text },
   gpsSub: { ...typography.caption, color: colors.textSecondary },
+
+  mapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  mapRowIcon: { fontSize: 18, marginRight: spacing.md },
 
   savedSection: { marginHorizontal: spacing.lg, marginTop: spacing.xs },
   savedItem: {

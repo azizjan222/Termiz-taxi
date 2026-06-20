@@ -17,7 +17,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Manzilni qanday tanlayman?',
-    a: "Manzil tanlashda \"Sizning joylashuvingiz\" (GPS) tugmasini bosing, saqlangan \"Uy\"/\"Ish\" manzillaringizdan tanlang yoki qidiruvdan joy nomini kiriting.",
+    a: "Manzil tanlashda \"Sizning joylashuvingiz\" (GPS) tugmasini bosing, \"Xaritadan tanlash\" orqali xaritada belgilang, saqlangan \"Uy\"/\"Ish\" manzillaringizdan tanlang yoki qidiruvdan joy nomini kiriting.",
   },
   {
     q: 'Haydovchi qayerdaligini ko\'ra olamanmi?',
