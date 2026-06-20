@@ -1,376 +1,557 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  FlatList,
   TouchableOpacity,
+  TextInput,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
-import YandexMap, { YandexMapHandle } from '../src/components/YandexMap';
-import { reverseGeocode } from '../src/services/geocoding';
+import { listCities } from '../src/api/orders';
+import { listAddresses, type SavedAddress } from '../src/api/addresses';
+import { suggestAddress, geocodeAddress, reverseGeocode } from '../src/services/geocoding';
 import { detectLocation } from '../src/services/location';
-import { listCities, listRoutes } from '../src/api/orders';
+import { searchSurxondaryoPlaces, type LocalPlace } from '../src/data/surxondaryoPlaces';
 import { useOrderStore } from '../src/store/order';
 import { colors, typography, spacing, radius } from '../src/theme';
 
-// Termiz, Surxondaryo (default center)
-const DEFAULT_LAT = 37.224;
-const DEFAULT_LON = 67.278;
-const DETECT_ZOOM = 16;
-const LONG_HAUL_MIN_KM = 70; // "masofasi 70 km kam bo'lmagan tumanlar"
+type Field = 'from' | 'to';
 
 /**
- * Yandex-Go-style taxi order entry:
- *  - full-screen map, auto-detects the device location on mount (asks GPS
- *    permission automatically)
- *  - the map center is the pickup point; the top card shows its address
- *    ("Manzilingiz")
- *  - bottom sheet: "Qayerga borasiz?" (-> destination picker) and 2 quick
- *    long-haul districts (>= 70 km away) pulled from the app's route data
+ * List-style address entry (no map) — matches the requested Yandex-Go layout:
+ *  - a card with two rows: pickup ("Qayerdan ketasiz?") and destination
+ *    ("Qayerga borasiz?"); the active row is highlighted
+ *  - "Sizning joylashuvingiz" → detects the current GPS location for the active
+ *    field
+ *  - saved addresses, Yandex Suggest results, and the curated Surxondaryo place
+ *    list — selecting any of them fills the active field
+ *
+ * Works for both taxi and parcel (labels adapt). Picking the pickup advances to
+ * the destination; once BOTH are set the flow continues (taxi → /new-order,
+ * parcel → /tariff).
  */
 export default function OrderEntryScreen() {
   const orderStore = useOrderStore();
+  const isParcel = orderStore.serviceType === 'parcel';
 
-  const [center, setCenter] = useState<{ lat: number; lon: number }>({
-    lat: orderStore.fromLat ?? DEFAULT_LAT,
-    lon: orderStore.fromLon ?? DEFAULT_LON,
-  });
-  const [address, setAddress] = useState('');
-  const [resolving, setResolving] = useState(false);
-  const [detecting, setDetecting] = useState(false);
+  const [active, setActive] = useState<Field>('from');
   const [cities, setCities] = useState<string[]>([]);
-  const [longHaul, setLongHaul] = useState<string[]>([]);
-
-  const mapRef = useRef<YandexMapHandle>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reqIdRef = useRef(0);
-
-  const resolveAddress = useCallback((lat: number, lon: number) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    setResolving(true);
-    debounceRef.current = setTimeout(async () => {
-      const reqId = ++reqIdRef.current;
-      try {
-        // Primary: in-map ymaps.geocode (works with the JS key + Uzbek locale).
-        // Fallback: HTTP geocoder (needs a Geocoder-enabled key).
-        let result: string | null = null;
-        try {
-          result = (await mapRef.current?.reverseGeocode(lat, lon)) ?? null;
-        } catch {}
-        if (!result) {
-          try {
-            result = await reverseGeocode(lat, lon);
-          } catch {}
-        }
-        if (reqId !== reqIdRef.current) return;
-        setAddress(result || '');
-      } finally {
-        if (reqId === reqIdRef.current) setResolving(false);
-      }
-    }, 500);
-  }, []);
-
-  const deriveCity = useCallback(
-    (resolved: string): string => {
-      const matched = cities.find((c) =>
-        resolved.toLowerCase().includes(c.toLowerCase())
-      );
-      if (matched) return matched;
-      const parts = resolved.split(',').map((p) => p.trim()).filter(Boolean);
-      if (parts.length >= 3) return parts[parts.length - 2];
-      if (parts.length >= 1) return parts[0];
-      return resolved;
-    },
-    [cities]
-  );
-
-  // Auto-detect the device location on mount (requests GPS permission).
-  const detect = useCallback(async () => {
-    setDetecting(true);
-    try {
-      const result = await detectLocation({ timeoutMs: 15000 });
-      if (result.status === 'success') {
-        setCenter({ lat: result.lat, lon: result.lon });
-        mapRef.current?.setCenter(result.lat, result.lon, DETECT_ZOOM);
-        resolveAddress(result.lat, result.lon);
-      } else {
-        // Fall back to default center; still resolve an address for it.
-        resolveAddress(center.lat, center.lon);
-      }
-    } finally {
-      setDetecting(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolveAddress]);
+  const [search, setSearch] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [gpsBusy, setGpsBusy] = useState(false);
 
   useEffect(() => {
     listCities().then(setCities).catch(() => setCities([]));
-    detect();
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    listAddresses().then(setSavedAddresses).catch(() => setSavedAddresses([]));
   }, []);
 
-  // Compute 2 long-haul (>= 70 km) destination districts from the pickup city.
+  // Debounced Yandex Suggest search (only when the query isn't an exact city).
   useEffect(() => {
-    const pickupCity = address ? deriveCity(address) : null;
-    listRoutes()
-      .then(({ routes }) => {
-        const farEnough = routes.filter((r) => (r.distance_km ?? 0) >= LONG_HAUL_MIN_KM);
-        const fromHere = pickupCity
-          ? farEnough.filter((r) => r.from_city.toLowerCase() === pickupCity.toLowerCase())
-          : [];
-        const pick = (fromHere.length ? fromHere : farEnough).map((r) => r.to_city);
-        const unique = Array.from(new Set(pick)).filter((c) => c !== pickupCity);
-        setLongHaul(unique.slice(0, 2));
-      })
-      .catch(() => setLongHaul([]));
-  }, [address, deriveCity]);
+    if (search.length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const matchesCity = cities.some((c) => c.toLowerCase() === search.toLowerCase());
+    if (matchesCity) {
+      setShowSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setLoadingSuggestions(true);
+      try {
+        const results = await suggestAddress(search);
+        setSuggestions(results);
+        setShowSuggestions(results.length > 0);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [search, cities]);
 
-  const handleCameraMove = (lat: number, lon: number) => {
-    setCenter({ lat, lon });
-    resolveAddress(lat, lon);
-  };
-
-  // Persist the current map center as the pickup point in the order store.
-  const savePickup = useCallback(() => {
-    const resolved = address || '';
-    orderStore.setField('fromCity', resolved ? deriveCity(resolved) : 'Joriy joylashuv');
-    orderStore.setField('fromAddress', resolved);
-    orderStore.setField('fromLat', center.lat);
-    orderStore.setField('fromLon', center.lon);
-  }, [address, center, deriveCity, orderStore]);
-
-  const handleWhereTo = () => {
-    savePickup();
-    router.push({ pathname: '/route-select', params: { mode: 'to' } });
-  };
-
-  const handleQuickDestination = (district: string) => {
-    savePickup();
-    orderStore.setField('toCity', district);
-    orderStore.setField('toAddress', '');
+  // Continue once both endpoints are set: taxi → step-by-step order; parcel → tariff.
+  const proceed = useCallback(() => {
     router.push(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
+  }, [orderStore.serviceType]);
+
+  // Apply a chosen address/city (+ optional coords) to the active field, then
+  // advance: if the other field is still empty, focus it; otherwise continue.
+  const applySelection = useCallback(
+    (field: Field, city: string, address: string, lat?: number, lon?: number) => {
+      if (field === 'from') {
+        orderStore.setField('fromCity', city);
+        orderStore.setField('fromAddress', address);
+        if (lat != null) orderStore.setField('fromLat', lat);
+        if (lon != null) orderStore.setField('fromLon', lon);
+      } else {
+        orderStore.setField('toCity', city);
+        orderStore.setField('toAddress', address);
+        if (lat != null) orderStore.setField('toLat', lat);
+        if (lon != null) orderStore.setField('toLon', lon);
+      }
+      setSearch('');
+      setShowSuggestions(false);
+
+      const otherFilled =
+        field === 'from'
+          ? !!(orderStore.toCity || orderStore.toAddress)
+          : !!(orderStore.fromCity || orderStore.fromAddress);
+      if (otherFilled) {
+        proceed();
+      } else {
+        setActive(field === 'from' ? 'to' : 'from');
+      }
+    },
+    [orderStore, proceed]
+  );
+
+  const matchCity = useCallback(
+    (text: string, fallback: string) =>
+      cities.find((c) => text.toLowerCase().includes(c.toLowerCase())) || fallback,
+    [cities]
+  );
+
+  // "Sizning joylashuvingiz" — detect current GPS location for the active field.
+  const handleUseGps = useCallback(async () => {
+    if (gpsBusy) return;
+    setGpsBusy(true);
+    try {
+      const res = await detectLocation({ timeoutMs: 15000 });
+      if (res.status !== 'success') {
+        Alert.alert('Joylashuv', 'Joylashuvni aniqlab boʻlmadi. Ruxsatni tekshiring yoki manzilni qidiruvdan tanlang.');
+        return;
+      }
+      let addr: string | null = null;
+      try {
+        addr = await reverseGeocode(res.lat, res.lon);
+      } catch {}
+      const text = addr || 'Joriy joylashuv';
+      applySelection(active, matchCity(text, text.split(',')[0].trim()), text, res.lat, res.lon);
+    } finally {
+      setGpsBusy(false);
+    }
+  }, [gpsBusy, active, applySelection, matchCity]);
+
+  const handleSelectAddress = (address: string) => {
+    applySelection(active, matchCity(address, address.split(',')[0].trim()), address);
   };
 
-  const isParcel = orderStore.serviceType === 'parcel';
+  const handleSelectSaved = (a: SavedAddress) => {
+    applySelection(
+      active,
+      matchCity(a.address, a.address.split(',')[0].trim()),
+      a.address,
+      a.latitude ?? undefined,
+      a.longitude ?? undefined
+    );
+  };
+
+  const handleSelectCity = (city: string) => {
+    applySelection(active, city, '');
+  };
+
+  // Curated Surxondaryo place — best-effort region-biased geocode for coords; if it
+  // fails we proceed with the name only (driver still sees the place name).
+  const handleSelectPlace = useCallback(
+    async (place: LocalPlace) => {
+      let addressText = place.name;
+      let lat: number | undefined;
+      let lon: number | undefined;
+      try {
+        const results = await geocodeAddress(`${place.name}, Surxondaryo`);
+        if (results.length > 0) {
+          addressText = results[0].address || place.name;
+          lat = results[0].lat;
+          lon = results[0].lon;
+        }
+      } catch {}
+      applySelection(active, matchCity(addressText, place.name), addressText, lat, lon);
+    },
+    [active, applySelection, matchCity]
+  );
+
+  const savedIcon = (label?: string | null) => {
+    const l = (label || '').toLowerCase();
+    if (l.includes('uy') || l.includes('home') || l.includes('дом')) return '🏠';
+    if (l.includes('ish') || l.includes('work') || l.includes('работ')) return '💼';
+    return '📍';
+  };
+  const placeIcon = (g: LocalPlace['group']) =>
+    g === 'place' ? '📌' : g === 'town' ? '🏙' : g === 'district' ? '🚕' : '🏘';
+
+  // Build the combined browse list (cities + curated places) for the FlatList.
+  const filteredCities = cities.filter((c) => c.toLowerCase().includes(search.toLowerCase()));
+  const localPlaces = searchSurxondaryoPlaces(search, cities);
+  type Row =
+    | { type: 'header'; key: string; label: string }
+    | { type: 'city'; key: string; name: string }
+    | { type: 'place'; key: string; place: LocalPlace };
+  const rows: Row[] = [];
+  if (filteredCities.length > 0) {
+    rows.push({ type: 'header', key: 'h-cities', label: '🚕 Tumanlar va shaharlar' });
+    filteredCities.forEach((c) => rows.push({ type: 'city', key: `c-${c}`, name: c }));
+  }
+  if (localPlaces.length > 0) {
+    rows.push({ type: 'header', key: 'h-places', label: '🏘 Surxondaryo: mahalla va joylar' });
+    localPlaces.forEach((p) => rows.push({ type: 'place', key: `p-${p.name}`, place: p }));
+  }
+
+  // Field labels adapt to the service type.
+  const fromValue = orderStore.fromAddress || orderStore.fromCity || '';
+  const toValue = orderStore.toAddress || orderStore.toCity || '';
+  const fromHint = isParcel ? 'Pochtani qayerdan olamiz?' : 'Qayerdan ketasiz?';
+  const toHint = isParcel ? 'Pochtani qayerga yuboramiz?' : 'Qayerga borasiz?';
+  const fromCaption = isParcel ? 'Pochta olinadigan manzil' : "Yo'lovchini olish nuqtasi";
+  const toCaption = 'Yakuniy manzil';
+
+  const renderHeader = () => (
+    <View>
+      {/* Two-field card */}
+      <View style={styles.fieldCard}>
+        <TouchableOpacity
+          style={[styles.fieldRow, active === 'from' && styles.fieldRowActive]}
+          onPress={() => setActive('from')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.fieldIconTile, { backgroundColor: colors.accent }]}>
+            <Text style={styles.fieldIconText}>{isParcel ? '📦' : '🧍'}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.fieldCaption}>{fromCaption}</Text>
+            <Text
+              style={[styles.fieldValue, !fromValue && styles.fieldPlaceholder]}
+              numberOfLines={1}
+            >
+              {fromValue || fromHint}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.fieldDivider} />
+
+        <TouchableOpacity
+          style={[styles.fieldRow, active === 'to' && styles.fieldRowActive]}
+          onPress={() => setActive('to')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.fieldIconTile}>
+            <Text style={styles.fieldIconText}>🏁</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.fieldCaption}>{toCaption}</Text>
+            <Text
+              style={[styles.fieldValue, !toValue && styles.fieldPlaceholder]}
+              numberOfLines={1}
+            >
+              {toValue || toHint}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Search box (fills the active field) */}
+      <View style={styles.searchBox}>
+        <Text style={styles.searchIcon}>🔍</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder={active === 'from' ? fromHint : toHint}
+          placeholderTextColor={colors.textMuted}
+          value={search}
+          onChangeText={setSearch}
+          autoFocus
+        />
+        {loadingSuggestions && <ActivityIndicator size="small" color={colors.primary} />}
+      </View>
+
+      {/* Sizning joylashuvingiz — current GPS location */}
+      <TouchableOpacity
+        style={styles.gpsRow}
+        onPress={handleUseGps}
+        activeOpacity={0.8}
+        disabled={gpsBusy}
+      >
+        <Text style={styles.gpsIcon}>➤</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.gpsTitle}>Sizning joylashuvingiz</Text>
+          <Text style={styles.gpsSub}>GPS orqali aniqlaymiz</Text>
+        </View>
+        {gpsBusy && <ActivityIndicator size="small" color={colors.primary} />}
+      </TouchableOpacity>
+
+      {/* Saved addresses */}
+      {savedAddresses.length > 0 && (
+        <View style={styles.savedSection}>
+          {savedAddresses.slice(0, 6).map((a) => (
+            <TouchableOpacity
+              key={a.id}
+              style={styles.savedItem}
+              onPress={() => handleSelectSaved(a)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.savedIconTile}>
+                <Text style={styles.savedIconText}>{savedIcon(a.label)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.savedLabel} numberOfLines={1}>
+                  {a.label || a.address.split(',')[0]}
+                </Text>
+                <Text style={styles.savedSub} numberOfLines={1}>
+                  {a.address}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Yandex Suggest results */}
+      {showSuggestions && suggestions.length > 0 && (
+        <View style={styles.suggestSection}>
+          <Text style={styles.suggestTitle}>📍 Manzillar (Yandex)</Text>
+          {suggestions.map((s, i) => (
+            <TouchableOpacity
+              key={i}
+              style={styles.suggestItem}
+              onPress={() => handleSelectAddress(s)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.suggestIcon}>
+                <Text>🏠</Text>
+              </View>
+              <Text style={styles.suggestText} numberOfLines={2}>
+                {s}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Map */}
-      <View style={styles.mapWrap}>
-        <YandexMap
-          ref={mapRef}
-          initialLat={center.lat}
-          initialLon={center.lon}
-          initialZoom={15}
-          onCameraMove={handleCameraMove}
-          onMapPress={handleCameraMove}
-          style={StyleSheet.absoluteFill}
-        />
-
-        {/* Top "Manzilingiz" card */}
-        <View style={styles.topCard} pointerEvents="box-none">
-          <Text style={styles.topLabel}>Manzilingiz ›</Text>
-          {resolving ? (
-            <View style={styles.row}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.topAddrMuted}>Aniqlanmoqda…</Text>
-            </View>
-          ) : (
-            <Text style={styles.topAddr} numberOfLines={1}>
-              {address || `📍 ${center.lat.toFixed(5)}, ${center.lon.toFixed(5)}`}
-            </Text>
-          )}
-        </View>
-
-        {/* Center pin */}
-        <View pointerEvents="none" style={styles.pinContainer}>
-          <View style={styles.pinIcon}>
-            <Text style={styles.pinEmoji}>🧍</Text>
-          </View>
-          <View style={styles.pinStick} />
-        </View>
-
-        {/* Back + recenter */}
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.recenterBtn} onPress={detect} activeOpacity={0.8}>
-          {detecting ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <Text style={styles.recenterIcon}>➤</Text>
-          )}
-        </TouchableOpacity>
+        <Text style={styles.title}>{isParcel ? '📦 Pochta' : '🚕 Taksi'}</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      {/* Bottom sheet */}
-      <View style={styles.sheet}>
-        <View style={styles.sheetHandle} />
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetLogo}>{isParcel ? '📦' : '🚕'}</Text>
-          <Text style={styles.sheetTitle}>{isParcel ? 'Pochta' : 'Taksi'}</Text>
-        </View>
-
-        <TouchableOpacity style={styles.whereToBtn} onPress={handleWhereTo} activeOpacity={0.85}>
-          <Text style={styles.whereToText}>
-            {isParcel ? 'Pochtani qayerga yuboramiz?' : 'Qayerga borasiz?'}
-          </Text>
-          <View style={styles.whereToArrow}>
-            <Text style={styles.whereToArrowText}>›</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Quick long-haul districts (>= 70 km) */}
-        {longHaul.map((d) => (
-          <TouchableOpacity
-            key={d}
-            style={styles.quickRow}
-            onPress={() => handleQuickDestination(d)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.quickIcon}>
-              <Text>📍</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.quickTitle}>{d}</Text>
-              <Text style={styles.quickSub}>Surxondaryo viloyati</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <FlatList
+        data={rows}
+        keyExtractor={(item) => item.key}
+        ListHeaderComponent={renderHeader}
+        renderItem={({ item }) => {
+          if (item.type === 'header') {
+            return <Text style={styles.sectionTitle}>{item.label}</Text>;
+          }
+          if (item.type === 'city') {
+            return (
+              <TouchableOpacity
+                style={styles.cityItem}
+                onPress={() => handleSelectCity(item.name)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.cityIcon}>
+                  <Text>📍</Text>
+                </View>
+                <Text style={styles.cityName}>{item.name}</Text>
+                <Text style={styles.cityArrow}>›</Text>
+              </TouchableOpacity>
+            );
+          }
+          return (
+            <TouchableOpacity
+              style={styles.cityItem}
+              onPress={() => handleSelectPlace(item.place)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.cityIcon}>
+                <Text>{placeIcon(item.place.group)}</Text>
+              </View>
+              <Text style={styles.cityName}>{item.place.name}</Text>
+              <Text style={styles.cityArrow}>›</Text>
+            </TouchableOpacity>
+          );
+        }}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white },
-  mapWrap: { flex: 1, overflow: 'hidden' },
-  topCard: {
-    position: 'absolute',
-    top: spacing.md,
-    alignSelf: 'center',
-    alignItems: 'center',
-    maxWidth: '80%',
-  },
-  topLabel: { ...typography.caption, color: colors.textSecondary },
-  topAddr: { ...typography.bodyBold, color: colors.text },
-  topAddrMuted: { ...typography.body, color: colors.textSecondary, marginLeft: spacing.xs },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  pinContainer: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: colors.white,
-  },
-  pinEmoji: { fontSize: 24 },
-  pinStick: { width: 3, height: 22, backgroundColor: '#222', marginTop: -2 },
-  backBtn: {
-    position: 'absolute',
-    left: spacing.md,
-    top: spacing.md,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  backIcon: { fontSize: 24, color: colors.text },
-  recenterBtn: {
-    position: 'absolute',
-    right: spacing.md,
-    bottom: spacing.md,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  recenterIcon: { fontSize: 20, color: colors.primary, transform: [{ rotate: '-45deg' }] },
-  sheet: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-    elevation: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -4 },
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.divider,
-    alignSelf: 'center',
-    marginBottom: spacing.md,
-  },
-  sheetHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
-  sheetLogo: { fontSize: 26, marginRight: spacing.sm },
-  sheetTitle: { ...typography.h2, color: colors.text },
-  whereToBtn: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  whereToText: { ...typography.bodyBold, color: colors.text, fontSize: 17 },
-  whereToArrow: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 28, color: colors.primary },
+  title: { ...typography.h3, color: colors.primary },
+
+  // Two-field card
+  fieldCard: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
     backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: radius.lg,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    shadowColor: '#1A1240',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  whereToArrowText: { fontSize: 18, color: colors.textSecondary },
-  quickRow: {
+  fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
   },
-  quickIcon: {
+  fieldRowActive: { backgroundColor: colors.surface },
+  fieldIconTile: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: radius.md,
+    backgroundColor: '#111',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  fieldIconText: { fontSize: 20 },
+  fieldCaption: { ...typography.caption, color: colors.textSecondary },
+  fieldValue: { ...typography.bodyBold, color: colors.text, fontSize: 17 },
+  fieldPlaceholder: { color: colors.textMuted, fontWeight: '400' },
+  fieldDivider: { height: 1, backgroundColor: colors.divider, marginLeft: 56 },
+
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    minHeight: 50,
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  searchIcon: { marginRight: spacing.sm, fontSize: 18 },
+  searchInput: { flex: 1, ...typography.body, color: colors.text },
+
+  gpsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  gpsIcon: {
+    fontSize: 18,
+    color: colors.primary,
+    marginRight: spacing.md,
+    transform: [{ rotate: '-45deg' }],
+  },
+  gpsTitle: { ...typography.bodyBold, color: colors.text },
+  gpsSub: { ...typography.caption, color: colors.textSecondary },
+
+  savedSection: { marginHorizontal: spacing.lg, marginTop: spacing.xs },
+  savedItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  savedIconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  quickTitle: { ...typography.body, color: colors.text },
-  quickSub: { ...typography.caption, color: colors.textSecondary },
+  savedIconText: { fontSize: 16 },
+  savedLabel: { ...typography.bodyBold, color: colors.text },
+  savedSub: { ...typography.caption, color: colors.textSecondary, marginTop: 1 },
+
+  suggestSection: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+  },
+  suggestTitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  suggestItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  suggestIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  suggestText: { flex: 1, ...typography.caption, color: colors.text },
+
+  sectionTitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
+  cityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  cityIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  cityName: { flex: 1, ...typography.bodyBold, color: colors.text },
+  cityArrow: { fontSize: 24, color: colors.textMuted },
 });
