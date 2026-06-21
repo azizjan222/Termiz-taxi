@@ -158,7 +158,9 @@ export default function OrderDetailScreen() {
         t('common.error'),
         isEnRouteToDestination(order)
           ? 'Manzil joylashuvi mavjud emas'
-          : "Yo'lovchining joylashuvi mavjud emas",
+          : order?.service_type === 'parcel'
+            ? 'Pochta joylashuvi mavjud emas'
+            : "Yo'lovchining joylashuvi mavjud emas",
       );
       return;
     }
@@ -186,13 +188,16 @@ export default function OrderDetailScreen() {
   };
 
   const handleStartTrip = () => {
+    const parcel = order?.service_type === 'parcel';
     Alert.alert(
-      "Yo'lovchini oldingizmi?",
-      "Yo'lovchini olganingizdan keyin manzilga yo'l ko'rsatiladi.",
+      parcel ? 'Pochtani oldingizmi?' : "Yo'lovchini oldingizmi?",
+      parcel
+        ? "Pochtani olganingizdan keyin manzilga yo'l ko'rsatiladi."
+        : "Yo'lovchini olganingizdan keyin manzilga yo'l ko'rsatiladi.",
       [
         { text: t('common.no'), style: 'cancel' },
         {
-          text: 'Ha, oldim',
+          text: parcel ? 'Ha, oldim' : 'Ha, oldim',
           onPress: async () => {
             setLoading(true);
             try {
@@ -244,6 +249,13 @@ export default function OrderDetailScreen() {
   // Live driver->target distance, derived per render so it always reflects the latest
   // driverCoords. The target is the pickup before pickup, the destination after.
   const enRoute = isEnRouteToDestination(order);
+  const isParcel = order.service_type === 'parcel';
+  // Service-aware wording: taxi talks about the passenger, parcel about the parcel.
+  const subjectShort = isParcel ? 'Pochta' : "Yo'lovchi";
+  const contactLabel = isParcel ? "Jo'natuvchi" : "Yo'lovchi";
+  const pickupBannerText = isParcel ? 'Pochtani olish manziliga boring' : "Yo'lovchining oldiga boring";
+  const destBannerText = isParcel ? 'Pochtani manzilga yetkazing' : "Yo'lovchini manzilga olib boring";
+  const pickedUpBtnText = isParcel ? '✅ Pochtani oldim' : "✅ Yo'lovchini oldim";
   const target = deriveTarget(order);
   const distanceMeters = driverCoords && target ? haversineMeters(driverCoords, target) : NaN;
   // Display precedence: HIDDEN (not active) -> TARGET_MISSING -> LOADING -> LABEL.
@@ -252,7 +264,7 @@ export default function OrderDetailScreen() {
     if (target === null) {
       distanceContent = (
         <Text style={styles.value}>
-          📍 {enRoute ? 'Manzil joylashuvi mavjud emas' : "Yo'lovchi joylashuvi mavjud emas"}
+          📍 {enRoute ? 'Manzil joylashuvi mavjud emas' : `${subjectShort} joylashuvi mavjud emas`}
         </Text>
       );
     } else if (!driverCoords) {
@@ -287,7 +299,7 @@ export default function OrderDetailScreen() {
           <View style={styles.destBanner}>
             <Text style={styles.timerEmoji}>🧭</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.destBannerText}>Yo'lovchini manzilga olib boring</Text>
+              <Text style={styles.destBannerText}>{destBannerText}</Text>
               <Text style={styles.timerSub}>{order.to_address || order.to_city}</Text>
             </View>
           </View>
@@ -296,18 +308,18 @@ export default function OrderDetailScreen() {
             <Text style={styles.timerEmoji}>⏱</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.timerText}>
-                Yo'lovchi bilan {CONTACT_WINDOW_MINUTES} daqiqa ichida bog'laning
+                {contactLabel} bilan {CONTACT_WINDOW_MINUTES} daqiqa ichida bog'laning
               </Text>
               <Text style={styles.timerSub}>
-                Zakasni qabul qildingiz — yo'lovchiga qo'ng'iroq qilib kelishib oling
+                Zakasni qabul qildingiz — {contactLabel.toLowerCase()}ga qo'ng'iroq qilib kelishib oling
               </Text>
             </View>
             <Text style={styles.timerCountdown}>{mmss(remainingSec)}</Text>
           </View>
         ) : (
           <View style={styles.statusBanner}>
-            <Text style={styles.statusEmoji}>🚕</Text>
-            <Text style={styles.statusText}>Yo'lovchining oldiga boring</Text>
+            <Text style={styles.statusEmoji}>{isParcel ? '📦' : '🚕'}</Text>
+            <Text style={styles.statusText}>{pickupBannerText}</Text>
           </View>
         )}
 
@@ -327,7 +339,7 @@ export default function OrderDetailScreen() {
             {target === null && (
               <View style={styles.mapUnavailable} pointerEvents="none">
                 <Text style={styles.mapUnavailableText}>
-                  📍 {enRoute ? 'Manzil xaritada mavjud emas' : "Yo'lovchi joylashuvi xaritada mavjud emas"}
+                  📍 {enRoute ? 'Manzil xaritada mavjud emas' : `${subjectShort} joylashuvi xaritada mavjud emas`}
                 </Text>
               </View>
             )}
@@ -336,7 +348,7 @@ export default function OrderDetailScreen() {
 
         {/* Passenger card — phone revealed after accept */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Yo'lovchi</Text>
+          <Text style={styles.cardTitle}>{contactLabel}</Text>
           <View style={styles.passengerRow}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
@@ -440,7 +452,7 @@ export default function OrderDetailScreen() {
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={[styles.completeBtnText, { color: '#FFFFFF' }]}>✅ Yo'lovchini oldim</Text>
+                <Text style={[styles.completeBtnText, { color: '#FFFFFF' }]}>{pickedUpBtnText}</Text>
               )}
             </LinearGradient>
           </TouchableOpacity>

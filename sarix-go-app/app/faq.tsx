@@ -16,8 +16,8 @@ const FAQ: { q: string; a: string }[] = [
     a: "Bosh sahifada \"Taksi chaqirish\"ni tanlang, qayerdan-qayergani belgilang, yo'lovchilar sonini kiriting va haydovchi qidirishni boshlang.",
   },
   {
-    q: 'Manzilni xaritadan tanlasam bo\'ladimi?',
-    a: "Ha. Manzil tanlashda \"Xaritadan tanlash\" tugmasini bosing yoki saqlangan \"Uy\"/\"Ish\" manzillaringizdan foydalaning.",
+    q: 'Manzilni qanday tanlayman?',
+    a: "Taksi/Pochtani tanlaganingizda joylashuvingiz xaritada avtomatik aniqlanadi. \"Qayerga borasiz?\"ni bosib, manzilni qidiruvdan, saqlangan \"Uy\"/\"Ish\" manzillaringizdan yoki tumanlar ro'yxatidan tanlang.",
   },
   {
     q: 'Haydovchi qayerdaligini ko\'ra olamanmi?',
