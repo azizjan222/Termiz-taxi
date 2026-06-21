@@ -184,13 +184,17 @@ export default function ProfileScreen() {
 
           {/* Stats */}
           <View style={styles.statsRow}>
-            <View style={styles.statBox}>
+            <TouchableOpacity
+              style={styles.statBox}
+              onPress={() => router.push('/order-history')}
+              activeOpacity={0.85}
+            >
               <View style={[styles.statIconTile, { backgroundColor: colors.primary }]}>
                 <Text style={styles.statIconText}>🚕</Text>
               </View>
               <Text style={styles.statValue}>{driver?.total_orders || 0}</Text>
               <Text style={styles.statLabel}>{t('profile.totalOrders')}</Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.statBox}>
               <View style={[styles.statIconTile, { backgroundColor: colors.accent }]}>
                 <Text style={styles.statIconText}>⭐</Text>
