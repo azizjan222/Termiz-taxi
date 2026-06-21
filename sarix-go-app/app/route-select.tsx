@@ -146,7 +146,9 @@ export default function RouteSelectScreen() {
         addr = await reverseGeocode(res.lat, res.lon);
       } catch {}
       const text = addr || 'Joriy joylashuv';
-      applySelection(active, matchCity(text, text.split(',')[0].trim()), text, res.lat, res.lon);
+      // "Sizning joylashuvingiz" always sets the PICKUP point (Yo'lovchini olish
+      // nuqtasi = the 'from' field), regardless of which row is active.
+      applySelection('from', matchCity(text, text.split(',')[0].trim()), text, res.lat, res.lon);
     } finally {
       setGpsBusy(false);
     }
