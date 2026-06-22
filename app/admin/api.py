@@ -136,6 +136,12 @@ async def api_orders(request: web.Request) -> web.Response:
         orders = query.order_by(Order.id.desc()).limit(200).all()
         result = []
         for o in orders:
+            # Driver who took the order (if any). The relationship is loaded lazily;
+            # 200 rows is small enough that the extra lookups are negligible.
+            drv = o.driver if o.driver_id else None
+            driver_name = None
+            if drv:
+                driver_name = (f"{drv.first_name or ''} {drv.last_name or ''}").strip() or None
             result.append({
                 "id": o.id,
                 "passenger_name": o.passenger_name,
@@ -152,6 +158,12 @@ async def api_orders(request: web.Request) -> web.Response:
                 "commission_effective": (o.commission or 0) if o.commission_collected else 0,
                 "status": o.status,
                 "driver_id": o.driver_id,
+                # Driver who accepted the order: name, phone, car number and the time
+                # the order was accepted (shown in the admin "Haydovchi" column).
+                "driver_name": driver_name,
+                "driver_phone": drv.phone if drv else None,
+                "driver_car_number": drv.car_number if drv else None,
+                "accepted_at": o.accepted_at.isoformat() if o.accepted_at else None,
                 "created_at": o.created_at.isoformat() if o.created_at else None,
             })
         return web.json_response(result)
