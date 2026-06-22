@@ -24,6 +24,15 @@ const JS_API_KEY =
   (Constants.expoConfig?.extra as any)?.yandexJsApiKey ||
   '';
 
+// Universal SDK/API key — a freshly-issued Yandex key that may be enabled for the
+// Geocoder and/or Suggest APIs. Used as an additional fallback everywhere so that
+// reverse-geocoding resolves a real address instead of falling back to raw
+// coordinates when the older keys are rejected.
+const SDK_API_KEY =
+  process.env.EXPO_PUBLIC_YANDEX_SDK_API_KEY ||
+  (Constants.expoConfig?.extra as any)?.yandexSdkApiKey ||
+  '';
+
 // IMPORTANT: the Yandex HTTP Geocoder & Suggest APIs only accept a fixed set of
 // languages: ru_RU, uk_UA, be_BY, en_RU, en_US, tr_TR. "uz_UZ" is NOT supported
 // and makes the request fail with HTTP 400 -> the address never resolves
@@ -48,7 +57,7 @@ export interface GeoResult {
  * Reverse geocode: coordinates → human-readable address.
  */
 export async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
-  const keys = Array.from(new Set([GEOCODER_KEY, JS_API_KEY].filter(Boolean)));
+  const keys = Array.from(new Set([GEOCODER_KEY, SDK_API_KEY, JS_API_KEY].filter(Boolean)));
   if (keys.length === 0) return null;
   for (const key of keys) {
     try {
@@ -75,7 +84,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string |
  */
 export async function geocodeAddress(query: string): Promise<GeoResult[]> {
   if (!query.trim()) return [];
-  const keys = Array.from(new Set([GEOCODER_KEY, JS_API_KEY].filter(Boolean)));
+  const keys = Array.from(new Set([GEOCODER_KEY, SDK_API_KEY, JS_API_KEY].filter(Boolean)));
   if (keys.length === 0) return [];
   for (const key of keys) {
     try {
@@ -113,10 +122,11 @@ export async function suggestAddress(query: string): Promise<string[]> {
   // Primary: Yandex Suggest API (best autocomplete). If the suggest key is missing or
   // not enabled for the Suggest API, this returns [] and we fall back to the Geocoder
   // so the dropdown is never silently empty.
-  if (SUGGEST_KEY) {
+  const suggestKeys = Array.from(new Set([SUGGEST_KEY, SDK_API_KEY].filter(Boolean)));
+  for (const key of suggestKeys) {
     try {
       const url =
-        `https://suggest-maps.yandex.ru/v1/suggest?apikey=${SUGGEST_KEY}` +
+        `https://suggest-maps.yandex.ru/v1/suggest?apikey=${key}` +
         `&text=${encodeURIComponent(query)}&lang=${SUGGEST_LANG}&results=7` +
         // Bias results to the whole Surxondaryo region (centered between Termiz and
         // Denov) so streets, buildings, villages and intersections across the
@@ -132,7 +142,7 @@ export async function suggestAddress(query: string): Promise<string[]> {
         if (mapped.length > 0) return mapped;
       }
     } catch {
-      // fall through to geocoder fallback
+      // fall through to the next key / geocoder fallback
     }
   }
   // Fallback: use the Geocoder (different key) to produce address strings.

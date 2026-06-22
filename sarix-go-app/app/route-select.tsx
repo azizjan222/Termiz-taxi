@@ -225,21 +225,25 @@ export default function RouteSelectScreen() {
 
         <View style={styles.fieldDivider} />
 
-        <TouchableOpacity
-          style={[styles.fieldRow, active === 'to' && styles.fieldRowActive]}
-          onPress={() => setActive('to')}
-          activeOpacity={0.8}
-        >
+        <View style={[styles.fieldRow, active === 'to' && styles.fieldRowActive]}>
           <View style={styles.fieldIconTile}>
             <Text style={styles.fieldIconText}>🏁</Text>
           </View>
-          <View style={{ flex: 1 }}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setActive('to')} activeOpacity={0.8}>
             <Text style={styles.fieldCaption}>Yakuniy manzil</Text>
             <Text style={[styles.fieldValue, !toValue && styles.fieldPlaceholder]} numberOfLines={1}>
               {toValue || toHint}
             </Text>
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+          {/* Xarita — choose the destination on the map */}
+          <TouchableOpacity
+            style={styles.mapPill}
+            onPress={() => router.push({ pathname: '/order-entry', params: { pick: 'to' } })}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.mapPillText}>Xarita</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search box (fills the active field) */}
@@ -312,6 +316,12 @@ export default function RouteSelectScreen() {
             </TouchableOpacity>
           ))}
         </View>
+      )}
+
+      {/* Recommended addresses heading (Yandex-Go style), shown when the user is
+          not actively typing a Suggest query. */}
+      {!showSuggestions && (filteredCities.length > 0 || localPlaces.length > 0) && (
+        <Text style={styles.recommendTitle}>TAVSIYA ETILGAN MANZILLAR</Text>
       )}
     </View>
   );
@@ -498,6 +508,15 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   suggestText: { flex: 1, ...typography.caption, color: colors.text },
+
+  recommendTitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
+  },
 
   sectionTitle: {
     ...typography.caption,

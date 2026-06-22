@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import YandexMap, { YandexMapHandle } from '../src/components/YandexMap';
 import { reverseGeocode } from '../src/services/geocoding';
@@ -34,9 +34,22 @@ const LONG_HAUL_MIN_KM = 70; // "masofasi 70 km kam bo'lmagan tumanlar"
 export default function OrderEntryScreen() {
   const orderStore = useOrderStore();
 
-  const [center, setCenter] = useState<{ lat: number; lon: number }>({
-    lat: orderStore.fromLat ?? DEFAULT_LAT,
-    lon: orderStore.fromLon ?? DEFAULT_LON,
+  // `pick` selects what the map center represents:
+  //  - 'from' (default) -> the pickup point (Yo'lovchini olish nuqtasi)
+  //  - 'to'             -> the final destination (Yakuniy manzil), opened from the
+  //                        "Xarita" button on the destination row of route-select.
+  const { pick } = useLocalSearchParams<{ pick?: 'from' | 'to' }>();
+  const pickMode: 'from' | 'to' = pick === 'to' ? 'to' : 'from';
+  const isDest = pickMode === 'to';
+
+  const [center, setCenter] = useState<{ lat: number; lon: number }>(() => {
+    if (pick === 'to' && orderStore.toLat != null && orderStore.toLon != null) {
+      return { lat: orderStore.toLat, lon: orderStore.toLon };
+    }
+    return {
+      lat: orderStore.fromLat ?? DEFAULT_LAT,
+      lon: orderStore.fromLon ?? DEFAULT_LON,
+    };
   });
   const [address, setAddress] = useState('');
   const [resolving, setResolving] = useState(false);
@@ -124,8 +137,8 @@ export default function OrderEntryScreen() {
         const fromHere = pickupCity
           ? farEnough.filter((r) => r.from_city.toLowerCase() === pickupCity.toLowerCase())
           : [];
-        const pick = (fromHere.length ? fromHere : farEnough).map((r) => r.to_city);
-        const unique = Array.from(new Set(pick)).filter((c) => c !== pickupCity);
+        const pickedCities = (fromHere.length ? fromHere : farEnough).map((r) => r.to_city);
+        const unique = Array.from(new Set(pickedCities)).filter((c) => c !== pickupCity);
         setLongHaul(unique.slice(0, 2));
       })
       .catch(() => setLongHaul([]));
@@ -144,6 +157,21 @@ export default function OrderEntryScreen() {
     orderStore.setField('fromLat', center.lat);
     orderStore.setField('fromLon', center.lon);
   }, [address, center, deriveCity, orderStore]);
+
+  // Persist the current map center as the destination point.
+  const saveDestination = useCallback(() => {
+    const resolved = address || '';
+    orderStore.setField('toCity', resolved ? deriveCity(resolved) : 'Tanlangan manzil');
+    orderStore.setField('toAddress', resolved);
+    orderStore.setField('toLat', center.lat);
+    orderStore.setField('toLon', center.lon);
+  }, [address, center, deriveCity, orderStore]);
+
+  // Destination map mode: confirm the chosen point and continue to the next step.
+  const handleConfirmDestination = useCallback(() => {
+    saveDestination();
+    router.replace(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
+  }, [saveDestination, orderStore.serviceType]);
 
   const handleWhereTo = () => {
     savePickup();
@@ -175,7 +203,7 @@ export default function OrderEntryScreen() {
 
         {/* Top "Manzilingiz" card */}
         <View style={styles.topCard} pointerEvents="box-none">
-          <Text style={styles.topLabel}>Manzilingiz ›</Text>
+          <Text style={styles.topLabel}>{isDest ? 'Yakuniy manzil ›' : 'Manzilingiz ›'}</Text>
           {resolving ? (
             <View style={styles.row}>
               <ActivityIndicator size="small" color={colors.primary} />
@@ -183,15 +211,15 @@ export default function OrderEntryScreen() {
             </View>
           ) : (
             <Text style={styles.topAddr} numberOfLines={1}>
-              {address || `📍 ${center.lat.toFixed(5)}, ${center.lon.toFixed(5)}`}
+              {address || 'Joyni tanlash uchun xaritani suring'}
             </Text>
           )}
         </View>
 
         {/* Center pin */}
         <View pointerEvents="none" style={styles.pinContainer}>
-          <View style={styles.pinIcon}>
-            <Text style={styles.pinEmoji}>🧍</Text>
+          <View style={[styles.pinIcon, isDest && { backgroundColor: colors.primary }]}>
+            <Text style={styles.pinEmoji}>{isDest ? '🏁' : '🧍'}</Text>
           </View>
           <View style={styles.pinStick} />
         </View>
@@ -214,35 +242,58 @@ export default function OrderEntryScreen() {
         <View style={styles.sheetHandle} />
         <View style={styles.sheetHeader}>
           <Text style={styles.sheetLogo}>{isParcel ? '📦' : '🚕'}</Text>
-          <Text style={styles.sheetTitle}>{isParcel ? 'Pochta' : 'Taksi'}</Text>
+          <Text style={styles.sheetTitle}>
+            {isDest ? (isParcel ? 'Yetkazish manzili' : 'Qayerga borasiz?') : isParcel ? 'Pochta' : 'Taksi'}
+          </Text>
         </View>
 
-        <TouchableOpacity style={styles.whereToBtn} onPress={handleWhereTo} activeOpacity={0.85}>
-          <Text style={styles.whereToText}>
-            {isParcel ? 'Pochtani qayerga yuboramiz?' : 'Qayerga borasiz?'}
-          </Text>
-          <View style={styles.whereToArrow}>
-            <Text style={styles.whereToArrowText}>›</Text>
-          </View>
-        </TouchableOpacity>
+        {isDest ? (
+          <>
+            {/* Destination map mode: show the chosen address and a confirm button */}
+            <View style={styles.destPreview}>
+              <Text style={styles.destPreviewIcon}>🏁</Text>
+              <Text style={styles.destPreviewText} numberOfLines={2}>
+                {address || 'Manzilni belgilash uchun xaritani suring'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.confirmBtn}
+              onPress={handleConfirmDestination}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.confirmBtnText}>Manzilni tasdiqlash</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <TouchableOpacity style={styles.whereToBtn} onPress={handleWhereTo} activeOpacity={0.85}>
+              <Text style={styles.whereToText}>
+                {isParcel ? 'Pochtani qayerga yuboramiz?' : 'Qayerga borasiz?'}
+              </Text>
+              <View style={styles.whereToArrow}>
+                <Text style={styles.whereToArrowText}>›</Text>
+              </View>
+            </TouchableOpacity>
 
-        {/* Quick long-haul districts (>= 70 km) */}
-        {longHaul.map((d) => (
-          <TouchableOpacity
-            key={d}
-            style={styles.quickRow}
-            onPress={() => handleQuickDestination(d)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.quickIcon}>
-              <Text>📍</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.quickTitle}>{d}</Text>
-              <Text style={styles.quickSub}>Surxondaryo viloyati</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+            {/* Quick long-haul districts (>= 70 km) */}
+            {longHaul.map((d) => (
+              <TouchableOpacity
+                key={d}
+                style={styles.quickRow}
+                onPress={() => handleQuickDestination(d)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.quickIcon}>
+                  <Text>📍</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.quickTitle}>{d}</Text>
+                  <Text style={styles.quickSub}>Surxondaryo viloyati</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -373,4 +424,25 @@ const styles = StyleSheet.create({
   },
   quickTitle: { ...typography.body, color: colors.text },
   quickSub: { ...typography.caption, color: colors.textSecondary },
+
+  // Destination map mode
+  destPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+  },
+  destPreviewIcon: { fontSize: 20, marginRight: spacing.md },
+  destPreviewText: { flex: 1, ...typography.bodyBold, color: colors.text },
+  confirmBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmBtnText: { ...typography.h3, color: colors.textOnAccent },
 });

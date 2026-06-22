@@ -63,7 +63,8 @@
     "experiments": { "typedRoutes": true },
     "extra": {
       "apiBaseUrl": "https://termiz-taxi-production.up.railway.app",
-      "yandexJsApiKey": "8ddd4173-e3c5-4317-a844-554619b6bf53"
+      "yandexJsApiKey": "8ddd4173-e3c5-4317-a844-554619b6bf53",
+      "yandexSdkApiKey": "9b98e302-a8de-4081-95fb-678e71902612"
     }
   }
 }

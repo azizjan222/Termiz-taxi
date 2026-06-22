@@ -22,6 +22,7 @@ import {
   haversineMeters,
   formatDistance,
   formatEta,
+  shortenAddress,
   ETA_AVG_SPEED_KMH,
   type Coords,
 } from '../../src/components/driverMap.helpers';
@@ -177,8 +178,8 @@ export default function OrderDetailScreen() {
         }
       } catch {}
     }
-    // Last resort: open the web Google Maps link.
-    Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`).catch(() => {});
+    // Last resort: open Yandex Maps on the web (never Google Maps).
+    Linking.openURL(`https://yandex.com/maps/?rtext=~${lat}%2C${lon}&rtt=auto`).catch(() => {});
   };
 
   const callPassenger = () => {
@@ -300,7 +301,7 @@ export default function OrderDetailScreen() {
             <Text style={styles.timerEmoji}>🧭</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.destBannerText}>{destBannerText}</Text>
-              <Text style={styles.timerSub}>{order.to_address || order.to_city}</Text>
+              <Text style={styles.timerSub}>{shortenAddress(order.to_address, order.to_city)}</Text>
             </View>
           </View>
         ) : remainingSec !== null && remainingSec > 0 ? (
@@ -372,14 +373,14 @@ export default function OrderDetailScreen() {
           <View style={styles.row}>
             <Text style={styles.label}>{!enRoute ? '📍 ' : ''}{t('order.from')}</Text>
             <Text style={[styles.value, !enRoute && { color: colors.info }]} numberOfLines={2}>
-              {order.from_address || order.from_city}
+              {shortenAddress(order.from_address, order.from_city)}
             </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
             <Text style={styles.label}>{enRoute ? '🏁 ' : ''}{t('order.to')}</Text>
             <Text style={[styles.value, enRoute && { color: colors.info }]} numberOfLines={2}>
-              {order.to_address || order.to_city}
+              {shortenAddress(order.to_address, order.to_city)}
             </Text>
           </View>
           <View style={styles.divider} />
