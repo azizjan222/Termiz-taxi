@@ -43,6 +43,8 @@ const YANDEX_API_KEY =
   (Constants.expoConfig?.extra as any)?.yandexJsApiKey ||
   process.env.EXPO_PUBLIC_YANDEX_MAPS_KEY ||
   (Constants.expoConfig?.extra as any)?.yandexMapsApiKey ||
+  process.env.EXPO_PUBLIC_YANDEX_SDK_API_KEY ||
+  (Constants.expoConfig?.extra as any)?.yandexSdkApiKey ||
   '';
 
 // Default center: Termiz, Surxondaryo

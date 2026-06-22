@@ -115,21 +115,47 @@ export function deriveShouldDrawRoute(driver: Coords | null, pickup: Coords | nu
 }
 
 /**
- * The exact ordered candidate URL list used by external navigation, extracted from
- * `openNavigation()` WITHOUT behavior change. Order: Yandex Navigator → Yandex Maps →
- * platform geo/Apple Maps → Yandex web → Google Maps web. Every candidate embeds the
- * given lat/lon.
+ * The exact ordered candidate URL list used by external navigation. Per the product
+ * requirement, ONLY Yandex destinations are used (no Google Maps / Apple Maps), so the
+ * driver always lands in Yandex Navigator / Yandex Maps. Order: Yandex Navigator (app)
+ * → Yandex Maps (app) → Yandex Maps (web). Every candidate embeds the given lat/lon.
+ * `os` is accepted for API compatibility but no longer changes the result.
  */
-export function buildNavCandidates(lat: number, lon: number, os: 'ios' | 'android'): string[] {
+export function buildNavCandidates(lat: number, lon: number, _os: 'ios' | 'android'): string[] {
   return [
     `yandexnavi://build_route_on_map?lat_to=${lat}&lon_to=${lon}`,
     `yandexmaps://maps.yandex.ru/?rtext=~${lat},${lon}&rtt=auto`,
-    os === 'ios'
-      ? `https://maps.apple.com/?daddr=${lat},${lon}`
-      : `geo:${lat},${lon}?q=${lat},${lon}`,
     `https://yandex.com/maps/?rtext=~${lat}%2C${lon}&rtt=auto`,
-    `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`,
   ];
+}
+
+/**
+ * Shorten a long Yandex address line to a clear, driver-friendly label.
+ *
+ * Yandex `getAddressLine()` returns the FULL chain, e.g.
+ *   "Oʻzbekiston, Surxondaryo viloyati, Denov tumani, Denov, Mustaqillik koʻchasi, 306"
+ * The driver only needs the tail (street + house, or the place name), so we drop the
+ * country / region / district noise and keep the last 2 meaningful segments:
+ *   -> "Mustaqillik koʻchasi, 306"
+ *
+ * TOTAL: never throws. Falls back to `fallbackCity` (then the raw text) when there is
+ * nothing meaningful to show.
+ */
+export function shortenAddress(full?: string | null, fallbackCity?: string | null): string {
+  const raw = (full || '').trim();
+  const city = (fallbackCity || '').trim();
+  if (!raw) return city;
+
+  const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return city || raw;
+
+  // Country / region / district segments add no value for the driver.
+  const NOISE =
+    /(o'?zbekiston|oʻzbekiston|узбекистан|uzbekistan|viloyat|вилоят|область|обл\.?|tuman|tumani|район|р-н)/i;
+  const meaningful = parts.filter((p) => !NOISE.test(p));
+  const pick = (meaningful.length ? meaningful : parts).slice(-2);
+  const result = pick.join(', ').trim();
+  return result || city || raw;
 }
 
 

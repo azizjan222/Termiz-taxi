@@ -38,6 +38,13 @@ export interface DetectOptions {
 const DEFAULT_TIMEOUT_MS = 15000;
 
 /**
+ * Target horizontal accuracy (meters). Once a fix at or below this radius arrives we
+ * resolve immediately; otherwise we keep the most accurate fix seen until the timeout.
+ * 20 m matches the "Yandex-like" precision the user expects on a phone GPS.
+ */
+const TARGET_ACCURACY_M = 20;
+
+/**
  * Detect the device's current location.
  *
  * Performs the full permission -> services-enabled -> bounded acquisition flow:
@@ -85,30 +92,81 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
       return { status: 'services-disabled' };
     }
 
-    // 4. Acquire a single bounded position fix (R3.1, R3.2, R3.4, R7.5).
-    // Highest accuracy targets the tightest possible radius (~5 m) so the detected
-    // point — and the address resolved from it — matches where the user stands.
-    const TIMEOUT = Symbol('location-timeout');
-    const positionPromise = Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Highest,
-    });
-    const timeoutPromise = new Promise<typeof TIMEOUT>((resolve) => {
-      timer = setTimeout(() => resolve(TIMEOUT), timeoutMs);
+    // 4. Acquire the most accurate position fix within the timeout.
+    // Phone GPS reports improve as the chip warms up: the first fix is often a coarse
+    // (~100 m+) network/last-known position, then it converges to a tight (~5-20 m)
+    // satellite fix. To match Yandex-like precision we OPEN A CONTINUOUS WATCH at the
+    // highest accuracy and keep the BEST (smallest-accuracy) reading. We resolve early
+    // as soon as a fix at or below TARGET_ACCURACY_M arrives; otherwise we return the
+    // best reading collected by the time the timeout elapses (R3.1, R3.2, R3.4, R7.5).
+    const best = await new Promise<DetectSuccess | 'timeout'>((resolve) => {
+      let bestFix: DetectSuccess | null = null;
+      let watcher: Location.LocationSubscription | null = null;
+      let settled = false;
+
+      const finish = (value: DetectSuccess | 'timeout') => {
+        if (settled) return;
+        settled = true;
+        watcher?.remove();
+        watcher = null;
+        resolve(value);
+      };
+
+      timer = setTimeout(() => finish(bestFix ?? 'timeout'), timeoutMs);
+
+      // Seed quickly with a single current-position read so we always have something
+      // even if the watch is slow to emit, then let the watch refine it.
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest })
+        .then((pos) => {
+          const fix: DetectSuccess = {
+            status: 'success',
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+            accuracy: pos.coords.accuracy ?? null,
+          };
+          const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
+          if (!bestFix || acc < (bestFix.accuracy ?? Number.POSITIVE_INFINITY)) {
+            bestFix = fix;
+          }
+          if (acc <= TARGET_ACCURACY_M) finish(fix);
+        })
+        .catch(() => {});
+
+      Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: 500,
+          distanceInterval: 0,
+        },
+        (pos) => {
+          const fix: DetectSuccess = {
+            status: 'success',
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+            accuracy: pos.coords.accuracy ?? null,
+          };
+          const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
+          if (!bestFix || acc < (bestFix.accuracy ?? Number.POSITIVE_INFINITY)) {
+            bestFix = fix;
+          }
+          // Good enough -> stop early so the UI doesn't wait the full timeout.
+          if (acc <= TARGET_ACCURACY_M) finish(fix);
+        },
+      )
+        .then((sub) => {
+          if (settled) {
+            sub.remove();
+          } else {
+            watcher = sub;
+          }
+        })
+        .catch(() => {});
     });
 
-    const outcome = await Promise.race([positionPromise, timeoutPromise]);
-
-    if (outcome === TIMEOUT) {
+    if (best === 'timeout') {
       return { status: 'timeout' };
     }
-
-    const { coords } = outcome;
-    return {
-      status: 'success',
-      lat: coords.latitude,
-      lon: coords.longitude,
-      accuracy: coords.accuracy ?? null,
-    };
+    return best;
   } catch (err) {
     // Any thrown error collapses into the `error` variant (R7.2).
     const message = err instanceof Error ? err.message : String(err);
