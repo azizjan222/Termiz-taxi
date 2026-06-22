@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,14 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { listMyOrders, type Order } from '../../src/api/orders';
-import { colors, typography, spacing, radius } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing, radius } from '../../src/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 export default function HistoryScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'taxi' | 'parcel'>('taxi');
@@ -154,7 +158,7 @@ export default function HistoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   title: { ...typography.h2, color: colors.text },
@@ -169,7 +173,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     alignItems: 'center',
     borderRadius: radius.pill,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -187,7 +191,7 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderRadius: radius.lg,
     padding: spacing.md,
     marginBottom: spacing.md,

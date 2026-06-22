@@ -3,7 +3,7 @@ import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { colors } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
 
 const TabIcon: React.FC<{ emoji: string; focused: boolean }> = ({ emoji, focused }) => (
   <View style={[styles.iconWrapper, focused && styles.iconWrapperFocused]}>
@@ -13,6 +13,7 @@ const TabIcon: React.FC<{ emoji: string; focused: boolean }> = ({ emoji, focused
 
 export default function TabsLayout() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
   return (
     <Tabs
       screenOptions={{
@@ -20,7 +21,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: colors.white,
+          backgroundColor: colors.background,
           borderTopColor: colors.divider,
           height: 70,
           paddingTop: 8,

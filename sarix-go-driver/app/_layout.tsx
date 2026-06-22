@@ -21,6 +21,8 @@ export default function RootLayout() {
   const isAuth = useDriverStore((s) => s.isAuthenticated);
   const driver = useDriverStore((s) => s.driver);
   const themeInit = useThemeStore((s) => s.init);
+  const themeColors = useThemeStore((s) => s.colors);
+  const isDark = useThemeStore((s) => s.isDark);
 
   useEffect(() => {
     (async () => {
@@ -90,11 +92,11 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         <Stack
           screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: colors.white },
+            contentStyle: { backgroundColor: themeColors.background },
             animation: 'slide_from_right',
           }}
         >
