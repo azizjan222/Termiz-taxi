@@ -442,6 +442,13 @@ export async function initI18n() {
     resources,
     lng: savedLanguage,
     fallbackLng: 'uz',
+    // i18next normalizes hyphenated codes by upper-casing the region part
+    // ('uz-cyrl' -> 'uz-CYRL'), which no longer matches our lowercase resource key
+    // and silently falls back to Latin 'uz'. lowerCaseLng keeps the code lowercase so
+    // the 'uz-cyrl' (Cyrillic) resources actually load.
+    lowerCaseLng: true,
+    supportedLngs: ['uz', 'uz-cyrl', 'ru', 'en'],
+    nonExplicitSupportedLngs: false,
     interpolation: { escapeValue: false },
     compatibilityJSON: 'v3',
   });

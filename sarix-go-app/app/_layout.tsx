@@ -24,6 +24,8 @@ export default function RootLayout() {
   const loadUser = useAuthStore((s) => s.loadUser);
   const isAuth = useAuthStore((s) => s.isAuthenticated);
   const themeInit = useThemeStore((s) => s.init);
+  const themeColors = useThemeStore((s) => s.colors);
+  const isDark = useThemeStore((s) => s.isDark);
 
   useEffect(() => {
     (async () => {
@@ -74,12 +76,12 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style="dark" />
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         <ForceUpdateModal visible={forceUpdate.show} playUrl={forceUpdate.url} />
         <Stack
           screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: colors.white },
+            contentStyle: { backgroundColor: themeColors.background },
             animation: 'slide_from_right',
           }}
         >

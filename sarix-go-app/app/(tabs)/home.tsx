@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,13 +13,17 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../src/store/auth';
 import { useOrderStore } from '../../src/store/order';
-import { colors, typography, spacing, radius } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing, radius } from '../../src/theme';
 import { gradients } from '../../src/theme/colors';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 export default function HomeScreen() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const orderStore = useOrderStore();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const startOrder = (type: 'taxi' | 'parcel') => {
     orderStore.setField('serviceType', type);
@@ -147,7 +151,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
@@ -231,7 +235,7 @@ const styles = StyleSheet.create({
   serviceCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: radius.xl,
     padding: spacing.md,
     marginBottom: spacing.md,

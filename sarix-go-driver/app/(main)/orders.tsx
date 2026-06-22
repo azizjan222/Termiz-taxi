@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
   TouchableOpacity, Alert, Switch,
@@ -12,10 +12,14 @@ import * as Haptics from 'expo-haptics';
 import { listAvailableOrders, acceptOrder, setOnline as apiSetOnline, type DriverOrder } from '../../src/api/driver';
 import { useDriverStore } from '../../src/store/driver';
 import { useRealtimeStore } from '../../src/store/realtime';
-import { colors, typography, spacing, radius, gradients } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing, radius, gradients } from '../../src/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 export default function OrdersScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const driver = useDriverStore((s) => s.driver);
   const isOnline = useDriverStore((s) => s.isOnline);
   const setOnlineLocal = useDriverStore((s) => s.setOnline);
@@ -318,7 +322,7 @@ export default function OrdersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
@@ -376,7 +380,7 @@ const styles = StyleSheet.create({
   onlineLabelActive: { color: colors.success },
   list: { padding: spacing.md },
   card: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderRadius: 20,
     padding: spacing.md,
     marginBottom: spacing.md,

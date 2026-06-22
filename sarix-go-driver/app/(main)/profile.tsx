@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Image,
   Modal, TextInput, ActivityIndicator,
@@ -13,10 +13,14 @@ import { useDriverStore } from '../../src/store/driver';
 import { getSupportInfo, type SupportInfo } from '../../src/api/ai';
 import { uploadDriverProfilePhoto, updateDriverInfo } from '../../src/api/driver';
 import { API_URL } from '../../src/api/client';
-import { colors, typography, spacing, radius, gradients } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing, radius, gradients } from '../../src/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const driver = useDriverStore((s) => s.driver);
   const setDriver = useDriverStore((s) => s.setDriver);
   const logout = useDriverStore((s) => s.logout);
@@ -482,7 +486,7 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   scroll: { paddingBottom: spacing.xxl },
   headerGradient: {
@@ -569,7 +573,7 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
   statBox: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     padding: spacing.md,
     borderRadius: radius.lg,
     alignItems: 'center',
@@ -591,7 +595,7 @@ const styles = StyleSheet.create({
   statValue: { ...typography.h2, color: colors.text },
   statLabel: { ...typography.small, color: colors.textSecondary, marginTop: 4 },
   card: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     padding: spacing.md,
     borderRadius: radius.lg,
     marginBottom: spacing.md,
@@ -612,7 +616,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderRadius: radius.lg,
     shadowColor: '#0E1730',
     shadowOpacity: 0.04,
@@ -653,7 +657,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   modalCard: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderRadius: radius.lg,
     padding: spacing.lg,
     alignItems: 'center',
@@ -699,7 +703,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalBtnCancel: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.divider,
   },

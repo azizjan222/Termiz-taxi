@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -23,8 +23,10 @@ import { useAuthStore } from '../../src/store/auth';
 import { getSupportInfo } from '../../src/api/ai';
 import { uploadProfilePhoto, updateProfile } from '../../src/api/auth';
 import { API_URL } from '../../src/api/client';
-import { colors, typography, spacing, radius } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing, radius } from '../../src/theme';
 import { gradients } from '../../src/theme/colors';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 // Driver app package on Play Market
 const DRIVER_APP_PACKAGE = 'uz.sarixgo.driver';
@@ -38,19 +40,20 @@ interface MenuItem {
   highlight?: boolean;
 }
 
-// Tinted background per menu item (matches mockup colored icon tiles)
+// Tinted background per menu item (fixed pastel tints — they read well in both
+// light and dark mode because the emoji icons sit on top).
 const ICON_TINTS: Record<string, string> = {
   'profile.orderHistory': '#FFF3CC',     // gold
-  'profile.savedAddresses': colors.errorLight,   // red/pink
+  'profile.savedAddresses': '#FEE2E2',   // red/pink
   'profile.paymentMethods': '#FFF3CC',   // gold
-  'profile.notifications': colors.warningLight,  // yellow
-  'profile.promoCodes': colors.successLight,     // green
+  'profile.notifications': '#FEF3C7',    // yellow
+  'profile.promoCodes': '#D1FAE5',       // green
   'ai.title': '#EDE7FF',                 // purple
-  'profile.faq': colors.errorLight,      // red
-  'profile.helpSupport': colors.infoLight,        // blue
-  'profile.settings': colors.divider,    // gray
-  'profile.feedback': colors.warningLight,
-  'Foydalanish shartlari va maxfiylik siyosati': colors.successLight, // green (terms)
+  'profile.faq': '#FEE2E2',              // red
+  'profile.helpSupport': '#DBEAFE',      // blue
+  'profile.settings': '#EEF1F8',         // gray
+  'profile.feedback': '#FEF3C7',
+  'Foydalanish shartlari va maxfiylik siyosati': '#D1FAE5', // green (terms)
 };
 
 export default function ProfileScreen() {
@@ -58,6 +61,12 @@ export default function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
+  const colors = useThemeStore((s) => s.colors);
+  const isDark = useThemeStore((s) => s.isDark);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const headerGradient = (isDark
+    ? [colors.surface, colors.background]
+    : ['#F2EEFF', '#FFFFFF']) as [string, string];
   const [supportUrl, setSupportUrl] = useState('https://t.me/tg_adminstator');
   const [uploading, setUploading] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
@@ -185,7 +194,7 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Header band */}
         <LinearGradient
-          colors={['#F2EEFF', '#FFFFFF']}
+          colors={headerGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={styles.headerBand}
@@ -369,7 +378,7 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   scroll: { paddingBottom: spacing.xxl },
   headerBand: {
@@ -471,7 +480,7 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderRadius: radius.lg,
     paddingVertical: spacing.sm + 4,
     paddingHorizontal: spacing.md,
@@ -511,7 +520,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   modalCard: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderRadius: radius.lg,
     padding: spacing.lg,
     alignItems: 'center',
@@ -557,7 +566,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalBtnCancel: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.divider,
   },

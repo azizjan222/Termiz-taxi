@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
@@ -7,10 +7,14 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { getDriverStats, type DriverStats, type StatsPeriod } from '../src/api/stats';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 export default function StatsScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [period, setPeriod] = useState<StatsPeriod>('today');
   const [stats, setStats] = useState<DriverStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -199,7 +203,7 @@ export default function StatsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
@@ -207,7 +211,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   backIcon: { fontSize: 28, color: colors.primary },
@@ -215,7 +219,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   tabs: {
     flexDirection: 'row',
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
@@ -244,7 +248,7 @@ const styles = StyleSheet.create({
   onlineCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     padding: spacing.md,
     borderRadius: radius.md,
     marginBottom: spacing.md,
@@ -260,7 +264,7 @@ const styles = StyleSheet.create({
   },
   gridItem: {
     width: '48%',
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     padding: spacing.md,
     borderRadius: radius.md,
     alignItems: 'center',
@@ -268,7 +272,7 @@ const styles = StyleSheet.create({
   gridValue: { ...typography.h2, color: colors.primary },
   gridLabel: { ...typography.small, color: colors.textSecondary, marginTop: 4 },
   chartCard: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     padding: spacing.md,
     borderRadius: radius.md,
     marginBottom: spacing.md,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
 } from 'react-native';
@@ -8,7 +8,8 @@ import { useTranslation } from 'react-i18next';
 
 import { changeLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from '../src/i18n';
 import { useThemeStore, type ThemeMode } from '../src/store/theme';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 const THEMES: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'auto', label: 'Avtomatik', icon: '🌗' },
@@ -18,6 +19,8 @@ const THEMES: { mode: ThemeMode; label: string; icon: string }[] = [
 
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const themeMode = useThemeStore((s) => s.mode);
   const setThemeMode = useThemeStore((s) => s.setMode);
   const [currentLang, setCurrentLang] = useState<SupportedLanguage>(
@@ -88,7 +91,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
@@ -96,7 +99,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   backIcon: { fontSize: 28, color: colors.primary },
@@ -109,7 +112,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   card: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderRadius: radius.md,
     overflow: 'hidden',
   },
