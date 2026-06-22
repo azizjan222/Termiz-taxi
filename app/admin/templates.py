@@ -352,7 +352,7 @@ ORDERS_HTML = """<h2>Buyurtmalar</h2>
 </div>
 <div class="table-responsive">
 <table class="table table-striped table-sm" id="orders-table">
-<thead><tr><th>ID</th><th>Yo'lovchi</th><th>Telefon</th><th>Yo'nalish</th><th>Narx</th><th>Komissiya</th><th>Holat</th><th>Sana</th></tr></thead>
+<thead><tr><th>ID</th><th>Yo'lovchi</th><th>Telefon</th><th>Yo'nalish</th><th>Narx</th><th>Komissiya</th><th>Holat</th><th>Haydovchi</th><th>Sana</th></tr></thead>
 <tbody></tbody>
 </table>
 </div>"""
@@ -367,7 +367,16 @@ data.forEach(o=>{
 const badge={'new':'bg-primary','accepted':'bg-info','completed':'bg-success','cancelled':'bg-danger'}[o.status]||'bg-secondary';
 const comm=(o.commission_effective||0);
 const commHtml=comm>0?comm.toLocaleString():'<span class="text-muted">0</span>';
-tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${esc(o.passenger_phone)}</td><td>${esc(o.from_city)} - ${esc(o.to_city)}</td><td>${o.price.toLocaleString()}</td><td>${commHtml}</td><td><span class="badge ${badge}">${esc(o.status)}</span></td><td>${esc(o.created_at||'')}</td></tr>`;
+// Driver column: name, phone and the time the order was accepted.
+const fmt=(s)=>s?String(s).replace('T',' ').split('.')[0]:'';
+let driverHtml='<span class="text-muted">-</span>';
+if(o.driver_name||o.driver_phone){
+const carPart=o.driver_car_number?' · '+esc(o.driver_car_number):'';
+driverHtml=`<div>${esc(o.driver_name||'-')}${carPart}</div>`+
+`<div class="text-muted small">${esc(o.driver_phone||'')}</div>`+
+(o.accepted_at?`<div class="text-muted small">${esc(fmt(o.accepted_at))}</div>`:'');
+}
+tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${esc(o.passenger_phone)}</td><td>${esc(o.from_city)} - ${esc(o.to_city)}</td><td>${o.price.toLocaleString()}</td><td>${commHtml}</td><td><span class="badge ${badge}">${esc(o.status)}</span></td><td>${driverHtml}</td><td>${esc(o.created_at||'')}</td></tr>`;
 });
 });
 }

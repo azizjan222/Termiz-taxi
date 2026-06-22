@@ -118,7 +118,9 @@ export default function StatsScreen() {
               <Text style={styles.gridLabel}>❌ {t('stats.cancelled')}</Text>
             </View>
             <View style={styles.gridItem}>
-              <Text style={styles.gridValue}>⭐ {stats.rating.toFixed(1)}</Text>
+              {/* TEMP: ratings are not in use yet — show a fixed 4.0 for every driver.
+                  When ratings go live, restore: ⭐ {stats.rating.toFixed(1)} */}
+              <Text style={styles.gridValue}>⭐ 4.0</Text>
               <Text style={styles.gridLabel}>{stats.rating_count} baho</Text>
             </View>
             <View style={styles.gridItem}>

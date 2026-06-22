@@ -17,6 +17,10 @@ import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
 import { gradients } from '../../src/theme/colors';
 import type { ThemeColors } from '../../src/theme/colors-themed';
+import AdBanner from '../../src/components/AdBanner';
+
+// Show the promotional ad only once per app launch (not on every tab switch).
+let adShownThisSession = false;
 
 export default function HomeScreen() {
   const { t } = useTranslation();
@@ -24,6 +28,12 @@ export default function HomeScreen() {
   const orderStore = useOrderStore();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  // 7-second promo ad on the home screen, shown once per session on first mount.
+  const [adVisible, setAdVisible] = React.useState(!adShownThisSession);
+  React.useEffect(() => {
+    if (!adShownThisSession) adShownThisSession = true;
+  }, []);
 
   const startOrder = (type: 'taxi' | 'parcel') => {
     orderStore.setField('serviceType', type);
@@ -34,6 +44,9 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* 7-second promotional ad overlay (once per session) */}
+      <AdBanner visible={adVisible} onClose={() => setAdVisible(false)} />
+
       {/* Header */}
       <View style={styles.header}>
         <View>

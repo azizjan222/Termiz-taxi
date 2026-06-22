@@ -203,7 +203,9 @@ export default function ProfileScreen() {
               <View style={[styles.statIconTile, { backgroundColor: colors.accent }]}>
                 <Text style={styles.statIconText}>⭐</Text>
               </View>
-              <Text style={styles.statValue}>{driver?.rating?.toFixed(1) || '5.0'}</Text>
+              {/* TEMP: ratings are not in use yet — show a fixed 4.0 for every driver.
+                  When ratings go live, restore: driver?.rating?.toFixed(1) || '5.0' */}
+              <Text style={styles.statValue}>4.0</Text>
               <Text style={styles.statLabel}>{t('profile.rating')}</Text>
             </View>
           </View>
