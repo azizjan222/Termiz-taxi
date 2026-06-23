@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform, AppState, Vibration } from 'react-native';
+import { Audio } from 'expo-av';
 import Constants from 'expo-constants';
 
 import { api } from '../api/client';
@@ -32,7 +33,7 @@ export async function setupNotificationChannels() {
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 500, 200, 500, 200, 500],
       lightColor: '#F4C430',
-      sound: 'default',
+      sound: 'new_order.wav',
       bypassDnd: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
@@ -110,11 +111,14 @@ export function addNotificationResponseListener(
 // A long, repeating vibration pattern (ms): wait, vibrate, pause, ...
 const ALERT_VIBRATION = [0, 700, 300, 700, 300, 700, 300, 700];
 
+// Audio playback instance for the custom alert sound.
+let alertSound: Audio.Sound | null = null;
+
 /**
  * Loud alert for a NEW order while the driver is online and the app is open.
- * Plays a system notification sound (via an immediate local notification on the
- * high-importance "orders" channel) and triggers a strong, repeating vibration.
- * No bundled audio asset is required — we reuse the OS notification sound.
+ * Plays the custom new_order.wav sound at maximum volume through the speaker
+ * (bypassing silent/vibrate mode), triggers a strong vibration, and fires a
+ * local notification for when the app is in the background.
  */
 export async function playNewOrderAlert(opts?: { from?: string; to?: string; price?: number }) {
   // Strong vibration (works even in silent mode on most devices).
@@ -122,7 +126,40 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
     Vibration.vibrate(ALERT_VIBRATION, false);
   } catch {}
 
-  // Immediate local notification -> produces the loud system "orders" channel sound.
+  // Play the custom alert sound at max volume through the speaker.
+  try {
+    // Stop any previously playing alert
+    if (alertSound) {
+      try { await alertSound.unloadAsync(); } catch {}
+      alertSound = null;
+    }
+
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      staysActiveInBackground: true,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: false,
+      playThroughEarpieceAndroid: false,
+    });
+
+    const { sound } = await Audio.Sound.createAsync(
+      require('../../assets/sounds/new_order.wav'),
+      { shouldPlay: true, volume: 1.0, isLooping: false }
+    );
+    alertSound = sound;
+
+    // Auto-unload after playback finishes
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        sound.unloadAsync().catch(() => {});
+        if (alertSound === sound) alertSound = null;
+      }
+    });
+  } catch (e) {
+    console.warn('Failed to play alert sound:', e);
+  }
+
+  // Immediate local notification -> produces the loud custom sound via "orders" channel.
   try {
     const body =
       opts?.from && opts?.to
@@ -132,7 +169,7 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
       content: {
         title: '🚕 Yangi zakas!',
         body,
-        sound: 'default',
+        sound: 'new_order.wav',
         priority: Notifications.AndroidNotificationPriority.MAX,
         vibrate: ALERT_VIBRATION,
         data: { alert: true, type: 'new_order' },
@@ -147,4 +184,9 @@ export function stopAlert() {
   try {
     Vibration.cancel();
   } catch {}
+  // Also stop the audio if it's still playing
+  if (alertSound) {
+    try { alertSound.stopAsync(); alertSound.unloadAsync(); } catch {}
+    alertSound = null;
+  }
 }

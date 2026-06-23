@@ -44,6 +44,12 @@
       "expo-router",
       "expo-localization",
       [
+        "expo-notifications",
+        {
+          "sounds": ["./assets/sounds/new_order.wav"]
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Sarix Go Driver joylashuvni kuzatadi"

@@ -115,6 +115,7 @@ async def notify_driver_new_order(session: Session, order, drivers: list):
                 "type": "new_order",
                 "order_id": order.id,
             },
+            sound="new_order.wav",
             channel_id="orders",
         )
 
@@ -152,6 +153,7 @@ async def notify_driver_recommended_order(session: Session, order, driver):
             "order_id": order.id,
             "direct": True,
         },
+        sound="new_order.wav",
         channel_id="orders",
     )
 
