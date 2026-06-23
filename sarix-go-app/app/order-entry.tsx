@@ -19,8 +19,36 @@ import { colors, typography, spacing, radius } from '../src/theme';
 // Termiz, Surxondaryo (default center)
 const DEFAULT_LAT = 37.224;
 const DEFAULT_LON = 67.278;
-const DETECT_ZOOM = 16;
+const DETECT_ZOOM = 17;
 const LONG_HAUL_MIN_KM = 70; // "masofasi 70 km kam bo'lmagan tumanlar"
+
+/**
+ * Shorten a long geocoded address to just the most useful part:
+ * "Узбекистан, Сурхандарьинская область, Термез, Мустакиллик 2-кочаси, 306"
+ *   → "Mustaqillik 2-ko'chasi, 306"
+ * Removes country, region, and city prefix — keeps street + house number.
+ */
+function shortenAddress(full: string): string {
+  if (!full) return '';
+  // Split by comma, trim each part
+  const parts = full.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length <= 2) return full;
+  // Remove known prefixes: country (Узбекистан/O'zbekiston), region, city
+  const skipWords = [
+    'узбекистан', "o'zbekiston", 'oʻzbekiston', 'uzbekiston',
+    'сурхандарьинская', 'surxondaryo', 'surxondarya',
+    'область', 'viloyati', 'viloyat',
+    'термез', 'termiz', 'denov', 'денов', 'sariosiyo', 'сариосиё',
+    'sherobod', 'шерабад', 'boysun', 'байсун',
+  ];
+  const meaningful = parts.filter((p) => {
+    const lower = p.toLowerCase();
+    return !skipWords.some((sw) => lower.includes(sw));
+  });
+  // Return last 2-3 meaningful parts (street, building, etc.)
+  if (meaningful.length === 0) return parts[parts.length - 1];
+  return meaningful.slice(0, 3).join(', ');
+}
 
 /**
  * Yandex-Go-style taxi order entry:
@@ -52,8 +80,8 @@ export default function OrderEntryScreen() {
     };
   });
   const [address, setAddress] = useState('');
-  const [resolving, setResolving] = useState(false);
-  const [detecting, setDetecting] = useState(false);
+  const [resolving, setResolving] = useState(true); // Start as resolving since we detect on mount
+  const [detecting, setDetecting] = useState(true); // Start as detecting
   const [cities, setCities] = useState<string[]>([]);
   const [longHaul, setLongHaul] = useState<string[]>([]);
 
@@ -67,23 +95,24 @@ export default function OrderEntryScreen() {
     debounceRef.current = setTimeout(async () => {
       const reqId = ++reqIdRef.current;
       try {
-        // Primary: in-map ymaps.geocode (works with the JS key + Uzbek locale).
-        // Fallback: HTTP geocoder (needs a Geocoder-enabled key).
+        // Try HTTP geocoder FIRST (faster, doesn't need map to be ready)
         let result: string | null = null;
         try {
-          result = (await mapRef.current?.reverseGeocode(lat, lon)) ?? null;
+          result = await reverseGeocode(lat, lon);
         } catch {}
+        // Fallback: in-map ymaps.geocode (Uzbek locale, needs WebView ready)
         if (!result) {
           try {
-            result = await reverseGeocode(lat, lon);
+            result = (await mapRef.current?.reverseGeocode(lat, lon)) ?? null;
           } catch {}
         }
         if (reqId !== reqIdRef.current) return;
-        setAddress(result || '');
+        // Shorten the address: remove country/region, keep street + number
+        setAddress(shortenAddress(result || ''));
       } finally {
         if (reqId === reqIdRef.current) setResolving(false);
       }
-    }, 500);
+    }, 200); // Fast debounce for responsiveness
   }, []);
 
   const deriveCity = useCallback(
@@ -204,14 +233,14 @@ export default function OrderEntryScreen() {
         {/* Top "Manzilingiz" card */}
         <View style={styles.topCard} pointerEvents="box-none">
           <Text style={styles.topLabel}>{isDest ? 'Yakuniy manzil ›' : 'Manzilingiz ›'}</Text>
-          {resolving ? (
+          {(resolving || detecting) ? (
             <View style={styles.row}>
               <ActivityIndicator size="small" color={colors.primary} />
               <Text style={styles.topAddrMuted}>Aniqlanmoqda…</Text>
             </View>
           ) : (
             <Text style={styles.topAddr} numberOfLines={1}>
-              {address || 'Joyni tanlash uchun xaritani suring'}
+              {address || 'Xaritani suring yoki ➤ bosing'}
             </Text>
           )}
         </View>
