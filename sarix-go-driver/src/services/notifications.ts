@@ -114,6 +114,9 @@ const ALERT_VIBRATION = [0, 700, 300, 700, 300, 700, 300, 700];
 // Audio playback instance for the custom alert sound.
 let alertSound: Audio.Sound | null = null;
 
+// Preloaded sound source for faster playback.
+const NEW_ORDER_SOUND = require('../../assets/sounds/new_order.wav');
+
 /**
  * Loud alert for a NEW order while the driver is online and the app is open.
  * Plays the custom new_order.wav sound at maximum volume through the speaker
@@ -128,9 +131,12 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
 
   // Play the custom alert sound at max volume through the speaker.
   try {
-    // Stop any previously playing alert
+    // Stop and unload any previously playing alert
     if (alertSound) {
-      try { await alertSound.unloadAsync(); } catch {}
+      try {
+        await alertSound.stopAsync();
+        await alertSound.unloadAsync();
+      } catch {}
       alertSound = null;
     }
 
@@ -143,14 +149,14 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
     });
 
     const { sound } = await Audio.Sound.createAsync(
-      require('../../assets/sounds/new_order.wav'),
+      NEW_ORDER_SOUND,
       { shouldPlay: true, volume: 1.0, isLooping: false }
     );
     alertSound = sound;
 
     // Auto-unload after playback finishes
     sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
+      if ('isLoaded' in status && status.isLoaded && 'didJustFinish' in status && status.didJustFinish) {
         sound.unloadAsync().catch(() => {});
         if (alertSound === sound) alertSound = null;
       }
@@ -180,13 +186,17 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
   } catch {}
 }
 
-export function stopAlert() {
+export async function stopAlert() {
   try {
     Vibration.cancel();
   } catch {}
   // Also stop the audio if it's still playing
   if (alertSound) {
-    try { alertSound.stopAsync(); alertSound.unloadAsync(); } catch {}
+    const ref = alertSound;
     alertSound = null;
+    try {
+      await ref.stopAsync();
+      await ref.unloadAsync();
+    } catch {}
   }
 }
