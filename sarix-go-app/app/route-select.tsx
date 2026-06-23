@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,41 +23,49 @@ import { colors, typography, spacing, radius } from '../src/theme';
 type Field = 'from' | 'to';
 
 /**
- * Destination entry (Yandex-Go style, see the reference screenshot):
- *  - a two-field card at the top: pickup ("Qayerdan ketasiz?") + destination
- *    ("Qayerga borasiz?"); the pickup is normally pre-filled from the map screen,
- *    the active row is highlighted
- *  - the pickup row has a small "Xarita" button that returns to the map to adjust
- *    the pickup point
- *  - "Sizning joylashuvingiz" (GPS) + saved addresses + Yandex Suggest + curated
- *    Surxondaryo places — each fills the ACTIVE field
+ * Route selection screen (Yandex-Go style):
+ *  - Two-field card at top: pickup + destination with inline TextInput for
+ *    the active field (no separate search box)
+ *  - "Xarita" button on each row to pick via map
+ *  - GPS location option
+ *  - Yandex Suggest results with description + distance
+ *  - Curated Surxondaryo places
  *
- * Identical for taxi and parcel; only the wording changes.
+ * Identical layout for taxi and parcel; only labels change.
  */
 export default function RouteSelectScreen() {
   const { mode } = useLocalSearchParams<{ mode: 'from' | 'to' }>();
   const orderStore = useOrderStore();
   const isParcel = orderStore.serviceType === 'parcel';
 
-  // The map screen sends mode='to' (pickup already set), so the destination is
-  // active by default; fall back to 'from' if it ever opens for the pickup.
   const [active, setActive] = useState<Field>(mode === 'from' ? 'from' : 'to');
   const [cities, setCities] = useState<string[]>([]);
   const [search, setSearch] = useState('');
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<Array<{ title: string; subtitle: string; distance?: string }>>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [gpsBusy, setGpsBusy] = useState(false);
+
+  const fromInputRef = useRef<TextInput>(null);
+  const toInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     listCities().then(setCities).catch(() => setCities([]));
     listAddresses().then(setSavedAddresses).catch(() => setSavedAddresses([]));
   }, []);
 
-  // Debounced Yandex Suggest search.
+  // Focus the active field's input
   useEffect(() => {
-    if (search.length < 3) {
+    setTimeout(() => {
+      if (active === 'from') fromInputRef.current?.focus();
+      else toInputRef.current?.focus();
+    }, 100);
+  }, [active]);
+
+  // Debounced Yandex Suggest search
+  useEffect(() => {
+    if (search.length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
@@ -70,7 +78,7 @@ export default function RouteSelectScreen() {
     const timer = setTimeout(async () => {
       setLoadingSuggestions(true);
       try {
-        const results = await suggestAddress(search);
+        const results = await suggestAddressRich(search);
         setSuggestions(results);
         setShowSuggestions(results.length > 0);
       } catch {
@@ -92,8 +100,6 @@ export default function RouteSelectScreen() {
     [cities]
   );
 
-  // Apply a chosen value to the active field, then advance: if the other field
-  // is still empty focus it, otherwise continue to the next step.
   const applySelection = useCallback(
     (field: Field, city: string, address: string, lat?: number, lon?: number) => {
       if (field === 'from') {
@@ -138,21 +144,17 @@ export default function RouteSelectScreen() {
     try {
       const res = await detectLocation({ timeoutMs: 15000 });
       if (res.status !== 'success') {
-        Alert.alert('Joylashuv', 'Joylashuvni aniqlab boʻlmadi. Ruxsatni tekshiring yoki manzilni qidiruvdan tanlang.');
+        Alert.alert('Joylashuv', 'Joylashuvni aniqlab bo\'lmadi. Ruxsatni tekshiring.');
         return;
       }
       let addr: string | null = null;
-      try {
-        addr = await reverseGeocode(res.lat, res.lon);
-      } catch {}
+      try { addr = await reverseGeocode(res.lat, res.lon); } catch {}
       const text = addr || 'Joriy joylashuv';
-      // "Sizning joylashuvingiz" always sets the PICKUP point (Yo'lovchini olish
-      // nuqtasi = the 'from' field), regardless of which row is active.
       applySelection('from', matchCity(text, text.split(',')[0].trim()), text, res.lat, res.lon);
     } finally {
       setGpsBusy(false);
     }
-  }, [gpsBusy, active, applySelection, matchCity]);
+  }, [gpsBusy, applySelection, matchCity]);
 
   const handleSelectPlace = useCallback(
     async (place: LocalPlace) => {
@@ -172,70 +174,122 @@ export default function RouteSelectScreen() {
     [active, applySelection, matchCity]
   );
 
-  const savedIcon = (label?: string | null) => {
-    const l = (label || '').toLowerCase();
-    if (l.includes('uy') || l.includes('home') || l.includes('дом')) return '🏠';
-    if (l.includes('ish') || l.includes('work') || l.includes('работ')) return '💼';
-    return '🔖';
+  // Activate a field and clear search
+  const activateField = (field: Field) => {
+    setActive(field);
+    setSearch('');
+    setShowSuggestions(false);
   };
-  const placeIcon = (g: LocalPlace['group']) =>
-    g === 'place' ? '📌' : g === 'town' ? '🏙' : g === 'district' ? '🚕' : '🏘';
-
-  const filteredCities = cities.filter((c) => c.toLowerCase().includes(search.toLowerCase()));
-  const localPlaces = searchSurxondaryoPlaces(search, cities);
-  type Row =
-    | { type: 'header'; key: string; label: string }
-    | { type: 'city'; key: string; name: string }
-    | { type: 'place'; key: string; place: LocalPlace };
-  const rows: Row[] = [];
-  if (filteredCities.length > 0) {
-    rows.push({ type: 'header', key: 'h-cities', label: '🚕 Tumanlar va shaharlar' });
-    filteredCities.forEach((c) => rows.push({ type: 'city', key: `c-${c}`, name: c }));
-  }
-  if (localPlaces.length > 0) {
-    rows.push({ type: 'header', key: 'h-places', label: '🏘 Surxondaryo: mahalla va joylar' });
-    localPlaces.forEach((p) => rows.push({ type: 'place', key: `p-${p.name}`, place: p }));
-  }
 
   const fromValue = orderStore.fromAddress || orderStore.fromCity || '';
   const toValue = orderStore.toAddress || orderStore.toCity || '';
-  const fromHint = isParcel ? 'Pochtani qayerdan olamiz?' : 'Qayerdan ketasiz?';
-  const toHint = isParcel ? 'Pochtani qayerga yuboramiz?' : 'Qayerga borasiz?';
   const fromCaption = isParcel ? 'Pochta olinadigan joy' : "Yo'lovchini olish nuqtasi";
+  const toCaption = isParcel ? 'Yetkazish manzili' : 'Yakuniy manzil';
+  const fromPlaceholder = isParcel ? 'Pochtani qayerdan olamiz?' : 'Manzilni kiriting...';
+  const toPlaceholder = isParcel ? 'Pochtani qayerga yuboramiz?' : 'Qayerga borasiz?';
+
+  // Filter cities and places based on search
+  const filteredCities = cities.filter((c) => c.toLowerCase().includes(search.toLowerCase()));
+  const localPlaces = searchSurxondaryoPlaces(search, cities);
+
+  type Row =
+    | { type: 'header'; key: string; label: string }
+    | { type: 'city'; key: string; name: string }
+    | { type: 'place'; key: string; place: LocalPlace }
+    | { type: 'suggest'; key: string; item: { title: string; subtitle: string; distance?: string } };
+
+  const rows: Row[] = [];
+
+  if (showSuggestions && suggestions.length > 0) {
+    rows.push({ type: 'header', key: 'h-suggest', label: 'TAVSIYA ETILGAN MANZILLAR' });
+    suggestions.forEach((s, i) => rows.push({ type: 'suggest', key: `s-${i}`, item: s }));
+  } else {
+    if (filteredCities.length > 0) {
+      rows.push({ type: 'header', key: 'h-cities', label: 'TAVSIYA ETILGAN MANZILLAR' });
+      filteredCities.forEach((c) => rows.push({ type: 'city', key: `c-${c}`, name: c }));
+    }
+    if (localPlaces.length > 0 && search.length >= 2) {
+      rows.push({ type: 'header', key: 'h-places', label: 'JOYLAR' });
+      localPlaces.slice(0, 8).forEach((p) => rows.push({ type: 'place', key: `p-${p.name}`, place: p }));
+    }
+  }
+
+  const getSuggestIcon = (subtitle: string) => {
+    const s = subtitle.toLowerCase();
+    if (s.includes('avtovokzal') || s.includes('avtostan') || s.includes('bekat')) return '🚌';
+    if (s.includes('stansiya') || s.includes('temir')) return '🎯';
+    return '📍';
+  };
 
   const renderHeader = () => (
     <View>
-      {/* Two-field card */}
+      {/* Two-field card with inline inputs */}
       <View style={styles.fieldCard}>
-        <View style={[styles.fieldRow, active === 'from' && styles.fieldRowActive]}>
-          <View style={[styles.fieldIconTile, { backgroundColor: colors.accent }]}>
-            <Text style={styles.fieldIconText}>{isParcel ? '📦' : '🧍'}</Text>
+        {/* FROM row */}
+        <TouchableOpacity
+          style={[styles.fieldRow, active === 'from' && styles.fieldRowActive]}
+          onPress={() => activateField('from')}
+          activeOpacity={0.9}
+        >
+          <View style={[styles.fieldIconTile, { backgroundColor: '#EDE7FF' }]}>
+            <Text style={styles.fieldIconText}>🏃</Text>
           </View>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setActive('from')} activeOpacity={0.8}>
+          <View style={{ flex: 1 }}>
             <Text style={styles.fieldCaption}>{fromCaption}</Text>
-            <Text style={[styles.fieldValue, !fromValue && styles.fieldPlaceholder]} numberOfLines={1}>
-              {fromValue || fromHint}
-            </Text>
-          </TouchableOpacity>
-          {/* Xarita — adjust the pickup on the map */}
-          <TouchableOpacity style={styles.mapPill} onPress={() => router.back()} activeOpacity={0.85}>
+            {active === 'from' ? (
+              <TextInput
+                ref={fromInputRef}
+                style={styles.fieldInput}
+                placeholder={fromPlaceholder}
+                placeholderTextColor={colors.textMuted}
+                value={search}
+                onChangeText={setSearch}
+                autoFocus={active === 'from'}
+              />
+            ) : (
+              <Text style={[styles.fieldValue, !fromValue && styles.fieldPlaceholder]} numberOfLines={1}>
+                {fromValue || fromPlaceholder}
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity
+            style={styles.mapPill}
+            onPress={() => router.back()}
+            activeOpacity={0.85}
+          >
             <Text style={styles.mapPillText}>Xarita</Text>
           </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.fieldDivider} />
 
-        <View style={[styles.fieldRow, active === 'to' && styles.fieldRowActive]}>
-          <View style={styles.fieldIconTile}>
+        {/* TO row */}
+        <TouchableOpacity
+          style={[styles.fieldRow, active === 'to' && styles.fieldRowActive]}
+          onPress={() => activateField('to')}
+          activeOpacity={0.9}
+        >
+          <View style={[styles.fieldIconTile, { backgroundColor: '#EDE7FF' }]}>
             <Text style={styles.fieldIconText}>🏁</Text>
           </View>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setActive('to')} activeOpacity={0.8}>
-            <Text style={styles.fieldCaption}>Yakuniy manzil</Text>
-            <Text style={[styles.fieldValue, !toValue && styles.fieldPlaceholder]} numberOfLines={1}>
-              {toValue || toHint}
-            </Text>
-          </TouchableOpacity>
-          {/* Xarita — choose the destination on the map */}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.fieldCaption}>{toCaption}</Text>
+            {active === 'to' ? (
+              <TextInput
+                ref={toInputRef}
+                style={styles.fieldInput}
+                placeholder={toPlaceholder}
+                placeholderTextColor={colors.textMuted}
+                value={search}
+                onChangeText={setSearch}
+                autoFocus={active === 'to'}
+              />
+            ) : (
+              <Text style={[styles.fieldValue, !toValue && styles.fieldPlaceholder]} numberOfLines={1}>
+                {toValue || toPlaceholder}
+              </Text>
+            )}
+          </View>
           <TouchableOpacity
             style={styles.mapPill}
             onPress={() => router.push({ pathname: '/order-entry', params: { pick: 'to' } })}
@@ -243,26 +297,14 @@ export default function RouteSelectScreen() {
           >
             <Text style={styles.mapPillText}>Xarita</Text>
           </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
       </View>
 
-      {/* Search box (fills the active field) */}
-      <View style={styles.searchBox}>
-        <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          style={styles.searchInput}
-          placeholder={active === 'from' ? fromHint : toHint}
-          placeholderTextColor={colors.textMuted}
-          value={search}
-          onChangeText={setSearch}
-          autoFocus
-        />
-        {loadingSuggestions && <ActivityIndicator size="small" color={colors.primary} />}
-      </View>
-
-      {/* Sizning joylashuvingiz — current GPS location */}
+      {/* GPS location */}
       <TouchableOpacity style={styles.gpsRow} onPress={handleUseGps} activeOpacity={0.8} disabled={gpsBusy}>
-        <Text style={styles.gpsIcon}>➤</Text>
+        <View style={styles.gpsIconWrap}>
+          <Text style={styles.gpsIcon}>➤</Text>
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.gpsTitle}>Sizning joylashuvingiz</Text>
           <Text style={styles.gpsSub}>GPS orqali aniqlaymiz</Text>
@@ -273,7 +315,7 @@ export default function RouteSelectScreen() {
       {/* Saved addresses */}
       {savedAddresses.length > 0 && (
         <View style={styles.savedSection}>
-          {savedAddresses.slice(0, 6).map((a) => (
+          {savedAddresses.slice(0, 4).map((a) => (
             <TouchableOpacity
               key={a.id}
               style={styles.savedItem}
@@ -281,59 +323,35 @@ export default function RouteSelectScreen() {
               activeOpacity={0.7}
             >
               <View style={styles.savedIconTile}>
-                <Text style={styles.savedIconText}>{savedIcon(a.label)}</Text>
+                <Text style={styles.savedIconText}>
+                  {(a.label || '').toLowerCase().includes('uy') ? '🏠' : '📌'}
+                </Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.savedLabel} numberOfLines={1}>
                   {a.label || a.address.split(',')[0]}
                 </Text>
-                <Text style={styles.savedSub} numberOfLines={1}>
-                  {a.address}
-                </Text>
+                <Text style={styles.savedSub} numberOfLines={1}>{a.address}</Text>
               </View>
             </TouchableOpacity>
           ))}
         </View>
       )}
 
-      {/* Yandex Suggest results */}
-      {showSuggestions && suggestions.length > 0 && (
-        <View style={styles.suggestSection}>
-          <Text style={styles.suggestTitle}>📍 Manzillar (Yandex)</Text>
-          {suggestions.map((s, i) => (
-            <TouchableOpacity
-              key={i}
-              style={styles.suggestItem}
-              onPress={() => handleSelectAddress(s)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.suggestIcon}>
-                <Text>🏠</Text>
-              </View>
-              <Text style={styles.suggestText} numberOfLines={2}>
-                {s}
-              </Text>
-            </TouchableOpacity>
-          ))}
+      {loadingSuggestions && (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.loadingText}>Qidirilmoqda...</Text>
         </View>
-      )}
-
-      {/* Recommended addresses heading (Yandex-Go style), shown when the user is
-          not actively typing a Suggest query. */}
-      {!showSuggestions && (filteredCities.length > 0 || localPlaces.length > 0) && (
-        <Text style={styles.recommendTitle}>TAVSIYA ETILGAN MANZILLAR</Text>
       )}
     </View>
   );
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>{isParcel ? '📦 Pochta' : '🚕 Taksi'}</Text>
-        <View style={{ width: 40 }} />
+      {/* Drag handle */}
+      <View style={styles.handleWrap}>
+        <View style={styles.handle} />
       </View>
 
       <FlatList
@@ -346,22 +364,70 @@ export default function RouteSelectScreen() {
           }
           if (item.type === 'city') {
             return (
-              <TouchableOpacity style={styles.cityItem} onPress={() => handleSelectCity(item.name)} activeOpacity={0.7}>
-                <View style={styles.cityIcon}>
-                  <Text>📍</Text>
+              <TouchableOpacity
+                style={styles.resultItem}
+                onPress={() => handleSelectCity(item.name)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.resultIconWrap}>
+                  <Text style={styles.resultIcon}>📍</Text>
                 </View>
-                <Text style={styles.cityName}>{item.name}</Text>
-                <Text style={styles.cityArrow}>›</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.resultTitle}>{item.name}</Text>
+                  <Text style={styles.resultSub}>Surxondaryo viloyati</Text>
+                </View>
+                <Text style={styles.resultArrow}>›</Text>
               </TouchableOpacity>
             );
           }
+          if (item.type === 'place') {
+            return (
+              <TouchableOpacity
+                style={styles.resultItem}
+                onPress={() => handleSelectPlace(item.place)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.resultIconWrap}>
+                  <Text style={styles.resultIcon}>
+                    {item.place.group === 'place' ? '🎯' : item.place.group === 'town' ? '🏙' : '🏘'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.resultTitle}>{item.place.name}</Text>
+                  <Text style={styles.resultSub}>
+                    {item.place.group === 'district' ? 'Tuman' :
+                     item.place.group === 'town' ? 'Shahar' :
+                     item.place.group === 'mahalla' ? 'Mahalla' : 'Joy'}
+                  </Text>
+                </View>
+                <Text style={styles.resultArrow}>›</Text>
+              </TouchableOpacity>
+            );
+          }
+          // suggest
           return (
-            <TouchableOpacity style={styles.cityItem} onPress={() => handleSelectPlace(item.place)} activeOpacity={0.7}>
-              <View style={styles.cityIcon}>
-                <Text>{placeIcon(item.place.group)}</Text>
+            <TouchableOpacity
+              style={styles.resultItem}
+              onPress={() => handleSelectAddress(`${item.item.title}${item.item.subtitle ? `, ${item.item.subtitle}` : ''}`)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.resultIconWrap}>
+                <Text style={styles.resultIcon}>{getSuggestIcon(item.item.subtitle)}</Text>
               </View>
-              <Text style={styles.cityName}>{item.place.name}</Text>
-              <Text style={styles.cityArrow}>›</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.resultTitle}>
+                  <Text style={styles.resultHighlight}>
+                    {highlightMatch(item.item.title, search)}
+                  </Text>
+                </Text>
+                {!!item.item.subtitle && (
+                  <Text style={styles.resultSub} numberOfLines={2}>{item.item.subtitle}</Text>
+                )}
+              </View>
+              {item.item.distance && (
+                <Text style={styles.resultDistance}>{item.item.distance}</Text>
+              )}
+              <Text style={styles.resultArrow}>›</Text>
             </TouchableOpacity>
           );
         }}
@@ -372,90 +438,158 @@ export default function RouteSelectScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.white },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
-  title: { ...typography.h3, color: colors.primary },
+/** Highlight matching text portion */
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query || query.length < 2) return text;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <Text style={{ color: colors.primary, fontWeight: '700' }}>
+        {text.slice(idx, idx + query.length)}
+      </Text>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
 
+/** Enhanced suggest that returns structured results with title/subtitle */
+import Constants from 'expo-constants';
+
+async function suggestAddressRich(query: string): Promise<Array<{ title: string; subtitle: string; distance?: string }>> {
+  if (query.trim().length < 2) return [];
+
+  const SUGGEST_KEY =
+    process.env.EXPO_PUBLIC_YANDEX_SUGGEST_KEY ||
+    (Constants.expoConfig?.extra as any)?.yandexSuggestKey ||
+    '';
+  const SDK_API_KEY =
+    process.env.EXPO_PUBLIC_YANDEX_SDK_API_KEY ||
+    (Constants.expoConfig?.extra as any)?.yandexSdkApiKey ||
+    '';
+
+  const keys = Array.from(new Set([SUGGEST_KEY, SDK_API_KEY].filter(Boolean)));
+  for (const key of keys) {
+    try {
+      const url =
+        `https://suggest-maps.yandex.ru/v1/suggest?apikey=${key}` +
+        `&text=${encodeURIComponent(query)}&lang=uz&results=7` +
+        `&ll=67.6,37.9&spn=1.8,1.6`;
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const data = await resp.json();
+        const results = data?.results || [];
+        if (results.length > 0) {
+          return results.map((r: any) => ({
+            title: r.title?.text || '',
+            subtitle: r.subtitle?.text || '',
+            distance: r.distance?.text || undefined,
+          }));
+        }
+      }
+    } catch {}
+  }
+
+  // Fallback: use simple suggest
+  try {
+    const simple = await suggestAddress(query);
+    return simple.map((s) => {
+      const parts = s.split(',');
+      return {
+        title: parts[0]?.trim() || s,
+        subtitle: parts.slice(1).join(',').trim(),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.surface },
+  handleWrap: { alignItems: 'center', paddingVertical: spacing.sm },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+  },
+
+  // Field card
   fieldCard: {
     marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
     backgroundColor: colors.white,
-    borderRadius: radius.lg,
+    borderRadius: 20,
     paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     shadowColor: '#1A1240',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowRadius: 16,
+    elevation: 4,
   },
   fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.xs,
     borderRadius: radius.md,
   },
-  fieldRowActive: { backgroundColor: colors.surface },
+  fieldRowActive: { backgroundColor: '#F8F6FF' },
   fieldIconTile: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: '#111',
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  fieldIconText: { fontSize: 20 },
-  fieldCaption: { ...typography.caption, color: colors.textSecondary },
-  fieldValue: { ...typography.bodyBold, color: colors.text, fontSize: 17 },
+  fieldIconText: { fontSize: 22 },
+  fieldCaption: { ...typography.caption, color: colors.textSecondary, marginBottom: 2 },
+  fieldValue: { ...typography.bodyBold, color: colors.text, fontSize: 16 },
   fieldPlaceholder: { color: colors.textMuted, fontWeight: '400' },
-  fieldDivider: { height: 1, backgroundColor: colors.divider, marginLeft: 56 },
+  fieldInput: {
+    ...typography.bodyBold,
+    color: colors.text,
+    fontSize: 16,
+    padding: 0,
+    margin: 0,
+    minHeight: 24,
+  },
+  fieldDivider: { height: 1, backgroundColor: colors.divider, marginLeft: 60 },
   mapPill: {
     backgroundColor: colors.surface,
     borderRadius: radius.pill,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
     marginLeft: spacing.sm,
   },
-  mapPillText: { ...typography.caption, color: colors.text, fontWeight: '600' },
+  mapPillText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
 
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    minHeight: 50,
-    borderWidth: 2,
-    borderColor: colors.accent,
-  },
-  searchIcon: { marginRight: spacing.sm, fontSize: 18 },
-  searchInput: { flex: 1, ...typography.body, color: colors.text },
-
+  // GPS
   gpsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     paddingVertical: spacing.sm,
   },
-  gpsIcon: { fontSize: 18, color: colors.primary, marginRight: spacing.md, transform: [{ rotate: '-45deg' }] },
+  gpsIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EDE7FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  gpsIcon: { fontSize: 16, color: colors.primary, transform: [{ rotate: '-45deg' }] },
   gpsTitle: { ...typography.bodyBold, color: colors.text },
   gpsSub: { ...typography.caption, color: colors.textSecondary },
 
-  savedSection: { marginHorizontal: spacing.lg, marginTop: spacing.xs },
+  // Saved addresses
+  savedSection: { marginHorizontal: spacing.lg, marginTop: spacing.sm },
   savedItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -476,72 +610,57 @@ const styles = StyleSheet.create({
   savedLabel: { ...typography.bodyBold, color: colors.text },
   savedSub: { ...typography.caption, color: colors.textSecondary, marginTop: 1 },
 
-  suggestSection: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-  },
-  suggestTitle: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    paddingHorizontal: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  suggestItem: {
+  // Loading
+  loadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
-  },
-  suggestIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.accentLight,
-    alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
-  suggestText: { flex: 1, ...typography.caption, color: colors.text },
+  loadingText: { ...typography.caption, color: colors.textSecondary },
 
-  recommendTitle: {
+  // Section title
+  sectionTitle: {
     ...typography.caption,
     color: colors.textSecondary,
     fontWeight: '700',
     letterSpacing: 0.5,
     marginTop: spacing.lg,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
   },
 
-  sectionTitle: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
-  cityItem: {
+  // Result items (unified for cities, places, suggests)
+  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  resultItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
+    backgroundColor: colors.white,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.lg,
+    marginBottom: spacing.sm,
   },
-  cityIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
+  resultIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F0EEFF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  cityName: { flex: 1, ...typography.bodyBold, color: colors.text },
-  cityArrow: { fontSize: 24, color: colors.textMuted },
+  resultIcon: { fontSize: 20 },
+  resultTitle: { ...typography.bodyBold, color: colors.text, fontSize: 15 },
+  resultHighlight: { color: colors.text },
+  resultSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  resultDistance: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginLeft: spacing.sm,
+    minWidth: 50,
+    textAlign: 'right',
+  },
+  resultArrow: { fontSize: 22, color: colors.textMuted, marginLeft: spacing.sm },
 });
