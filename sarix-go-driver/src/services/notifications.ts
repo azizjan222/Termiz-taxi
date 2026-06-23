@@ -30,6 +30,13 @@ Notifications.setNotificationHandler({
 
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
+    // Delete the old "orders" channel if it exists — Android does not allow
+    // updating a channel's sound after creation, so we recreate it to ensure
+    // the custom sound takes effect on devices that had the previous build.
+    try {
+      await Notifications.deleteNotificationChannelAsync('orders');
+    } catch {}
+
     await Notifications.setNotificationChannelAsync('orders', {
       name: 'Yangi zakaslar',
       importance: Notifications.AndroidImportance.MAX,
