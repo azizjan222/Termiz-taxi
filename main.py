@@ -156,6 +156,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='HTML',
                 reply_markup=tugma)
             return
+        if param.startswith("apporder_"):
+            # Driver accepting an app-originated order via Telegram deep link
+            order_id = int(param.split("_")[1])
+            await _accept_app_order_from_bot(update, context, user_id, order_id)
+            return
         if param.startswith("olish_"):
             zakas_id = int(param.split("_")[1])
             if user_id in haydovchilar:
@@ -784,6 +789,106 @@ def taymerni_toxtatish(context, zakas_id):
     for job in context.job_queue.get_jobs_by_name(f"avto_{zakas_id}"): job.schedule_removal()
 
 
+# ================== APP ORDER ACCEPTANCE VIA TELEGRAM BOT ==================
+async def _accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAULT_TYPE, driver_telegram_id: int, order_id: int):
+    """Accept an app-originated order via Telegram bot deep link.
+
+    This is triggered when a driver taps "✅ Zakasni olish" in the Telegram
+    drivers group for an order that was created in the mobile app.
+    """
+    from app.database import get_session as _gs
+    from app.models import Order, Driver as DBDriver
+    from app.services.push import notify_passenger_order_accepted
+    from app.api.websocket import ws_manager
+    from app import config
+
+    session = _gs()
+    try:
+        order = session.query(Order).filter_by(id=order_id).first()
+        if not order:
+            await context.bot.send_message(driver_telegram_id, "❌ Buyurtma topilmadi.")
+            return
+        if order.status != "new":
+            await context.bot.send_message(driver_telegram_id, "❌ Buyurtma allaqachon olingan.")
+            return
+
+        # Find driver in DB
+        driver = session.query(DBDriver).filter_by(telegram_id=driver_telegram_id).first()
+        if not driver:
+            await context.bot.send_message(driver_telegram_id,
+                "❌ Siz ilovada ro'yxatdan o'tmagansiz. Avval ilovada hujjatlaringizni yuboring.")
+            return
+
+        # Check balance (same logic as API accept_order)
+        now = datetime.utcnow()
+        on_free_trial = driver.subscription_until and driver.subscription_until > now
+
+        if not on_free_trial:
+            if (driver.balance or 0) < config.MIN_DRIVER_BALANCE:
+                await context.bot.send_message(driver_telegram_id,
+                    f"❌ Balans yetarli emas.\n"
+                    f"Kerak: {config.MIN_DRIVER_BALANCE:,} so'm\n"
+                    f"Hozir: {driver.balance or 0:,} so'm".replace(",", " "))
+                return
+
+        # Accept the order
+        order.driver_id = driver.id
+        order.driver_telegram_id = driver_telegram_id
+        order.status = "accepted"
+        order.accepted_at = datetime.utcnow()
+        order.commission_charged = False
+        session.commit()
+        session.refresh(order)
+        session.refresh(driver)
+
+        # Notify passenger via push notification (mobile app)
+        try:
+            await notify_passenger_order_accepted(session, order, driver)
+        except Exception as e:
+            logger.error(f"Push to passenger failed: {e}")
+
+        # Notify passenger via WebSocket
+        try:
+            if order.passenger_id:
+                await ws_manager.send_to_passenger(order.passenger_id, {
+                    "type": "order_accepted",
+                    "order_id": order.id,
+                    "driver": {
+                        "first_name": driver.first_name,
+                        "phone": driver.phone,
+                        "car_model": driver.car_model,
+                        "car_number": driver.car_number,
+                    },
+                })
+        except Exception as e:
+            logger.error(f"WS to passenger failed: {e}")
+
+        # Send confirmation to driver in Telegram
+        narx_str = f"{order.price:,}".replace(",", " ")
+        h_xabar = (
+            f"🚕 <b>BUYURTMA QABUL QILINDI!</b>\n\n"
+            f"📍 {order.from_city} → {order.to_city}\n"
+            f"👥 {order.person_count} kishi\n"
+            f"💰 Narxi: {narx_str} so'm\n"
+            f"📞 Yo'lovchi: {order.passenger_phone}\n"
+            f"👤 {order.passenger_name or 'Nomalum'}"
+        )
+        if order.note:
+            h_xabar += f"\n📝 {order.note}"
+
+        await context.bot.send_message(
+            driver_telegram_id, h_xabar, parse_mode="HTML")
+
+    except Exception as e:
+        logger.error(f"App order accept from bot failed: {e}")
+        try:
+            await context.bot.send_message(driver_telegram_id, "❌ Xatolik yuz berdi. Qayta urinib ko'ring.")
+        except:
+            pass
+    finally:
+        session.close()
+
+
 # ================== ZAKAS BIRIKTIRISH ==================
 async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE, haydovchi_id: int, zakas_id: int):
     if zakas_id not in zakaslar:
@@ -800,6 +905,34 @@ async def zakasni_biriktirish(update: Update, context: ContextTypes.DEFAULT_TYPE
         tugma_y = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Bekor qilish", callback_data=f"ybekor_{zakas_id}")]])
         await context.bot.send_message(z["yolovchi_id"],
             f"✅ Haydovchi topildi!\n📞 {haydovchilar[haydovchi_id]}", reply_markup=tugma_y)
+
+        # Send push notification to passenger's mobile app (if they have one)
+        try:
+            from app.database import get_session as _gs
+            from app.models import User as DBUser, Driver as DBDriver
+            from app.services.push import send_push
+
+            session = _gs()
+            try:
+                # Find the passenger by telegram_id and send push
+                passenger = session.query(DBUser).filter_by(telegram_id=z["yolovchi_id"]).first()
+                driver_db = session.query(DBDriver).filter_by(telegram_id=haydovchi_id).first()
+                if passenger and passenger.push_token:
+                    driver_name = driver_db.first_name if driver_db else "Haydovchi"
+                    driver_car = driver_db.car_model if driver_db else ""
+                    await send_push(
+                        session,
+                        recipient_type="user",
+                        recipient_id=passenger.id,
+                        title="✅ Haydovchi topildi!",
+                        body=f"{driver_name} ({driver_car}) tez orada siz bilan bog'lanadi",
+                        data={"type": "order_accepted"},
+                        channel_id="orders",
+                    )
+            finally:
+                session.close()
+        except Exception as e:
+            logger.error(f"Push to passenger (bot order) failed: {e}")
 
         if z.get('lat') and z.get('lon'):
             await context.bot.send_location(haydovchi_id, z['lat'], z['lon'])
