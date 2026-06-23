@@ -188,6 +188,15 @@ export default function OrderDetailScreen() {
     }
   };
 
+  const smsPassenger = () => {
+    if (order?.passenger_phone) {
+      const smsUrl = Platform.OS === 'ios'
+        ? `sms:${order.passenger_phone}`
+        : `sms:${order.passenger_phone}?body=`;
+      Linking.openURL(smsUrl);
+    }
+  };
+
   const handleStartTrip = () => {
     const parcel = order?.service_type === 'parcel';
     Alert.alert(
@@ -362,6 +371,9 @@ export default function OrderDetailScreen() {
               </Text>
               <Text style={styles.passengerPhone}>{order.passenger_phone || '—'}</Text>
             </View>
+            <TouchableOpacity style={styles.smsBtn} onPress={smsPassenger}>
+              <Text style={styles.smsBtnIcon}>💬</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.callBtn} onPress={callPassenger}>
               <Text style={styles.callBtnIcon}>📞</Text>
             </TouchableOpacity>
@@ -424,7 +436,9 @@ export default function OrderDetailScreen() {
         <TouchableOpacity style={styles.navBtn} onPress={openNavigation} activeOpacity={0.85}>
           <Text style={styles.navBtnIcon}>🧭</Text>
           <Text style={styles.navBtnText}>
-            {enRoute ? 'Manzilga yo\'l' : t('order.navigation')}
+            {enRoute
+              ? (isParcel ? 'Pochtani olib borish' : 'Navigatsiya')
+              : (isParcel ? 'Pochta oldiga borish' : 'Navigatsiya')}
           </Text>
         </TouchableOpacity>
         {enRoute ? (
@@ -578,6 +592,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   callBtnIcon: { fontSize: 22 },
+  smsBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.info,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  smsBtnIcon: { fontSize: 22 },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
