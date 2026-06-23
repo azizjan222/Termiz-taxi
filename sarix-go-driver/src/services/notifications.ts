@@ -6,28 +6,34 @@ import Constants from 'expo-constants';
 
 import { api } from '../api/client';
 
-// When the app is OPEN (foreground), don't show a system pop-up — the order already
-// appears in-app (via WebSocket). When the app is in the BACKGROUND/closed, the OS
-// shows the push as a pop-up automatically.
+// ---------------------------------------------------------------------------
+// Notification handler: controls what happens when a notification arrives
+// while the app is in the foreground.
+//
+// For new-order alerts we ALWAYS show the alert AND play sound — this ensures
+// the driver hears the notification regardless of app state or expo-av issues.
+// ---------------------------------------------------------------------------
 Notifications.setNotificationHandler({
-  handleNotification: async (notification) => {
-    const inForeground = AppState.currentState === 'active';
-    // New-order alerts (scheduled locally with alert flag) must ALWAYS be loud,
-    // even when the app is in the foreground and the driver is online.
-    const isOrderAlert =
-      (notification?.request?.content?.data as any)?.alert === true;
+  handleNotification: async () => {
     return {
-      shouldShowAlert: !inForeground || isOrderAlert,
-      shouldPlaySound: !inForeground || isOrderAlert,
+      shouldShowAlert: true,
+      shouldPlaySound: true, // ALWAYS play — this is the primary sound mechanism
       shouldSetBadge: true,
-      shouldShowBanner: !inForeground || isOrderAlert,
-      shouldShowList: true,
     };
   },
 });
 
+// ---------------------------------------------------------------------------
+// Notification channels (Android only)
+// ---------------------------------------------------------------------------
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
+    // Delete and recreate — Android doesn't allow changing channel sound after
+    // initial creation, so we must recreate for existing installs.
+    try {
+      await Notifications.deleteNotificationChannelAsync('orders');
+    } catch {}
+
     await Notifications.setNotificationChannelAsync('orders', {
       name: 'Yangi zakaslar',
       importance: Notifications.AndroidImportance.MAX,
@@ -37,11 +43,13 @@ export async function setupNotificationChannels() {
       bypassDnd: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
+
     await Notifications.setNotificationChannelAsync('balance', {
       name: 'Balans',
       importance: Notifications.AndroidImportance.HIGH,
       lightColor: '#10B981',
     });
+
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
       importance: Notifications.AndroidImportance.DEFAULT,
@@ -49,6 +57,9 @@ export async function setupNotificationChannels() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Push token management
+// ---------------------------------------------------------------------------
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (!Device.isDevice) return false;
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -96,6 +107,9 @@ export async function unregisterPushToken(): Promise<void> {
   } catch {}
 }
 
+// ---------------------------------------------------------------------------
+// Notification listeners
+// ---------------------------------------------------------------------------
 export function addNotificationReceivedListener(
   handler: (notification: Notifications.Notification) => void
 ) {
@@ -108,63 +122,36 @@ export function addNotificationResponseListener(
   return Notifications.addNotificationResponseReceivedListener(handler);
 }
 
-// A long, repeating vibration pattern (ms): wait, vibrate, pause, ...
+// ---------------------------------------------------------------------------
+// New order alert — LOUD sound + vibration
+//
+// Strategy:
+//   1. Fire a local notification with custom sound on the "orders" channel
+//      (this is the PRIMARY and most reliable way to produce sound)
+//   2. Additionally try to play via expo-av at max volume through speaker
+//      (this provides extra loudness and bypasses some silent mode cases)
+//   3. Strong vibration pattern
+//
+// If expo-av fails for any reason, the notification channel sound still works.
+// ---------------------------------------------------------------------------
+
 const ALERT_VIBRATION = [0, 700, 300, 700, 300, 700, 300, 700];
 
-// Audio playback instance for the custom alert sound.
 let alertSound: Audio.Sound | null = null;
+const NEW_ORDER_SOUND = require('../../assets/sounds/new_order.wav');
 
 /**
- * Loud alert for a NEW order while the driver is online and the app is open.
- * Plays the custom new_order.wav sound at maximum volume through the speaker
- * (bypassing silent/vibrate mode), triggers a strong vibration, and fires a
- * local notification for when the app is in the background.
+ * Loud alert for a new order. Fires notification sound + expo-av audio + vibration.
  */
 export async function playNewOrderAlert(opts?: { from?: string; to?: string; price?: number }) {
-  // Strong vibration (works even in silent mode on most devices).
+  const body =
+    opts?.from && opts?.to
+      ? `${opts.from} → ${opts.to}${opts.price ? ` · ${opts.price.toLocaleString()} so'm` : ''}`
+      : 'Yangi zakas keldi!';
+
+  // 1) LOCAL NOTIFICATION with custom sound — this is the most reliable way
+  //    to produce an audible alert on both foreground and background.
   try {
-    Vibration.vibrate(ALERT_VIBRATION, false);
-  } catch {}
-
-  // Play the custom alert sound at max volume through the speaker.
-  try {
-    // Stop any previously playing alert
-    if (alertSound) {
-      try { await alertSound.unloadAsync(); } catch {}
-      alertSound = null;
-    }
-
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      staysActiveInBackground: true,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: false,
-      playThroughEarpieceAndroid: false,
-    });
-
-    const { sound } = await Audio.Sound.createAsync(
-      require('../../assets/sounds/new_order.wav'),
-      { shouldPlay: true, volume: 1.0, isLooping: false }
-    );
-    alertSound = sound;
-
-    // Auto-unload after playback finishes
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
-        sound.unloadAsync().catch(() => {});
-        if (alertSound === sound) alertSound = null;
-      }
-    });
-  } catch (e) {
-    console.warn('Failed to play alert sound:', e);
-  }
-
-  // Immediate local notification -> produces the loud custom sound via "orders" channel.
-  try {
-    const body =
-      opts?.from && opts?.to
-        ? `${opts.from} → ${opts.to}${opts.price ? ` · ${opts.price} so'm` : ''}`
-        : "Yangi zakas keldi";
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '🚕 Yangi zakas!',
@@ -177,16 +164,63 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
       },
       trigger: null, // fire immediately
     });
+  } catch (e) {
+    console.warn('Failed to schedule notification:', e);
+  }
+
+  // 2) VIBRATION — strong pattern, works even in silent mode on most devices.
+  try {
+    Vibration.vibrate(ALERT_VIBRATION, false);
   } catch {}
+
+  // 3) EXPO-AV audio — additional loud sound through the main speaker.
+  //    This bypasses silent mode on iOS and provides extra volume boost.
+  //    If this fails, the notification sound above still plays.
+  try {
+    if (alertSound) {
+      try {
+        await alertSound.stopAsync();
+        await alertSound.unloadAsync();
+      } catch {}
+      alertSound = null;
+    }
+
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      staysActiveInBackground: true,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: false,
+      playThroughEarpieceAndroid: false,
+    });
+
+    const { sound } = await Audio.Sound.createAsync(
+      NEW_ORDER_SOUND,
+      { shouldPlay: true, volume: 1.0, isLooping: false }
+    );
+    alertSound = sound;
+
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if ('isLoaded' in status && status.isLoaded && 'didJustFinish' in status && status.didJustFinish) {
+        sound.unloadAsync().catch(() => {});
+        if (alertSound === sound) alertSound = null;
+      }
+    });
+  } catch (e) {
+    // expo-av failure is NOT critical — notification sound is the fallback
+    console.warn('expo-av alert failed (notification sound still plays):', e);
+  }
 }
 
-export function stopAlert() {
+export async function stopAlert() {
   try {
     Vibration.cancel();
   } catch {}
-  // Also stop the audio if it's still playing
   if (alertSound) {
-    try { alertSound.stopAsync(); alertSound.unloadAsync(); } catch {}
+    const ref = alertSound;
     alertSound = null;
+    try {
+      await ref.stopAsync();
+      await ref.unloadAsync();
+    } catch {}
   }
 }
