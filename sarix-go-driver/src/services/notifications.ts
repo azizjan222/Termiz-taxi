@@ -12,13 +12,15 @@ import { api } from '../api/client';
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
     const inForeground = AppState.currentState === 'active';
-    // New-order alerts (scheduled locally with alert flag) must ALWAYS be loud,
-    // even when the app is in the foreground and the driver is online.
+    // New-order alerts (scheduled locally with alert flag) must ALWAYS show a
+    // visible banner, even when the app is in the foreground and the driver is
+    // online. However, sound is handled by expo-av in foreground, so we only
+    // let the system play the notification sound when in background.
     const isOrderAlert =
       (notification?.request?.content?.data as any)?.alert === true;
     return {
       shouldShowAlert: !inForeground || isOrderAlert,
-      shouldPlaySound: !inForeground || isOrderAlert,
+      shouldPlaySound: !inForeground, // foreground sound is handled by expo-av
       shouldSetBadge: true,
       shouldShowBanner: !inForeground || isOrderAlert,
       shouldShowList: true,
@@ -165,7 +167,9 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
     console.warn('Failed to play alert sound:', e);
   }
 
-  // Immediate local notification -> produces the loud custom sound via "orders" channel.
+  // Immediate local notification -> visual banner + badge update.
+  // Sound is NOT set here because expo-av already plays the custom alert audio
+  // above. Adding sound to the notification too would cause a duplicate sound.
   try {
     const body =
       opts?.from && opts?.to
@@ -175,9 +179,9 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
       content: {
         title: '🚕 Yangi zakas!',
         body,
-        sound: 'new_order.wav',
+        sound: false,
         priority: Notifications.AndroidNotificationPriority.MAX,
-        vibrate: ALERT_VIBRATION,
+        vibrate: [0], // minimal vibrate — already handled above
         data: { alert: true, type: 'new_order' },
         ...(Platform.OS === 'android' ? { channelId: 'orders' } : {}),
       },
