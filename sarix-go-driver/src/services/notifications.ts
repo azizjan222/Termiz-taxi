@@ -6,33 +6,32 @@ import Constants from 'expo-constants';
 
 import { api } from '../api/client';
 
-// When the app is OPEN (foreground), don't show a system pop-up — the order already
-// appears in-app (via WebSocket). When the app is in the BACKGROUND/closed, the OS
-// shows the push as a pop-up automatically.
+// ---------------------------------------------------------------------------
+// Notification handler: controls what happens when a notification arrives
+// while the app is in the foreground.
+//
+// For new-order alerts we ALWAYS show the alert AND play sound — this ensures
+// the driver hears the notification regardless of app state or expo-av issues.
+// ---------------------------------------------------------------------------
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
-    const inForeground = AppState.currentState === 'active';
-    // New-order alerts (scheduled locally with alert flag) must ALWAYS show a
-    // visible banner, even when the app is in the foreground and the driver is
-    // online. However, sound is handled by expo-av in foreground, so we only
-    // let the system play the notification sound when in background.
     const isOrderAlert =
-      (notification?.request?.content?.data as any)?.alert === true;
+      (notification?.request?.content?.data as any)?.type === 'new_order';
     return {
-      shouldShowAlert: !inForeground || isOrderAlert,
-      shouldPlaySound: !inForeground, // foreground sound is handled by expo-av
+      shouldShowAlert: true,
+      shouldPlaySound: true, // ALWAYS play — this is the primary sound mechanism
       shouldSetBadge: true,
-      shouldShowBanner: !inForeground || isOrderAlert,
-      shouldShowList: true,
     };
   },
 });
 
+// ---------------------------------------------------------------------------
+// Notification channels (Android only)
+// ---------------------------------------------------------------------------
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
-    // Delete the old "orders" channel if it exists — Android does not allow
-    // updating a channel's sound after creation, so we recreate it to ensure
-    // the custom sound takes effect on devices that had the previous build.
+    // Delete and recreate — Android doesn't allow changing channel sound after
+    // initial creation, so we must recreate for existing installs.
     try {
       await Notifications.deleteNotificationChannelAsync('orders');
     } catch {}
@@ -46,11 +45,13 @@ export async function setupNotificationChannels() {
       bypassDnd: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
+
     await Notifications.setNotificationChannelAsync('balance', {
       name: 'Balans',
       importance: Notifications.AndroidImportance.HIGH,
       lightColor: '#10B981',
     });
+
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
       importance: Notifications.AndroidImportance.DEFAULT,
@@ -58,6 +59,9 @@ export async function setupNotificationChannels() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Push token management
+// ---------------------------------------------------------------------------
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (!Device.isDevice) return false;
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -105,6 +109,9 @@ export async function unregisterPushToken(): Promise<void> {
   } catch {}
 }
 
+// ---------------------------------------------------------------------------
+// Notification listeners
+// ---------------------------------------------------------------------------
 export function addNotificationReceivedListener(
   handler: (notification: Notifications.Notification) => void
 ) {
@@ -117,30 +124,61 @@ export function addNotificationResponseListener(
   return Notifications.addNotificationResponseReceivedListener(handler);
 }
 
-// A long, repeating vibration pattern (ms): wait, vibrate, pause, ...
+// ---------------------------------------------------------------------------
+// New order alert — LOUD sound + vibration
+//
+// Strategy:
+//   1. Fire a local notification with custom sound on the "orders" channel
+//      (this is the PRIMARY and most reliable way to produce sound)
+//   2. Additionally try to play via expo-av at max volume through speaker
+//      (this provides extra loudness and bypasses some silent mode cases)
+//   3. Strong vibration pattern
+//
+// If expo-av fails for any reason, the notification channel sound still works.
+// ---------------------------------------------------------------------------
+
 const ALERT_VIBRATION = [0, 700, 300, 700, 300, 700, 300, 700];
 
-// Audio playback instance for the custom alert sound.
 let alertSound: Audio.Sound | null = null;
-
-// Preloaded sound source for faster playback.
 const NEW_ORDER_SOUND = require('../../assets/sounds/new_order.wav');
 
 /**
- * Loud alert for a NEW order while the driver is online and the app is open.
- * Plays the custom new_order.wav sound at maximum volume through the speaker
- * (bypassing silent/vibrate mode), triggers a strong vibration, and fires a
- * local notification for when the app is in the background.
+ * Loud alert for a new order. Fires notification sound + expo-av audio + vibration.
  */
 export async function playNewOrderAlert(opts?: { from?: string; to?: string; price?: number }) {
-  // Strong vibration (works even in silent mode on most devices).
+  const body =
+    opts?.from && opts?.to
+      ? `${opts.from} → ${opts.to}${opts.price ? ` · ${opts.price.toLocaleString()} so'm` : ''}`
+      : 'Yangi zakas keldi!';
+
+  // 1) LOCAL NOTIFICATION with custom sound — this is the most reliable way
+  //    to produce an audible alert on both foreground and background.
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '🚕 Yangi zakas!',
+        body,
+        sound: 'new_order.wav',
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        vibrate: ALERT_VIBRATION,
+        data: { alert: true, type: 'new_order' },
+        ...(Platform.OS === 'android' ? { channelId: 'orders' } : {}),
+      },
+      trigger: null, // fire immediately
+    });
+  } catch (e) {
+    console.warn('Failed to schedule notification:', e);
+  }
+
+  // 2) VIBRATION — strong pattern, works even in silent mode on most devices.
   try {
     Vibration.vibrate(ALERT_VIBRATION, false);
   } catch {}
 
-  // Play the custom alert sound at max volume through the speaker.
+  // 3) EXPO-AV audio — additional loud sound through the main speaker.
+  //    This bypasses silent mode on iOS and provides extra volume boost.
+  //    If this fails, the notification sound above still plays.
   try {
-    // Stop and unload any previously playing alert
     if (alertSound) {
       try {
         await alertSound.stopAsync();
@@ -163,7 +201,6 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
     );
     alertSound = sound;
 
-    // Auto-unload after playback finishes
     sound.setOnPlaybackStatusUpdate((status) => {
       if ('isLoaded' in status && status.isLoaded && 'didJustFinish' in status && status.didJustFinish) {
         sound.unloadAsync().catch(() => {});
@@ -171,37 +208,15 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
       }
     });
   } catch (e) {
-    console.warn('Failed to play alert sound:', e);
+    // expo-av failure is NOT critical — notification sound is the fallback
+    console.warn('expo-av alert failed (notification sound still plays):', e);
   }
-
-  // Immediate local notification -> visual banner + badge update.
-  // Sound is NOT set here because expo-av already plays the custom alert audio
-  // above. Adding sound to the notification too would cause a duplicate sound.
-  try {
-    const body =
-      opts?.from && opts?.to
-        ? `${opts.from} → ${opts.to}${opts.price ? ` · ${opts.price} so'm` : ''}`
-        : "Yangi zakas keldi";
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '🚕 Yangi zakas!',
-        body,
-        sound: false,
-        priority: Notifications.AndroidNotificationPriority.MAX,
-        vibrate: [0], // minimal vibrate — already handled above
-        data: { alert: true, type: 'new_order' },
-        ...(Platform.OS === 'android' ? { channelId: 'orders' } : {}),
-      },
-      trigger: null, // fire immediately
-    });
-  } catch {}
 }
 
 export async function stopAlert() {
   try {
     Vibration.cancel();
   } catch {}
-  // Also stop the audio if it's still playing
   if (alertSound) {
     const ref = alertSound;
     alertSound = null;
