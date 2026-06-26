@@ -490,6 +490,8 @@ async def submit_documents(request: web.Request) -> web.Response:
             missing.append("mashina markasi")
         if not (d.car_year or "").strip():
             missing.append("mashina yili")
+        if not (d.car_number or "").strip():
+            missing.append("mashina davlat raqami")
         if not d.license_photo_url:
             missing.append("guvohnoma (old tomoni)")
         if not d.license_back_url:
