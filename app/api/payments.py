@@ -280,35 +280,9 @@ async def click_complete(request: web.Request) -> web.Response:
             })
 
         if error_code == 0:
-            # Success - credit driver balance
-            driver = session.query(Driver).filter_by(id=payment.driver_id).first()
-            if driver:
-                # Apply 50% bonus on first top-up
-                from app.models import Setting
-                first_payers = session.query(Setting).filter_by(key="first_payers").first()
-                first_payers_list = []
-                if first_payers and first_payers.value:
-                    import json
-                    try:
-                        first_payers_list = json.loads(first_payers.value)
-                    except Exception:
-                        first_payers_list = []
-
-                bonus = 0
-                if driver.telegram_id and driver.telegram_id not in first_payers_list:
-                    bonus = int(payment.amount * 0.5)
-                    first_payers_list.append(driver.telegram_id)
-                    if first_payers:
-                        first_payers.value = json.dumps(first_payers_list)
-                    else:
-                        session.add(Setting(key="first_payers", value=json.dumps(first_payers_list)))
-
-                driver.balance = (driver.balance or 0) + payment.amount + bonus
-                payment.bonus_amount = bonus
-
-            payment.status = "approved"
-            from datetime import datetime
-            payment.processed_at = datetime.utcnow()
+            # Success - credit driver balance via the unified helper (applies the
+            # first-payment 50% bonus, same as Payme and manual card top-ups).
+            credit_driver_payment(session, payment)
             session.commit()
 
             return web.json_response({
@@ -455,12 +429,9 @@ async def payme_webhook(request: web.Request) -> web.Response:
         try:
             payment = session.query(Payment).filter_by(id=int(payment_id)).first()
             if payment and payment.status == "pending":
-                driver = session.query(Driver).filter_by(id=payment.driver_id).first()
-                if driver:
-                    driver.balance = (driver.balance or 0) + payment.amount
-                payment.status = "approved"
-                from datetime import datetime
-                payment.processed_at = datetime.utcnow()
+                # Use the unified crediting helper so Payme top-ups get the same
+                # first-payment 50% bonus as the Click and manual card flows.
+                credit_driver_payment(session, payment)
                 session.commit()
             return web.json_response({
                 "id": request_id,
