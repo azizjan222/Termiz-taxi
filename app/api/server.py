@@ -68,7 +68,7 @@ async def health_db(request: web.Request) -> web.Response:
         "drivers": ["profile_photo_url", "seats", "documents_submitted",
                     "subscription_until", "pinfl", "car_year",
                     "license_file_id", "tech_passport_file_id", "car_photo_file_id",
-                    "tech_passport_url"],
+                    "tech_passport_url", "license_back_url", "tech_passport_back_url"],
         "users": ["profile_photo_url"],
         "orders": ["target_driver_id", "commission_charged"],
     }
@@ -214,7 +214,9 @@ def create_app(bot=None) -> web.Application:
     # File uploads
     app.router.add_post("/api/driver/upload/car-photo", uploads_api.upload_car_photo)
     app.router.add_post("/api/driver/upload/license", uploads_api.upload_license_photo)
+    app.router.add_post("/api/driver/upload/license-back", uploads_api.upload_license_back)
     app.router.add_post("/api/driver/upload/tech-passport", uploads_api.upload_tech_passport)
+    app.router.add_post("/api/driver/upload/tech-passport-back", uploads_api.upload_tech_passport_back)
     app.router.add_post("/api/driver/upload/profile-photo", uploads_api.upload_driver_profile_photo)
     app.router.add_post("/api/upload/profile-photo", uploads_api.upload_passenger_profile_photo)
     app.router.add_get("/uploads/{filename}", uploads_api.serve_upload)
