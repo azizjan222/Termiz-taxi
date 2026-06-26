@@ -13,6 +13,32 @@ logger = logging.getLogger(__name__)
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 
 
+def _fmt_amount(value: int) -> str:
+    """Format a so'm amount with spaces as thousands separators."""
+    return f"{value:,}".replace(",", " ")
+
+
+def _order_subject(order) -> str:
+    """Service-aware short description of what was ordered.
+
+    Parcel orders must NOT say "X kishi" (X persons) — that wording only makes
+    sense for taxi rides. Full-car orders get their own label too.
+    """
+    service_type = getattr(order, "service_type", "taxi")
+    if service_type == "parcel":
+        return "Pochta 📦"
+    if service_type == "full_car":
+        return "To'liq mashina"
+    return f"{order.person_count} kishi"
+
+
+def _new_order_title(order) -> str:
+    """Service-aware push title."""
+    if getattr(order, "service_type", "taxi") == "parcel":
+        return "📦 Yangi pochta!"
+    return "🚕 Yangi zakas!"
+
+
 async def send_push(
     session: Session,
     *,
@@ -109,8 +135,8 @@ async def notify_driver_new_order(session: Session, order, drivers: list):
             session,
             recipient_type="driver",
             recipient_id=driver.id,
-            title="🚕 Yangi zakas!",
-            body=f"{order.from_city} → {order.to_city} · {order.person_count} kishi · {order.price:,} so'm".replace(",", " "),
+            title=_new_order_title(order),
+            body=f"{order.from_city} → {order.to_city} · {_order_subject(order)} · {_fmt_amount(order.price)} so'm",
             data={
                 "type": "new_order",
                 "order_id": order.id,
@@ -147,7 +173,7 @@ async def notify_driver_recommended_order(session: Session, order, driver):
         recipient_type="driver",
         recipient_id=driver.id,
         title="⭐ Sizga maxsus zakas!",
-        body=f"{order.from_city} → {order.to_city} · {order.person_count} kishi · {order.departure_time or 'Hozir'}",
+        body=f"{order.from_city} → {order.to_city} · {_order_subject(order)} · {order.departure_time or 'Hozir'}",
         data={
             "type": "new_order",
             "order_id": order.id,
@@ -204,9 +230,9 @@ async def notify_order_completed(session: Session, order):
 
 async def notify_balance_topup(session: Session, driver_id: int, amount: int, bonus: int = 0):
     """Notify driver about balance top-up."""
-    body = f"+{amount:,} so'm".replace(",", " ")
+    body = f"+{_fmt_amount(amount)} so'm"
     if bonus > 0:
-        body += f"\n🎁 Bonus: +{bonus:,} so'm".replace(",", " ")
+        body += f"\n🎁 Bonus: +{_fmt_amount(bonus)} so'm"
     await send_push(
         session,
         recipient_type="driver",
