@@ -882,10 +882,16 @@ async def _accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAU
 
         # Confirm to the driver in Telegram.
         narx_str = f"{order.price:,}".replace(",", " ")
+        if order.service_type == "parcel":
+            subject_line = "📦 Pochta"
+        elif order.service_type == "full_car":
+            subject_line = "🚗 Bo'sh mashina"
+        else:
+            subject_line = f"👥 {order.person_count} kishi"
         h_xabar = (
             f"🚕 <b>BUYURTMA QABUL QILINDI!</b>\n\n"
             f"📍 {order.from_city} → {order.to_city}\n"
-            f"👥 {order.person_count} kishi\n"
+            f"{subject_line}\n"
             f"💰 Narxi: {narx_str} so'm\n"
             f"📞 Yo'lovchi: {order.passenger_phone}\n"
             f"👤 {order.passenger_name or 'Nomalum'}"
@@ -1041,10 +1047,17 @@ async def notify_drivers_about_new_app_order(order):
             "full_car": "Bo'sh mashina",
         }.get(order.service_type, "Taksi")
 
+        # Taxi rides show the passenger count; parcel/full_car only show the
+        # service label (saying "1 kishi" for a parcel makes no sense).
+        if order.service_type == "taxi":
+            subject_line = f"👥 {order.person_count} kishi · {service_label}"
+        else:
+            subject_line = f"{emoji} {service_label}"
+
         text = (
             f"{emoji} <b>YANGI ZAKAS (Ilovadan)</b>\n\n"
             f"📍 <b>{order.from_city}</b> → <b>{order.to_city}</b>\n"
-            f"👥 {order.person_count} kishi · {service_label}\n"
+            f"{subject_line}\n"
             f"⏰ {order.departure_time or 'Hozir'}\n"
             f"💰 Narxi: <b>{narx_str} so'm</b>\n"
             f"💸 Komissiya: {komissiya_str} so'm\n"

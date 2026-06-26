@@ -50,7 +50,13 @@ export default function ActiveOrdersScreen() {
         </View>
       </View>
       <Text style={styles.passenger}>📞 {item.passenger_phone}</Text>
-      <Text style={styles.persons}>👥 {item.person_count} kishi</Text>
+      <Text style={styles.persons}>
+        {item.service_type === 'parcel'
+          ? '📦 Pochta'
+          : item.service_type === 'full_car'
+            ? '🚗 Bo\'sh mashina'
+            : `👥 ${item.person_count} kishi`}
+      </Text>
     </TouchableOpacity>
   );
 
