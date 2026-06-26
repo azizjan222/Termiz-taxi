@@ -443,7 +443,9 @@ def _serialize_driver(d: Driver) -> dict:
         "car_year": d.car_year,
         "profile_photo_url": d.profile_photo_url,
         "license_photo_url": d.license_photo_url,
+        "license_back_url": d.license_back_url,
         "tech_passport_url": d.tech_passport_url,
+        "tech_passport_back_url": d.tech_passport_back_url,
         "car_photo_url": d.car_photo_url,
         # Whether the registration documents/photos collected by the bot are present.
         "has_license_doc": bool(d.license_file_id or d.license_photo_url),
@@ -482,17 +484,23 @@ async def submit_documents(request: web.Request) -> web.Response:
         d = session.query(Driver).filter_by(id=driver.id).first()
         if not d:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
-        # Require the key documents to be present before unlocking app access.
+        # Require car info + the key document photos (both sides) before unlocking.
         missing = []
+        if not (d.car_model or "").strip():
+            missing.append("mashina markasi")
+        if not (d.car_year or "").strip():
+            missing.append("mashina yili")
         if not d.license_photo_url:
-            missing.append("haydovchilik guvohnomasi")
+            missing.append("guvohnoma (old tomoni)")
+        if not d.license_back_url:
+            missing.append("guvohnoma (orqa tomoni)")
         if not d.tech_passport_url:
-            missing.append("texnik pasport")
-        if not d.car_photo_url:
-            missing.append("mashina rasmi")
+            missing.append("texpasport (old tomoni)")
+        if not d.tech_passport_back_url:
+            missing.append("texpasport (orqa tomoni)")
         if missing:
             return web.json_response(
-                {"error": "Avval quyidagilarni yuklang: " + ", ".join(missing)},
+                {"error": "Avval quyidagilarni to'ldiring: " + ", ".join(missing)},
                 status=400,
             )
         d.documents_submitted = True

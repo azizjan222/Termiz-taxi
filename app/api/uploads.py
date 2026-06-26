@@ -26,7 +26,7 @@ async def upload_car_photo(request: web.Request) -> web.Response:
 
 
 async def upload_license_photo(request: web.Request) -> web.Response:
-    """POST /api/driver/upload/license"""
+    """POST /api/driver/upload/license - driver license FRONT side."""
     driver = _get_driver_from_request(request)
     if not driver:
         return web.json_response({"error": "Avtorizatsiya kerak"}, status=401)
@@ -34,13 +34,31 @@ async def upload_license_photo(request: web.Request) -> web.Response:
     return await _handle_upload(request, driver, "license")
 
 
+async def upload_license_back(request: web.Request) -> web.Response:
+    """POST /api/driver/upload/license-back - driver license BACK side."""
+    driver = _get_driver_from_request(request)
+    if not driver:
+        return web.json_response({"error": "Avtorizatsiya kerak"}, status=401)
+
+    return await _handle_upload(request, driver, "license_back")
+
+
 async def upload_tech_passport(request: web.Request) -> web.Response:
-    """POST /api/driver/upload/tech-passport - tech passport (texnik pasport) image."""
+    """POST /api/driver/upload/tech-passport - tech passport FRONT side."""
     driver = _get_driver_from_request(request)
     if not driver:
         return web.json_response({"error": "Avtorizatsiya kerak"}, status=401)
 
     return await _handle_upload(request, driver, "tech_passport")
+
+
+async def upload_tech_passport_back(request: web.Request) -> web.Response:
+    """POST /api/driver/upload/tech-passport-back - tech passport BACK side."""
+    driver = _get_driver_from_request(request)
+    if not driver:
+        return web.json_response({"error": "Avtorizatsiya kerak"}, status=401)
+
+    return await _handle_upload(request, driver, "tech_passport_back")
 
 
 async def upload_driver_profile_photo(request: web.Request) -> web.Response:
@@ -146,8 +164,12 @@ async def _handle_upload(request: web.Request, driver, upload_type: str) -> web.
                 d.car_photo_url = public_url
             elif upload_type == "license":
                 d.license_photo_url = public_url
+            elif upload_type == "license_back":
+                d.license_back_url = public_url
             elif upload_type == "tech_passport":
                 d.tech_passport_url = public_url
+            elif upload_type == "tech_passport_back":
+                d.tech_passport_back_url = public_url
             elif upload_type == "profile":
                 d.profile_photo_url = public_url
             session.commit()

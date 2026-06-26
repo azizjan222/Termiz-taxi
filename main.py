@@ -1135,10 +1135,16 @@ def _save_registered_driver_to_db(uid: int, phone: str, data: dict):
         d.car_number = data.get('car_number')
         d.car_model = data.get('car_model')
         d.car_year = data.get('car_year')
-        # Documents are NOT collected by the bot anymore; they are uploaded in the app
-        # (driver-info screen). Do not touch the *_file_id fields here so app uploads
-        # are never overwritten.
-        d.documents_submitted = True
+        # Documents are NOT collected by the bot anymore; they are uploaded in the
+        # app (driver-documents screen). We must NOT mark documents_submitted=True
+        # here — doing so makes the app skip the upload step entirely (the driver is
+        # never asked for their license/tech-passport/car photo). Leave it to the
+        # model default (False for new drivers) and the app's
+        # /api/driver/documents/submit endpoint, which sets it True only AFTER the
+        # required photos are actually uploaded. We also don't reset an existing
+        # True back to False (a driver who already uploaded in the app keeps access).
+        if d.documents_submitted is None:
+            d.documents_submitted = False
         session.commit()
     except Exception as e:
         session.rollback()
