@@ -46,16 +46,16 @@ export default function ActiveOrdersScreen() {
           {item.from_city} → {item.to_city}
         </Text>
         <View style={styles.statusBadge}>
-          <Text style={styles.statusBadgeText}>🟡 Yo'lda</Text>
+          <Text style={styles.statusBadgeText}>🟡 {t('more.onTheWay')}</Text>
         </View>
       </View>
       <Text style={styles.passenger}>📞 {item.passenger_phone}</Text>
       <Text style={styles.persons}>
         {item.service_type === 'parcel'
-          ? '📦 Pochta'
+          ? `📦 ${t('more.parcel')}`
           : item.service_type === 'full_car'
-            ? '🚗 Bo\'sh mashina'
-            : `👥 ${item.person_count} kishi`}
+            ? `🚗 ${t('more.emptyCar')}`
+            : `👥 ${t('more.peopleCount', { n: item.person_count })}`}
       </Text>
     </TouchableOpacity>
   );
@@ -69,7 +69,7 @@ export default function ActiveOrdersScreen() {
       {orders.length === 0 && !refreshing ? (
         <View style={styles.empty}>
           <Text style={styles.emptyEmoji}>📭</Text>
-          <Text style={styles.emptyText}>Faol zakaslar yo'q</Text>
+          <Text style={styles.emptyText}>{t('more.noActiveOrders')}</Text>
         </View>
       ) : (
         <FlatList

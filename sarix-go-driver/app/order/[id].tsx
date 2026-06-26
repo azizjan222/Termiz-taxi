@@ -158,10 +158,10 @@ export default function OrderDetailScreen() {
       Alert.alert(
         t('common.error'),
         isEnRouteToDestination(order)
-          ? 'Manzil joylashuvi mavjud emas'
+          ? t('more.locUnavailableDest')
           : order?.service_type === 'parcel'
-            ? 'Pochta joylashuvi mavjud emas'
-            : "Yo'lovchining joylashuvi mavjud emas",
+            ? t('more.locUnavailableParcel')
+            : t('more.locUnavailablePassenger'),
       );
       return;
     }
@@ -200,14 +200,12 @@ export default function OrderDetailScreen() {
   const handleStartTrip = () => {
     const parcel = order?.service_type === 'parcel';
     Alert.alert(
-      parcel ? 'Pochtani oldingizmi?' : "Yo'lovchini oldingizmi?",
-      parcel
-        ? "Pochtani olganingizdan keyin manzilga yo'l ko'rsatiladi."
-        : "Yo'lovchini olganingizdan keyin manzilga yo'l ko'rsatiladi.",
+      parcel ? t('more.pickedQParcel') : t('more.pickedQPassenger'),
+      parcel ? t('more.pickedBodyParcel') : t('more.pickedBodyPassenger'),
       [
         { text: t('common.no'), style: 'cancel' },
         {
-          text: parcel ? 'Ha, oldim' : 'Ha, oldim',
+          text: t('more.yesPickedUp'),
           onPress: async () => {
             setLoading(true);
             try {
@@ -225,7 +223,7 @@ export default function OrderDetailScreen() {
   };
 
   const handleComplete = () => {
-    Alert.alert(t('order.complete'), 'Buyurtma yopildimi?', [
+    Alert.alert(t('order.complete'), t('more.completeQ'), [
       { text: t('common.no'), style: 'cancel' },
       {
         text: t('common.yes'),
@@ -233,8 +231,8 @@ export default function OrderDetailScreen() {
           setLoading(true);
           try {
             await completeOrder(parseInt(id));
-            Alert.alert('✅ Yakunlandi', 'Rahmat! Endi keyingi zakasni olishingiz mumkin.', [
-              { text: 'Keyingi zakas olish', onPress: () => router.replace('/(main)/orders') },
+            Alert.alert(`✅ ${t('more.completedTitle')}`, t('more.completedBody'), [
+              { text: t('more.nextOrder'), onPress: () => router.replace('/(main)/orders') },
             ]);
           } catch (e: any) {
             Alert.alert(t('common.error'), e?.response?.data?.error || '');
@@ -261,11 +259,10 @@ export default function OrderDetailScreen() {
   const enRoute = isEnRouteToDestination(order);
   const isParcel = order.service_type === 'parcel';
   // Service-aware wording: taxi talks about the passenger, parcel about the parcel.
-  const subjectShort = isParcel ? 'Pochta' : "Yo'lovchi";
-  const contactLabel = isParcel ? "Jo'natuvchi" : "Yo'lovchi";
-  const pickupBannerText = isParcel ? 'Pochtani olish manziliga boring' : "Yo'lovchining oldiga boring";
-  const destBannerText = isParcel ? 'Pochtani manzilga yetkazing' : "Yo'lovchini manzilga olib boring";
-  const pickedUpBtnText = isParcel ? '✅ Pochtani oldim' : "✅ Yo'lovchini oldim";
+  const contactLabel = isParcel ? t('more.sender') : t('more.passenger');
+  const pickupBannerText = isParcel ? t('more.goPickupParcel') : t('more.goPickupPassenger');
+  const destBannerText = isParcel ? t('more.deliverParcel') : t('more.deliverPassenger');
+  const pickedUpBtnText = isParcel ? `✅ ${t('more.pickedBtnParcel')}` : `✅ ${t('more.pickedBtnPassenger')}`;
   const target = deriveTarget(order);
   const distanceMeters = driverCoords && target ? haversineMeters(driverCoords, target) : NaN;
   // Display precedence: HIDDEN (not active) -> TARGET_MISSING -> LOADING -> LABEL.
@@ -274,11 +271,15 @@ export default function OrderDetailScreen() {
     if (target === null) {
       distanceContent = (
         <Text style={styles.value}>
-          📍 {enRoute ? 'Manzil joylashuvi mavjud emas' : `${subjectShort} joylashuvi mavjud emas`}
+          📍 {enRoute
+            ? t('more.locUnavailableDest')
+            : isParcel
+              ? t('more.locUnavailableParcel')
+              : t('more.locUnavailablePassenger')}
         </Text>
       );
     } else if (!driverCoords) {
-      distanceContent = <Text style={styles.value}>📍 Masofa hisoblanmoqda...</Text>;
+      distanceContent = <Text style={styles.value}>📍 {t('more.calculating')}</Text>;
     } else {
       const etaHint =
         ETA_HINT_ENABLED && Number.isFinite(distanceMeters)
@@ -318,10 +319,10 @@ export default function OrderDetailScreen() {
             <Text style={styles.timerEmoji}>⏱</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.timerText}>
-                {contactLabel} bilan {CONTACT_WINDOW_MINUTES} daqiqa ichida bog'laning
+                {t('more.contactWithin', { subject: contactLabel, minutes: CONTACT_WINDOW_MINUTES })}
               </Text>
               <Text style={styles.timerSub}>
-                Zakasni qabul qildingiz — {contactLabel.toLowerCase()}ga qo'ng'iroq qilib kelishib oling
+                {t('more.contactSub', { subject: contactLabel.toLowerCase() })}
               </Text>
             </View>
             <Text style={styles.timerCountdown}>{mmss(remainingSec)}</Text>
@@ -349,7 +350,7 @@ export default function OrderDetailScreen() {
             {target === null && (
               <View style={styles.mapUnavailable} pointerEvents="none">
                 <Text style={styles.mapUnavailableText}>
-                  📍 {enRoute ? 'Manzil xaritada mavjud emas' : `${subjectShort} joylashuvi xaritada mavjud emas`}
+                  📍 {enRoute ? t('more.mapUnavailableDest') : t('more.mapUnavailablePassenger')}
                 </Text>
               </View>
             )}
@@ -367,7 +368,7 @@ export default function OrderDetailScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.passengerName}>
-                {order.passenger_name || 'Yo\'lovchi'}
+                {order.passenger_name || t('more.passenger')}
               </Text>
               <Text style={styles.passengerPhone}>{order.passenger_phone || '—'}</Text>
             </View>
@@ -397,8 +398,8 @@ export default function OrderDetailScreen() {
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>🕒 Ketish vaqti</Text>
-            <Text style={styles.value}>{order.departure_time || 'Hozir'}</Text>
+            <Text style={styles.label}>🕒 {t('more.departureTime')}</Text>
+            <Text style={styles.value}>{order.departure_time || t('more.now')}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
@@ -409,14 +410,14 @@ export default function OrderDetailScreen() {
           <View style={styles.row}>
             <Text style={styles.label}>{t('order.price')}</Text>
             <Text style={[styles.value, { color: colors.success, fontSize: 18 }]}>
-              {formatPrice(order.price)} so'm
+              {formatPrice(order.price)} {t('more.currency')}
             </Text>
           </View>
           {distanceContent && (
             <>
               <View style={styles.divider} />
               <View style={styles.row}>
-                <Text style={styles.label}>🛣 Masofa</Text>
+                <Text style={styles.label}>🛣 {t('more.distance')}</Text>
                 {distanceContent}
               </View>
             </>
@@ -443,8 +444,8 @@ export default function OrderDetailScreen() {
             <Text style={styles.navBtnIcon}>🧭</Text>
             <Text style={styles.navBtnText}>
               {enRoute
-                ? (isParcel ? 'Pochtani olib borish' : 'Navigatsiya')
-                : (isParcel ? 'Pochta oldiga borish' : 'Navigatsiya')}
+                ? (isParcel ? t('more.navDeliverParcel') : t('more.navigation'))
+                : (isParcel ? t('more.navGoParcel') : t('more.navigation'))}
             </Text>
           </LinearGradient>
         </TouchableOpacity>

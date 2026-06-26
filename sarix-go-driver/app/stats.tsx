@@ -82,14 +82,14 @@ export default function StatsScreen() {
           <View style={styles.earningsCard}>
             <Text style={styles.earningsLabel}>{t('stats.netEarnings')}</Text>
             <Text style={styles.earningsValue}>
-              {formatPrice(stats.net_earnings)} so'm
+              {formatPrice(stats.net_earnings)} {t('more.currency')}
             </Text>
             <View style={styles.earningsRow}>
               <Text style={styles.earningsDetail}>
-                💰 {t('stats.totalRevenue')}: {formatPrice(stats.total_revenue)} so'm
+                💰 {t('stats.totalRevenue')}: {formatPrice(stats.total_revenue)} {t('more.currency')}
               </Text>
               <Text style={styles.earningsDetail}>
-                💸 {t('stats.commission')}: {formatPrice(stats.total_commission)} so'm
+                💸 {t('stats.commission')}: {formatPrice(stats.total_commission)} {t('more.currency')}
               </Text>
             </View>
           </View>
@@ -121,7 +121,7 @@ export default function StatsScreen() {
               {/* TEMP: ratings are not in use yet — show a fixed 4.0 for every driver.
                   When ratings go live, restore: ⭐ {stats.rating.toFixed(1)} */}
               <Text style={styles.gridValue}>⭐ 4.0</Text>
-              <Text style={styles.gridLabel}>{stats.rating_count} baho</Text>
+              <Text style={styles.gridLabel}>{stats.rating_count} {t('more.ratingsCount')}</Text>
             </View>
             <View style={styles.gridItem}>
               <Text style={styles.gridValue}>
@@ -181,21 +181,21 @@ export default function StatsScreen() {
                 <Text style={styles.serviceCount}>
                   {stats.service_breakdown.taxi}
                 </Text>
-                <Text style={styles.serviceLabel}>Taksi</Text>
+                <Text style={styles.serviceLabel}>{t('more.taxi')}</Text>
               </View>
               <View style={styles.serviceItem}>
                 <Text style={styles.serviceEmoji}>📦</Text>
                 <Text style={styles.serviceCount}>
                   {stats.service_breakdown.parcel}
                 </Text>
-                <Text style={styles.serviceLabel}>Pochta</Text>
+                <Text style={styles.serviceLabel}>{t('more.parcel')}</Text>
               </View>
               <View style={styles.serviceItem}>
                 <Text style={styles.serviceEmoji}>🚗</Text>
                 <Text style={styles.serviceCount}>
                   {stats.service_breakdown.full_car}
                 </Text>
-                <Text style={styles.serviceLabel}>Bo'sh mashina</Text>
+                <Text style={styles.serviceLabel}>{t('more.emptyCar')}</Text>
               </View>
             </View>
           </View>

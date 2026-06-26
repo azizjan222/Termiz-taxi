@@ -11,6 +11,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import YandexMap, { YandexMapHandle } from '../src/components/YandexMap';
 import { reverseGeocode } from '../src/services/geocoding';
+import { resolveRouteCity } from '../src/services/cityResolver';
 import { detectLocation } from '../src/services/location';
 import { listCities, listRoutes } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
@@ -80,6 +81,10 @@ export default function OrderEntryScreen() {
     };
   });
   const [address, setAddress] = useState('');
+  // Full, un-shortened geocoded address. We keep this separately because
+  // `shortenAddress` strips out the district/city words (e.g. "Sariosiyo tumani"),
+  // and we need them to correctly derive the order's `from_city`/`to_city`.
+  const [fullAddress, setFullAddress] = useState('');
   const [resolving, setResolving] = useState(true); // Start as resolving since we detect on mount
   const [detecting, setDetecting] = useState(true); // Start as detecting
   const [cities, setCities] = useState<string[]>([]);
@@ -122,8 +127,10 @@ export default function OrderEntryScreen() {
           }
         }
         if (reqId !== reqIdRef.current) return;
-        // Shorten the address: remove country/region, keep street + number
-        setAddress(shortenAddress(result || ''));
+        // Keep the full address for city derivation, show the shortened one to the user.
+        const full = result || '';
+        setFullAddress(full);
+        setAddress(shortenAddress(full));
       } finally {
         if (reqId === reqIdRef.current) setResolving(false);
       }
@@ -140,16 +147,7 @@ export default function OrderEntryScreen() {
   }, [resolveAddress]);
 
   const deriveCity = useCallback(
-    (resolved: string): string => {
-      const matched = cities.find((c) =>
-        resolved.toLowerCase().includes(c.toLowerCase())
-      );
-      if (matched) return matched;
-      const parts = resolved.split(',').map((p) => p.trim()).filter(Boolean);
-      if (parts.length >= 3) return parts[parts.length - 2];
-      if (parts.length >= 1) return parts[0];
-      return resolved;
-    },
+    (resolved: string): string => resolveRouteCity(resolved, cities),
     [cities]
   );
 
@@ -183,7 +181,7 @@ export default function OrderEntryScreen() {
 
   // Compute 2 long-haul (>= 70 km) destination districts from the pickup city.
   useEffect(() => {
-    const pickupCity = address ? deriveCity(address) : null;
+    const pickupCity = fullAddress ? deriveCity(fullAddress) : null;
     listRoutes()
       .then(({ routes }) => {
         const farEnough = routes.filter((r) => (r.distance_km ?? 0) >= LONG_HAUL_MIN_KM);
@@ -195,7 +193,7 @@ export default function OrderEntryScreen() {
         setLongHaul(unique.slice(0, 2));
       })
       .catch(() => setLongHaul([]));
-  }, [address, deriveCity]);
+  }, [fullAddress, deriveCity]);
 
   const handleCameraMove = (lat: number, lon: number) => {
     setCenter({ lat, lon });
@@ -204,21 +202,23 @@ export default function OrderEntryScreen() {
 
   // Persist the current map center as the pickup point in the order store.
   const savePickup = useCallback(() => {
-    const resolved = address || '';
-    orderStore.setField('fromCity', resolved ? deriveCity(resolved) : 'Joriy joylashuv');
-    orderStore.setField('fromAddress', resolved);
+    const displayAddr = address || '';
+    const cityBasis = fullAddress || displayAddr;
+    orderStore.setField('fromCity', cityBasis ? deriveCity(cityBasis) : 'Joriy joylashuv');
+    orderStore.setField('fromAddress', displayAddr);
     orderStore.setField('fromLat', center.lat);
     orderStore.setField('fromLon', center.lon);
-  }, [address, center, deriveCity, orderStore]);
+  }, [address, fullAddress, center, deriveCity, orderStore]);
 
   // Persist the current map center as the destination point.
   const saveDestination = useCallback(() => {
-    const resolved = address || '';
-    orderStore.setField('toCity', resolved ? deriveCity(resolved) : 'Tanlangan manzil');
-    orderStore.setField('toAddress', resolved);
+    const displayAddr = address || '';
+    const cityBasis = fullAddress || displayAddr;
+    orderStore.setField('toCity', cityBasis ? deriveCity(cityBasis) : 'Tanlangan manzil');
+    orderStore.setField('toAddress', displayAddr);
     orderStore.setField('toLat', center.lat);
     orderStore.setField('toLon', center.lon);
-  }, [address, center, deriveCity, orderStore]);
+  }, [address, fullAddress, center, deriveCity, orderStore]);
 
   // Destination map mode: confirm the chosen point and continue to the next step.
   const handleConfirmDestination = useCallback(() => {

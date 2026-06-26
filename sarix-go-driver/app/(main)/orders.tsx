@@ -96,9 +96,9 @@ export default function OrdersScreen() {
       setOnlineLocal(!val);
       const msg =
         e?.response?.status === 401
-          ? 'Sessiya muddati tugagan. Iltimos, qaytadan kiring.'
-          : "Holatni o'zgartirib bo'lmadi. Internetni tekshiring.";
-      Alert.alert('Xatolik', msg);
+          ? t('more.sessionExpired')
+          : t('more.statusChangeFailed');
+      Alert.alert(t('common.error'), msg);
     }
   };
 
@@ -111,11 +111,14 @@ export default function OrdersScreen() {
     if (!onFreeTrial) {
       if (balance < MIN_BALANCE) {
         Alert.alert(
-          '💰 Balans yetarli emas',
-          `Zakas qabul qilish uchun balansingizda kamida ${MIN_BALANCE.toLocaleString()} so'm bo'lishi kerak.\n\nHozir: ${balance.toLocaleString()} so'm`,
+          `💰 ${t('more.insufficientTitle')}`,
+          t('more.insufficientBody', {
+            min: MIN_BALANCE.toLocaleString(),
+            balance: balance.toLocaleString(),
+          }),
           [
-            { text: 'Bekor qilish', style: 'cancel' },
-            { text: "💳 To'ldirish", onPress: () => router.push('/top-up') },
+            { text: t('order.cancel'), style: 'cancel' },
+            { text: `💳 ${t('more.topUp')}`, onPress: () => router.push('/top-up') },
           ]
         );
         return;
@@ -124,10 +127,10 @@ export default function OrdersScreen() {
       if (balance < order.commission) {
         Alert.alert(
           t('order.insufficientBalance'),
-          `${t('order.commission')}: ${order.commission} so'm\n${t('order.yourBalance')}: ${balance} so'm`,
+          `${t('order.commission')}: ${order.commission} ${t('more.currency')}\n${t('order.yourBalance')}: ${balance} ${t('more.currency')}`,
           [
-            { text: 'Bekor qilish', style: 'cancel' },
-            { text: "💳 To'ldirish", onPress: () => router.push('/top-up') },
+            { text: t('order.cancel'), style: 'cancel' },
+            { text: `💳 ${t('more.topUp')}`, onPress: () => router.push('/top-up') },
           ]
         );
         return;
@@ -179,11 +182,11 @@ export default function OrdersScreen() {
             <View style={styles.serviceIconTile}>
               <Text style={styles.serviceIcon}>{getServiceIcon(item.service_type)}</Text>
             </View>
-            <Text style={styles.timeAgo}>{formatTimeAgo(item.created_at)} oldin</Text>
+            <Text style={styles.timeAgo}>{formatTimeAgo(item.created_at)} {t('more.ago')}</Text>
           </View>
           {item.source === 'app' && (
             <View style={styles.sourceBadge}>
-              <Text style={styles.sourceBadgeText}>📱 Ilova</Text>
+              <Text style={styles.sourceBadgeText}>📱 {t('more.appBadge')}</Text>
             </View>
           )}
         </View>
@@ -193,7 +196,7 @@ export default function OrdersScreen() {
             <View style={styles.routeDot} />
             <View style={{ flex: 1 }}>
               <Text style={styles.routeText}>{item.from_city}</Text>
-              <Text style={styles.routeSub}>Manzil</Text>
+              <Text style={styles.routeSub}>{t('more.address')}</Text>
             </View>
           </View>
           <View style={styles.routeConnector} />
@@ -207,15 +210,15 @@ export default function OrdersScreen() {
 
         <View style={styles.cardInfo}>
           <Text style={styles.cardInfoText}>
-            👤 {item.passenger_name || "Yo'lovchi"}
+            👤 {item.passenger_name || t('more.passenger')}
           </Text>
           <Text style={styles.cardInfoText}>
-            🕒 Ketish: {item.departure_time || 'Hozir'}
+            🕒 {t('more.departure')}: {item.departure_time || t('more.now')}
           </Text>
           <Text style={styles.cardInfoText}>
             {item.service_type === 'parcel'
-              ? '📦 Pochta · Narx: Kelishiladi'
-              : `👥 ${item.person_count} kishi · ${formatPrice(item.price)} so'm`}
+              ? `📦 ${t('more.parcelNegotiable')}`
+              : `👥 ${t('more.peopleCount', { n: item.person_count })} · ${formatPrice(item.price)} ${t('more.currency')}`}
           </Text>
           {item.note && (
             <Text style={styles.note} numberOfLines={2}>
@@ -235,7 +238,7 @@ export default function OrdersScreen() {
                   onFreeTrial && styles.commissionStruck,
                 ]}
               >
-                -{formatPrice(item.commission)} so'm
+                -{formatPrice(item.commission)} {t('more.currency')}
               </Text>
               {onFreeTrial && (
                 <View style={styles.bonusTag}>
@@ -286,13 +289,13 @@ export default function OrdersScreen() {
         <View style={styles.trialBanner}>
           <Text style={styles.trialBannerIcon}>🎁</Text>
           <Text style={styles.trialBannerText}>
-            Bepul davr: {driver.subscription_days_left ?? 0} kun qoldi
+            {t('more.trialDaysLeft', { days: driver.subscription_days_left ?? 0 })}
           </Text>
         </View>
       ) : (
         <View style={styles.balancePill}>
           <Text style={styles.balancePillText}>
-            💰 {formatPrice(driver?.balance || 0)} so'm
+            💰 {formatPrice(driver?.balance || 0)} {t('more.currency')}
           </Text>
         </View>
       )}
@@ -304,9 +307,9 @@ export default function OrdersScreen() {
           activeOpacity={0.85}
         >
           <Text style={styles.topupBannerText}>
-            {receiveMsg || "⚠️ Balansingiz tugagan. Zakaslarni olish uchun balansni to'ldiring."}
+            {receiveMsg || `⚠️ ${t('more.balanceEmpty')}`}
           </Text>
-          <Text style={styles.topupBannerBtn}>💳 To'ldirish</Text>
+          <Text style={styles.topupBannerBtn}>💳 {t('more.topUp')}</Text>
         </TouchableOpacity>
       )}
 
@@ -314,7 +317,7 @@ export default function OrdersScreen() {
         <View style={styles.empty}>
           <Text style={styles.emptyEmoji}>{canReceive ? '🛌' : '💰'}</Text>
           <Text style={styles.emptyText}>
-            {canReceive ? t('home.noOrders') : "Balansni to'ldirgach zakaslar shu yerda ko'rinadi"}
+            {canReceive ? t('home.noOrders') : t('more.balanceEmptyOrders')}
           </Text>
         </View>
       ) : (

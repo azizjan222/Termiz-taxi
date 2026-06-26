@@ -15,6 +15,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { listCities } from '../src/api/orders';
 import { listAddresses, type SavedAddress } from '../src/api/addresses';
 import { suggestAddress, geocodeAddress, reverseGeocode } from '../src/services/geocoding';
+import { resolveRouteCity } from '../src/services/cityResolver';
 import { detectLocation } from '../src/services/location';
 import { searchSurxondaryoPlaces, type LocalPlace } from '../src/data/surxondaryoPlaces';
 import { useOrderStore } from '../src/store/order';
@@ -55,12 +56,13 @@ export default function RouteSelectScreen() {
     listAddresses().then(setSavedAddresses).catch(() => setSavedAddresses([]));
   }, []);
 
-  // Focus the active field's input
+  // Focus the active field's input. Both inputs stay mounted (we never swap a
+  // TextInput for a Text), so moving focus between them keeps the keyboard up
+  // instead of dismissing + reopening it (which caused the open/close flicker).
   useEffect(() => {
-    setTimeout(() => {
-      if (active === 'from') fromInputRef.current?.focus();
-      else toInputRef.current?.focus();
-    }, 100);
+    const ref = active === 'from' ? fromInputRef : toInputRef;
+    const id = setTimeout(() => ref.current?.focus(), 50);
+    return () => clearTimeout(id);
   }, [active]);
 
   // Debounced Yandex Suggest search
@@ -95,8 +97,7 @@ export default function RouteSelectScreen() {
   }, [orderStore.serviceType]);
 
   const matchCity = useCallback(
-    (text: string, fallback: string) =>
-      cities.find((c) => text.toLowerCase().includes(c.toLowerCase())) || fallback,
+    (text: string, fallback: string) => resolveRouteCity(text, cities, fallback),
     [cities]
   );
 
@@ -228,7 +229,7 @@ export default function RouteSelectScreen() {
         {/* FROM row */}
         <TouchableOpacity
           style={[styles.fieldRow, active === 'from' && styles.fieldRowActive]}
-          onPress={() => activateField('from')}
+          onPress={() => fromInputRef.current?.focus()}
           activeOpacity={0.9}
         >
           <View style={[styles.fieldIconTile, { backgroundColor: '#EDE7FF' }]}>
@@ -236,21 +237,16 @@ export default function RouteSelectScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.fieldCaption}>{fromCaption}</Text>
-            {active === 'from' ? (
-              <TextInput
-                ref={fromInputRef}
-                style={styles.fieldInput}
-                placeholder={fromPlaceholder}
-                placeholderTextColor={colors.textMuted}
-                value={search}
-                onChangeText={setSearch}
-                autoFocus={active === 'from'}
-              />
-            ) : (
-              <Text style={[styles.fieldValue, !fromValue && styles.fieldPlaceholder]} numberOfLines={1}>
-                {fromValue || fromPlaceholder}
-              </Text>
-            )}
+            <TextInput
+              ref={fromInputRef}
+              style={styles.fieldInput}
+              placeholder={fromPlaceholder}
+              placeholderTextColor={colors.textMuted}
+              value={active === 'from' ? search : fromValue}
+              onChangeText={setSearch}
+              onFocus={() => activateField('from')}
+              numberOfLines={1}
+            />
           </View>
           <TouchableOpacity
             style={styles.mapPill}
@@ -266,7 +262,7 @@ export default function RouteSelectScreen() {
         {/* TO row */}
         <TouchableOpacity
           style={[styles.fieldRow, active === 'to' && styles.fieldRowActive]}
-          onPress={() => activateField('to')}
+          onPress={() => toInputRef.current?.focus()}
           activeOpacity={0.9}
         >
           <View style={[styles.fieldIconTile, { backgroundColor: '#EDE7FF' }]}>
@@ -274,21 +270,16 @@ export default function RouteSelectScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.fieldCaption}>{toCaption}</Text>
-            {active === 'to' ? (
-              <TextInput
-                ref={toInputRef}
-                style={styles.fieldInput}
-                placeholder={toPlaceholder}
-                placeholderTextColor={colors.textMuted}
-                value={search}
-                onChangeText={setSearch}
-                autoFocus={active === 'to'}
-              />
-            ) : (
-              <Text style={[styles.fieldValue, !toValue && styles.fieldPlaceholder]} numberOfLines={1}>
-                {toValue || toPlaceholder}
-              </Text>
-            )}
+            <TextInput
+              ref={toInputRef}
+              style={styles.fieldInput}
+              placeholder={toPlaceholder}
+              placeholderTextColor={colors.textMuted}
+              value={active === 'to' ? search : toValue}
+              onChangeText={setSearch}
+              onFocus={() => activateField('to')}
+              numberOfLines={1}
+            />
           </View>
           <TouchableOpacity
             style={styles.mapPill}
@@ -354,10 +345,15 @@ export default function RouteSelectScreen() {
         <View style={styles.handle} />
       </View>
 
+      {/* Fixed input card OUTSIDE the FlatList. Keeping the TextInputs mounted here
+          (instead of passing renderHeader as ListHeaderComponent) prevents the list's
+          per-keystroke re-render from remounting them — which previously dropped the
+          keyboard and scrambled what the user was typing. */}
+      {renderHeader()}
+
       <FlatList
         data={rows}
         keyExtractor={(item) => item.key}
-        ListHeaderComponent={renderHeader}
         renderItem={({ item }) => {
           if (item.type === 'header') {
             return <Text style={styles.sectionTitle}>{item.label}</Text>;

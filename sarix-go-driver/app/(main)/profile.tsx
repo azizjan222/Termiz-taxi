@@ -39,7 +39,7 @@ export default function ProfileScreen() {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert(t('common.error'), 'Galereyaga ruxsat kerak');
+        Alert.alert(t('common.error'), t('more.permissionGallery'));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -53,7 +53,7 @@ export default function ProfileScreen() {
       const { url } = await uploadDriverProfilePhoto(result.assets[0].uri);
       if (driver) setDriver({ ...driver, profile_photo_url: url });
     } catch (e: any) {
-      Alert.alert(t('common.error'), e?.response?.data?.error || 'Xatolik');
+      Alert.alert(t('common.error'), e?.response?.data?.error || t('more.somethingWrong'));
     } finally {
       setUploading(false);
     }
@@ -71,7 +71,7 @@ export default function ProfileScreen() {
     const firstName = firstNameDraft.trim();
     const lastName = lastNameDraft.trim();
     if (!firstName) {
-      Alert.alert(t('common.error'), 'Ismni kiriting');
+      Alert.alert(t('common.error'), t('more.enterFirstName'));
       return;
     }
     try {
@@ -85,7 +85,7 @@ export default function ProfileScreen() {
       }
       setEditVisible(false);
     } catch (e: any) {
-      Alert.alert(t('common.error'), e?.response?.data?.error || 'Xatolik');
+      Alert.alert(t('common.error'), e?.response?.data?.error || t('more.somethingWrong'));
     } finally {
       setSaving(false);
     }
@@ -130,7 +130,7 @@ export default function ProfileScreen() {
             onPress={openEditModal}
             activeOpacity={0.85}
           >
-            <Text style={styles.editPillText}>✏️ Profilni tahrirlash</Text>
+            <Text style={styles.editPillText}>✏️ {t('more.editProfile')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.85}>
@@ -155,7 +155,7 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
           <Text style={styles.userName}>
-            {driver?.first_name || 'Haydovchi'}
+            {driver?.first_name || t('more.driverFallback')}
           </Text>
           <Text style={styles.userPhone}>{driver?.phone}</Text>
         </LinearGradient>
@@ -173,16 +173,16 @@ export default function ProfileScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.balanceLabel}>{t('profile.balance')}</Text>
               <Text style={styles.balanceValue}>
-                {formatPrice(driver?.balance || 0)} so'm
+                {formatPrice(driver?.balance || 0)} {t('more.currency')}
               </Text>
               {lowBalance && (
                 <Text style={styles.balanceWarning}>
-                  ⚠️ Minimal 20 000 so'm yetishmaydi
+                  ⚠️ {t('more.minBalanceShort')}
                 </Text>
               )}
             </View>
             <View style={styles.topUpBtn}>
-              <Text style={styles.topUpBtnText}>+ To'ldirish</Text>
+              <Text style={styles.topUpBtnText}>+ {t('more.topUp')}</Text>
             </View>
           </TouchableOpacity>
 
@@ -233,7 +233,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.topUp')}</Text>
-                <Text style={styles.menuSub}>Karta · Click · Payme</Text>
+                <Text style={styles.menuSub}>{t('more.topUpSub')}</Text>
               </View>
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
@@ -248,7 +248,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('stats.title')}</Text>
-                <Text style={styles.menuSub}>Daromad va zakaslar</Text>
+                <Text style={styles.menuSub}>{t('more.statsSub')}</Text>
               </View>
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
@@ -263,7 +263,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.orderHistory')}</Text>
-                <Text style={styles.menuSub}>Yakunlangan / bekor qilingan</Text>
+                <Text style={styles.menuSub}>{t('more.historySub')}</Text>
               </View>
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
@@ -278,7 +278,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.notifications')}</Text>
-                <Text style={styles.menuSub}>Bildirishnomalar tarixi</Text>
+                <Text style={styles.menuSub}>{t('more.notificationsSub')}</Text>
               </View>
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
@@ -292,8 +292,8 @@ export default function ProfileScreen() {
                 <Text style={styles.menuIconText}>📝</Text>
               </View>
               <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>Ma'lumotlarim</Text>
-                <Text style={styles.menuSub}>Ism, JSHSHIR, mashina, hujjatlar</Text>
+                <Text style={styles.menuTitle}>{t('more.myInfo')}</Text>
+                <Text style={styles.menuSub}>{t('more.myInfoSub')}</Text>
               </View>
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
@@ -307,8 +307,8 @@ export default function ProfileScreen() {
                 <Text style={styles.menuIconText}>🚗</Text>
               </View>
               <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>Mashina rasmi</Text>
-                <Text style={styles.menuSub}>Yo'lovchilar ko'radi</Text>
+                <Text style={styles.menuTitle}>{t('more.carPhoto')}</Text>
+                <Text style={styles.menuSub}>{t('more.carPhotoSub')}</Text>
               </View>
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
@@ -355,7 +355,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.faq')}</Text>
-                <Text style={styles.menuSub}>Ko'p so'raladigan savollar</Text>
+                <Text style={styles.menuSub}>{t('more.faqSub')}</Text>
               </View>
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
@@ -370,7 +370,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.settings')}</Text>
-                <Text style={styles.menuSub}>Til, mavzu</Text>
+                <Text style={styles.menuSub}>{t('more.settingsSub')}</Text>
               </View>
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
@@ -384,8 +384,8 @@ export default function ProfileScreen() {
                 <Text style={styles.menuIconText}>📄</Text>
               </View>
               <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>Foydalanish shartlari va maxfiylik siyosati</Text>
-                <Text style={styles.menuSub}>Shartlar va maxfiylik</Text>
+                <Text style={styles.menuTitle}>{t('more.terms')}</Text>
+                <Text style={styles.menuSub}>{t('more.termsSub')}</Text>
               </View>
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
@@ -396,7 +396,7 @@ export default function ProfileScreen() {
             <Text style={styles.logoutText}>🚪 {t('profile.logout')}</Text>
           </TouchableOpacity>
 
-          <Text style={styles.version}>Versiya 1.0.0</Text>
+          <Text style={styles.version}>{t('more.version')} 1.0.0</Text>
         </View>
       </ScrollView>
 
@@ -409,7 +409,7 @@ export default function ProfileScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Profilni to'g'rilash</Text>
+            <Text style={styles.modalTitle}>{t('more.editProfileModalTitle')}</Text>
 
             {/* Avatar preview + change photo */}
             <TouchableOpacity
@@ -436,26 +436,26 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity onPress={pickAndUploadPhoto} disabled={uploading}>
               <Text style={styles.modalPhotoBtn}>
-                {uploading ? '…' : "Rasmni o'zgartirish"}
+                {uploading ? '…' : t('more.changePhoto')}
               </Text>
             </TouchableOpacity>
 
             {/* Name inputs */}
-            <Text style={styles.modalLabel}>Ism</Text>
+            <Text style={styles.modalLabel}>{t('more.firstName')}</Text>
             <TextInput
               style={styles.modalInput}
               value={firstNameDraft}
               onChangeText={setFirstNameDraft}
-              placeholder="Ism"
+              placeholder={t('more.firstName')}
               placeholderTextColor={colors.textMuted}
               autoCapitalize="words"
             />
-            <Text style={styles.modalLabel}>Familiya</Text>
+            <Text style={styles.modalLabel}>{t('more.lastName')}</Text>
             <TextInput
               style={styles.modalInput}
               value={lastNameDraft}
               onChangeText={setLastNameDraft}
-              placeholder="Familiya"
+              placeholder={t('more.lastName')}
               placeholderTextColor={colors.textMuted}
               autoCapitalize="words"
             />
@@ -467,7 +467,7 @@ export default function ProfileScreen() {
                 onPress={() => setEditVisible(false)}
                 disabled={saving}
               >
-                <Text style={styles.modalBtnCancelText}>Bekor qilish</Text>
+                <Text style={styles.modalBtnCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, styles.modalBtnSave]}
@@ -477,7 +477,7 @@ export default function ProfileScreen() {
                 {saving ? (
                   <ActivityIndicator color={colors.white} />
                 ) : (
-                  <Text style={styles.modalBtnSaveText}>Saqlash</Text>
+                  <Text style={styles.modalBtnSaveText}>{t('common.save')}</Text>
                 )}
               </TouchableOpacity>
             </View>
