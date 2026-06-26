@@ -505,6 +505,12 @@ async def submit_documents(request: web.Request) -> web.Response:
             )
         d.documents_submitted = True
         session.commit()
+        # Onboarding is now complete. Grant the free trial here too: a brand-new
+        # driver hits verify-otp BEFORE documents exist, so that flow returns early
+        # (documents_required) without granting the trial. Without this call the
+        # driver would land on the orders screen with no subscription and be told to
+        # top up their balance. Idempotent: only acts if not already granted.
+        _grant_free_trial_if_eligible(session, d)
         session.refresh(d)
         return web.json_response({"success": True, "driver": _serialize_driver(d)})
     finally:
@@ -552,6 +558,21 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
 @require_driver
 async def driver_me(request: web.Request) -> web.Response:
     driver: Driver = request["driver"]
+    # Safety net for drivers who completed onboarding before the trial was granted
+    # (e.g. they finished documents via an older build, or the grant was skipped):
+    # grant it here on next app open so they recover WITHOUT having to re-login.
+    # Idempotent and cheap — only runs the extra query when a subscription is missing
+    # but onboarding is already complete.
+    if driver.subscription_until is None and driver.documents_submitted:
+        session = get_session()
+        try:
+            d = session.query(Driver).filter_by(id=driver.id).first()
+            if d:
+                _grant_free_trial_if_eligible(session, d)
+                session.refresh(d)
+                return web.json_response(_serialize_driver(d))
+        finally:
+            session.close()
     return web.json_response(_serialize_driver(driver))
 
 
