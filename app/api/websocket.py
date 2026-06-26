@@ -64,35 +64,73 @@ class WebSocketManager:
 ws_manager = WebSocketManager()
 
 
+def _verify_ws_identity(role: str, client_id: int, token: str) -> bool:
+    """Verify the JWT token actually belongs to the claimed role + id.
+
+    Without this any client could pass `role=passenger&id=<someone>` and receive
+    another user's real-time order events (phone number revealed on accept, the
+    driver's live GPS, etc.). We require a valid token whose subject matches the
+    connecting id.
+
+    - passenger: utils.auth token, `sub` (user id) must equal client_id
+    - driver:    drivers._decode_driver_token, `telegram_id` must equal client_id
+    """
+    if not token:
+        return False
+    if role == "passenger":
+        from app.utils.auth import decode_token
+        payload = decode_token(token)
+        if not payload:
+            return False
+        try:
+            return int(payload.get("sub")) == client_id
+        except (TypeError, ValueError):
+            return False
+    if role == "driver":
+        # Lazy import to avoid a circular import (drivers.py imports ws_manager).
+        from app.api.drivers import _decode_driver_token
+        payload = _decode_driver_token(token)
+        if not payload:
+            return False
+        try:
+            return int(payload.get("telegram_id")) == client_id
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     """Handle WebSocket connection.
 
     Query params:
     - role: "driver" or "passenger"
     - id: telegram_id (for driver) or user_id (for passenger)
-    - token: JWT token (for passenger only, optional for driver)
+    - token: JWT token (REQUIRED) — must match the claimed role + id
     """
     ws = web.WebSocketResponse(heartbeat=30)
     await ws.prepare(request)
 
     role = request.query.get("role", "")
     client_id_str = request.query.get("id", "")
+    token = request.query.get("token", "")
 
     try:
         client_id = int(client_id_str) if client_id_str else 0
     except ValueError:
         client_id = 0
 
-    if role == "driver" and client_id:
-        ws_manager.add_driver(client_id, ws)
-        await ws.send_json({"type": "connected", "role": "driver"})
-    elif role == "passenger" and client_id:
-        ws_manager.add_passenger(client_id, ws)
-        await ws.send_json({"type": "connected", "role": "passenger"})
-    else:
-        await ws.send_json({"type": "error", "error": "invalid role or id"})
+    # Authenticate: the token must belong to the claimed role + id.
+    if role not in ("driver", "passenger") or not client_id or not _verify_ws_identity(role, client_id, token):
+        await ws.send_json({"type": "error", "error": "unauthorized"})
         await ws.close()
         return ws
+
+    if role == "driver":
+        ws_manager.add_driver(client_id, ws)
+        await ws.send_json({"type": "connected", "role": "driver"})
+    else:
+        ws_manager.add_passenger(client_id, ws)
+        await ws.send_json({"type": "connected", "role": "passenger"})
 
     try:
         async for msg in ws:
