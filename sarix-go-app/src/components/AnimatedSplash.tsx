@@ -1,184 +1,175 @@
 import React, { useEffect, useRef } from 'react';
 import {
-  View,
   Image,
   Text,
   StyleSheet,
   Animated,
   Easing,
   Dimensions,
+  View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
-import { colors, typography, spacing } from '../theme';
+import { typography, spacing } from '../theme';
 
 const { width } = Dimensions.get('window');
+const LOGO_SIZE = width * 0.36;
+
+// Passenger app entry palette — DARK BLUE / navy ("to'q ko'k").
+const GRADIENT: [string, string, string] = ['#1A3B7A', '#0E2050', '#070E28'];
+const RING_COLOR = 'rgba(255,255,255,0.16)';
 
 interface Props {
   onFinish: () => void;
 }
 
 /**
- * Beautiful animated splash screen shown on app launch.
- * - Logo scales up + fades in with spring
- * - Pulsing glow ring behind logo
- * - Tagline slides up + fades in
- * - Whole screen fades out, then onFinish()
+ * Modern animated splash (passenger app).
+ * - Dark-blue gradient background fades in
+ * - Two staggered ripple rings expand behind the logo
+ * - Logo springs in; title fades up
+ * - A slim progress bar fills, then the screen fades out
  */
 export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
-  const logoScale = useRef(new Animated.Value(0.3)).current;
+  const bgOpacity = useRef(new Animated.Value(0)).current;
+  const logoScale = useRef(new Animated.Value(0.4)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
-  const taglineOpacity = useRef(new Animated.Value(0)).current;
-  const taglineTranslate = useRef(new Animated.Value(20)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
+  const titleOpacity = useRef(new Animated.Value(0)).current;
+  const titleTranslate = useRef(new Animated.Value(24)).current;
+  const ring1 = useRef(new Animated.Value(0)).current;
+  const ring2 = useRef(new Animated.Value(0)).current;
+  const progress = useRef(new Animated.Value(0)).current;
   const screenOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // 1. Logo entrance (spring scale + fade)
+    Animated.timing(bgOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+
     Animated.parallel([
-      Animated.spring(logoScale, {
-        toValue: 1,
-        friction: 5,
-        tension: 40,
-        useNativeDriver: true,
-      }),
-      Animated.timing(logoOpacity, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
+      Animated.spring(logoScale, { toValue: 1, friction: 6, tension: 45, useNativeDriver: true }),
+      Animated.timing(logoOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+    ]).start();
+
+    Animated.parallel([
+      Animated.timing(titleOpacity, { toValue: 1, duration: 500, delay: 500, useNativeDriver: true }),
+      Animated.timing(titleTranslate, {
+        toValue: 0, duration: 500, delay: 500,
+        easing: Easing.out(Easing.cubic), useNativeDriver: true,
       }),
     ]).start();
 
-    // 2. Tagline appears after logo
-    Animated.parallel([
-      Animated.timing(taglineOpacity, {
-        toValue: 1,
-        duration: 500,
-        delay: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(taglineTranslate, {
-        toValue: 0,
-        duration: 500,
-        delay: 600,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }),
-    ]).start();
+    const ripple = (val: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.timing(val, {
+          toValue: 1, duration: 2200, delay,
+          easing: Easing.out(Easing.ease), useNativeDriver: true,
+        })
+      );
+    ripple(ring1, 0).start();
+    ripple(ring2, 1100).start();
 
-    // 3. Continuous pulse glow
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
+    Animated.timing(progress, {
+      toValue: 1, duration: 2000, delay: 300,
+      easing: Easing.inOut(Easing.ease), useNativeDriver: false,
+    }).start();
 
-    // 4. After delay, fade out the whole screen
     const timer = setTimeout(() => {
-      Animated.timing(screenOpacity, {
-        toValue: 0,
-        duration: 450,
-        useNativeDriver: true,
-      }).start(() => onFinish());
-    }, 2400);
+      Animated.timing(screenOpacity, { toValue: 0, duration: 450, useNativeDriver: true })
+        .start(() => onFinish());
+    }, 2500);
 
     return () => clearTimeout(timer);
   }, []);
 
-  const pulseScale = pulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.35],
+  const ringStyle = (val: Animated.Value) => ({
+    transform: [{ scale: val.interpolate({ inputRange: [0, 1], outputRange: [0.6, 2.2] }) }],
+    opacity: val.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.4, 0] }),
   });
-  const pulseOpacity = pulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.5, 0],
-  });
+
+  const progressWidth = progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
 
   return (
     <Animated.View style={[styles.container, { opacity: screenOpacity }]}>
-      {/* Pulsing glow rings */}
-      <Animated.View
-        style={[
-          styles.glow,
-          { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
-        ]}
-      />
-
-      {/* Logo */}
-      <Animated.View
-        style={{
-          transform: [{ scale: logoScale }],
-          opacity: logoOpacity,
-        }}
-      >
-        <Image
-          source={require('../../assets/icon.png')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: bgOpacity }]}>
+        <LinearGradient colors={GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
       </Animated.View>
 
-      {/* Tagline */}
-      <Animated.View
-        style={{
-          opacity: taglineOpacity,
-          transform: [{ translateY: taglineTranslate }],
-        }}
-      >
+      {/* Ripple rings */}
+      <Animated.View style={[styles.ring, ringStyle(ring1)]} />
+      <Animated.View style={[styles.ring, ringStyle(ring2)]} />
+
+      {/* Logo */}
+      <Animated.View style={{ transform: [{ scale: logoScale }], opacity: logoOpacity }}>
+        <View style={styles.logoCard}>
+          <Image source={require('../../assets/icon.png')} style={styles.logo} resizeMode="contain" />
+        </View>
+      </Animated.View>
+
+      {/* Title */}
+      <Animated.View style={{ opacity: titleOpacity, transform: [{ translateY: titleTranslate }], alignItems: 'center' }}>
         <Text style={styles.title}>SARIX GO</Text>
         <Text style={styles.subtitle}>Termiz Sariosiyo Taxi</Text>
       </Animated.View>
+
+      {/* Progress bar */}
+      <View style={styles.progressTrack}>
+        <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+      </View>
     </Animated.View>
   );
 };
 
-const LOGO_SIZE = width * 0.4;
-
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 999,
   },
-  glow: {
+  ring: {
     position: 'absolute',
-    width: LOGO_SIZE * 1.4,
-    height: LOGO_SIZE * 1.4,
+    width: LOGO_SIZE * 1.6,
+    height: LOGO_SIZE * 1.6,
     borderRadius: LOGO_SIZE,
-    backgroundColor: colors.accent,
-    top: '50%',
-    marginTop: -(LOGO_SIZE * 1.4) / 2 - 40,
+    borderWidth: 2,
+    borderColor: RING_COLOR,
+    marginTop: -60,
   },
-  logo: {
-    width: LOGO_SIZE,
-    height: LOGO_SIZE,
-    borderRadius: LOGO_SIZE * 0.22,
+  logoCard: {
+    width: LOGO_SIZE + 28,
+    height: LOGO_SIZE + 28,
+    borderRadius: (LOGO_SIZE + 28) * 0.26,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  logo: { width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: LOGO_SIZE * 0.24 },
   title: {
     ...typography.h1,
-    color: colors.primary,
+    color: '#FFFFFF',
     textAlign: 'center',
     marginTop: spacing.xl,
-    letterSpacing: 2,
+    letterSpacing: 3,
     fontWeight: '900',
   },
   subtitle: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: '#FFC400',
     textAlign: 'center',
     marginTop: spacing.xs,
-    letterSpacing: 1,
+    letterSpacing: 1.5,
+  },
+  progressTrack: {
+    position: 'absolute',
+    bottom: 64,
+    width: width * 0.5,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: '#FFC400',
   },
 });
