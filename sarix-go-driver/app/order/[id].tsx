@@ -433,13 +433,20 @@ export default function OrderDetailScreen() {
 
       {/* Action button — staged: accepted -> "picked up passenger", in_progress -> finish. */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.navBtn} onPress={openNavigation} activeOpacity={0.85}>
-          <Text style={styles.navBtnIcon}>🧭</Text>
-          <Text style={styles.navBtnText}>
-            {enRoute
-              ? (isParcel ? 'Pochtani olib borish' : 'Navigatsiya')
-              : (isParcel ? 'Pochta oldiga borish' : 'Navigatsiya')}
-          </Text>
+        <TouchableOpacity onPress={openNavigation} activeOpacity={0.85} style={{ marginBottom: spacing.sm }}>
+          <LinearGradient
+            colors={['#2E8BFF', '#0B4FC8']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.navBtn}
+          >
+            <Text style={styles.navBtnIcon}>🧭</Text>
+            <Text style={styles.navBtnText}>
+              {enRoute
+                ? (isParcel ? 'Pochtani olib borish' : 'Navigatsiya')
+                : (isParcel ? 'Pochta oldiga borish' : 'Navigatsiya')}
+            </Text>
+          </LinearGradient>
         </TouchableOpacity>
         {enRoute ? (
           <TouchableOpacity onPress={handleComplete} disabled={loading} activeOpacity={0.85}>
@@ -500,16 +507,16 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
   mapCard: {
-    height: 220,
-    borderRadius: radius.xl,
+    height: 280,
+    borderRadius: 24,
     overflow: 'hidden',
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
     shadowColor: '#0E1730',
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
   },
   mapUnavailable: {
     position: 'absolute',
@@ -622,10 +629,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0E1B3D',
     paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    marginBottom: spacing.sm,
+    borderRadius: radius.lg,
+    shadowColor: '#0B4FC8',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   navBtnIcon: { fontSize: 20, marginRight: spacing.sm },
   navBtnText: { ...typography.button, color: colors.white },

@@ -13,6 +13,7 @@ import { listAvailableOrders, acceptOrder, setOnline as apiSetOnline, type Drive
 import { useDriverStore } from '../../src/store/driver';
 import { useRealtimeStore } from '../../src/store/realtime';
 import { useThemeStore } from '../../src/store/theme';
+import { IncomingOrderModal } from '../../src/components/IncomingOrderModal';
 import { typography, spacing, radius, gradients } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
@@ -29,6 +30,8 @@ export default function OrdersScreen() {
   const [accepting, setAccepting] = useState<number | null>(null);
   const [canReceive, setCanReceive] = useState(true);
   const [receiveMsg, setReceiveMsg] = useState('');
+  // The newest incoming order shown in the ride-hailing style popup.
+  const [incomingOrder, setIncomingOrder] = useState<DriverOrder | null>(null);
   const canReceiveRef = useRef(true);
   // Last realtime event we've already consumed (by monotonic seq) so we never
   // re-process the same event on an unrelated re-render.
@@ -73,8 +76,11 @@ export default function OrdersScreen() {
         if (prev.find((o) => o.id === order.id)) return prev;
         return [order, ...prev];
       });
+      // Surface the ride-hailing style popup for the freshest order.
+      setIncomingOrder(order);
     } else if (lastEvent.kind === 'order_cancelled') {
       setOrders((prev) => prev.filter((o) => o.id !== lastEvent.orderId));
+      setIncomingOrder((cur) => (cur && cur.id === lastEvent.orderId ? null : cur));
     }
   }, [lastEvent]);
 
@@ -134,10 +140,12 @@ export default function OrdersScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // Commission is now deferred: it is charged 15 minutes after acceptance by the
       // backend (skipped during the free trial). So we DON'T deduct the balance here.
+      setIncomingOrder(null);
       router.push(`/order/${order.id}`);
     } catch (e: any) {
       const msg = e?.response?.data?.error || t('order.notFound');
       Alert.alert(t('common.error'), msg);
+      setIncomingOrder(null);
       load();
     } finally {
       setAccepting(null);
@@ -318,6 +326,17 @@ export default function OrdersScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
         />
       )}
+
+      {/* Ride-hailing style incoming-order popup */}
+      <IncomingOrderModal
+        visible={!!incomingOrder}
+        order={incomingOrder}
+        colors={colors}
+        accepting={accepting === incomingOrder?.id}
+        onFreeTrial={!!driver?.has_active_subscription}
+        onAccept={() => incomingOrder && handleAccept(incomingOrder)}
+        onDismiss={() => setIncomingOrder(null)}
+      />
     </SafeAreaView>
   );
 }
