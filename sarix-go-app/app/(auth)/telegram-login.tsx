@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Linking, ActivityIndicator, AppState,
+  View, Text, StyleSheet, Linking, ActivityIndicator, AppState, Animated, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
@@ -11,6 +12,9 @@ import { Button } from '../../src/components/Button';
 import { telegramStart, telegramCheck } from '../../src/api/auth';
 import { useAuthStore } from '../../src/store/auth';
 import { colors, typography, spacing, radius } from '../../src/theme';
+
+// Passenger entry palette — DARK BLUE / navy ("to'q ko'k").
+const DARK_BLUE_GRADIENT: [string, string, string] = ['#1A3B7A', '#0E2050', '#070E28'];
 
 export default function TelegramLoginScreen() {
   const { t } = useTranslation();
@@ -21,6 +25,16 @@ export default function TelegramLoginScreen() {
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Entrance animation for the content.
+  const fade = useRef(new Animated.Value(0)).current;
+  const slide = useRef(new Animated.Value(30)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fade, { toValue: 1, duration: 650, useNativeDriver: true }),
+      Animated.timing(slide, { toValue: 0, duration: 650, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, []);
 
   const stopPolling = () => {
     if (pollRef.current) {
@@ -78,50 +92,58 @@ export default function TelegramLoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Logo size="lg" variant="light" />
-        <Text style={styles.title}>{t('telegramLogin.title')}</Text>
-        <Text style={styles.subtitle}>{t('telegramLogin.subtitle')}</Text>
-      </View>
+    <View style={{ flex: 1 }}>
+      <LinearGradient
+        colors={DARK_BLUE_GRADIENT}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <Animated.View style={[styles.header, { opacity: fade, transform: [{ translateY: slide }] }]}>
+          <Logo size="lg" variant="light" />
+          <Text style={styles.title}>{t('telegramLogin.title')}</Text>
+          <Text style={styles.subtitle}>{t('telegramLogin.subtitle')}</Text>
+        </Animated.View>
 
-      <View style={styles.body}>
-        {waiting ? (
-          <View style={styles.waitingBox}>
-            <ActivityIndicator size="large" color={colors.accent} />
-            <Text style={styles.waitingText}>{t('telegramLogin.waiting')}</Text>
-            <Text style={styles.waitingHint}>{t('telegramLogin.waitingHint')}</Text>
-          </View>
-        ) : (
-          <View style={styles.steps}>
-            <Step n="1" text={t('telegramLogin.step1')} />
-            <Step n="2" text={t('telegramLogin.step2')} />
-            <Step n="3" text={t('telegramLogin.step3')} />
-          </View>
-        )}
+        <Animated.View style={[styles.body, { opacity: fade, transform: [{ translateY: slide }] }]}>
+          {waiting ? (
+            <View style={styles.waitingBox}>
+              <ActivityIndicator size="large" color={colors.accent} />
+              <Text style={styles.waitingText}>{t('telegramLogin.waiting')}</Text>
+              <Text style={styles.waitingHint}>{t('telegramLogin.waitingHint')}</Text>
+            </View>
+          ) : (
+            <View style={styles.steps}>
+              <Step n="1" text={t('telegramLogin.step1')} />
+              <Step n="2" text={t('telegramLogin.step2')} />
+              <Step n="3" text={t('telegramLogin.step3')} />
+            </View>
+          )}
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-      </View>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+        </Animated.View>
 
-      <View style={styles.footer}>
-        {!waiting ? (
-          <Button
-            title={t('telegramLogin.button')}
-            onPress={startLogin}
-            loading={starting}
-            variant="accent"
-          />
-        ) : (
-          <Button
-            title={t('telegramLogin.openAgain')}
-            onPress={() => token && Linking.openURL(`https://t.me/termizsariosiyotaxi_bot?start=auth_${token}`)}
-            variant="outline"
-            textStyle={{ color: colors.white }}
-            style={{ borderColor: colors.white }}
-          />
-        )}
-      </View>
-    </SafeAreaView>
+        <View style={styles.footer}>
+          {!waiting ? (
+            <Button
+              title={t('telegramLogin.button')}
+              onPress={startLogin}
+              loading={starting}
+              variant="accent"
+            />
+          ) : (
+            <Button
+              title={t('telegramLogin.openAgain')}
+              onPress={() => token && Linking.openURL(`https://t.me/termizsariosiyotaxi_bot?start=auth_${token}`)}
+              variant="outline"
+              textStyle={{ color: colors.white }}
+              style={{ borderColor: colors.white }}
+            />
+          )}
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -133,7 +155,7 @@ const Step: React.FC<{ n: string; text: string }> = ({ n, text }) => (
 );
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.primary, paddingHorizontal: spacing.lg },
+  container: { flex: 1, backgroundColor: 'transparent', paddingHorizontal: spacing.lg },
   header: { alignItems: 'center', paddingTop: spacing.xl },
   title: { ...typography.h1, color: colors.white, marginTop: spacing.md, textAlign: 'center' },
   subtitle: { ...typography.body, color: colors.accent, marginTop: spacing.xs, textAlign: 'center' },

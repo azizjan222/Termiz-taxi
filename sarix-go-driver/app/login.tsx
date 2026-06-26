@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, Alert,
+  View, Text, StyleSheet, Alert, Animated, Easing,
   KeyboardAvoidingView, Platform, Linking, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
@@ -12,6 +13,9 @@ import { telegramStart, telegramCheck } from '../src/api/driver';
 import { useDriverStore } from '../src/store/driver';
 import { BOT_USERNAME } from '../src/api/client';
 import { colors, typography, spacing, radius } from '../src/theme';
+
+// Driver entry palette — vivid BLUE ("ko'k").
+const BLUE_GRADIENT: [string, string, string] = ['#2E8BFF', '#1565E0', '#0B3FA8'];
 
 export default function LoginScreen() {
   const { t } = useTranslation();
@@ -22,6 +26,16 @@ export default function LoginScreen() {
   const [tgWaiting, setTgWaiting] = useState(false);
   const [tgToken, setTgToken] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Entrance animation for the content.
+  const fade = useRef(new Animated.Value(0)).current;
+  const slide = useRef(new Animated.Value(30)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fade, { toValue: 1, duration: 650, useNativeDriver: true }),
+      Animated.timing(slide, { toValue: 0, duration: 650, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, []);
 
   const stopPolling = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -75,49 +89,57 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.header}>
-          <View style={styles.logoBox}><Text style={styles.logoEmoji}>🚕</Text></View>
-          <Text style={styles.title}>Sarix Go Driver</Text>
-          <Text style={styles.subtitle}>Haydovchilar uchun ilova</Text>
-        </View>
+    <View style={{ flex: 1 }}>
+      <LinearGradient
+        colors={BLUE_GRADIENT}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Animated.View style={[styles.header, { opacity: fade, transform: [{ translateY: slide }] }]}>
+            <View style={styles.logoBox}><Text style={styles.logoEmoji}>🚕</Text></View>
+            <Text style={styles.title}>Sarix Go Driver</Text>
+            <Text style={styles.subtitle}>Haydovchilar uchun ilova</Text>
+          </Animated.View>
 
-        <View style={styles.body}>
-          {tgWaiting ? (
-            <View style={styles.waitingBox}>
-              <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={styles.waitingText}>Telegram tasdiqlanishini kutmoqda...</Text>
-              <Text style={styles.waitingHint}>Telegram'da raqamingizni ulashing</Text>
-              <TouchableOpacity onPress={() => tgToken && Linking.openURL(`https://t.me/${BOT_USERNAME}?start=auth_${tgToken}`)}>
-                <Text style={styles.linkText}>Telegram'ni qayta ochish</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.steps}>
-              <Step n="1" text="Pastdagi tugmani bosing" />
-              <Step n="2" text='Telegram bot ochiladi — "Boshlash"ni bosing' />
-              <Step n="3" text="Raqamingizni ulashing — avtomatik kirasiz" />
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
-            </View>
+          <Animated.View style={[styles.body, { opacity: fade, transform: [{ translateY: slide }] }]}>
+            {tgWaiting ? (
+              <View style={styles.waitingBox}>
+                <ActivityIndicator size="large" color={colors.accent} />
+                <Text style={styles.waitingText}>Telegram tasdiqlanishini kutmoqda...</Text>
+                <Text style={styles.waitingHint}>Telegram'da raqamingizni ulashing</Text>
+                <TouchableOpacity onPress={() => tgToken && Linking.openURL(`https://t.me/${BOT_USERNAME}?start=auth_${tgToken}`)}>
+                  <Text style={styles.linkText}>Telegram'ni qayta ochish</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.steps}>
+                <Step n="1" text="Pastdagi tugmani bosing" />
+                <Step n="2" text='Telegram bot ochiladi — "Boshlash"ni bosing' />
+                <Step n="3" text="Raqamingizni ulashing — avtomatik kirasiz" />
+                {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              </View>
+            )}
+          </Animated.View>
+
+          {!tgWaiting && (
+            <Animated.View style={[styles.footer, { opacity: fade }]}>
+              <Button
+                title="📲 Telegram orqali kirish"
+                onPress={startTelegram}
+                loading={loading}
+                variant="accent"
+              />
+              <Text style={styles.note}>
+                Avval botda "Haydovchi bo'lish" orqali ro'yxatdan o'ting
+              </Text>
+            </Animated.View>
           )}
-        </View>
-
-        {!tgWaiting && (
-          <View style={styles.footer}>
-            <Button
-              title="📲 Telegram orqali kirish"
-              onPress={startTelegram}
-              loading={loading}
-              variant="accent"
-            />
-            <Text style={styles.note}>
-              Avval botda "Haydovchi bo'lish" orqali ro'yxatdan o'ting
-            </Text>
-          </View>
-        )}
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -129,7 +151,7 @@ const Step: React.FC<{ n: string; text: string }> = ({ n, text }) => (
 );
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.primary, paddingHorizontal: spacing.lg },
+  container: { flex: 1, backgroundColor: 'transparent', paddingHorizontal: spacing.lg },
   header: { alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.lg },
   logoBox: {
     width: 100, height: 100, borderRadius: radius.lg, backgroundColor: colors.accent,
