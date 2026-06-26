@@ -88,23 +88,38 @@ export default function OrderEntryScreen() {
   const mapRef = useRef<YandexMapHandle>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reqIdRef = useRef(0);
+  const lastCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
+  // Whether the map WebView has finished loading. Kept in a ref (not state) so
+  // resolveAddress always reads the current value without stale closures.
+  const mapReadyRef = useRef(false);
 
   const resolveAddress = useCallback((lat: number, lon: number) => {
+    lastCoordsRef.current = { lat, lon };
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setResolving(true);
     debounceRef.current = setTimeout(async () => {
       const reqId = ++reqIdRef.current;
       try {
-        // Try HTTP geocoder FIRST (faster, doesn't need map to be ready)
         let result: string | null = null;
-        try {
-          result = await reverseGeocode(lat, lon);
-        } catch {}
-        // Fallback: in-map ymaps.geocode (Uzbek locale, needs WebView ready)
-        if (!result) {
+        // When the map is ready, prefer the IN-MAP ymaps.geocode: it uses the
+        // uz_UZ locale and returns Uzbek, house-level addresses just like the
+        // Yandex app. Fall back to the HTTP geocoder (Russian) if it fails.
+        // Before the WebView is ready (initial mount) use the HTTP geocoder
+        // first so we never wait on the in-map call's long timeout.
+        if (mapReadyRef.current) {
           try {
             result = (await mapRef.current?.reverseGeocode(lat, lon)) ?? null;
           } catch {}
+          if (!result) {
+            try { result = await reverseGeocode(lat, lon); } catch {}
+          }
+        } else {
+          try { result = await reverseGeocode(lat, lon); } catch {}
+          if (!result) {
+            try {
+              result = (await mapRef.current?.reverseGeocode(lat, lon)) ?? null;
+            } catch {}
+          }
         }
         if (reqId !== reqIdRef.current) return;
         // Shorten the address: remove country/region, keep street + number
@@ -114,6 +129,15 @@ export default function OrderEntryScreen() {
       }
     }, 200); // Fast debounce for responsiveness
   }, []);
+
+  // Once the map's WebView finishes loading, re-resolve the current center via the
+  // in-map (Uzbek) geocoder so the initial HTTP (Russian) result is upgraded to a
+  // higher-precision Uzbek address — matching the Yandex app experience.
+  const handleMapReady = useCallback(() => {
+    mapReadyRef.current = true;
+    const c = lastCoordsRef.current;
+    if (c) resolveAddress(c.lat, c.lon);
+  }, [resolveAddress]);
 
   const deriveCity = useCallback(
     (resolved: string): string => {
@@ -225,6 +249,7 @@ export default function OrderEntryScreen() {
           initialLat={center.lat}
           initialLon={center.lon}
           initialZoom={15}
+          onMapReady={handleMapReady}
           onCameraMove={handleCameraMove}
           onMapPress={handleCameraMove}
           style={StyleSheet.absoluteFill}
