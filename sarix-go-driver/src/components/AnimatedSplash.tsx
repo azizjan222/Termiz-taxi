@@ -13,11 +13,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { typography, spacing } from '../theme';
 
 const { width } = Dimensions.get('window');
-const LOGO_SIZE = width * 0.36;
+const LOGO_SIZE = width * 0.38;
 
 // Driver app entry palette — vivid BLUE ("ko'k").
 const GRADIENT: [string, string, string] = ['#2E8BFF', '#1565E0', '#0B3FA8'];
 const RING_COLOR = 'rgba(255,255,255,0.18)';
+const ACCENT = '#FFFFFF';
 
 interface Props {
   onFinish: () => void;
@@ -27,8 +28,10 @@ interface Props {
  * Modern animated splash (driver app).
  * - Blue gradient background fades in
  * - Two staggered ripple rings expand behind the logo
- * - Logo springs in; title fades up
- * - A slim shimmer progress bar fills, then the screen fades out
+ * - Logo springs in; tagline fades up
+ * - A slim progress bar fills
+ * - "Yuklanmoqda... iltimos kuting" with bouncing dots + pulsing text
+ * - Then the screen fades out
  */
 export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
   const bgOpacity = useRef(new Animated.Value(0)).current;
@@ -40,6 +43,12 @@ export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
   const ring2 = useRef(new Animated.Value(0)).current;
   const progress = useRef(new Animated.Value(0)).current;
   const screenOpacity = useRef(new Animated.Value(1)).current;
+
+  // Loading indicator animations
+  const loadingPulse = useRef(new Animated.Value(0.45)).current;
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(bgOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -72,10 +81,31 @@ export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
       easing: Easing.inOut(Easing.ease), useNativeDriver: false,
     }).start();
 
+    // Pulsing "Yuklanmoqda..." text
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(loadingPulse, { toValue: 1, duration: 650, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(loadingPulse, { toValue: 0.45, duration: 650, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    ).start();
+
+    // Bouncing dots — staggered
+    const bounce = (val: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(val, { toValue: 1, duration: 400, delay, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+          Animated.timing(val, { toValue: 0, duration: 400, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          Animated.delay(300),
+        ])
+      );
+    bounce(dot1, 0).start();
+    bounce(dot2, 150).start();
+    bounce(dot3, 300).start();
+
     const timer = setTimeout(() => {
       Animated.timing(screenOpacity, { toValue: 0, duration: 450, useNativeDriver: true })
         .start(() => onFinish());
-    }, 2500);
+    }, 2800);
 
     return () => clearTimeout(timer);
   }, []);
@@ -83,6 +113,11 @@ export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
   const ringStyle = (val: Animated.Value) => ({
     transform: [{ scale: val.interpolate({ inputRange: [0, 1], outputRange: [0.6, 2.2] }) }],
     opacity: val.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.4, 0] }),
+  });
+
+  const dotStyle = (val: Animated.Value) => ({
+    opacity: val.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
+    transform: [{ translateY: val.interpolate({ inputRange: [0, 1], outputRange: [0, -7] }) }],
   });
 
   const progressWidth = progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
@@ -100,19 +135,30 @@ export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
       {/* Logo */}
       <Animated.View style={{ transform: [{ scale: logoScale }], opacity: logoOpacity }}>
         <View style={styles.logoCard}>
-          <Image source={require('../../assets/icon.png')} style={styles.logo} resizeMode="contain" />
+          <Image source={require('../../assets/splash-logo.jpg')} style={styles.logo} resizeMode="cover" />
         </View>
       </Animated.View>
 
-      {/* Title */}
+      {/* Tagline */}
       <Animated.View style={{ opacity: titleOpacity, transform: [{ translateY: titleTranslate }], alignItems: 'center' }}>
-        <Text style={styles.title}>SARIX GO</Text>
         <Text style={styles.subtitle}>Haydovchi uchun</Text>
       </Animated.View>
 
       {/* Progress bar */}
       <View style={styles.progressTrack}>
         <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+      </View>
+
+      {/* Loading indicator with animation */}
+      <View style={styles.loadingWrap}>
+        <View style={styles.dotsRow}>
+          <Animated.View style={[styles.dot, dotStyle(dot1)]} />
+          <Animated.View style={[styles.dot, dotStyle(dot2)]} />
+          <Animated.View style={[styles.dot, dotStyle(dot3)]} />
+        </View>
+        <Animated.Text style={[styles.loadingText, { opacity: loadingPulse }]}>
+          Yuklanmoqda... iltimos kuting
+        </Animated.Text>
       </View>
     </Animated.View>
   );
@@ -135,32 +181,30 @@ const styles = StyleSheet.create({
     marginTop: -60,
   },
   logoCard: {
-    width: LOGO_SIZE + 28,
-    height: LOGO_SIZE + 28,
-    borderRadius: (LOGO_SIZE + 28) * 0.26,
+    width: LOGO_SIZE + 24,
+    height: LOGO_SIZE + 24,
+    borderRadius: (LOGO_SIZE + 24) * 0.26,
     backgroundColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 12,
   },
-  logo: { width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: LOGO_SIZE * 0.24 },
-  title: {
-    ...typography.h1,
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginTop: spacing.xl,
-    letterSpacing: 3,
-    fontWeight: '900',
+  logo: {
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
+    borderRadius: LOGO_SIZE * 0.24,
   },
   subtitle: {
     ...typography.body,
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(255,255,255,0.9)',
     textAlign: 'center',
-    marginTop: spacing.xs,
+    marginTop: spacing.xl,
     letterSpacing: 1.5,
+    fontWeight: '600',
   },
   progressTrack: {
     position: 'absolute',
-    bottom: 64,
+    bottom: 104,
     width: width * 0.5,
     height: 4,
     borderRadius: 2,
@@ -170,6 +214,28 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 2,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: ACCENT,
+  },
+  loadingWrap: {
+    position: 'absolute',
+    bottom: 52,
+    alignItems: 'center',
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginHorizontal: 4,
+    backgroundColor: ACCENT,
+  },
+  loadingText: {
+    ...typography.caption,
+    color: 'rgba(255,255,255,0.92)',
+    textAlign: 'center',
+    letterSpacing: 0.5,
   },
 });
