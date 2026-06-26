@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 
-import { WS_URL } from '../api/client';
+import { WS_URL, getAuthToken } from '../api/client';
 import { type DriverOrder } from '../api/driver';
 import { useRealtimeStore } from '../store/realtime';
 import { playNewOrderAlert } from './notifications';
@@ -24,6 +24,9 @@ import { addNotification } from './notificationHistory';
 let socket: WebSocket | null = null;
 let currentId: string | null = null;
 let intentionalClose = false;
+// Cached auth token, refreshed on each connect() and sent in the WS URL so the
+// backend can verify this driver's identity (prevents impersonation).
+let authToken: string | null = null;
 
 // Reconnect (exponential backoff) state.
 const BACKOFF_STEPS = [1000, 2000, 5000, 10000, 15000];
@@ -118,7 +121,9 @@ function open(telegramId: string) {
   intentionalClose = false;
   useRealtimeStore.getState().setStatus(backoffIndex > 0 ? 'reconnecting' : 'connecting');
 
-  const ws = new WebSocket(`${WS_URL}?role=driver&id=${telegramId}`);
+  const ws = new WebSocket(
+    `${WS_URL}?role=driver&id=${telegramId}&token=${encodeURIComponent(authToken || '')}`
+  );
   socket = ws;
 
   ws.onopen = () => {
@@ -188,7 +193,17 @@ export function connect(telegramId: number | string) {
 
   currentId = id;
   backoffIndex = 0;
-  open(id);
+  // Refresh the auth token before opening so the WS URL carries it. Reconnects
+  // reuse the cached token (no need to re-fetch on every backoff attempt).
+  getAuthToken()
+    .then((tok) => {
+      authToken = tok;
+      // Only open if this connect() is still current and nothing opened yet.
+      if (currentId === id && !socket) open(id);
+    })
+    .catch(() => {
+      if (currentId === id && !socket) open(id);
+    });
 }
 
 /** Cleanly close the socket and stop all timers (no reconnect). */
