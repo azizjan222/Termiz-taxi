@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../src/components/Button';
 import { getOrder, cancelOrder } from '../src/api/orders';
 import { useAuthStore } from '../src/store/auth';
-import { WS_URL } from '../src/api/client';
+import { WS_URL, getAuthToken } from '../src/api/client';
 import { colors, typography, spacing, radius } from '../src/theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -121,20 +121,28 @@ export default function SearchingScreen() {
   // move to the live order screen after a short pause (so the message is seen).
   useEffect(() => {
     if (!user) return;
-    const ws = new WebSocket(`${WS_URL}?role=passenger&id=${user.id}`);
-    wsRef.current = ws;
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'order_accepted' && msg.order_id?.toString() === orderId) {
-          setStatus('accepted');
-        }
-      } catch {}
-    };
+    let ws: WebSocket | null = null;
+    let cancelled = false;
+    (async () => {
+      const token = await getAuthToken();
+      if (cancelled) return;
+      ws = new WebSocket(
+        `${WS_URL}?role=passenger&id=${user.id}&token=${encodeURIComponent(token || '')}`
+      );
+      wsRef.current = ws;
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'order_accepted' && msg.order_id?.toString() === orderId) {
+            setStatus('accepted');
+          }
+        } catch {}
+      };
+    })();
 
     return () => {
-      ws.close();
+      cancelled = true;
+      ws?.close();
     };
   }, [user, orderId]);
 
@@ -147,6 +155,17 @@ export default function SearchingScreen() {
         const order = await getOrder(id);
         if (order.status === 'accepted' || order.status === 'in_progress') {
           setStatus('accepted');
+        } else if (order.status === 'cancelled' || order.status === 'expired') {
+          // The order ended while waiting (passenger/admin cancelled, or the
+          // search timed out). Don't leave the passenger stuck on "searching".
+          clearInterval(interval);
+          Alert.alert(
+            order.status === 'expired' ? 'Vaqt tugadi' : 'Buyurtma bekor qilindi',
+            order.status === 'expired'
+              ? 'Afsuski, hozircha haydovchi topilmadi. Qaytadan urinib koʻring.'
+              : 'Buyurtma bekor qilindi.',
+            [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }]
+          );
         }
       } catch {}
     };

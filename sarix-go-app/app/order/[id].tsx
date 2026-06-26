@@ -20,7 +20,7 @@ import { getOrderRatingStatus } from '../../src/api/ratings';
 import { presentLocalNotification } from '../../src/services/notifications';
 import { addNotification } from '../../src/services/notificationHistory';
 import { useAuthStore } from '../../src/store/auth';
-import { API_URL, WS_URL } from '../../src/api/client';
+import { API_URL, WS_URL, getAuthToken } from '../../src/api/client';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 export default function OrderDetailScreen() {
@@ -57,26 +57,37 @@ export default function OrderDetailScreen() {
   // Live driver location over WebSocket while the trip is active.
   useEffect(() => {
     if (!user) return;
-    const ws = new WebSocket(`${WS_URL}?role=passenger&id=${user.id}`);
-    wsRef.current = ws;
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'driver_location' && msg.order_id?.toString() === id) {
-          setDriverLoc({ lat: msg.lat, lon: msg.lon });
-        } else if (msg.type === 'order_started' && msg.order_id?.toString() === id) {
-          // Driver reached the passenger and started the trip -> notify in-app.
-          const title = 'Haydovchi keldi! 🚕';
-          const body = 'Haydovchingiz yetib keldi — safar boshlandi.';
-          presentLocalNotification(title, body, { type: 'order_started', order_id: msg.order_id });
-          addNotification({ title, body, type: 'order_started', data: { order_id: msg.order_id } });
-          // Refresh so the screen reflects the in-progress status.
-          load();
-        }
-      } catch {}
+    let ws: WebSocket | null = null;
+    let cancelled = false;
+    (async () => {
+      const token = await getAuthToken();
+      if (cancelled) return;
+      ws = new WebSocket(
+        `${WS_URL}?role=passenger&id=${user.id}&token=${encodeURIComponent(token || '')}`
+      );
+      wsRef.current = ws;
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'driver_location' && msg.order_id?.toString() === id) {
+            setDriverLoc({ lat: msg.lat, lon: msg.lon });
+          } else if (msg.type === 'order_started' && msg.order_id?.toString() === id) {
+            // Driver reached the passenger and started the trip -> notify in-app.
+            const title = 'Haydovchi keldi! 🚕';
+            const body = 'Haydovchingiz yetib keldi — safar boshlandi.';
+            presentLocalNotification(title, body, { type: 'order_started', order_id: msg.order_id });
+            addNotification({ title, body, type: 'order_started', data: { order_id: msg.order_id } });
+            // Refresh so the screen reflects the in-progress status.
+            load();
+          }
+        } catch {}
+      };
+      ws.onerror = () => {};
+    })();
+    return () => {
+      cancelled = true;
+      ws?.close();
     };
-    ws.onerror = () => {};
-    return () => ws.close();
   }, [user, id]);
 
   // After completion, prompt the passenger to rate the driver (once, if not rated yet).

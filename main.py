@@ -156,6 +156,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='HTML',
                 reply_markup=tugma)
             return
+        if param.startswith("apporder_"):
+            # Driver accepting an app-originated order via Telegram deep link
+            try:
+                order_id = int(param.split("_")[1])
+            except (ValueError, IndexError):
+                await update.message.reply_text("❌ Noto'g'ri havola.")
+                return
+            await _accept_app_order_from_bot(update, context, user_id, order_id)
+            return
         if param.startswith("olish_"):
             zakas_id = int(param.split("_")[1])
             if user_id in haydovchilar:
@@ -782,6 +791,116 @@ async def avto_bekor_qilish(context: ContextTypes.DEFAULT_TYPE):
 def taymerni_toxtatish(context, zakas_id):
     for job in context.job_queue.get_jobs_by_name(f"warn_{zakas_id}"): job.schedule_removal()
     for job in context.job_queue.get_jobs_by_name(f"avto_{zakas_id}"): job.schedule_removal()
+
+
+async def _accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAULT_TYPE, driver_telegram_id: int, order_id: int):
+    """Accept an app-originated order via the Telegram 'apporder_' deep link.
+
+    Triggered when a driver taps "✅ Zakasni olish" in the drivers group for an
+    order created in the mobile app. Notifies the passenger (push + WebSocket).
+    """
+    from app.database import get_session as _gs
+    from app.models import Order, Driver as DBDriver
+    from app.services.push import notify_passenger_order_accepted
+    from app.api.websocket import ws_manager
+    from app import config
+
+    session = _gs()
+    try:
+        order = session.query(Order).filter_by(id=order_id).first()
+        if not order:
+            await context.bot.send_message(driver_telegram_id, "❌ Buyurtma topilmadi.")
+            return
+        if order.status != "new":
+            await context.bot.send_message(driver_telegram_id, "❌ Buyurtma allaqachon olingan.")
+            return
+
+        driver = session.query(DBDriver).filter_by(telegram_id=driver_telegram_id).first()
+        if not driver:
+            await context.bot.send_message(
+                driver_telegram_id,
+                "❌ Siz ilovada ro'yxatdan o'tmagansiz. Avval ilovada hujjatlaringizni yuboring.",
+            )
+            return
+
+        # Balance check (same policy as the API accept_order).
+        now = datetime.utcnow()
+        on_free_trial = bool(driver.subscription_until and driver.subscription_until > now)
+        if not on_free_trial and (driver.balance or 0) < config.MIN_DRIVER_BALANCE:
+            await context.bot.send_message(
+                driver_telegram_id,
+                (
+                    f"❌ Balans yetarli emas.\n"
+                    f"Kerak: {config.MIN_DRIVER_BALANCE:,} so'm\n"
+                    f"Hozir: {driver.balance or 0:,} so'm"
+                ).replace(",", " "),
+            )
+            return
+
+        # Atomic claim — only ONE driver can win (prevents double-accept race).
+        accepted_at = datetime.utcnow()
+        claimed = (
+            session.query(Order)
+            .filter(Order.id == order_id, Order.status == "new")
+            .update(
+                {
+                    "driver_id": driver.id,
+                    "driver_telegram_id": driver_telegram_id,
+                    "status": "accepted",
+                    "accepted_at": accepted_at,
+                    "commission_charged": False,
+                },
+                synchronize_session=False,
+            )
+        )
+        session.commit()
+        if not claimed:
+            await context.bot.send_message(driver_telegram_id, "❌ Buyurtma allaqachon olingan.")
+            return
+        session.refresh(order)
+        session.refresh(driver)
+
+        # Notify the passenger's mobile app (push + WebSocket).
+        try:
+            await notify_passenger_order_accepted(session, order, driver)
+        except Exception as e:
+            logger.error(f"Push to passenger failed: {e}")
+        try:
+            if order.passenger_id:
+                await ws_manager.send_to_passenger(order.passenger_id, {
+                    "type": "order_accepted",
+                    "order_id": order.id,
+                    "driver": {
+                        "first_name": driver.first_name,
+                        "phone": driver.phone,
+                        "car_model": driver.car_model,
+                        "car_number": driver.car_number,
+                    },
+                })
+        except Exception as e:
+            logger.error(f"WS to passenger failed: {e}")
+
+        # Confirm to the driver in Telegram.
+        narx_str = f"{order.price:,}".replace(",", " ")
+        h_xabar = (
+            f"🚕 <b>BUYURTMA QABUL QILINDI!</b>\n\n"
+            f"📍 {order.from_city} → {order.to_city}\n"
+            f"👥 {order.person_count} kishi\n"
+            f"💰 Narxi: {narx_str} so'm\n"
+            f"📞 Yo'lovchi: {order.passenger_phone}\n"
+            f"👤 {order.passenger_name or 'Nomalum'}"
+        )
+        if order.note:
+            h_xabar += f"\n📝 {order.note}"
+        await context.bot.send_message(driver_telegram_id, h_xabar, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"App order accept from bot failed: {e}")
+        try:
+            await context.bot.send_message(driver_telegram_id, "❌ Xatolik yuz berdi. Qayta urinib ko'ring.")
+        except Exception:
+            pass
+    finally:
+        session.close()
 
 
 # ================== ZAKAS BIRIKTIRISH ==================

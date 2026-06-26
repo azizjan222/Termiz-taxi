@@ -890,13 +890,30 @@ async def accept_order(request: web.Request) -> web.Response:
         # background task charges it 15 minutes after acceptance (whether or not the
         # ride is completed), unless the driver is on the free trial. We still require
         # the minimum balance above so the driver can cover the upcoming charge.
-        order.driver_id = d.id
-        order.driver_telegram_id = d.telegram_id
-        order.status = "accepted"
-        order.accepted_at = datetime.utcnow()
-        order.commission_charged = False
-
+        #
+        # Atomic claim: only ONE driver can win the order. The UPDATE ... WHERE
+        # status='new' guard prevents a check-then-commit race where two drivers
+        # both pass the `status != "new"` check above before either commits.
+        accepted_at = datetime.utcnow()
+        claimed = (
+            session.query(Order)
+            .filter(Order.id == order_id, Order.status == "new")
+            .update(
+                {
+                    "driver_id": d.id,
+                    "driver_telegram_id": d.telegram_id,
+                    "status": "accepted",
+                    "accepted_at": accepted_at,
+                    "commission_charged": False,
+                },
+                synchronize_session=False,
+            )
+        )
         session.commit()
+        if not claimed:
+            # Another driver won the race between our check and this update.
+            return web.json_response({"error": "Buyurtma allaqachon olindi"}, status=400)
+
         session.refresh(order)
         session.refresh(d)
 
