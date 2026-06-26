@@ -13,7 +13,9 @@ export interface Driver {
   car_year?: string | null;
   profile_photo_url?: string | null;
   license_photo_url?: string | null;
+  license_back_url?: string | null;
   tech_passport_url?: string | null;
+  tech_passport_back_url?: string | null;
   car_photo_url?: string | null;
   has_license_doc?: boolean;
   has_tech_passport_doc?: boolean;
@@ -219,10 +221,28 @@ export async function uploadTechPassport(uri: string): Promise<{ url: string }> 
   return response.data;
 }
 
+export async function uploadTechPassportBack(uri: string): Promise<{ url: string }> {
+  const response = await api.post<{ url: string; success: boolean }>(
+    '/api/driver/upload/tech-passport-back',
+    buildImageForm(uri, 'techpassport_back.jpg'),
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
+}
+
 export async function uploadLicenseImage(uri: string): Promise<{ url: string }> {
   const response = await api.post<{ url: string; success: boolean }>(
     '/api/driver/upload/license',
     buildImageForm(uri, 'license.jpg'),
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return response.data;
+}
+
+export async function uploadLicenseBack(uri: string): Promise<{ url: string }> {
+  const response = await api.post<{ url: string; success: boolean }>(
+    '/api/driver/upload/license-back',
+    buildImageForm(uri, 'license_back.jpg'),
     { headers: { 'Content-Type': 'multipart/form-data' } }
   );
   return response.data;
