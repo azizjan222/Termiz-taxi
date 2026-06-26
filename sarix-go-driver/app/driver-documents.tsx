@@ -84,6 +84,7 @@ export default function DriverDocumentsScreen() {
 
   const [carModel, setCarModel] = useState(driver?.car_model || '');
   const [carYear, setCarYear] = useState(driver?.car_year || '');
+  const [carNumber, setCarNumber] = useState(driver?.car_number || '');
 
   const [uris, setUris] = useState<Record<DocKey, string | null>>({
     licenseFront: null, licenseBack: null, techFront: null, techBack: null,
@@ -130,11 +131,11 @@ export default function DriverDocumentsScreen() {
   };
 
   const allUploaded = uploaded.licenseFront && uploaded.licenseBack && uploaded.techFront && uploaded.techBack;
-  const allDone = !!carModel.trim() && !!carYear.trim() && allUploaded;
+  const allDone = !!carModel.trim() && !!carYear.trim() && !!carNumber.trim() && allUploaded;
 
   const handleSubmit = async () => {
-    if (!carModel.trim() || !carYear.trim()) {
-      Alert.alert('Diqqat', 'Mashina markasi va yilini kiriting.');
+    if (!carModel.trim() || !carYear.trim() || !carNumber.trim()) {
+      Alert.alert('Diqqat', 'Mashina markasi, yili va davlat raqamini kiriting.');
       return;
     }
     if (!allUploaded) {
@@ -143,8 +144,12 @@ export default function DriverDocumentsScreen() {
     }
     setSubmitting(true);
     try {
-      // 1) Save car info first (the submit endpoint requires model + year).
-      await updateDriverInfo({ car_model: carModel.trim(), car_year: carYear.trim() });
+      // 1) Save car info first (the submit endpoint requires model + year + number).
+      await updateDriverInfo({
+        car_model: carModel.trim(),
+        car_year: carYear.trim(),
+        car_number: carNumber.trim().toUpperCase(),
+      });
       // 2) Finalize — unlocks app access.
       const res = await submitDocuments();
       if (res?.driver) setDriver(res.driver);
@@ -246,6 +251,18 @@ export default function DriverDocumentsScreen() {
           placeholderTextColor={colors.textMuted}
           keyboardType="number-pad"
           maxLength={4}
+        />
+
+        <Text style={styles.label}>Davlat raqami</Text>
+        <TextInput
+          style={styles.input}
+          value={carNumber}
+          onChangeText={(t) => setCarNumber(t.toUpperCase())}
+          placeholder="01A123BC"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          maxLength={10}
         />
 
         {/* License */}
