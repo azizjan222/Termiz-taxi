@@ -208,6 +208,26 @@ export default function OrdersScreen() {
           </View>
         </View>
 
+        {/* Qo'shimcha talablar — prominent, right under the route so the driver clearly
+            sees special requirements before accepting. */}
+        {(item.female_only || item.has_roof_rack) && (
+          <View style={styles.extrasBlock}>
+            <Text style={styles.extrasTitle}>📋 {t('more.extras')}</Text>
+            <View style={styles.extrasRow}>
+              {item.female_only && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>👩 {t('more.femaleInCabin')}</Text>
+                </View>
+              )}
+              {item.has_roof_rack && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>🧳 {t('more.roofRack')}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         <View style={styles.cardInfo}>
           <Text style={styles.cardInfoText}>
             👤 {item.passenger_name || t('more.passenger')}
@@ -224,20 +244,6 @@ export default function OrdersScreen() {
             <Text style={styles.note} numberOfLines={2}>
               💬 {item.note}
             </Text>
-          )}
-          {(item.female_only || item.has_roof_rack) && (
-            <View style={styles.extrasRow}>
-              {item.female_only && (
-                <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>👩 {t('more.femaleInCabin')}</Text>
-                </View>
-              )}
-              {item.has_roof_rack && (
-                <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>🧳 {t('more.roofRack')}</Text>
-                </View>
-              )}
-            </View>
           )}
         </View>
 
@@ -481,6 +487,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   cardInfoText: { ...typography.caption, color: colors.text },
   note: { ...typography.small, color: colors.textSecondary, marginTop: 4, fontStyle: 'italic' },
+  extrasBlock: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  extrasTitle: { ...typography.small, color: '#B45309', fontWeight: '800', marginBottom: 6 },
   extrasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   extraTag: {
     backgroundColor: '#FEF3C7',
