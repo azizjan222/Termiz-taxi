@@ -128,6 +128,9 @@ SUPPORT_TELEGRAM = _get("SUPPORT_TELEGRAM", "termizsariosiyotaxi_bot")
 # AI Assistant
 OPENAI_API_KEY = _get("OPENAI_API_KEY", "")
 AI_MODEL = _get("AI_MODEL", "gpt-4o-mini")
+# Base URL for the OpenAI-compatible Chat Completions API. Override to use a
+# different provider/proxy (e.g. when api.openai.com is unreachable from the host).
+OPENAI_BASE_URL = _get("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
 
 def validate() -> list[str]:
