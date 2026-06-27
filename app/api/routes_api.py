@@ -87,7 +87,8 @@ async def get_route_price(request: web.Request) -> web.Response:
             commission = config.COMMISSION_PARCEL
             negotiable = True
         elif service == "full_car":
-            price = route.full_car_price
+            # Bo'sh (to'liq) mashina narxi 4 kishilik tarif bo'yicha hisoblanadi.
+            price = route.price_per_person * 4
             commission = int(round(price * _commission_pct(session) / 100.0))
             negotiable = False
         else:  # taxi

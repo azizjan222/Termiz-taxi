@@ -48,16 +48,20 @@ export default function NewOrderScreen() {
   const from = orderStore.fromCity || '';
   const to = orderStore.toCity || '';
   const persons = orderStore.personCount;
+  // "Bo'sh mashina" (full car): books the whole car, priced as 4 people.
+  const isFullCar = orderStore.serviceType === 'full_car';
 
   const formatPrice = (p: number) =>
     p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
-  // Price for the current route + passenger count
+  // Price for the current route + passenger count (or full car = 4 people)
   useEffect(() => {
     let active = true;
     if (!from || !to) return;
     setRouteUnavailable(false);
-    getPriceQuote(from, to, 'taxi', persons)
+    const quoteType = isFullCar ? 'full_car' : 'taxi';
+    const quotePersons = isFullCar ? 4 : persons;
+    getPriceQuote(from, to, quoteType, quotePersons)
       .then((q) => {
         if (!active) return;
         setQuote(q);
@@ -73,7 +77,7 @@ export default function NewOrderScreen() {
     return () => {
       active = false;
     };
-  }, [from, to, persons]);
+  }, [from, to, persons, isFullCar]);
 
   // Recommendations were removed: passengers no longer see/choose specific drivers.
   // Orders are broadcast to all eligible drivers via the "Haydovchi topish" button.
@@ -93,7 +97,7 @@ export default function NewOrderScreen() {
         note = note ? `${note}\n${other}` : other;
       }
       const result = await createOrder({
-        service_type: 'taxi',
+        service_type: isFullCar ? 'full_car' : 'taxi',
         from_city: from,
         to_city: to,
         from_address: orderStore.fromAddress,
@@ -102,7 +106,7 @@ export default function NewOrderScreen() {
         from_lon: orderStore.fromLon || undefined,
         to_lat: orderStore.toLat || undefined,
         to_lon: orderStore.toLon || undefined,
-        person_count: persons,
+        person_count: isFullCar ? 4 : persons,
         male_count: orderStore.maleCount,
         female_count: orderStore.femaleCount,
         departure_time: orderStore.departureTime,
@@ -183,11 +187,11 @@ export default function NewOrderScreen() {
           })}
         </View>
 
-        {/* Step 4: Yo'lovchi soni */}
+        {/* Step 4: Yo'lovchi soni / Bo'sh mashina */}
         <Text style={styles.sectionTitle}>👤  4. Yo'lovchi soni</Text>
         <View style={styles.chipRow}>
           {[1, 2, 3, 4].map((n) => {
-            const selected = persons === n;
+            const selected = !isFullCar && persons === n;
             const onPress = () => {
               orderStore.setField('personCount', n);
               orderStore.setField('serviceType', 'taxi');
@@ -218,6 +222,39 @@ export default function NewOrderScreen() {
             );
           })}
         </View>
+
+        {/* Bo'sh mashina (full car) — books the whole car, priced for 4 people. */}
+        {isFullCar ? (
+          <TouchableOpacity
+            onPress={() => {
+              orderStore.setField('serviceType', 'full_car');
+              orderStore.setField('personCount', 4);
+            }}
+            activeOpacity={0.9}
+          >
+            <LinearGradient
+              colors={gradients.gold}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.fullCarChipSelected}
+            >
+              <Text style={styles.fullCarChipTextSelected}>🚗  {t('tariff.fullCar')}</Text>
+              <Text style={styles.fullCarHintSelected}>{t('tariff.fullCarHint')}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.fullCarChip}
+            onPress={() => {
+              orderStore.setField('serviceType', 'full_car');
+              orderStore.setField('personCount', 4);
+            }}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.fullCarChipText}>🚗  {t('tariff.fullCar')}</Text>
+            <Text style={styles.fullCarHint}>{t('tariff.fullCarHint')}</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Yo'lovchilar jinsi (gender counters — informational) */}
         <Text style={styles.sectionTitle}>Yo'lovchilar jinsi</Text>
@@ -567,6 +604,27 @@ const styles = StyleSheet.create({
   },
   personChipText: { ...typography.bodyBold, color: colors.text },
   personChipTextSelected: { ...typography.bodyBold, color: colors.white },
+
+  // Bo'sh mashina (full car) option
+  fullCarChip: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
+  },
+  fullCarChipSelected: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    marginBottom: spacing.lg,
+  },
+  fullCarChipText: { ...typography.bodyBold, color: colors.text },
+  fullCarChipTextSelected: { ...typography.bodyBold, color: colors.textOnAccent },
+  fullCarHint: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
+  fullCarHintSelected: { ...typography.small, color: colors.textOnAccent, opacity: 0.85, marginTop: 2 },
 
   // Gender card
   genderCard: {
