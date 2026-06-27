@@ -2,7 +2,7 @@
 import os
 import logging
 from pathlib import Path
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 
 from app.config import DATABASE_URL, PERSISTENT_DATA_DIR
@@ -43,6 +43,28 @@ engine = create_engine(
     echo=False,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
 )
+
+
+# SQLite concurrency hardening. By default SQLite locks the whole database on every
+# write and fails immediately with "database is locked" if another write is in flight —
+# which happens when several drivers accept/serve orders at the same time. These PRAGMAs
+# make concurrent access safe for our scale:
+#   - WAL: readers don't block the writer and vice-versa (one writer + many readers)
+#   - busy_timeout: wait up to 5s for a lock instead of erroring out instantly
+#   - synchronous=NORMAL: durable + fast when combined with WAL
+#   - foreign_keys=ON: enforce FK constraints (off by default in SQLite)
+if "sqlite" in DATABASE_URL:
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, connection_record):  # pragma: no cover
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA busy_timeout=5000;")
+            cursor.execute("PRAGMA synchronous=NORMAL;")
+            cursor.execute("PRAGMA foreign_keys=ON;")
+        finally:
+            cursor.close()
 
 # expire_on_commit=False is REQUIRED here. The codebase's pattern is: load an ORM
 # object, commit, close the session, then return the object and read its attributes in
