@@ -63,6 +63,11 @@ export default {
     info: 'Up to {{persons}} passengers',
   },
   order: {
+    serviceType: 'Service type',
+    parcel: 'Parcel',
+    taxi: 'Taxi',
+    fullCar: 'Full car',
+    negotiable: 'Negotiable',
     summary: 'Order details',
     from: 'From',
     to: 'To',
