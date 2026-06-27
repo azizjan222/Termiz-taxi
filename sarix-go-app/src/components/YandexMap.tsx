@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
+import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState, useMemo } from 'react';
 import { StyleSheet, View, ViewStyle, StyleProp, Text, ActivityIndicator } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import Constants from 'expo-constants';
@@ -57,13 +57,26 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState<string>('');
 
-  const html = generateMapHtml({
-    apiKey: YANDEX_API_KEY,
-    initialLat: props.initialLat ?? DEFAULT_LAT,
-    initialLon: props.initialLon ?? DEFAULT_LON,
-    initialZoom: props.initialZoom ?? DEFAULT_ZOOM,
-    markers: props.markers ?? [],
-  });
+  // Build the map HTML exactly ONCE, capturing the props as they are at mount.
+  // Regenerating it on every render would change the WebView `source`, forcing a full
+  // page reload that throws away the user's current zoom/pan — that is the "map jumps
+  // back to its previous state when zooming in" bug. All later updates (center, zoom,
+  // markers, route) are applied imperatively via sendCommand instead of re-rendering.
+  const htmlRef = useRef<string | null>(null);
+  if (htmlRef.current === null) {
+    htmlRef.current = generateMapHtml({
+      apiKey: YANDEX_API_KEY,
+      initialLat: props.initialLat ?? DEFAULT_LAT,
+      initialLon: props.initialLon ?? DEFAULT_LON,
+      initialZoom: props.initialZoom ?? DEFAULT_ZOOM,
+      markers: props.markers ?? [],
+    });
+  }
+  const html = htmlRef.current;
+
+  // Keep the WebView `source` object identity stable so the map is never reloaded
+  // after the initial mount.
+  const source = useMemo(() => ({ html, baseUrl: 'https://yandex.com/' }), [html]);
 
   const sendCommand = (cmd: object) => {
     const js = `(function(){window.handleCommand && window.handleCommand(${JSON.stringify(cmd)});})();true;`;
@@ -140,7 +153,7 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
         // A real https baseUrl gives the page a proper origin/referrer. Without it the
         // page origin is about:blank and the Yandex Maps script (and referrer-restricted
         // API keys) can silently fail to load -> blank map.
-        source={{ html, baseUrl: 'https://yandex.com/' }}
+        source={source}
         style={styles.webview}
         onMessage={handleMessage}
         javaScriptEnabled

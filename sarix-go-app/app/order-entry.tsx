@@ -109,6 +109,9 @@ export default function OrderEntryScreen() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reqIdRef = useRef(0);
   const lastCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
+  // The auto-detected device location. Stored in a ref so that whichever finishes
+  // first — GPS detection or the map WebView load — can apply the close-up center.
+  const detectedRef = useRef<{ lat: number; lon: number } | null>(null);
   // Whether the map WebView has finished loading. Kept in a ref (not state) so
   // resolveAddress always reads the current value without stale closures.
   const mapReadyRef = useRef(false);
@@ -161,6 +164,15 @@ export default function OrderEntryScreen() {
   // higher-precision Uzbek address — matching the Yandex app experience.
   const handleMapReady = useCallback(() => {
     mapReadyRef.current = true;
+    // If GPS already produced a fix before the map was ready, center+zoom in close
+    // on it now (the earlier setCenter command would have been dropped). Otherwise
+    // just re-resolve the address for the current center.
+    const detected = detectedRef.current;
+    if (detected) {
+      mapRef.current?.setCenter(detected.lat, detected.lon, DETECT_ZOOM);
+      resolveAddress(detected.lat, detected.lon);
+      return;
+    }
     const c = lastCoordsRef.current;
     if (c) resolveAddress(c.lat, c.lon);
   }, [resolveAddress]);
@@ -176,8 +188,13 @@ export default function OrderEntryScreen() {
     try {
       const result = await detectLocation({ timeoutMs: 15000 });
       if (result.status === 'success') {
+        detectedRef.current = { lat: result.lat, lon: result.lon };
         setCenter({ lat: result.lat, lon: result.lon });
-        mapRef.current?.setCenter(result.lat, result.lon, DETECT_ZOOM);
+        // Zoom in close on the passenger's exact spot. If the map isn't ready yet,
+        // handleMapReady will apply this center+zoom once it loads.
+        if (mapReadyRef.current) {
+          mapRef.current?.setCenter(result.lat, result.lon, DETECT_ZOOM);
+        }
         resolveAddress(result.lat, result.lon);
       } else {
         // Fall back to default center; still resolve an address for it.
