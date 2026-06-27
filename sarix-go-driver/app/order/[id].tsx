@@ -291,32 +291,18 @@ export default function OrderDetailScreen() {
   const pickedUpBtnText = isParcel ? `✅ ${t('more.pickedBtnParcel')}` : `✅ ${t('more.pickedBtnPassenger')}`;
   const target = deriveTarget(order);
   const distanceMeters = driverCoords && target ? haversineMeters(driverCoords, target) : NaN;
-  // Display precedence: HIDDEN (not active) -> TARGET_MISSING -> LOADING -> LABEL.
-  let distanceContent: React.ReactNode = null;
-  if (deriveMapVisible(order)) {
-    if (target === null) {
-      distanceContent = (
-        <Text style={styles.value}>
-          📍 {enRoute
-            ? t('more.locUnavailableDest')
-            : isParcel
-              ? t('more.locUnavailableParcel')
-              : t('more.locUnavailablePassenger')}
-        </Text>
-      );
-    } else if (!driverCoords) {
-      distanceContent = <Text style={styles.value}>📍 {t('more.calculating')}</Text>;
+  // Live driver->target distance, shown as an overlay ON the map (not in the details
+  // card). Null when the map / target isn't available yet.
+  let mapDistanceText: string | null = null;
+  if (deriveMapVisible(order) && target !== null) {
+    if (!driverCoords) {
+      mapDistanceText = `📍 ${t('more.calculating')}`;
     } else {
       const etaHint =
         ETA_HINT_ENABLED && Number.isFinite(distanceMeters)
           ? ` · ~${formatEta(distanceMeters, ETA_AVG_SPEED_KMH)}`
           : '';
-      distanceContent = (
-        <Text style={[styles.value, { color: colors.info }]}>
-          📍 {formatDistance(distanceMeters)}
-          {etaHint}
-        </Text>
-      );
+      mapDistanceText = `📍 ${formatDistance(distanceMeters)}${etaHint}`;
     }
   }
 
@@ -380,6 +366,12 @@ export default function OrderDetailScreen() {
                 <Text style={styles.mapUnavailableText}>
                   📍 {enRoute ? t('more.mapUnavailableDest') : t('more.mapUnavailablePassenger')}
                 </Text>
+              </View>
+            )}
+            {/* Distance + ETA between driver and target, written on the map itself. */}
+            {mapDistanceText && (
+              <View style={styles.mapDistanceBadge} pointerEvents="none">
+                <Text style={styles.mapDistanceText}>{mapDistanceText}</Text>
               </View>
             )}
           </View>
@@ -486,15 +478,6 @@ export default function OrderDetailScreen() {
               {isParcel ? t('more.negotiable') : `${formatPrice(order.price)} ${t('more.currency')}`}
             </Text>
           </View>
-          {distanceContent && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.row}>
-                <Text style={styles.label}>🛣 {t('more.distance')}</Text>
-                {distanceContent}
-              </View>
-            </>
-          )}
         </View>
 
         {order.note && (
@@ -518,7 +501,7 @@ export default function OrderDetailScreen() {
             <Text style={styles.navBtnText}>
               {enRoute
                 ? (isParcel ? t('more.navDeliverParcel') : t('more.navigation'))
-                : (isParcel ? t('more.navGoParcel') : t('more.navigation'))}
+                : (isParcel ? t('more.navPickupParcel') : t('more.navPickupPassenger'))}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -614,6 +597,18 @@ const styles = StyleSheet.create({
     borderTopColor: colors.divider,
   },
   mapUnavailableText: { ...typography.caption, color: colors.textSecondary },
+  mapDistanceBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    backgroundColor: 'rgba(14,27,61,0.88)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mapDistanceText: { ...typography.caption, color: '#FFFFFF', fontWeight: '700' },
   statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
