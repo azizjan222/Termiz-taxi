@@ -11,6 +11,7 @@ import * as Location from 'expo-location';
 
 import { listMyActive, completeOrder, startTrip, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
 import { API_URL } from '../../src/api/client';
+import { useRealtimeStore } from '../../src/store/realtime';
 import YandexMap, { type YandexMapHandle } from '../../src/components/YandexMap';
 import {
   buildNavCandidates,
@@ -61,6 +62,30 @@ export default function OrderDetailScreen() {
       if (o) setOrder(o);
     });
   }, [id]);
+
+  // React to a passenger cancelling THIS order in real time: the global realtime
+  // handler already plays the one-time voice alert + vibration; here we surface an
+  // on-screen message and send the driver back to the orders list. A seq baseline
+  // captured on mount ensures we only react to cancellations that happen while this
+  // screen is open (never a stale, pre-existing event).
+  const lastEvent = useRealtimeStore((s) => s.lastEvent);
+  const handledSeqRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (handledSeqRef.current === null) {
+      handledSeqRef.current = lastEvent?.seq ?? 0;
+      return;
+    }
+    if (!lastEvent || lastEvent.seq <= handledSeqRef.current) return;
+    handledSeqRef.current = lastEvent.seq;
+    if (lastEvent.kind === 'order_cancelled' && String(lastEvent.orderId) === String(id)) {
+      Alert.alert(
+        t('notifications.orderCancelled'),
+        t('notifications.orderCancelledBody'),
+        [{ text: t('common.close'), onPress: () => router.replace('/(main)/orders') }],
+        { cancelable: false },
+      );
+    }
+  }, [lastEvent, id, t]);
 
   // 15-minute contact-window countdown (based on accepted_at).
   useEffect(() => {

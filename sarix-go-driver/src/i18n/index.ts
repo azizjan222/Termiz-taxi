@@ -130,6 +130,8 @@ const uz = {
     newOrder: '🚕 Yangi zakas keldi!',
     newOrderBody: "{{from}} → {{to}} · {{price}} so'm",
     orderCancelled: '❌ Zakas bekor qilindi',
+    orderCancelledBody: "Yo'lovchi zakasni bekor qildi",
+    orderCancelledSpoken: "Diqqat. Yo'lovchi zakasni bekor qildi.",
     historyTitle: 'Bildirishnomalar',
     empty: 'Bildirishnomalar yo\'q',
     clear: 'Tozalash',
@@ -308,6 +310,8 @@ const ru = {
     newOrder: '🚕 Новый заказ!',
     newOrderBody: '{{from}} → {{to}} · {{price}} сум',
     orderCancelled: '❌ Заказ отменён',
+    orderCancelledBody: 'Пассажир отменил заказ',
+    orderCancelledSpoken: 'Внимание. Пассажир отменил заказ.',
     historyTitle: 'Уведомления', empty: 'Нет уведомлений', clear: 'Очистить',
   },
   faq: {
@@ -480,6 +484,8 @@ const en = {
     newOrder: '🚕 New order!',
     newOrderBody: '{{from}} → {{to}} · {{price}} UZS',
     orderCancelled: '❌ Order cancelled',
+    orderCancelledBody: 'The passenger cancelled the order',
+    orderCancelledSpoken: 'Attention. The passenger cancelled the order.',
     historyTitle: 'Notifications', empty: 'No notifications', clear: 'Clear',
   },
   faq: {
@@ -652,6 +658,8 @@ const uzCyrl = {
     newOrder: '🚕 Янги заказ келди!',
     newOrderBody: "{{from}} → {{to}} · {{price}} сўм",
     orderCancelled: '❌ Заказ бекор қилинди',
+    orderCancelledBody: 'Йўловчи заказни бекор қилди',
+    orderCancelledSpoken: 'Диққат. Йўловчи заказни бекор қилди.',
     historyTitle: 'Билдиришномалар', empty: 'Билдиришномалар йўқ', clear: 'Тозалаш',
   },
   faq: {
