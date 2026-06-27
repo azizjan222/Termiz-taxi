@@ -395,6 +395,26 @@ export default function OrderDetailScreen() {
           </View>
         </View>
 
+        {/* Qo'shimcha talablar (extras) — placed high, right under the passenger, so the
+            driver immediately sees special requirements (female in cabin, roof rack). */}
+        {(order.female_only || order.has_roof_rack) && (
+          <View style={[styles.card, { marginTop: spacing.md }]}>
+            <Text style={styles.cardTitle}>{t('more.extras')}</Text>
+            <View style={styles.extrasRow}>
+              {order.female_only && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>👩 {t('more.femaleInCabin')}</Text>
+                </View>
+              )}
+              {order.has_roof_rack && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>🧳 {t('more.roofRack')}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Route */}
         <View style={[styles.card, { marginTop: spacing.md }]}>
           <View style={styles.row}>
@@ -456,24 +476,6 @@ export default function OrderDetailScreen() {
           <View style={[styles.card, { marginTop: spacing.md }]}>
             <Text style={styles.cardTitle}>{t('order.note')}</Text>
             <Text style={styles.noteText}>{order.note}</Text>
-          </View>
-        )}
-
-        {(order.female_only || order.has_roof_rack) && (
-          <View style={[styles.card, { marginTop: spacing.md }]}>
-            <Text style={styles.cardTitle}>{t('more.extras')}</Text>
-            <View style={styles.extrasRow}>
-              {order.female_only && (
-                <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>👩 {t('more.femaleInCabin')}</Text>
-                </View>
-              )}
-              {order.has_roof_rack && (
-                <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>🧳 {t('more.roofRack')}</Text>
-                </View>
-              )}
-            </View>
           </View>
         )}
       </ScrollView>
