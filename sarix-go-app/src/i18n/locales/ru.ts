@@ -88,6 +88,7 @@ export default {
     cancelOrder: 'Отменить заказ',
     driverFound: 'Водитель найден!',
     driverInfo: 'О водителе',
+    driverAccepted: 'Водитель принял заказ! Скоро свяжется с вами.',
     callDriver: 'Позвонить',
     success: 'Заказ принят!',
   },
