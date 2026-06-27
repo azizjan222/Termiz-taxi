@@ -430,6 +430,24 @@ export default function OrderDetailScreen() {
             <Text style={styles.noteText}>{order.note}</Text>
           </View>
         )}
+
+        {(order.female_only || order.has_roof_rack) && (
+          <View style={[styles.card, { marginTop: spacing.md }]}>
+            <Text style={styles.cardTitle}>{t('more.extras')}</Text>
+            <View style={styles.extrasRow}>
+              {order.female_only && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>👩 {t('more.femaleInCabin')}</Text>
+                </View>
+              )}
+              {order.has_roof_rack && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>🧳 {t('more.roofRack')}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {/* Action button — staged: accepted -> "picked up passenger", in_progress -> finish. */}
@@ -620,6 +638,16 @@ const styles = StyleSheet.create({
   value: { ...typography.bodyBold, color: colors.text },
   divider: { height: 1, backgroundColor: colors.divider },
   noteText: { ...typography.body, color: colors.text },
+  extrasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  extraTag: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  extraTagText: { ...typography.small, color: '#B45309', fontWeight: '700' },
   footer: {
     padding: spacing.lg,
     borderTopWidth: 1,

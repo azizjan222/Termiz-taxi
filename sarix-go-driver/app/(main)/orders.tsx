@@ -225,6 +225,20 @@ export default function OrdersScreen() {
               💬 {item.note}
             </Text>
           )}
+          {(item.female_only || item.has_roof_rack) && (
+            <View style={styles.extrasRow}>
+              {item.female_only && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>👩 {t('more.femaleInCabin')}</Text>
+                </View>
+              )}
+              {item.has_roof_rack && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>🧳 {t('more.roofRack')}</Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
         <View style={styles.cardFooter}>
@@ -467,6 +481,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   cardInfoText: { ...typography.caption, color: colors.text },
   note: { ...typography.small, color: colors.textSecondary, marginTop: 4, fontStyle: 'italic' },
+  extrasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  extraTag: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  extraTagText: { ...typography.small, color: '#B45309', fontWeight: '700' },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
