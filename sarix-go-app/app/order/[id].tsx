@@ -14,7 +14,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '../../src/components/Button';
-import YandexMap, { type MapMarker } from '../../src/components/YandexMap';
+import YandexMap, { type MapMarker, type YandexMapHandle } from '../../src/components/YandexMap';
 import { getOrder, cancelOrder, type Order } from '../../src/api/orders';
 import { getOrderRatingStatus } from '../../src/api/ratings';
 import { presentLocalNotification } from '../../src/services/notifications';
@@ -32,6 +32,9 @@ export default function OrderDetailScreen() {
   const [driverLoc, setDriverLoc] = useState<{ lat: number; lon: number } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const ratedHandledRef = useRef(false);
+  // Map handle + readiness, so we can live-follow the driver as they move.
+  const mapRef = useRef<YandexMapHandle>(null);
+  const [mapReady, setMapReady] = useState(false);
 
   const load = async () => {
     try {
@@ -89,6 +92,14 @@ export default function OrderDetailScreen() {
       ws?.close();
     };
   }, [user, id]);
+
+  // Live-follow: recenter the map on the driver whenever their position updates,
+  // so the passenger can track the driver moving in real time.
+  useEffect(() => {
+    if (mapReady && driverLoc) {
+      mapRef.current?.setCenter(driverLoc.lat, driverLoc.lon);
+    }
+  }, [mapReady, driverLoc]);
 
   // After completion, prompt the passenger to rate the driver (once, if not rated yet).
   useEffect(() => {
@@ -191,14 +202,24 @@ export default function OrderDetailScreen() {
           </View>
         </View>
 
+        {/* Reassurance message right after the driver accepts. */}
+        {order.status === 'accepted' && order.driver && (
+          <View style={styles.acceptedInfo}>
+            <Text style={styles.acceptedInfoIcon}>🤝</Text>
+            <Text style={styles.acceptedInfoText}>{t('order.driverAccepted')}</Text>
+          </View>
+        )}
+
         {/* Live driver location map (while the trip is active) */}
         {isActive && order.driver && (driverLoc || (order.from_lat != null && order.from_lon != null)) && (
           <View style={styles.mapCard}>
             <YandexMap
+              ref={mapRef}
               style={styles.map}
               initialLat={driverLoc?.lat ?? order.from_lat ?? undefined}
               initialLon={driverLoc?.lon ?? order.from_lon ?? undefined}
-              initialZoom={14}
+              initialZoom={15}
+              onMapReady={() => setMapReady(true)}
               markers={[
                 ...(driverLoc
                   ? [{ id: 'driver', lat: driverLoc.lat, lon: driverLoc.lon, label: '🚕', color: '#0E1B3D' } as MapMarker]
@@ -240,9 +261,7 @@ export default function OrderDetailScreen() {
                 <Text style={styles.driverName}>
                   {order.driver.first_name || 'Haydovchi'}
                 </Text>
-                <Text style={styles.driverRating}>
-                  ⭐ {order.driver.rating?.toFixed(1) || '5.0'}
-                </Text>
+                {/* Rating hidden from the passenger for now (per request). */}
               </View>
               <TouchableOpacity style={styles.callBtn} onPress={callDriver}>
                 <Text style={styles.callBtnIcon}>📞</Text>
@@ -356,6 +375,17 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   serviceChipText: { ...typography.small, color: colors.white, fontWeight: '700' },
+  acceptedInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.successLight,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  acceptedInfoIcon: { fontSize: 20, marginRight: spacing.sm },
+  acceptedInfoText: { ...typography.bodyBold, color: colors.success, flex: 1 },
   mapCard: {
     height: 240,
     borderRadius: radius.lg,

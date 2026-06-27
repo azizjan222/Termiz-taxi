@@ -88,6 +88,7 @@ export default {
     cancelOrder: 'Cancel order',
     driverFound: 'Driver found!',
     driverInfo: 'Driver info',
+    driverAccepted: 'The driver accepted your order! They will contact you shortly.',
     callDriver: 'Call',
     success: 'Order accepted!',
   },

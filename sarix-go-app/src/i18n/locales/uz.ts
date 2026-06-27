@@ -88,6 +88,7 @@ export default {
     cancelOrder: 'Buyurtmani bekor qilish',
     driverFound: 'Haydovchi topildi!',
     driverInfo: 'Haydovchi ma\'lumotlari',
+    driverAccepted: 'Haydovchi qabul qildi! Tez orada siz bilan bog\'lanadi.',
     callDriver: "Qo'ng'iroq qilish",
     success: 'Buyurtmangiz qabul qilindi!',
   },
