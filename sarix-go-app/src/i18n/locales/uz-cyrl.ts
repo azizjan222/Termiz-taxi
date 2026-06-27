@@ -63,6 +63,11 @@ export default {
     info: '{{persons}} кишигача йўловчи олинади',
   },
   order: {
+    serviceType: 'Хизмат тури',
+    parcel: 'Почта',
+    taxi: 'Такси',
+    fullCar: 'Тўлиқ машина',
+    negotiable: 'Келишилади',
     summary: 'Буюртма тафсилотлари',
     from: 'Қаердан',
     to: 'Қаерга',

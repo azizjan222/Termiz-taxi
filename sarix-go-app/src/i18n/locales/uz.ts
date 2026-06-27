@@ -63,6 +63,11 @@ export default {
     info: '{{persons}} kishigacha yo\'lovchi olinadi',
   },
   order: {
+    serviceType: 'Xizmat turi',
+    parcel: 'Pochta',
+    taxi: 'Taksi',
+    fullCar: "To'liq mashina",
+    negotiable: 'Kelishiladi',
     summary: 'Buyurtma tafsilotlari',
     from: 'Qayerdan',
     to: 'Qayerga',

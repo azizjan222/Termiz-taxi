@@ -145,6 +145,23 @@ export default function OrderDetailScreen() {
   }
 
   const isActive = ['new', 'accepted', 'in_progress'].includes(order.status);
+  const isParcel = order.service_type === 'parcel';
+  const isFullCar = order.service_type === 'full_car';
+  const serviceBadge = isParcel
+    ? `📦 ${t('order.parcel')}`
+    : isFullCar
+    ? `🚗 ${t('order.fullCar')}`
+    : `🚕 ${t('order.taxi')}`;
+  const statusEmoji =
+    order.status === 'completed'
+      ? '🏁'
+      : order.status === 'accepted'
+      ? '✅'
+      : order.status === 'in_progress'
+      ? isParcel
+        ? '📦'
+        : '🚕'
+      : '⏳';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -167,18 +184,11 @@ export default function OrderDetailScreen() {
             isActive && order.status === 'accepted' && { backgroundColor: colors.successLight },
           ]}
         >
-          <Text style={styles.statusEmoji}>
-            {order.status === 'accepted'
-              ? '✅'
-              : order.status === 'in_progress'
-              ? '🚕'
-              : order.status === 'completed'
-              ? '🏁'
-              : '⏳'}
-          </Text>
-          <Text style={styles.statusText}>
-            {t(`status.${order.status}`)}
-          </Text>
+          <Text style={styles.statusEmoji}>{statusEmoji}</Text>
+          <Text style={styles.statusText}>{t(`status.${order.status}`)}</Text>
+          <View style={styles.serviceChip}>
+            <Text style={styles.serviceChipText}>{serviceBadge}</Text>
+          </View>
         </View>
 
         {/* Live driver location map (while the trip is active) */}
@@ -254,31 +264,40 @@ export default function OrderDetailScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t('order.summary')}</Text>
           <View style={styles.row}>
-            <Text style={styles.label}>{t('order.from')}</Text>
+            <Text style={styles.label}>📍 {t('order.from')}</Text>
             <Text style={styles.value}>{order.from_city}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>{t('order.to')}</Text>
+            <Text style={styles.label}>🏁 {t('order.to')}</Text>
             <Text style={styles.value}>{order.to_city}</Text>
           </View>
           <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={styles.label}>{t('order.persons')}</Text>
-            <Text style={styles.value}>{order.person_count}</Text>
-          </View>
+          {isParcel || isFullCar ? (
+            <View style={styles.row}>
+              <Text style={styles.label}>{t('order.serviceType')}</Text>
+              <Text style={styles.value}>{serviceBadge}</Text>
+            </View>
+          ) : (
+            <View style={styles.row}>
+              <Text style={styles.label}>👥 {t('order.persons')}</Text>
+              <Text style={styles.value}>{order.person_count}</Text>
+            </View>
+          )}
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>{t('order.price')}</Text>
+            <Text style={styles.label}>💵 {t('order.price')}</Text>
             <Text style={[styles.value, styles.price]}>
-              {formatPrice(order.price)} so'm
+              {isParcel ? t('order.negotiable') : `${formatPrice(order.price)} so'm`}
             </Text>
           </View>
         </View>
 
         {order.note && (
           <View style={[styles.card, { marginTop: spacing.md }]}>
-            <Text style={styles.cardTitle}>{t('order.note')}</Text>
+            <Text style={styles.cardTitle}>
+              {isParcel ? `📦 ${t('order.parcel')}` : t('order.note')}
+            </Text>
             <Text style={styles.noteText}>{order.note}</Text>
           </View>
         )}
@@ -296,6 +315,14 @@ export default function OrderDetailScreen() {
     </SafeAreaView>
   );
 }
+
+const CARD_SHADOW = {
+  shadowColor: '#0E1B3D',
+  shadowOpacity: 0.08,
+  shadowRadius: 14,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 3,
+};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white },
@@ -316,17 +343,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.primary,
     padding: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     marginBottom: spacing.md,
+    ...CARD_SHADOW,
   },
   statusEmoji: { fontSize: 28, marginRight: spacing.md },
-  statusText: { ...typography.h3, color: colors.white },
+  statusText: { ...typography.h3, color: colors.white, flex: 1 },
+  serviceChip: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  serviceChipText: { ...typography.small, color: colors.white, fontWeight: '700' },
   mapCard: {
     height: 240,
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
+    ...CARD_SHADOW,
   },
   map: { flex: 1 },
   mapHint: {
@@ -341,6 +377,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.md,
     marginBottom: spacing.md,
+    ...CARD_SHADOW,
   },
   driverTitle: { ...typography.bodyBold, color: colors.primary, marginBottom: spacing.md },
   driverRow: { flexDirection: 'row', alignItems: 'center' },
@@ -372,6 +409,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.md,
+    ...CARD_SHADOW,
   },
   cardTitle: { ...typography.bodyBold, color: colors.primary, marginBottom: spacing.sm },
   row: {
