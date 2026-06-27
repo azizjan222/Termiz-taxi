@@ -142,7 +142,7 @@ async def notify_driver_new_order(session: Session, order, drivers: list):
                 "order_id": order.id,
             },
             sound="new_order.wav",
-            channel_id="orders",
+            channel_id="orders_v2",
         )
 
 
@@ -160,7 +160,7 @@ async def notify_passenger_order_accepted(session: Session, order, driver):
             "type": "order_accepted",
             "order_id": order.id,
         },
-        channel_id="orders",
+        channel_id="orders_v2",
     )
 
 
@@ -180,7 +180,7 @@ async def notify_driver_recommended_order(session: Session, order, driver):
             "direct": True,
         },
         sound="new_order.wav",
-        channel_id="orders",
+        channel_id="orders_v2",
     )
 
 
@@ -206,7 +206,7 @@ async def notify_order_cancelled(
             "order_id": order.id,
             "by": by,
         },
-        channel_id="orders",
+        channel_id="orders_v2",
     )
 
 
@@ -224,7 +224,7 @@ async def notify_order_completed(session: Session, order):
             "type": "order_completed",
             "order_id": order.id,
         },
-        channel_id="orders",
+        channel_id="orders_v2",
     )
 
 
