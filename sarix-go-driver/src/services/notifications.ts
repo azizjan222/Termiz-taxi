@@ -14,30 +14,42 @@ import { api } from '../api/client';
 // the driver hears the notification regardless of app state or expo-av issues.
 // ---------------------------------------------------------------------------
 Notifications.setNotificationHandler({
-  handleNotification: async () => {
-    return {
+  handleNotification: async () =>
+    ({
+      // New API (SDK 52+) — present the banner & list entry...
+      shouldShowBanner: true,
+      shouldShowList: true,
+      // ...and keep the legacy field for older runtimes.
       shouldShowAlert: true,
       shouldPlaySound: true, // ALWAYS play — this is the primary sound mechanism
       shouldSetBadge: true,
-    };
-  },
+    }) as any,
 });
+
+// Android notification channel id for new orders. We use a *versioned* id:
+// Android does not allow changing a channel's sound after it is first created
+// (deleting + recreating the same id is unreliable and often leaves it silent),
+// so bumping the id is the only reliable way to (re)apply the custom sound.
+export const ORDERS_CHANNEL = 'orders_v2';
 
 // ---------------------------------------------------------------------------
 // Notification channels (Android only)
 // ---------------------------------------------------------------------------
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
-    // Delete and recreate — Android doesn't allow changing channel sound after
-    // initial creation, so we must recreate for existing installs.
+    // Remove the legacy channel — on existing installs its sound got "stuck"
+    // (Android caches channel settings and won't update the sound), which is
+    // why new-order alerts went silent. Creating a fresh, versioned channel
+    // (ORDERS_CHANNEL) guarantees the custom sound is actually applied.
     try {
       await Notifications.deleteNotificationChannelAsync('orders');
     } catch {}
 
-    await Notifications.setNotificationChannelAsync('orders', {
+    await Notifications.setNotificationChannelAsync(ORDERS_CHANNEL, {
       name: 'Yangi zakaslar',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 500, 200, 500, 200, 500],
+      enableVibrate: true,
       lightColor: '#F4C430',
       sound: 'new_order.wav',
       bypassDnd: true,
@@ -160,7 +172,7 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
         priority: Notifications.AndroidNotificationPriority.MAX,
         vibrate: ALERT_VIBRATION,
         data: { alert: true, type: 'new_order' },
-        ...(Platform.OS === 'android' ? { channelId: 'orders' } : {}),
+        ...(Platform.OS === 'android' ? { channelId: ORDERS_CHANNEL } : {}),
       },
       trigger: null, // fire immediately
     });
@@ -185,13 +197,23 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
       alertSound = null;
     }
 
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      staysActiveInBackground: true,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: false,
-      playThroughEarpieceAndroid: false,
-    });
+    // Configure audio so the alert is loud and plays through the speaker even
+    // on silent mode (iOS). IMPORTANT: keep staysActiveInBackground = false.
+    // Setting it true requires background-audio entitlements we don't ship, and
+    // makes setAudioModeAsync THROW — which previously aborted the whole block
+    // and left the new-order alert silent. Guard it in its own try/catch so a
+    // failure here never prevents the sound from playing.
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+    } catch (e) {
+      console.warn('setAudioModeAsync failed (continuing to play anyway):', e);
+    }
 
     const { sound } = await Audio.Sound.createAsync(
       NEW_ORDER_SOUND,
