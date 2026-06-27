@@ -278,6 +278,10 @@ async def driver_login(request: web.Request) -> web.Response:
             # sending them to the bot), authenticate them anyway — issue a token —
             # and flag the response so the app opens the in-app document upload
             # screen. The driver can finish onboarding entirely inside the app.
+            # Grant the free trial even while documents are still pending, so drivers
+            # who pre-registered in the bot receive their 1-month bonus on first app
+            # entry (previously this early-return skipped the grant entirely).
+            _grant_free_trial_if_eligible(session, driver)
             token = _create_driver_token(driver)
             return web.json_response({
                 "success": True,
@@ -405,6 +409,10 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
             # sending them to the bot), authenticate them anyway — issue a token —
             # and flag the response so the app opens the in-app document upload
             # screen. The driver can finish onboarding entirely inside the app.
+            # Grant the free trial even while documents are still pending, so drivers
+            # who pre-registered in the bot receive their 1-month bonus on first app
+            # entry (previously this early-return skipped the grant entirely).
+            _grant_free_trial_if_eligible(session, driver)
             token = _create_driver_token(driver)
             return web.json_response({
                 "success": True,
@@ -507,6 +515,9 @@ async def submit_documents(request: web.Request) -> web.Response:
             )
         d.documents_submitted = True
         session.commit()
+        # Ensure the 1-month bonus is granted once onboarding completes — covers
+        # bot-registered drivers who may have entered before the grant ran at login.
+        _grant_free_trial_if_eligible(session, d)
         session.refresh(d)
         return web.json_response({"success": True, "driver": _serialize_driver(d)})
     finally:
@@ -1293,6 +1304,9 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
             driver.last_active = datetime.utcnow()
             db.commit()
             db.refresh(driver)
+            # Grant the free trial even while documents are pending (bot-registered
+            # drivers must still get their 1-month bonus on first app entry).
+            _grant_free_trial_if_eligible(db, driver)
             jwt_token = _create_driver_token(driver)
             return web.json_response({
                 "status": "documents_required",
