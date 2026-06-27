@@ -2,9 +2,11 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform, AppState, Vibration } from 'react-native';
 import { Audio } from 'expo-av';
+import * as Speech from 'expo-speech';
 import Constants from 'expo-constants';
 
 import { api } from '../api/client';
+import i18n from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Notification handler: controls what happens when a notification arrives
@@ -244,5 +246,91 @@ export async function stopAlert() {
       await ref.stopAsync();
       await ref.unloadAsync();
     } catch {}
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Order-cancelled alert — ONE-TIME spoken (voice) warning + vibration + notice
+//
+// Fired when a passenger cancels their order (taxi OR parcel). The driver gets:
+//   1. A spoken voice warning in their selected language (expo-speech). This is
+//      the primary "ovozli ogohlantirish" — it speaks exactly once.
+//   2. A strong one-shot vibration.
+//   3. A local notification (visual + the device's default notification sound),
+//      which also acts as the audible fallback on devices without a TTS voice.
+//
+// Every step is independently guarded so a failure in one never blocks the others.
+// ---------------------------------------------------------------------------
+let cancelSpeaking = false;
+
+export async function playOrderCancelledAlert() {
+  const title = i18n.t('notifications.orderCancelled');
+  const body = i18n.t('notifications.orderCancelledBody');
+  const spoken = i18n.t('notifications.orderCancelledSpoken');
+  const lang = i18n.language || 'uz';
+  // Map our app language to a BCP-47 TTS locale. Uzbek (incl. Cyrillic) -> uz-UZ;
+  // if the device lacks that voice, expo-speech falls back to the default voice and
+  // the notification sound + vibration still alert the driver.
+  const ttsLang = lang.startsWith('ru') ? 'ru-RU' : lang.startsWith('en') ? 'en-US' : 'uz-UZ';
+
+  // 1) LOCAL NOTIFICATION — visual banner + default sound (audible fallback).
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        vibrate: ALERT_VIBRATION,
+        data: { alert: true, type: 'order_cancelled' },
+        ...(Platform.OS === 'android' ? { channelId: 'default' } : {}),
+      },
+      trigger: null, // fire immediately
+    });
+  } catch (e) {
+    console.warn('Failed to schedule cancel notification:', e);
+  }
+
+  // 2) VIBRATION — strong one-shot pattern (works even in silent mode).
+  try {
+    Vibration.vibrate(ALERT_VIBRATION, false);
+  } catch {}
+
+  // 3) SPOKEN VOICE ALERT — one-time. Stop any in-flight speech first so we never
+  //    stack two utterances, then speak once through the speaker.
+  try {
+    if (cancelSpeaking) {
+      try {
+        Speech.stop();
+      } catch {}
+    }
+    cancelSpeaking = true;
+    // Route audio through the speaker and allow playback in iOS silent mode.
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+    } catch {}
+    Speech.speak(spoken, {
+      language: ttsLang,
+      rate: 1.0,
+      pitch: 1.0,
+      onDone: () => {
+        cancelSpeaking = false;
+      },
+      onStopped: () => {
+        cancelSpeaking = false;
+      },
+      onError: () => {
+        cancelSpeaking = false;
+      },
+    });
+  } catch (e) {
+    cancelSpeaking = false;
+    console.warn('Speech cancel alert failed (notification + vibration still fire):', e);
   }
 }

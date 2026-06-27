@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { WS_URL, getAuthToken } from '../api/client';
 import { type DriverOrder } from '../api/driver';
 import { useRealtimeStore } from '../store/realtime';
-import { playNewOrderAlert } from './notifications';
+import { playNewOrderAlert, playOrderCancelledAlert } from './notifications';
 import { addNotification } from './notificationHistory';
 
 // ---------------------------------------------------------------------------
@@ -113,6 +113,17 @@ function handleMessage(data: any) {
     });
     useRealtimeStore.getState().pushNewOrder(order);
   } else if (msg.type === 'order_cancelled') {
+    // Passenger cancelled (taxi or parcel): one-time voice alert + vibration + a
+    // notice in the history list, then publish the event so the active screen can
+    // surface an on-screen message and navigate away.
+    playOrderCancelledAlert();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    addNotification({
+      title: '❌ Zakas bekor qilindi',
+      body: "Yo'lovchi zakasni bekor qildi",
+      type: 'order_cancelled',
+      data: { order_id: msg.order_id },
+    });
     useRealtimeStore.getState().pushCancelled(msg.order_id);
   }
 }
