@@ -538,6 +538,7 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "status": o.status,
         "note": o.note,
         "passenger_name": o.passenger_name,
+        "passenger_photo_url": (o.passenger.profile_photo_url if o.passenger else None),
         "has_roof_rack": o.has_roof_rack,
         "female_only": o.female_only,
         "source": o.source,
