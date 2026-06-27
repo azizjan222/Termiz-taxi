@@ -159,6 +159,26 @@ export const IncomingOrderModal: React.FC<Props> = ({
             </View>
           </View>
 
+          {/* Qo'shimcha talablar — shown right under the route (high & prominent) so the
+              driver clearly sees special requirements BEFORE accepting. */}
+          {(order.female_only || order.has_roof_rack) && (
+            <View style={styles.extrasBlock}>
+              <Text style={styles.extrasTitle}>📋 Qo'shimcha talablar</Text>
+              <View style={styles.extrasRow}>
+                {order.female_only && (
+                  <View style={styles.extraTag}>
+                    <Text style={styles.extraTagText}>👩 Salonda ayol bor</Text>
+                  </View>
+                )}
+                {order.has_roof_rack && (
+                  <View style={styles.extraTag}>
+                    <Text style={styles.extraTagText}>🧳 Tomida yukxona bor</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* Meta chips */}
           <View style={styles.chipsRow}>
             <View style={styles.chip}>
@@ -173,22 +193,6 @@ export const IncomingOrderModal: React.FC<Props> = ({
               </View>
             )}
           </View>
-
-          {/* Extra requirements the passenger requested — must be visible to the driver */}
-          {(order.female_only || order.has_roof_rack) && (
-            <View style={styles.extrasRow}>
-              {order.female_only && (
-                <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>👩 Salonda ayol bor</Text>
-                </View>
-              )}
-              {order.has_roof_rack && (
-                <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>🧳 Tomida yukxona bor</Text>
-                </View>
-              )}
-            </View>
-          )}
 
           {/* Price + commission */}
           <View style={styles.priceRow}>
@@ -285,11 +289,19 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.pill,
   },
   femaleTagText: { ...typography.small, color: '#DB2777', fontWeight: '700' },
+  extrasBlock: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  extrasTitle: { ...typography.small, color: '#B45309', fontWeight: '800', marginBottom: 6 },
   extrasRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 12,
   },
   extraTag: {
     backgroundColor: '#FEF3C7',
