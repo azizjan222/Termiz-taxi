@@ -301,7 +301,9 @@ export default function OrderDetailScreen() {
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={styles.title}>#{order.id}</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.serviceChip}>
+          <Text style={styles.serviceChipEmoji}>{isParcel ? '📦' : order.service_type === 'full_car' ? '🚗' : '🚕'}</Text>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -402,15 +404,29 @@ export default function OrderDetailScreen() {
             <Text style={styles.value}>{order.departure_time || t('more.now')}</Text>
           </View>
           <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={styles.label}>{t('order.persons')}</Text>
-            <Text style={styles.value}>{order.person_count}</Text>
-          </View>
+          {isParcel || order.service_type === 'full_car' ? (
+            <View style={styles.row}>
+              <Text style={styles.label}>{t('more.serviceType')}</Text>
+              <Text style={styles.value}>
+                {isParcel ? `📦 ${t('more.parcelLabel')}` : `🚗 ${t('more.fullCarLabel')}`}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.row}>
+              <Text style={styles.label}>👥 {t('order.persons')}</Text>
+              <Text style={styles.value}>{order.person_count}</Text>
+            </View>
+          )}
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>{t('order.price')}</Text>
-            <Text style={[styles.value, { color: colors.success, fontSize: 18 }]}>
-              {formatPrice(order.price)} {t('more.currency')}
+            <Text style={styles.label}>💵 {t('order.price')}</Text>
+            <Text
+              style={[
+                styles.value,
+                { fontSize: 18, color: isParcel ? colors.info : colors.success },
+              ]}
+            >
+              {isParcel ? t('more.negotiable') : `${formatPrice(order.price)} ${t('more.currency')}`}
             </Text>
           </View>
           {distanceContent && (
@@ -504,6 +520,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   backIcon: { fontSize: 26, color: colors.primary },
+  serviceChip: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  serviceChipEmoji: { fontSize: 20 },
   title: { ...typography.h3, color: colors.text },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },

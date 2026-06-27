@@ -230,6 +230,10 @@ const uz = {
     permissionGallery: 'Galereyaga ruxsat kerak',
     somethingWrong: 'Xatolik',
     ratingsCount: 'baho',
+    serviceType: 'Xizmat turi',
+    negotiable: 'Kelishiladi',
+    parcelLabel: 'Pochta',
+    fullCarLabel: "To'liq mashina",
   },
 };
 
@@ -397,6 +401,10 @@ const ru = {
     permissionGallery: 'Нужен доступ к галерее',
     somethingWrong: 'Ошибка',
     ratingsCount: 'оценок',
+    serviceType: 'Тип услуги',
+    negotiable: 'Договорная',
+    parcelLabel: 'Посылка',
+    fullCarLabel: 'Вся машина',
   },
 };
 
@@ -562,6 +570,10 @@ const en = {
     permissionGallery: 'Gallery access is required',
     somethingWrong: 'Error',
     ratingsCount: 'ratings',
+    serviceType: 'Service type',
+    negotiable: 'Negotiable',
+    parcelLabel: 'Parcel',
+    fullCarLabel: 'Full car',
   },
 };
 
@@ -727,6 +739,10 @@ const uzCyrl = {
     permissionGallery: 'Галереяга рухсат керак',
     somethingWrong: 'Хатолик',
     ratingsCount: 'баҳо',
+    serviceType: 'Хизмат тури',
+    negotiable: 'Келишилади',
+    parcelLabel: 'Почта',
+    fullCarLabel: 'Тўлиқ машина',
   },
 };
 
