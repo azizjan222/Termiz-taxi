@@ -5,8 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
-  ActivityIndicator,
   Alert,
   Modal,
   TextInput,
@@ -20,12 +18,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   createOrder,
   getPriceQuote,
-  getRecommendedDrivers,
   type PriceQuote,
-  type RecommendedDriver,
 } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
-import { API_URL } from '../src/api/client';
 import { colors, typography, spacing, radius } from '../src/theme';
 import { gradients } from '../src/theme/colors';
 
@@ -35,20 +30,12 @@ const TIME_OPTIONS = ['Hozir', '30 daqiqadan', '1 soatdan', '2 soatdan', 'Ertaga
 // Accent for female stepper controls (pink)
 const PINK = '#EC4899';
 
-function absoluteUrl(path?: string | null): string | undefined {
-  if (!path) return undefined;
-  if (path.startsWith('http')) return path;
-  return `${API_URL}${path}`;
-}
-
 export default function NewOrderScreen() {
   const { t } = useTranslation();
   const orderStore = useOrderStore();
 
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [routeUnavailable, setRouteUnavailable] = useState(false);
-  const [recs, setRecs] = useState<RecommendedDriver[]>([]);
-  const [recsLoading, setRecsLoading] = useState(false);
   const [submitting, setSubmitting] = useState<number | 'find' | null>(null);
 
   // Bottom action-bar sheets
@@ -88,23 +75,8 @@ export default function NewOrderScreen() {
     };
   }, [from, to, persons]);
 
-  // Recommendations (Tavsiyalar) — online eligible drivers
-  const loadRecs = async () => {
-    if (!from || !to) return;
-    setRecsLoading(true);
-    try {
-      const list = await getRecommendedDrivers(from, to, persons);
-      setRecs(list);
-    } catch {
-      setRecs([]);
-    } finally {
-      setRecsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadRecs();
-  }, [from, to, persons]);
+  // Recommendations were removed: passengers no longer see/choose specific drivers.
+  // Orders are broadcast to all eligible drivers via the "Haydovchi topish" button.
 
   const submit = async (targetDriverId?: number) => {
     if (!from || !to) return;
@@ -378,57 +350,6 @@ export default function NewOrderScreen() {
             <Text style={styles.dotsIcon}>⋮</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Tavsiyalar (recommendations) */}
-        <View style={styles.recHeader}>
-          <Text style={styles.sectionTitle}>Tavsiyalar</Text>
-          {recsLoading && <ActivityIndicator size="small" color={colors.primary} />}
-        </View>
-
-        {recs.length === 0 && !recsLoading ? (
-          <Text style={styles.recEmpty}>Hozircha onlayn haydovchilar yo'q</Text>
-        ) : (
-          recs.map((d) => {
-            const photo = absoluteUrl(d.profile_photo_url);
-            return (
-              <TouchableOpacity
-                key={d.id}
-                style={[styles.recCard, routeUnavailable && styles.btnDisabled]}
-                onPress={() => submit(d.id)}
-                disabled={submitting !== null || routeUnavailable}
-                activeOpacity={0.85}
-              >
-                {photo ? (
-                  <Image source={{ uri: photo }} style={styles.recAvatar} />
-                ) : (
-                  <View style={[styles.recAvatar, styles.recAvatarPlaceholder]}>
-                    <Text style={styles.recAvatarText}>
-                      {d.first_name?.[0]?.toUpperCase() || '👤'}
-                    </Text>
-                  </View>
-                )}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.recName}>{d.first_name || 'Haydovchi'}</Text>
-                  <Text style={styles.recCar}>
-                    🚗 {d.car_model || 'Mashina'} · {d.seats} o'rin
-                  </Text>
-                  <Text style={styles.recMeta}>
-                    🕒 {d.departure_time} · ⭐ {(d.rating || 5).toFixed(1)}
-                  </Text>
-                </View>
-                <View style={styles.recRight}>
-                  <Text style={styles.recPriceLabel}>1 kishi</Text>
-                  <Text style={styles.recPrice}>
-                    {formatPrice(d.price_per_person)} so'm
-                  </Text>
-                  <Text style={styles.recPick}>
-                    {submitting === d.id ? '...' : 'Tanlash ›'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
       </ScrollView>
 
       {/* Payment method sheet — only cash is selectable for now */}
