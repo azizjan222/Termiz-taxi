@@ -63,6 +63,11 @@ export default {
     info: 'До {{persons}} пассажиров',
   },
   order: {
+    serviceType: 'Тип услуги',
+    parcel: 'Посылка',
+    taxi: 'Такси',
+    fullCar: 'Вся машина',
+    negotiable: 'Договорная',
     summary: 'Детали заказа',
     from: 'Откуда',
     to: 'Куда',

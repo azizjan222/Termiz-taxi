@@ -234,6 +234,9 @@ const uz = {
     negotiable: 'Kelishiladi',
     parcelLabel: 'Pochta',
     fullCarLabel: "To'liq mashina",
+    femaleInCabin: 'Salonda ayol bor',
+    roofRack: 'Tomida yukxona bor',
+    extras: "Qo'shimcha talablar",
   },
 };
 
@@ -405,6 +408,9 @@ const ru = {
     negotiable: 'Договорная',
     parcelLabel: 'Посылка',
     fullCarLabel: 'Вся машина',
+    femaleInCabin: 'В салоне женщина',
+    roofRack: 'Багажник на крыше',
+    extras: 'Дополнительные требования',
   },
 };
 
@@ -574,6 +580,9 @@ const en = {
     negotiable: 'Negotiable',
     parcelLabel: 'Parcel',
     fullCarLabel: 'Full car',
+    femaleInCabin: 'Woman in the cabin',
+    roofRack: 'Roof luggage rack',
+    extras: 'Extra requests',
   },
 };
 
@@ -743,6 +752,9 @@ const uzCyrl = {
     negotiable: 'Келишилади',
     parcelLabel: 'Почта',
     fullCarLabel: 'Тўлиқ машина',
+    femaleInCabin: 'Салонда аёл бор',
+    roofRack: 'Томида юкхона бор',
+    extras: "Қўшимча талаблар",
   },
 };
 

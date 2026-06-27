@@ -69,6 +69,31 @@ def _resolve_database_url() -> str:
 DATABASE_URL = _resolve_database_url()
 LEGACY_JSON_PATH = _get("LEGACY_JSON_PATH", "/data/taksi_baza.json")
 
+
+def _resolve_upload_dir() -> str:
+    """Where uploaded files (profile photos, car/license docs, topup receipts) live.
+
+    Like the sqlite DB, uploads MUST sit on a persistent volume — otherwise every
+    redeploy/restart on Railway wipes them and profile photos stop loading.
+    Resolution order:
+      1. explicit UPLOAD_DIR env
+      2. Railway's auto-provided RAILWAY_VOLUME_MOUNT_PATH (e.g. /data) -> <mount>/uploads
+      3. our standard persistent volume (/data) -> /data/uploads
+      4. fallback to the local (ephemeral) ./data/uploads
+    """
+    explicit = os.getenv("UPLOAD_DIR", "").strip()
+    if explicit:
+        return explicit
+    mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+    if mount and os.path.isdir(mount):
+        return os.path.join(mount, "uploads")
+    if os.path.isdir(PERSISTENT_DATA_DIR):
+        return os.path.join(PERSISTENT_DATA_DIR, "uploads")
+    return "./data/uploads"
+
+
+UPLOAD_DIR = _resolve_upload_dir()
+
 # API
 API_HOST = _get("API_HOST", "0.0.0.0")
 API_PORT = _get_int("API_PORT", 8080)
@@ -128,6 +153,9 @@ SUPPORT_TELEGRAM = _get("SUPPORT_TELEGRAM", "termizsariosiyotaxi_bot")
 # AI Assistant
 OPENAI_API_KEY = _get("OPENAI_API_KEY", "")
 AI_MODEL = _get("AI_MODEL", "gpt-4o-mini")
+# Base URL for the OpenAI-compatible Chat Completions API. Override to use a
+# different provider/proxy (e.g. when api.openai.com is unreachable from the host).
+OPENAI_BASE_URL = _get("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
 
 def validate() -> list[str]:

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Linking, Alert, Platform, ActivityIndicator,
+  Linking, Alert, Platform, ActivityIndicator, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 
 import { listMyActive, completeOrder, startTrip, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
+import { API_URL } from '../../src/api/client';
 import YandexMap, { type YandexMapHandle } from '../../src/components/YandexMap';
 import {
   buildNavCandidates,
@@ -363,11 +364,22 @@ export default function OrderDetailScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{contactLabel}</Text>
           <View style={styles.passengerRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {order.passenger_name?.[0]?.toUpperCase() || '👤'}
-              </Text>
-            </View>
+            {order.passenger_photo_url ? (
+              <Image
+                source={{
+                  uri: order.passenger_photo_url.startsWith('http')
+                    ? order.passenger_photo_url
+                    : `${API_URL}${order.passenger_photo_url}`,
+                }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {order.passenger_name?.[0]?.toUpperCase() || '👤'}
+                </Text>
+              </View>
+            )}
             <View style={{ flex: 1 }}>
               <Text style={styles.passengerName}>
                 {order.passenger_name || t('more.passenger')}
@@ -444,6 +456,24 @@ export default function OrderDetailScreen() {
           <View style={[styles.card, { marginTop: spacing.md }]}>
             <Text style={styles.cardTitle}>{t('order.note')}</Text>
             <Text style={styles.noteText}>{order.note}</Text>
+          </View>
+        )}
+
+        {(order.female_only || order.has_roof_rack) && (
+          <View style={[styles.card, { marginTop: spacing.md }]}>
+            <Text style={styles.cardTitle}>{t('more.extras')}</Text>
+            <View style={styles.extrasRow}>
+              {order.female_only && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>👩 {t('more.femaleInCabin')}</Text>
+                </View>
+              )}
+              {order.has_roof_rack && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>🧳 {t('more.roofRack')}</Text>
+                </View>
+              )}
+            </View>
           </View>
         )}
       </ScrollView>
@@ -645,6 +675,16 @@ const styles = StyleSheet.create({
   value: { ...typography.bodyBold, color: colors.text },
   divider: { height: 1, backgroundColor: colors.divider },
   noteText: { ...typography.body, color: colors.text },
+  extrasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  extraTag: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  extraTagText: { ...typography.small, color: '#B45309', fontWeight: '700' },
   footer: {
     padding: spacing.lg,
     borderTopWidth: 1,

@@ -51,6 +51,7 @@ export interface DriverOrder {
   note?: string | null;
   passenger_phone?: string | null;
   passenger_name?: string | null;
+  passenger_photo_url?: string | null;
   has_roof_rack: boolean;
   female_only: boolean;
   source: string;

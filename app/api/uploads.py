@@ -7,8 +7,11 @@ from aiohttp import web
 from app.database import get_session
 from app.models import Driver
 from app.api.drivers import _get_driver_from_request
+from app import config
 
-UPLOAD_DIR = Path("./data/uploads")
+# Resolve onto the persistent volume (see config._resolve_upload_dir) so uploaded
+# files survive redeploys/restarts instead of being wiped from ephemeral storage.
+UPLOAD_DIR = Path(config.UPLOAD_DIR)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB

@@ -20,35 +20,50 @@ import { colors, typography, spacing, radius } from '../src/theme';
 // Termiz, Surxondaryo (default center)
 const DEFAULT_LAT = 37.224;
 const DEFAULT_LON = 67.278;
-const DETECT_ZOOM = 17;
+const DETECT_ZOOM = 18; // building-level (very close) zoom for precise pickup pin
 const LONG_HAUL_MIN_KM = 70; // "masofasi 70 km kam bo'lmagan tumanlar"
 
 /**
- * Shorten a long geocoded address to just the most useful part:
- * "Узбекистан, Сурхандарьинская область, Термез, Мустакиллик 2-кочаси, 306"
- *   → "Mustaqillik 2-ko'chasi, 306"
- * Removes country, region, and city prefix — keeps street + house number.
+ * Build the address shown to the user from a full geocoded address.
+ * Order: DISTRICT (tuman / shahar) first, then the VILLAGE / locality
+ * (qishloq / shaharcha / mahalla), then the finer street + house parts for
+ * precision. Country and region (viloyat) are dropped as too broad.
+ *   "Oʻzbekiston, Surxondaryo viloyati, Sariosiyo tumani, Telpakchinor qishlogʻi,
+ *    Mustaqillik 2-koʻchasi, 12"
+ *     → "Sariosiyo tumani, Telpakchinor qishlogʻi, Mustaqillik 2-koʻchasi, 12"
  */
-function shortenAddress(full: string): string {
+function formatDisplayAddress(full: string): string {
   if (!full) return '';
-  // Split by comma, trim each part
   const parts = full.split(',').map((p) => p.trim()).filter(Boolean);
-  if (parts.length <= 2) return full;
-  // Remove known prefixes: country (Узбекистан/O'zbekiston), region, city
-  const skipWords = [
-    'узбекистан', "o'zbekiston", 'oʻzbekiston', 'uzbekiston',
-    'сурхандарьинская', 'surxondaryo', 'surxondarya',
-    'область', 'viloyati', 'viloyat',
-    'термез', 'termiz', 'denov', 'денов', 'sariosiyo', 'сариосиё',
-    'sherobod', 'шерабад', 'boysun', 'байсун',
-  ];
-  const meaningful = parts.filter((p) => {
-    const lower = p.toLowerCase();
-    return !skipWords.some((sw) => lower.includes(sw));
+  if (parts.length === 0) return '';
+
+  const isBroad = (p: string) => {
+    const l = p.toLowerCase();
+    return (
+      l.includes('oʻzbekiston') || l.includes("o'zbekiston") || l.includes('uzbekiston') ||
+      l.includes('узбекистан') || l.includes('viloyat') || l.includes('область') ||
+      l.includes('сурхандарь') || l.includes('surxondar')
+    );
+  };
+  const isDistrict = (p: string) => /tuman|shahri|shahar|шаҳар|город|район/i.test(p);
+  const isVillage = (p: string) =>
+    /qishlo|shaharcha|шаҳарча|mahalla|маҳалла|посёл|posyol|aholi punkti|MFY/i.test(p);
+
+  const narrow = parts.filter((p) => !isBroad(p));
+  const district = narrow.find(isDistrict);
+  const village = narrow.find((p) => p !== district && isVillage(p));
+  const rest = narrow.filter((p) => p !== district && p !== village);
+
+  const ordered = [district, village, ...rest].filter(Boolean) as string[];
+  // De-duplicate while preserving order.
+  const seen = new Set<string>();
+  const out = ordered.filter((p) => {
+    const k = p.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
   });
-  // Return last 2-3 meaningful parts (street, building, etc.)
-  if (meaningful.length === 0) return parts[parts.length - 1];
-  return meaningful.slice(0, 3).join(', ');
+  return (out.length ? out : narrow).join(', ') || full;
 }
 
 /**
@@ -81,9 +96,9 @@ export default function OrderEntryScreen() {
     };
   });
   const [address, setAddress] = useState('');
-  // Full, un-shortened geocoded address. We keep this separately because
-  // `shortenAddress` strips out the district/city words (e.g. "Sariosiyo tumani"),
-  // and we need them to correctly derive the order's `from_city`/`to_city`.
+  // Full, un-shortened geocoded address. We keep this separately because the
+  // displayed (formatted) address drops the region words, and we need the full
+  // string (incl. "Sariosiyo tumani") to correctly derive `from_city`/`to_city`.
   const [fullAddress, setFullAddress] = useState('');
   const [resolving, setResolving] = useState(true); // Start as resolving since we detect on mount
   const [detecting, setDetecting] = useState(true); // Start as detecting
@@ -127,10 +142,14 @@ export default function OrderEntryScreen() {
           }
         }
         if (reqId !== reqIdRef.current) return;
-        // Keep the full address for city derivation, show the shortened one to the user.
+        // Keep the full address for city derivation, show the formatted one
+        // (tuman → qishloq → street) to the user. Don't wipe a previously good
+        // address if this lookup came back empty (can happen at very high zoom).
         const full = result || '';
-        setFullAddress(full);
-        setAddress(shortenAddress(full));
+        if (full) {
+          setFullAddress(full);
+          setAddress(formatDisplayAddress(full));
+        }
       } finally {
         if (reqId === reqIdRef.current) setResolving(false);
       }
@@ -258,14 +277,29 @@ export default function OrderEntryScreen() {
         {/* Top "Manzilingiz" card */}
         <View style={styles.topCard} pointerEvents="box-none">
           <Text style={styles.topLabel}>{isDest ? 'Yakuniy manzil ›' : 'Manzilingiz ›'}</Text>
-          {(resolving || detecting) ? (
+          {address ? (
+            // Keep the resolved address visible while a new lookup runs (e.g. when
+            // zooming/panning) — show only a small inline spinner, never blank it out.
+            <View style={styles.row}>
+              <Text style={[styles.topAddr, { flexShrink: 1 }]} numberOfLines={2}>
+                {address}
+              </Text>
+              {(resolving || detecting) && (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.primary}
+                  style={{ marginLeft: 8 }}
+                />
+              )}
+            </View>
+          ) : resolving || detecting ? (
             <View style={styles.row}>
               <ActivityIndicator size="small" color={colors.primary} />
               <Text style={styles.topAddrMuted}>Aniqlanmoqda…</Text>
             </View>
           ) : (
             <Text style={styles.topAddr} numberOfLines={1}>
-              {address || 'Xaritani suring yoki ➤ bosing'}
+              Xaritani suring yoki ➤ bosing
             </Text>
           )}
         </View>

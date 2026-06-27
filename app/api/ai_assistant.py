@@ -287,14 +287,14 @@ async def _ask_openai(messages: list, support_username: str, role: str = "driver
 
     async with aiohttp.ClientSession() as http:
         async with http.post(
-            "https://api.openai.com/v1/chat/completions",
+            f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
             headers=headers,
             json=payload,
             timeout=aiohttp.ClientTimeout(total=30),
         ) as resp:
             data = await resp.json()
             if resp.status != 200:
-                raise RuntimeError(f"OpenAI error: {data}")
+                raise RuntimeError(f"OpenAI HTTP {resp.status}: {data}")
             return data["choices"][0]["message"]["content"]
 
 
