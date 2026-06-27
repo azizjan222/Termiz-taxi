@@ -230,6 +230,9 @@ const uz = {
     permissionGallery: 'Galereyaga ruxsat kerak',
     somethingWrong: 'Xatolik',
     ratingsCount: 'baho',
+    femaleInCabin: 'Salonda ayol bor',
+    roofRack: 'Tomida yukxona bor',
+    extras: "Qo'shimcha talablar",
   },
 };
 
@@ -397,6 +400,9 @@ const ru = {
     permissionGallery: 'Нужен доступ к галерее',
     somethingWrong: 'Ошибка',
     ratingsCount: 'оценок',
+    femaleInCabin: 'В салоне женщина',
+    roofRack: 'Багажник на крыше',
+    extras: 'Дополнительные требования',
   },
 };
 
@@ -562,6 +568,9 @@ const en = {
     permissionGallery: 'Gallery access is required',
     somethingWrong: 'Error',
     ratingsCount: 'ratings',
+    femaleInCabin: 'Woman in the cabin',
+    roofRack: 'Roof luggage rack',
+    extras: 'Extra requests',
   },
 };
 
@@ -727,6 +736,9 @@ const uzCyrl = {
     permissionGallery: 'Галереяга рухсат керак',
     somethingWrong: 'Хатолик',
     ratingsCount: 'баҳо',
+    femaleInCabin: 'Салонда аёл бор',
+    roofRack: 'Томида юкхона бор',
+    extras: "Қўшимча талаблар",
   },
 };
 
