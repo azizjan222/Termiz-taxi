@@ -19,8 +19,8 @@ from app.models import Driver, Payment, Setting
 
 logger = logging.getLogger(__name__)
 
-# Where uploaded payment screenshots are stored (same volume as other uploads).
-TOPUP_UPLOAD_DIR = Path("./data/uploads")
+# Where uploaded payment screenshots are stored (same persistent volume as other uploads).
+TOPUP_UPLOAD_DIR = Path(config.UPLOAD_DIR)
 TOPUP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 TOPUP_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 TOPUP_MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
