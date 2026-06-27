@@ -186,7 +186,7 @@ export default function OrderEntryScreen() {
   const detect = useCallback(async () => {
     setDetecting(true);
     try {
-      const result = await detectLocation({ timeoutMs: 15000 });
+      const result = await detectLocation({ timeoutMs: 5000 });
       if (result.status === 'success') {
         detectedRef.current = { lat: result.lat, lon: result.lon };
         setCenter({ lat: result.lat, lon: result.lon });
