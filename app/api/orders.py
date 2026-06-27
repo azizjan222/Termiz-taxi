@@ -96,7 +96,8 @@ def _calc_price_and_commission(
         return 0, config.COMMISSION_PARCEL, None
 
     if service_type == "full_car":
-        price = route.full_car_price
+        # Bo'sh (to'liq) mashina: narx 4 kishilik tarif bo'yicha hisoblanadi.
+        price = route.price_per_person * 4
     else:
         persons = max(1, min(person_count, 10))
         price = route.price_per_person * persons
