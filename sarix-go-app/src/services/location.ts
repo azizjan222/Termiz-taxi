@@ -30,19 +30,20 @@ export type DetectResult = DetectSuccess | DetectError;
 
 /** Options controlling a detection attempt. */
 export interface DetectOptions {
-  /** Maximum time to wait for a fix, in milliseconds. Defaults to 15000. */
+  /** Maximum time to wait for a fix, in milliseconds. Defaults to 5000. */
   timeoutMs?: number;
 }
 
 /** Default Detection_Timeout, in milliseconds. */
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 5000;
 
 /**
  * Target horizontal accuracy (meters). Once a fix at or below this radius arrives we
  * resolve immediately; otherwise we keep the most accurate fix seen until the timeout.
- * 10 m gives a tight, house-level pin matching the high precision the user expects.
+ * 5 m gives an extra-tight, house/door-level pin matching the high precision the user
+ * expects (used for both taxi and parcel/pochta order entry).
  */
-const TARGET_ACCURACY_M = 10;
+const TARGET_ACCURACY_M = 5;
 
 /**
  * Detect the device's current location.
@@ -56,14 +57,14 @@ const TARGET_ACCURACY_M = 10;
  *     granted permission proceeds without re-requesting (R2.4).
  *  3. Checks whether device location services are enabled; if not, resolves to
  *     `services-disabled` (R3.5).
- *  4. Acquires a single current position with `High` accuracy (~10 m radius), raced
- *     against a `timeoutMs` timer (default 15000). The first fix resolves to `success`
+ *  4. Acquires a single current position with `High` accuracy (~5 m target radius), raced
+ *     against a `timeoutMs` timer (default 5000). The first fix resolves to `success`
  *     (R3.1, R3.2); the timer winning resolves to `timeout` (R3.4, R7.5).
  *
  * The whole flow is wrapped in try/catch so any thrown error resolves to
  * `{ status: 'error', message }` and the service never throws (R7.2).
  *
- * @param opts Optional detection options. `timeoutMs` defaults to 15000.
+ * @param opts Optional detection options. `timeoutMs` defaults to 5000.
  * @returns A `DetectResult` discriminated union describing the outcome.
  */
 export async function detectLocation(opts?: DetectOptions): Promise<DetectResult> {

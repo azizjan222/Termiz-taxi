@@ -143,7 +143,7 @@ export default function RouteSelectScreen() {
     if (gpsBusy) return;
     setGpsBusy(true);
     try {
-      const res = await detectLocation({ timeoutMs: 15000 });
+      const res = await detectLocation({ timeoutMs: 5000 });
       if (res.status !== 'success') {
         Alert.alert('Joylashuv', 'Joylashuvni aniqlab bo\'lmadi. Ruxsatni tekshiring.');
         return;
