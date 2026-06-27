@@ -40,9 +40,9 @@ const DEFAULT_TIMEOUT_MS = 15000;
 /**
  * Target horizontal accuracy (meters). Once a fix at or below this radius arrives we
  * resolve immediately; otherwise we keep the most accurate fix seen until the timeout.
- * 20 m matches the "Yandex-like" precision the user expects on a phone GPS.
+ * 10 m gives a tight, house-level pin matching the high precision the user expects.
  */
-const TARGET_ACCURACY_M = 20;
+const TARGET_ACCURACY_M = 10;
 
 /**
  * Detect the device's current location.
