@@ -5,6 +5,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,9 +18,33 @@ import { useAuthStore } from '../../src/store/auth';
 import { useOrderStore } from '../../src/store/order';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
-import { gradients } from '../../src/theme/colors';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 import AdBanner from '../../src/components/AdBanner';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+
+// Rotating promo banners shown at the top of the home screen.
+type PromoBanner = { title: string; subtitle: string; emoji: string; colors: [string, string] };
+const PROMO_BANNERS: PromoBanner[] = [
+  {
+    title: 'Marhamat!',
+    subtitle: "Tez va qulay xizmatlar biz bilan 😊",
+    emoji: '🚕',
+    colors: ['#7C5CFC', '#5B3FD9'],
+  },
+  {
+    title: 'Pochta yuboring 📦',
+    subtitle: "Hujjat va buyumlaringizni tez, xavfsiz yetkazamiz",
+    emoji: '📦',
+    colors: ['#F59E0B', '#D97706'],
+  },
+  {
+    title: 'Ishonchli haydovchilar ⭐',
+    subtitle: "Tekshirilgan haydovchilar bilan xavfsiz safar qiling",
+    emoji: '🛡️',
+    colors: ['#10B981', '#059669'],
+  },
+];
 
 // Show the promotional ad only once per app launch (not on every tab switch).
 let adShownThisSession = false;
@@ -34,6 +61,28 @@ export default function HomeScreen() {
   React.useEffect(() => {
     if (!adShownThisSession) adShownThisSession = true;
   }, []);
+
+  // Top promo carousel: swipeable + auto-advances right→left every 7 seconds.
+  const bannerWidth = SCREEN_W - spacing.lg * 2;
+  const bannerRef = React.useRef<ScrollView>(null);
+  const bannerIndex = React.useRef(0);
+  const [activeBanner, setActiveBanner] = React.useState(0);
+
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      const next = (bannerIndex.current + 1) % PROMO_BANNERS.length;
+      bannerIndex.current = next;
+      setActiveBanner(next);
+      bannerRef.current?.scrollTo({ x: next * bannerWidth, animated: true });
+    }, 7000);
+    return () => clearInterval(id);
+  }, [bannerWidth]);
+
+  const onBannerScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / bannerWidth);
+    bannerIndex.current = idx;
+    setActiveBanner(idx);
+  };
 
   const startOrder = (type: 'taxi' | 'parcel') => {
     orderStore.setField('serviceType', type);
@@ -57,37 +106,46 @@ export default function HomeScreen() {
           </Text>
           <Text style={styles.subtitle}>{t('home.whereToGo')}</Text>
         </View>
-        <View style={styles.balance}>
-          <Text style={styles.balanceLabel}>🎁</Text>
-          <Text style={styles.balanceValue}>{user?.bonus_balance || 0}</Text>
-        </View>
       </View>
 
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero banner */}
-        <LinearGradient
-          colors={gradients.purple}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.hero}
+        {/* Promo banner carousel — swipeable + auto-rotates every 7s */}
+        <ScrollView
+          ref={bannerRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={onBannerScrollEnd}
+          style={{ width: bannerWidth }}
         >
-          <View style={styles.heroTextWrap}>
-            <Text style={styles.heroTitle}>Marhamat!</Text>
-            <Text style={styles.heroSubtitle}>
-              Tez va qulay xizmatlar biz bilan 😊
-            </Text>
-          </View>
-          <Text style={styles.heroEmoji}>🚕</Text>
-        </LinearGradient>
+          {PROMO_BANNERS.map((b, i) => (
+            <LinearGradient
+              key={i}
+              colors={b.colors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.hero, { width: bannerWidth }]}
+            >
+              <View style={styles.heroTextWrap}>
+                <Text style={styles.heroTitle}>{b.title}</Text>
+                <Text style={styles.heroSubtitle}>{b.subtitle}</Text>
+              </View>
+              <Text style={styles.heroEmoji}>{b.emoji}</Text>
+            </LinearGradient>
+          ))}
+        </ScrollView>
 
-        {/* Carousel dots (decorative) */}
+        {/* Carousel dots — reflect the active banner */}
         <View style={styles.dots}>
-          <View style={[styles.dot, styles.dotActive]} />
-          <View style={styles.dot} />
-          <View style={styles.dot} />
+          {PROMO_BANNERS.map((_, i) => (
+            <View
+              key={i}
+              style={[styles.dot, i === activeBanner && styles.dotActive]}
+            />
+          ))}
         </View>
 
         {/* Section heading */}
