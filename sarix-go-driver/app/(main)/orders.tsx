@@ -355,32 +355,38 @@ export default function OrdersScreen() {
         </TouchableOpacity>
       )}
 
-      {orders.length === 0 && !refreshing ? (
-        <View style={styles.empty}>
-          <View style={styles.emptyIconCircle}>
-            <Text style={styles.emptyEmoji}>{canReceive ? '🚕' : '💰'}</Text>
-          </View>
-          <Text style={styles.emptyTitle}>
-            {canReceive ? t('home.noOrders') : t('more.balanceEmptyOrders')}
-          </Text>
-          {canReceive && (
-            <Text style={styles.emptySubtitle}>
-              {isOnline ? t('home.noOrdersHint') : t('home.offlineHint')}
-            </Text>
-          )}
-          <TouchableOpacity style={styles.refreshBtn} onPress={load} activeOpacity={0.85}>
-            <Text style={styles.refreshBtnText}>↻ {t('home.refresh')}</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={orders}
-          keyExtractor={(o) => o.id.toString()}
-          renderItem={renderOrder}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
-        />
-      )}
+      <FlatList
+        data={orders}
+        keyExtractor={(o) => o.id.toString()}
+        renderItem={renderOrder}
+        contentContainerStyle={[styles.list, orders.length === 0 && styles.listEmpty]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={load}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+        ListEmptyComponent={
+          refreshing ? null : (
+            <View style={styles.empty}>
+              <View style={styles.emptyIconCircle}>
+                <Text style={styles.emptyEmoji}>{canReceive ? '🚕' : '💰'}</Text>
+              </View>
+              <Text style={styles.emptyTitle}>
+                {canReceive ? t('home.noOrders') : t('more.balanceEmptyOrders')}
+              </Text>
+              {canReceive && (
+                <Text style={styles.emptySubtitle}>
+                  {isOnline ? t('home.noOrdersHint') : t('home.offlineHint')}
+                </Text>
+              )}
+              <Text style={styles.pullHint}>↓ {t('home.pullToRefresh')}</Text>
+            </View>
+          )
+        }
+      />
 
       {/* Ride-hailing style incoming-order popup */}
       <IncomingOrderModal
@@ -477,6 +483,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   onlineLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: '700' },
   onlineLabelActive: { color: colors.success },
   list: { padding: spacing.md },
+  listEmpty: { flexGrow: 1, justifyContent: 'center' },
   card: {
     backgroundColor: colors.background,
     borderRadius: 20,
@@ -625,4 +632,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.primary,
   },
   refreshBtnText: { ...typography.bodyBold, color: colors.primary },
+  pullHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
 });
