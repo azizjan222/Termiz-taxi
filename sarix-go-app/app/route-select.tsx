@@ -7,16 +7,14 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { listCities } from '../src/api/orders';
 import { listAddresses, type SavedAddress } from '../src/api/addresses';
-import { suggestAddress, geocodeAddress, reverseGeocode } from '../src/services/geocoding';
+import { suggestAddress, geocodeAddress } from '../src/services/geocoding';
 import { resolveRouteCity } from '../src/services/cityResolver';
-import { detectLocation } from '../src/services/location';
 import { searchSurxondaryoPlaces, type LocalPlace } from '../src/data/surxondaryoPlaces';
 import { useOrderStore } from '../src/store/order';
 import { colors, typography, spacing, radius } from '../src/theme';
@@ -28,7 +26,6 @@ type Field = 'from' | 'to';
  *  - Two-field card at top: pickup + destination with inline TextInput for
  *    the active field (no separate search box)
  *  - "Xarita" button on each row to pick via map
- *  - GPS location option
  *  - Yandex Suggest results with description + distance
  *  - Curated Surxondaryo places
  *
@@ -46,7 +43,6 @@ export default function RouteSelectScreen() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
-  const [gpsBusy, setGpsBusy] = useState(false);
 
   const fromInputRef = useRef<TextInput>(null);
   const toInputRef = useRef<TextInput>(null);
@@ -138,24 +134,6 @@ export default function RouteSelectScreen() {
       a.latitude ?? undefined,
       a.longitude ?? undefined
     );
-
-  const handleUseGps = useCallback(async () => {
-    if (gpsBusy) return;
-    setGpsBusy(true);
-    try {
-      const res = await detectLocation({ timeoutMs: 5000 });
-      if (res.status !== 'success') {
-        Alert.alert('Joylashuv', 'Joylashuvni aniqlab bo\'lmadi. Ruxsatni tekshiring.');
-        return;
-      }
-      let addr: string | null = null;
-      try { addr = await reverseGeocode(res.lat, res.lon); } catch {}
-      const text = addr || 'Joriy joylashuv';
-      applySelection('from', matchCity(text, text.split(',')[0].trim()), text, res.lat, res.lon);
-    } finally {
-      setGpsBusy(false);
-    }
-  }, [gpsBusy, applySelection, matchCity]);
 
   const handleSelectPlace = useCallback(
     async (place: LocalPlace) => {
@@ -290,18 +268,6 @@ export default function RouteSelectScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </View>
-
-      {/* GPS location */}
-      <TouchableOpacity style={styles.gpsRow} onPress={handleUseGps} activeOpacity={0.8} disabled={gpsBusy}>
-        <View style={styles.gpsIconWrap}>
-          <Text style={styles.gpsIcon}>➤</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.gpsTitle}>Sizning joylashuvingiz</Text>
-          <Text style={styles.gpsSub}>GPS orqali aniqlaymiz</Text>
-        </View>
-        {gpsBusy && <ActivityIndicator size="small" color={colors.primary} />}
-      </TouchableOpacity>
 
       {/* Saved addresses */}
       {savedAddresses.length > 0 && (
@@ -564,25 +530,7 @@ const styles = StyleSheet.create({
   mapPillText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
 
   // GPS
-  gpsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  gpsIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#EDE7FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  gpsIcon: { fontSize: 16, color: colors.primary, transform: [{ rotate: '-45deg' }] },
-  gpsTitle: { ...typography.bodyBold, color: colors.text },
-  gpsSub: { ...typography.caption, color: colors.textSecondary },
+  // (GPS quick-location row removed)
 
   // Saved addresses
   savedSection: { marginHorizontal: spacing.lg, marginTop: spacing.sm },
