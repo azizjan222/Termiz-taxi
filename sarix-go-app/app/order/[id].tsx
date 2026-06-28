@@ -261,6 +261,11 @@ export default function OrderDetailScreen() {
                 <Text style={styles.driverName}>
                   {order.driver.first_name || 'Haydovchi'}
                 </Text>
+                {order.driver.phone ? (
+                  <TouchableOpacity onPress={callDriver} activeOpacity={0.7}>
+                    <Text style={styles.driverPhone}>📱 {order.driver.phone}</Text>
+                  </TouchableOpacity>
+                ) : null}
                 {/* Rating hidden from the passenger for now (per request). */}
               </View>
               <TouchableOpacity style={styles.callBtn} onPress={callDriver}>
@@ -423,6 +428,7 @@ const styles = StyleSheet.create({
   driverAvatarText: { fontSize: 24, color: colors.white, fontWeight: '700' },
   driverInfo: { flex: 1 },
   driverName: { ...typography.bodyBold, color: colors.text },
+  driverPhone: { ...typography.caption, color: colors.primary, marginTop: 2, fontWeight: '600' },
   driverRating: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   callBtn: {
     width: 48,
