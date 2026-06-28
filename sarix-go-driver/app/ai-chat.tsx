@@ -76,11 +76,18 @@ export default function AiChatScreen() {
         source: response.source,
       };
       setMessages((prev) => [...prev, aiMsg]);
-    } catch (e) {
+    } catch (e: any) {
+      // Distinguish an auth/session problem (401) from a network/server issue so the
+      // driver gets actionable guidance instead of a generic "check the internet".
+      const status = e?.response?.status;
+      const content =
+        status === 401
+          ? "Sessiya muddati tugagan bo'lishi mumkin. Ilovadan chiqib, qaytadan kiring."
+          : "Hozircha javob bera olmadim. Biroz keyinroq urinib ko'ring yoki yordam uchun adminga murojaat qiling.";
       const errorMsg: DisplayMessage = {
         id: `a_${Date.now()}`,
         role: 'assistant',
-        content: 'Kechirasiz, javob bera olmadim. Internet ulanishini tekshiring.',
+        content,
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {

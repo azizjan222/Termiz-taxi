@@ -91,8 +91,8 @@ YO'NALISHLAR VA NARXLAR (1 yo'lovchi uchun):
 
 XIZMAT TURLARI:
 - 🚕 Taksi - 1, 2, 3 yo'lovchi (har biri uchun narx ko'paytiriladi)
-- 📦 Pochta - hujjat va dokumentlarni boshqa shaharga yuborish (30,000 so'm)
-- 🚗 Bo'sh mashina - butun mashinani band qilish (4 o'rin) - 400,000 so'm
+- 📦 Pochta - hujjat va dokumentlarni boshqa shaharga yuborish (narx haydovchi bilan kelishiladi)
+- 🚗 Bo'sh mashina - butun mashinani band qilish (4 o'rin); narx 4 kishilik tarif bo'yicha hisoblanadi (masalan Termiz↔Sariosiyo: 4×90,000 = 360,000 so'm)
 
 BUYURTMA BERISH:
 1. Telefon raqam orqali kiring
@@ -145,7 +145,7 @@ FAQ_PATTERNS = [
         ),
     },
     {
-        "keywords": ["minimal", "minimum", "20", "kamida", "qancha balans"],
+        "keywords": ["minimal", "minimum", "kamida", "qancha balans"],
         "answer": (
             "💸 Zakas qabul qilish uchun minimal **20,000 so'm** balans bo'lishi kerak.\n\n"
             "Komissiya esa zakas turiga qarab:\n"
@@ -215,8 +215,8 @@ FAQ_PATTERNS = [
         "answer": (
             "🎁 Bonuslar:\n\n"
             "• 🎉 Birinchi to'lovda 50% BONUS\n"
-            "• Bo'sh mashina zakasida -10,000 chegirma (30k komissiya o'rniga ham 30k)\n\n"
-            "Tez-tez zakas oluvchi haydovchilarga maxsus bonuslar bor!"
+            "• Tez-tez zakas oluvchi haydovchilarga maxsus bonuslar bor!\n\n"
+            "Batafsil ma'lumot uchun adminga murojaat qiling: @{support}"
         ),
     },
     {
@@ -290,7 +290,10 @@ async def _ask_openai(messages: list, support_username: str, role: str = "driver
             f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
             headers=headers,
             json=payload,
-            timeout=aiohttp.ClientTimeout(total=30),
+            # Keep this BELOW the mobile client's HTTP timeout (20s) so that, if OpenAI
+            # is slow/unreachable, we still fail fast and deliver the FAQ fallback before
+            # the app gives up and shows a network error.
+            timeout=aiohttp.ClientTimeout(total=12),
         ) as resp:
             data = await resp.json()
             if resp.status != 200:
@@ -318,7 +321,7 @@ FAQ_PATTERNS_PASSENGER = [
         "answer": (
             "📦 Pochta xizmati:\n\n"
             "• Hujjat va dokumentlarni boshqa shaharga yuborish\n"
-            "• Narx: 30,000 so'm\n"
+            "• Narx: haydovchi bilan kelishiladi\n"
             "• Buyurtma berishda \"Pochta\" tanlang\n"
             "• Qabul qiluvchi ma'lumotlarini kiriting\n"
             "• Kim to'lashini ko'rsating (yuboruvchi yoki qabul qiluvchi)"
@@ -329,7 +332,8 @@ FAQ_PATTERNS_PASSENGER = [
         "answer": (
             "🚗 Bo'sh mashina:\n\n"
             "• Butun mashinani 4 o'rin to'liq band qilish\n"
-            "• Narx: 400,000 so'm\n"
+            "• Narx: 4 kishilik tarif bo'yicha hisoblanadi\n"
+            "  (masalan Termiz↔Sariosiyo: 4×90,000 = 360,000 so'm)\n"
             "• Boshqa yo'lovchilar bo'lmaydi\n"
             "• Yuk uchun ham qulay\n"
             "• Tarif tanlashda \"Bo'sh mashina\" ni tanlang"
@@ -375,6 +379,12 @@ async def chat(request: web.Request) -> web.Response:
     """
     auth = _get_authenticated_user(request)
     if not auth:
+        # Helps diagnose driver/passenger auth issues from server logs (e.g. when only
+        # one of the apps can reach the AI assistant).
+        has_bearer = request.headers.get("Authorization", "").startswith("Bearer ")
+        logger.warning(
+            "AI chat unauthorized (Authorization header present: %s)", has_bearer
+        )
         return web.json_response(
             {"error": "Avtorizatsiya talab qilinadi"}, status=401
         )
@@ -407,7 +417,9 @@ async def chat(request: web.Request) -> web.Response:
             answer = await _ask_openai(messages, support, role=role)
             return web.json_response({"answer": answer, "source": "ai"})
         except Exception as e:
-            logger.warning(f"OpenAI failed, falling back to FAQ: {e}")
+            logger.warning(f"OpenAI failed for role={role}, falling back to FAQ: {e}")
+    else:
+        logger.info("OPENAI_API_KEY not set; using built-in FAQ for role=%s", role)
 
     # FAQ fallback - role-specific
     patterns = FAQ_PATTERNS_PASSENGER if role == "passenger" else FAQ_PATTERNS
