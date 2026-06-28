@@ -130,6 +130,9 @@ COMMISSION_WINDOW_MINUTES = _get_int("COMMISSION_WINDOW_MINUTES", 15)
 PARCEL_PRICE = _get_int("PARCEL_PRICE", 30000)
 FULL_CAR_PRICE = _get_int("FULL_CAR_PRICE", 400000)
 MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 20000)  # Minimum balance to accept any order
+# Max simultaneously-active TAXI / full-car orders a driver may hold. Parcel (pochta)
+# orders are unlimited and do NOT count toward this limit.
+MAX_ACTIVE_NONPARCEL_ORDERS = _get_int("MAX_ACTIVE_NONPARCEL_ORDERS", 4)
 
 # Driver free trial / subscription
 # The first N drivers who sign in to the driver app get FREE_TRIAL_DAYS of free service:

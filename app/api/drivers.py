@@ -883,6 +883,30 @@ async def accept_order(request: web.Request) -> web.Response:
         if not d:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
 
+        # Active-order limit: a driver may hold up to MAX_ACTIVE_NONPARCEL_ORDERS active
+        # taxi/full-car orders at once. Parcel (pochta) orders are UNLIMITED and don't
+        # count toward the limit. The driver must close (complete) some orders before
+        # taking more non-parcel ones.
+        if order.service_type != "parcel":
+            active_nonparcel = (
+                session.query(Order)
+                .filter(
+                    Order.driver_id == d.id,
+                    Order.status.in_(["accepted", "in_progress"]),
+                    Order.service_type != "parcel",
+                )
+                .count()
+            )
+            if active_nonparcel >= config.MAX_ACTIVE_NONPARCEL_ORDERS:
+                return web.json_response({
+                    "error": (
+                        f"Sizda {config.MAX_ACTIVE_NONPARCEL_ORDERS} ta faol zakas bor. "
+                        f"Yangi zakas olish uchun avval ularni yoping. "
+                        f"(Pochta zakaslari cheklanmagan)"
+                    ),
+                    "code": "max_active",
+                }, status=400)
+
         now = datetime.utcnow()
         on_free_trial = _subscription_active(d, now)
 
