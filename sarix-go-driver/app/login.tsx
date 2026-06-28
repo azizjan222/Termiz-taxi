@@ -133,7 +133,7 @@ export default function LoginScreen() {
                 variant="accent"
               />
               <Text style={styles.note}>
-                Avval botda "Haydovchi bo'lish" orqali ro'yxatdan o'ting
+                Telegram orqali kirasiz, hujjatlaringizni ilovada yuklaysiz
               </Text>
             </Animated.View>
           )}

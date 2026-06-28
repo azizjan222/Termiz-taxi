@@ -1312,10 +1312,40 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
             driver = _ensure_test_driver(db, phone, telegram_id=tg_id, first_name=sess.first_name or "")
 
         if not driver:
-            return web.json_response({
-                "status": "not_registered",
-                "message": "Siz haydovchi sifatida ro'yxatdan o'tmagansiz. Botda \"Haydovchi bo'lish\" tugmasini bosing.",
-            })
+            # No existing driver record -> register the driver RIGHT HERE, in the app.
+            # Previously this returned "not_registered" and pushed the user back to the
+            # bot's "Haydovchi bo'lish" flow. Drivers now onboard entirely inside the app:
+            # we create their account from the verified Telegram session and let the
+            # logic below route them to the in-app document-upload screen.
+            if not tg_id:
+                # Without a Telegram id we cannot create a unique driver row.
+                return web.json_response({"status": "expired"})
+            new_phone = _norm_phone(phone) if phone else ""
+            driver = Driver(
+                telegram_id=tg_id,
+                phone=new_phone or f"+{tg_id}",
+                first_name=(sess.first_name or "").strip() or None,
+                last_name=(sess.last_name or "").strip() or None,
+                documents_submitted=False,
+            )
+            db.add(driver)
+            try:
+                db.commit()
+                db.refresh(driver)
+            except Exception:
+                # Race / unique-constraint conflict: another request may have just
+                # created it. Roll back and re-fetch instead of failing the login.
+                db.rollback()
+                driver = db.query(Driver).filter_by(telegram_id=tg_id).first()
+                if not driver and new_phone:
+                    for d in db.query(Driver).all():
+                        dp = (d.phone or "").replace("+", "").replace(" ", "")
+                        if dp and dp == new_phone.replace("+", ""):
+                            driver = d
+                            break
+                if not driver:
+                    return web.json_response({"status": "expired"})
+
         if driver.is_blocked:
             return web.json_response({"status": "blocked", "message": "Akkauntingiz bloklangan"})
 
