@@ -27,9 +27,6 @@ import { gradients } from '../src/theme/colors';
 // Step 3 — departure time presets (Ketadigan vaqti)
 const TIME_OPTIONS = ['Hozir', '30 daqiqadan', '1 soatdan', '2 soatdan', 'Ertaga'];
 
-// Accent for female stepper controls (pink)
-const PINK = '#EC4899';
-
 export default function NewOrderScreen() {
   const { t } = useTranslation();
   const orderStore = useOrderStore();
@@ -80,7 +77,7 @@ export default function NewOrderScreen() {
   }, [from, to, persons, isFullCar]);
 
   // Recommendations were removed: passengers no longer see/choose specific drivers.
-  // Orders are broadcast to all eligible drivers via the "Haydovchi topish" button.
+  // Orders are broadcast to all eligible drivers via the "Buyurtma berish" button.
 
   const submit = async (targetDriverId?: number) => {
     if (!from || !to) return;
@@ -256,75 +253,6 @@ export default function NewOrderScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Yo'lovchilar jinsi (gender counters — informational) */}
-        <Text style={styles.sectionTitle}>Yo'lovchilar jinsi</Text>
-        <View style={styles.genderCard}>
-          <View style={styles.genderRow}>
-            <View style={styles.genderLeft}>
-              <View style={[styles.genderIconCircle, { backgroundColor: '#EDE9FE' }]}>
-                <Text style={styles.genderEmoji}>👨</Text>
-              </View>
-              <Text style={styles.genderLabel}>Erkak</Text>
-            </View>
-            <View style={styles.stepper}>
-              <TouchableOpacity
-                style={[styles.stepBtn, styles.maleBtn]}
-                onPress={() =>
-                  orderStore.setField('maleCount', Math.max(0, orderStore.maleCount - 1))
-                }
-                activeOpacity={0.7}
-              >
-                <Text style={styles.stepBtnText}>−</Text>
-              </TouchableOpacity>
-              <Text style={styles.stepValue}>{orderStore.maleCount}</Text>
-              <TouchableOpacity
-                style={[styles.stepBtn, styles.maleBtn]}
-                onPress={() =>
-                  orderStore.setField('maleCount', Math.min(10, orderStore.maleCount + 1))
-                }
-                activeOpacity={0.7}
-              >
-                <Text style={styles.stepBtnText}>+</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.genderDivider} />
-
-          <View style={styles.genderRow}>
-            <View style={styles.genderLeft}>
-              <View style={[styles.genderIconCircle, { backgroundColor: '#FCE7F3' }]}>
-                <Text style={styles.genderEmoji}>👩</Text>
-              </View>
-              <Text style={styles.genderLabel}>Ayol</Text>
-            </View>
-            <View style={styles.stepper}>
-              <TouchableOpacity
-                style={[styles.stepBtn, styles.femaleBtn]}
-                onPress={() =>
-                  orderStore.setField('femaleCount', Math.max(0, orderStore.femaleCount - 1))
-                }
-                activeOpacity={0.7}
-              >
-                <Text style={styles.stepBtnText}>−</Text>
-              </TouchableOpacity>
-              <Text style={styles.stepValue}>{orderStore.femaleCount}</Text>
-              <TouchableOpacity
-                style={[styles.stepBtn, styles.femaleBtn]}
-                onPress={() =>
-                  orderStore.setField('femaleCount', Math.min(10, orderStore.femaleCount + 1))
-                }
-                activeOpacity={0.7}
-              >
-                <Text style={styles.stepBtnText}>+</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        <Text style={styles.genderHint}>
-          Ixtiyoriy — haydovchi uchun ma'lumot ({orderStore.maleCount + orderStore.femaleCount} kishi belgilandi)
-        </Text>
-
         {/* Price preview (or "route unavailable" banner) */}
         {routeUnavailable ? (
           <View style={styles.unavailableBar}>
@@ -350,43 +278,50 @@ export default function NewOrderScreen() {
           </LinearGradient>
         )}
 
-        {/* Action bar: Naqd (left) · Haydovchi topish (center) · ⋮ extra options (right) */}
-        <View style={styles.actionBar}>
+        {/* Action area — secondary controls (payment / options) + primary CTA */}
+        <View style={styles.secondaryRow}>
           <TouchableOpacity
-            style={styles.payBtn}
+            style={styles.secondaryBtn}
             onPress={() => setPaymentSheet(true)}
             activeOpacity={0.85}
           >
-            <Text style={styles.payIcon}>💵</Text>
-            <Text style={styles.payLabel}>Naqd</Text>
+            <Text style={styles.secondaryIcon}>💵</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.secondaryLabel}>To'lov</Text>
+              <Text style={styles.secondaryValue}>Naqd</Text>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.findBtnWrap, routeUnavailable && styles.btnDisabled]}
-            onPress={() => submit()}
-            disabled={submitting !== null || routeUnavailable}
-            activeOpacity={0.9}
-          >
-            <LinearGradient
-              colors={gradients.gold}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.findBtn}
-            >
-              <Text style={styles.findBtnText}>
-                {submitting === 'find' ? '...' : '🔍 Haydovchi topish'}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.dotsBtn}
+            style={styles.secondaryBtn}
             onPress={() => setOptionsSheet(true)}
             activeOpacity={0.85}
           >
-            <Text style={styles.dotsIcon}>⋮</Text>
+            <Text style={styles.secondaryIcon}>⚙️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.secondaryLabel}>Qo'shimcha</Text>
+              <Text style={styles.secondaryValue}>Sozlamalar</Text>
+            </View>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity
+          style={[styles.ctaWrap, routeUnavailable && styles.btnDisabled]}
+          onPress={() => submit()}
+          disabled={submitting !== null || routeUnavailable}
+          activeOpacity={0.9}
+        >
+          <LinearGradient
+            colors={gradients.gold}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.ctaBtn}
+          >
+            <Text style={styles.ctaText}>
+              {submitting === 'find' ? 'Yuborilmoqda...' : '🚖  Buyurtma berish'}
+            </Text>
+          </LinearGradient>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Payment method sheet — only cash is selectable for now */}
@@ -626,56 +561,6 @@ const styles = StyleSheet.create({
   fullCarHint: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
   fullCarHintSelected: { ...typography.small, color: colors.textOnAccent, opacity: 0.85, marginTop: 2 },
 
-  // Gender card
-  genderCard: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  genderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-  },
-  genderLeft: { flexDirection: 'row', alignItems: 'center' },
-  genderIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  genderEmoji: { fontSize: 20 },
-  genderLabel: { ...typography.bodyBold, color: colors.text },
-  genderDivider: { height: 1, backgroundColor: colors.divider },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  stepBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  maleBtn: { backgroundColor: colors.primary },
-  femaleBtn: { backgroundColor: PINK },
-  stepBtnText: { fontSize: 22, color: colors.white, fontWeight: '700', lineHeight: 24 },
-  stepValue: {
-    ...typography.bodyBold,
-    color: colors.text,
-    minWidth: 24,
-    textAlign: 'center',
-  },
-  genderHint: {
-    ...typography.small,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-  },
-
   // Price bar
   priceBar: {
     flexDirection: 'row',
@@ -703,48 +588,52 @@ const styles = StyleSheet.create({
   unavailableSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   btnDisabled: { opacity: 0.4 },
 
-  // Action bar
-  actionBar: {
+  // Action area — secondary controls + primary CTA
+  secondaryRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  secondaryBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  payBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    marginRight: spacing.sm,
-    borderRadius: radius.md,
     backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minWidth: 60,
-    height: 52,
-  },
-  payIcon: { fontSize: 20, color: colors.success },
-  payLabel: { ...typography.small, color: colors.success, fontWeight: '700' },
-  findBtnWrap: { flex: 1 },
-  findBtn: {
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 52,
-  },
-  findBtnText: { ...typography.h3, color: colors.textOnAccent },
-  dotsBtn: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.white,
+    paddingHorizontal: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    shadowColor: '#0E1730',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  dotsIcon: { fontSize: 26, color: colors.primary, fontWeight: '700' },
+  secondaryIcon: { fontSize: 22, marginRight: spacing.sm },
+  secondaryLabel: { ...typography.small, color: colors.textMuted },
+  secondaryValue: { ...typography.bodyBold, color: colors.text },
+  ctaWrap: {
+    borderRadius: radius.lg,
+    marginBottom: spacing.lg,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  ctaBtn: {
+    borderRadius: radius.lg,
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaText: {
+    ...typography.h3,
+    color: colors.textOnAccent,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
 
   // Sheets
   sheetBackdrop: {
