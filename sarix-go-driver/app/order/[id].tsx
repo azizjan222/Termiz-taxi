@@ -290,6 +290,15 @@ export default function OrderDetailScreen() {
   const destBannerText = isParcel ? t('more.deliverParcel') : t('more.deliverPassenger');
   const pickedUpBtnText = isParcel ? `✅ ${t('more.pickedBtnParcel')}` : `✅ ${t('more.pickedBtnPassenger')}`;
   const target = deriveTarget(order);
+  // Map pin captions so each marker is self-explanatory ("easy to understand"):
+  //   A = the place to reach — passenger before pickup, parcel sender for a parcel,
+  //       destination once on board;
+  //   B = the driver (you).
+  // For a parcel order this naturally reads "A • Jo'natuvchi" / "B • Haydovchi" too.
+  const markerLabels = {
+    pickup: `A • ${enRoute ? t('more.address') : isParcel ? t('more.sender') : t('more.passenger')}`,
+    driver: `B • ${t('more.driverFallback')}`,
+  };
   const distanceMeters = driverCoords && target ? haversineMeters(driverCoords, target) : NaN;
   // Live driver->target distance, shown as an overlay ON the map (not in the details
   // card). Null when the map / target isn't available yet.
@@ -357,7 +366,7 @@ export default function OrderDetailScreen() {
               initialLat={deriveInitialCenter(target, driverCoords).lat}
               initialLon={deriveInitialCenter(target, driverCoords).lon}
               initialZoom={14}
-              markers={deriveMarkers(target, driverCoords)}
+              markers={deriveMarkers(target, driverCoords, markerLabels)}
               onMapReady={() => setMapReady(true)}
               style={StyleSheet.absoluteFill}
             />

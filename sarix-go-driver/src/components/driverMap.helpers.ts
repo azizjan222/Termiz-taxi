@@ -76,12 +76,28 @@ export function derivePickupUnavailable(order: DriverOrder | null): boolean {
   return derivePickup(order) === null;
 }
 
+// Default on-map captions so the two pins are always self-explanatory ("easy to
+// understand"): the target/pickup pin is "A", the driver pin is "B". Callers may pass
+// richer, localized captions (e.g. "A • Yo'lovchi") via the optional `labels` argument.
+const PICKUP_MARKER_LABEL = 'A';
+const DRIVER_MARKER_LABEL = 'B';
+
+export type MarkerLabels = { pickup?: string; driver?: string };
+
 /**
  * Marker list for the map. Produces a pickup marker iff `pickup` is non-null and a
- * driver marker iff `driver` is non-null, each with a fixed id and a distinct color.
+ * driver marker iff `driver` is non-null, each with a fixed id, a distinct color, and a
+ * caption ("A" for the pickup/target, "B" for the driver) so the two pins are easy to
+ * tell apart on the map. Captions can be overridden via `labels` (used for the localized
+ * "A • Yo'lovchi" / "B • Haydovchi" style); when omitted they fall back to the bare
+ * letters. TOTAL: never throws.
  * Returns one of: [] | [pickup] | [driver] | [pickup, driver].
  */
-export function deriveMarkers(pickup: Coords | null, driver: Coords | null): MapMarker[] {
+export function deriveMarkers(
+  pickup: Coords | null,
+  driver: Coords | null,
+  labels?: MarkerLabels,
+): MapMarker[] {
   const markers: MapMarker[] = [];
   if (pickup) {
     markers.push({
@@ -89,6 +105,7 @@ export function deriveMarkers(pickup: Coords | null, driver: Coords | null): Map
       lat: pickup.lat,
       lon: pickup.lon,
       color: PICKUP_MARKER_COLOR,
+      label: labels?.pickup ?? PICKUP_MARKER_LABEL,
     });
   }
   if (driver) {
@@ -97,6 +114,7 @@ export function deriveMarkers(pickup: Coords | null, driver: Coords | null): Map
       lat: driver.lat,
       lon: driver.lon,
       color: DRIVER_MARKER_COLOR,
+      label: labels?.driver ?? DRIVER_MARKER_LABEL,
     });
   }
   return markers;
