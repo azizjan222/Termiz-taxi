@@ -10,6 +10,7 @@ import {
   Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Vibration,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -19,6 +20,8 @@ import { Button } from '../src/components/Button';
 import { getOrder, cancelOrder } from '../src/api/orders';
 import { useAuthStore } from '../src/store/auth';
 import { WS_URL, getAuthToken } from '../src/api/client';
+import { presentLocalNotification } from '../src/services/notifications';
+import { addNotification } from '../src/services/notificationHistory';
 import { colors, typography, spacing, radius } from '../src/theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -57,6 +60,23 @@ export default function SearchingScreen() {
   const [elapsed, setElapsed] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const pulseAnim = useRef(new Animated.Value(0)).current;
+  // Fire the "driver found" notification exactly once (WS and polling can both
+  // observe the acceptance — this guard prevents a duplicate alert).
+  const notifiedRef = useRef(false);
+
+  // Notify the passenger that a driver accepted: a visible+audible local
+  // notification, a vibration, and an entry in the in-app notification history.
+  const notifyDriverFound = useCallback(() => {
+    if (notifiedRef.current) return;
+    notifiedRef.current = true;
+    const title = t('order.driverFound');
+    const body = t('order.driverAccepted');
+    try {
+      Vibration.vibrate(400);
+    } catch {}
+    presentLocalNotification(title, body, { type: 'order_accepted', order_id: parseInt(orderId) });
+    addNotification({ title, body, type: 'order_accepted', data: { order_id: parseInt(orderId) } });
+  }, [t, orderId]);
 
   // --- Banner carousel state ---
   const bannerRef = useRef<ScrollView>(null);
@@ -134,6 +154,7 @@ export default function SearchingScreen() {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'order_accepted' && msg.order_id?.toString() === orderId) {
+            notifyDriverFound();
             setStatus('accepted');
           }
         } catch {}
@@ -154,6 +175,7 @@ export default function SearchingScreen() {
       try {
         const order = await getOrder(id);
         if (order.status === 'accepted' || order.status === 'in_progress') {
+          notifyDriverFound();
           setStatus('accepted');
         } else if (order.status === 'cancelled' || order.status === 'expired') {
           // The order ended while waiting (passenger/admin cancelled, or the

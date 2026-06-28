@@ -1,4 +1,5 @@
 """Driver-side API endpoints (used by driver mobile app)."""
+import logging
 from datetime import datetime, timedelta
 from aiohttp import web
 import jwt
@@ -8,6 +9,8 @@ from app.models import Driver, Order, OrderHistory, Setting
 from app.api.websocket import ws_manager
 from app.utils.timefmt import iso_utc
 from app import config
+
+logger = logging.getLogger(__name__)
 
 
 # ============= FREE TRIAL / SUBSCRIPTION =============
@@ -977,6 +980,36 @@ async def accept_order(request: web.Request) -> web.Response:
             await notify_passenger_order_accepted(session, order, d)
         except Exception:
             pass
+
+        # Notify the admin via the Telegram bot that a driver accepted the order.
+        try:
+            bot = request.app.get("bot")
+            if bot and config.ADMIN_ID:
+                service_label = {
+                    "parcel": "📦 Pochta",
+                    "full_car": "🚗 To'liq mashina",
+                }.get(order.service_type, "🚕 Taksi")
+                driver_name = (d.first_name or "Haydovchi").strip()
+                car = " · ".join(
+                    p for p in [d.car_model, d.car_number] if p
+                ) or "—"
+                price_txt = (
+                    f"{order.price:,}".replace(",", " ") + " so'm"
+                    if order.price else "Kelishiladi"
+                )
+                admin_text = (
+                    "✅ <b>Zakas qabul qilindi</b>\n\n"
+                    f"🆔 Zakas #{order.id}\n"
+                    f"👨‍✈️ Haydovchi: <b>{driver_name}</b> ({d.phone or '—'})\n"
+                    f"🚗 {car}\n"
+                    f"📍 {order.from_city or '—'} → {order.to_city or '—'}\n"
+                    f"{service_label} · 💰 {price_txt}"
+                )
+                await bot.send_message(
+                    config.ADMIN_ID, admin_text, parse_mode="HTML"
+                )
+        except Exception as e:
+            logger.error(f"Admin accept notify failed: {e}")
 
         # Reveal the passenger phone now that the driver accepted, and tell the app the
         # 15-minute contact window has started (countdown shown to the driver).

@@ -1,19 +1,44 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import Constants from 'expo-constants';
 
 import { api } from '../api/client';
 
+// Order events the passenger app ALSO surfaces in-app over the realtime
+// WebSocket (a local notification) while a screen is open. For these, when the
+// app is in the FOREGROUND we drop the duplicate REMOTE push so the passenger
+// gets exactly one notification. Background pushes are unaffected (this handler
+// only runs while foregrounded), so a closed app still gets the push.
+const FOREGROUND_HANDLED_TYPES = new Set(['order_accepted', 'order_started']);
+
 // Configure notification handler (foreground behavior)
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async (notification) => {
+    const data = (notification.request.content?.data || {}) as any;
+    const isLocal = data._local === true; // presented by the app itself
+    const appActive = AppState.currentState === 'active';
+
+    if (appActive && !isLocal && FOREGROUND_HANDLED_TYPES.has(data.type)) {
+      // The in-app local notification already alerted the passenger -> suppress
+      // the duplicate remote push.
+      return {
+        shouldShowAlert: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: false,
+        shouldShowList: false,
+      };
+    }
+
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    };
+  },
 });
 
 export async function setupNotificationChannels() {
@@ -122,7 +147,9 @@ export async function presentLocalNotification(
       content: {
         title,
         body,
-        data,
+        // Mark as app-presented so the foreground handler never treats it as a
+        // duplicate remote push to suppress.
+        data: { ...data, _local: true },
         sound: 'default',
         ...(Platform.OS === 'android' ? { channelId } : {}),
       },
