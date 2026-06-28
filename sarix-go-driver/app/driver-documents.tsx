@@ -13,6 +13,7 @@ import {
   FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -27,48 +28,23 @@ import {
   getCarModels,
 } from '../src/api/driver';
 import { useDriverStore } from '../src/store/driver';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { colors, typography, spacing, radius, gradients } from '../src/theme';
 
 type DocKey = 'licenseFront' | 'licenseBack' | 'techFront' | 'techBack';
 
 interface DocSpec {
   key: DocKey;
   title: string;
-  side: string; // "Old tomoni" / "Orqa tomoni"
+  side: string;
   emoji: string;
-  // Short instruction on what must be visible / how to hold the document.
   guide: string;
 }
 
 const DOCS: DocSpec[] = [
-  {
-    key: 'licenseFront',
-    title: 'Haydovchilik guvohnomasi',
-    side: 'Old tomoni',
-    emoji: '🪪',
-    guide: 'Rasm va familiya ko\'rinsin',
-  },
-  {
-    key: 'licenseBack',
-    title: 'Haydovchilik guvohnomasi',
-    side: 'Orqa tomoni',
-    emoji: '🪪',
-    guide: 'Toifalar (B, C...) ko\'rinsin',
-  },
-  {
-    key: 'techFront',
-    title: 'Texnik pasport',
-    side: 'Old tomoni',
-    emoji: '📋',
-    guide: 'Davlat raqami ko\'rinsin',
-  },
-  {
-    key: 'techBack',
-    title: 'Texnik pasport',
-    side: 'Orqa tomoni',
-    emoji: '📋',
-    guide: 'Egasi ma\'lumoti ko\'rinsin',
-  },
+  { key: 'licenseFront', title: 'Haydovchilik guvohnomasi', side: 'Old tomoni', emoji: '🪪', guide: 'Rasm va familiya ko\'rinsin' },
+  { key: 'licenseBack', title: 'Haydovchilik guvohnomasi', side: 'Orqa tomoni', emoji: '🪪', guide: 'Toifalar (B, C...) ko\'rinsin' },
+  { key: 'techFront', title: 'Texnik pasport', side: 'Old tomoni', emoji: '📋', guide: 'Davlat raqami ko\'rinsin' },
+  { key: 'techBack', title: 'Texnik pasport', side: 'Orqa tomoni', emoji: '📋', guide: 'Egasi ma\'lumoti ko\'rinsin' },
 ];
 
 const uploaders: Record<DocKey, (uri: string) => Promise<{ url: string }>> = {
@@ -81,6 +57,10 @@ const uploaders: Record<DocKey, (uri: string) => Promise<{ url: string }>> = {
 export default function DriverDocumentsScreen() {
   const driver = useDriverStore((s) => s.driver);
   const setDriver = useDriverStore((s) => s.setDriver);
+
+  // Personal info — first name is required, surname is optional.
+  const [firstName, setFirstName] = useState(driver?.first_name || '');
+  const [lastName, setLastName] = useState(driver?.last_name || '');
 
   const [carModel, setCarModel] = useState(driver?.car_model || '');
   const [carYear, setCarYear] = useState(driver?.car_year || '');
@@ -95,7 +75,6 @@ export default function DriverDocumentsScreen() {
   const [uploading, setUploading] = useState<DocKey | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Car model picker
   const [models, setModels] = useState<string[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -131,9 +110,14 @@ export default function DriverDocumentsScreen() {
   };
 
   const allUploaded = uploaded.licenseFront && uploaded.licenseBack && uploaded.techFront && uploaded.techBack;
-  const allDone = !!carModel.trim() && !!carYear.trim() && !!carNumber.trim() && allUploaded;
+  const allDone =
+    !!firstName.trim() && !!carModel.trim() && !!carYear.trim() && !!carNumber.trim() && allUploaded;
 
   const handleSubmit = async () => {
+    if (!firstName.trim()) {
+      Alert.alert('Diqqat', 'Ismingizni kiriting.');
+      return;
+    }
     if (!carModel.trim() || !carYear.trim() || !carNumber.trim()) {
       Alert.alert('Diqqat', 'Mashina markasi, yili va davlat raqamini kiriting.');
       return;
@@ -144,13 +128,13 @@ export default function DriverDocumentsScreen() {
     }
     setSubmitting(true);
     try {
-      // 1) Save car info first (the submit endpoint requires model + year + number).
       await updateDriverInfo({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
         car_model: carModel.trim(),
         car_year: carYear.trim(),
         car_number: carNumber.trim().toUpperCase(),
       });
-      // 2) Finalize — unlocks app access.
       const res = await submitDocuments();
       if (res?.driver) setDriver(res.driver);
       Alert.alert('Tayyor ✅', 'Hujjatlaringiz qabul qilindi.', [
@@ -179,13 +163,11 @@ export default function DriverDocumentsScreen() {
         activeOpacity={0.85}
         disabled={!!uploading}
       >
-        {/* Photo frame / preview */}
         <View style={[styles.frame, isUp && styles.frameDone]}>
           {uri ? (
             <Image source={{ uri }} style={styles.framePreview} />
           ) : (
             <>
-              {/* Document orientation illustration (how to lay it) */}
               <View style={styles.docIllustration}>
                 <Text style={styles.docIllustrationEmoji}>{doc.emoji}</Text>
                 <View style={styles.docLines}>
@@ -215,76 +197,126 @@ export default function DriverDocumentsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Text style={styles.headerEmoji}>📄</Text>
+      {/* Gradient header */}
+      <LinearGradient
+        colors={gradients.purple}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
+        <View style={styles.headerIconCircle}>
+          <Text style={styles.headerEmoji}>📄</Text>
+        </View>
         <Text style={styles.title}>Hujjatlarni yuklang</Text>
         <Text style={styles.subtitle}>
-          Ilovadan to'liq foydalanish uchun hujjatlaringizni yuklang.
+          Ilovadan to'liq foydalanish uchun ma'lumot va hujjatlaringizni kiriting
         </Text>
-      </View>
+      </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* How-to banner */}
         <View style={styles.tipCard}>
           <Text style={styles.tipIcon}>💡</Text>
           <Text style={styles.tipText}>
-            Hujjatni tekis yuzaga qo'ying, yaxshi yorug'likda, barcha ma'lumotlar
-            aniq o'qiladigan holatda suratga oling. Soya yoki yorqin aks tushmasin.
+            Hujjatni tekis yuzaga qo'ying, yaxshi yorug'likda, barcha ma'lumotlar aniq
+            o'qiladigan holatda suratga oling. Soya yoki yorqin aks tushmasin.
           </Text>
+        </View>
+
+        {/* Personal info */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>👤 Shaxsiy ma'lumotlar</Text>
+
+          <Text style={styles.label}>
+            Ism <Text style={styles.required}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={firstName}
+            onChangeText={setFirstName}
+            placeholder="Ismingiz"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="words"
+            maxLength={50}
+          />
+
+          <Text style={styles.label}>
+            Familiya <Text style={styles.optional}>(ixtiyoriy)</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={lastName}
+            onChangeText={setLastName}
+            placeholder="Familiyangiz"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="words"
+            maxLength={50}
+          />
         </View>
 
         {/* Car info */}
-        <Text style={styles.sectionTitle}>🚗 Mashina ma'lumotlari</Text>
-        <Text style={styles.label}>Markasi (modeli)</Text>
-        <TouchableOpacity style={styles.input} onPress={() => { setSearch(''); setPickerOpen(true); }} activeOpacity={0.8}>
-          <Text style={carModel ? styles.inputValue : styles.inputPlaceholder}>
-            {carModel || 'Modelni tanlang'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>🚗 Mashina ma'lumotlari</Text>
 
-        <Text style={styles.label}>Ishlab chiqarilgan yili</Text>
-        <TextInput
-          style={styles.input}
-          value={carYear}
-          onChangeText={setCarYear}
-          placeholder="2018"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="number-pad"
-          maxLength={4}
-        />
+          <Text style={styles.label}>Markasi (modeli)</Text>
+          <TouchableOpacity
+            style={styles.input}
+            onPress={() => { setSearch(''); setPickerOpen(true); }}
+            activeOpacity={0.8}
+          >
+            <Text style={carModel ? styles.inputValue : styles.inputPlaceholder}>
+              {carModel || 'Modelni tanlang'}
+            </Text>
+          </TouchableOpacity>
 
-        <Text style={styles.label}>Davlat raqami</Text>
-        <TextInput
-          style={styles.input}
-          value={carNumber}
-          onChangeText={(t) => setCarNumber(t.toUpperCase())}
-          placeholder="01A123BC"
-          placeholderTextColor={colors.textMuted}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          maxLength={10}
-        />
+          <Text style={styles.label}>Ishlab chiqarilgan yili</Text>
+          <TextInput
+            style={styles.input}
+            value={carYear}
+            onChangeText={setCarYear}
+            placeholder="2018"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="number-pad"
+            maxLength={4}
+          />
+
+          <Text style={styles.label}>Davlat raqami</Text>
+          <TextInput
+            style={styles.input}
+            value={carNumber}
+            onChangeText={(t) => setCarNumber(t.toUpperCase())}
+            placeholder="01A123BC"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={10}
+          />
+        </View>
 
         {/* License */}
-        <Text style={styles.sectionTitle}>🪪 Haydovchilik guvohnomasi</Text>
-        <Text style={styles.sectionHint}>Ikkala tomonini ham suratga oling</Text>
-        <View style={styles.slotRow}>
-          {renderSlot(DOCS[0])}
-          {renderSlot(DOCS[1])}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>🪪 Haydovchilik guvohnomasi</Text>
+          <Text style={styles.sectionHint}>Ikkala tomonini ham suratga oling</Text>
+          <View style={styles.slotRow}>
+            {renderSlot(DOCS[0])}
+            {renderSlot(DOCS[1])}
+          </View>
         </View>
 
         {/* Tech passport */}
-        <Text style={styles.sectionTitle}>📋 Texnik pasport</Text>
-        <Text style={styles.sectionHint}>Ikkala tomonini ham suratga oling</Text>
-        <View style={styles.slotRow}>
-          {renderSlot(DOCS[2])}
-          {renderSlot(DOCS[3])}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>📋 Texnik pasport</Text>
+          <Text style={styles.sectionHint}>Ikkala tomonini ham suratga oling</Text>
+          <View style={styles.slotRow}>
+            {renderSlot(DOCS[2])}
+            {renderSlot(DOCS[3])}
+          </View>
         </View>
       </ScrollView>
 
       <View style={styles.footer}>
         <Button
-          title={allDone ? '✅ Tasdiqlash' : 'Avval barcha maydonlarni to\'ldiring'}
+          title={allDone ? '✅ Tasdiqlash' : "Avval barcha maydonlarni to'ldiring"}
           onPress={handleSubmit}
           loading={submitting}
           variant={allDone ? 'success' : 'outline'}
@@ -333,37 +365,72 @@ export default function DriverDocumentsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.white },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, alignItems: 'center' },
-  headerEmoji: { fontSize: 36, marginBottom: spacing.xs },
-  title: { ...typography.h2, color: colors.text },
+  container: { flex: 1, backgroundColor: colors.surface },
+
+  // Gradient header
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    alignItems: 'center',
+    borderBottomLeftRadius: radius.xl,
+    borderBottomRightRadius: radius.xl,
+  },
+  headerIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  headerEmoji: { fontSize: 32 },
+  title: { ...typography.h2, color: colors.white },
   subtitle: {
-    ...typography.body,
-    color: colors.textSecondary,
+    ...typography.caption,
+    color: 'rgba(255,255,255,0.9)',
     textAlign: 'center',
     marginTop: spacing.xs,
   },
-  scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+
+  scroll: { padding: spacing.md, paddingBottom: spacing.xxl },
 
   tipCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFF8E1',
+    backgroundColor: colors.warningLight,
     borderRadius: radius.md,
     padding: spacing.md,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     gap: spacing.sm,
     borderWidth: 1,
-    borderColor: '#FFE082',
+    borderColor: colors.accentLight,
   },
   tipIcon: { fontSize: 20 },
-  tipText: { flex: 1, ...typography.caption, color: '#8D6E00', lineHeight: 18 },
+  tipText: { flex: 1, ...typography.caption, color: colors.accentDark, lineHeight: 18 },
 
-  sectionTitle: { ...typography.bodyBold, color: colors.text, fontSize: 16, marginTop: spacing.md },
+  // Card section wrapper
+  card: {
+    backgroundColor: colors.background,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    shadowColor: '#0E1730',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  sectionTitle: { ...typography.bodyBold, color: colors.text, fontSize: 16, marginBottom: spacing.sm },
   sectionHint: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.sm },
 
   label: { ...typography.caption, color: colors.textSecondary, marginBottom: 4, marginTop: spacing.sm },
+  required: { color: colors.error, fontWeight: '800' },
+  optional: { color: colors.textMuted },
   input: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.divider,
@@ -371,13 +438,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     fontSize: 16,
     color: colors.text,
-    minHeight: 46,
+    minHeight: 48,
     justifyContent: 'center',
   },
   inputValue: { fontSize: 16, color: colors.text },
   inputPlaceholder: { fontSize: 16, color: colors.textMuted },
 
-  // Document slots (two side by side)
+  // Document slots
   slotRow: { flexDirection: 'row', gap: spacing.md },
   slot: { flex: 1 },
   frame: {
@@ -419,7 +486,12 @@ const styles = StyleSheet.create({
   slotSide: { ...typography.bodyBold, color: colors.text, marginTop: spacing.sm, fontSize: 14 },
   slotGuide: { ...typography.small, color: colors.textSecondary, marginTop: 1 },
 
-  footer: { padding: spacing.lg },
+  footer: {
+    padding: spacing.lg,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
 
   // Picker modal
   pickerHeader: {
@@ -428,7 +500,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   backIcon: { fontSize: 28, color: colors.primary },
@@ -438,7 +510,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
   },
   modelText: { ...typography.body, color: colors.text },
 });
