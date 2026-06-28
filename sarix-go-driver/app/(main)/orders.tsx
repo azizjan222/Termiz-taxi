@@ -290,9 +290,19 @@ export default function OrdersScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header — title + sleek online/offline pill */}
       <View style={styles.header}>
-        <Text style={styles.title}>{t('home.available')}</Text>
-        <View style={styles.onlineSwitch}>
+        <View>
+          <Text style={styles.title}>{t('home.available')}</Text>
+          <Text style={styles.headerSub}>Sarix Go Driver</Text>
+        </View>
+        <View style={[styles.onlinePill, isOnline && styles.onlinePillActive]}>
+          <View
+            style={[
+              styles.statusDot,
+              { backgroundColor: isOnline ? colors.success : colors.textMuted },
+            ]}
+          />
           <Text style={[styles.onlineLabel, isOnline && styles.onlineLabelActive]}>
             {isOnline ? t('home.online') : t('home.offline')}
           </Text>
@@ -305,18 +315,30 @@ export default function OrdersScreen() {
         </View>
       </View>
 
+      {/* Trial / balance status card */}
       {driver?.has_active_subscription ? (
-        <View style={styles.trialBanner}>
-          <Text style={styles.trialBannerIcon}>🎁</Text>
-          <Text style={styles.trialBannerText}>
+        <View style={[styles.statusCard, styles.statusCardTrial]}>
+          <Text style={styles.statusCardIcon}>🎁</Text>
+          <Text style={styles.statusCardTitle}>
             {t('more.trialDaysLeft', { days: driver.subscription_days_left ?? 0 })}
           </Text>
         </View>
       ) : (
-        <View style={styles.balancePill}>
-          <Text style={styles.balancePillText}>
-            💰 {formatPrice(driver?.balance || 0)} {t('more.currency')}
-          </Text>
+        <View style={styles.statusCard}>
+          <Text style={styles.statusCardIcon}>💰</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.statusCardLabel}>{t('profile.balance')}</Text>
+            <Text style={styles.statusCardValue}>
+              {formatPrice(driver?.balance || 0)} {t('more.currency')}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.topUpMini}
+            onPress={() => router.push('/top-up')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.topUpMiniText}>+ {t('more.topUp')}</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -335,10 +357,20 @@ export default function OrdersScreen() {
 
       {orders.length === 0 && !refreshing ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>{canReceive ? '🛌' : '💰'}</Text>
-          <Text style={styles.emptyText}>
+          <View style={styles.emptyIconCircle}>
+            <Text style={styles.emptyEmoji}>{canReceive ? '🚕' : '💰'}</Text>
+          </View>
+          <Text style={styles.emptyTitle}>
             {canReceive ? t('home.noOrders') : t('more.balanceEmptyOrders')}
           </Text>
+          {canReceive && (
+            <Text style={styles.emptySubtitle}>
+              {isOnline ? t('home.noOrdersHint') : t('home.offlineHint')}
+            </Text>
+          )}
+          <TouchableOpacity style={styles.refreshBtn} onPress={load} activeOpacity={0.85}>
+            <Text style={styles.refreshBtnText}>↻ {t('home.refresh')}</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -376,32 +408,40 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.surface,
   },
   title: { ...typography.h1, color: colors.text },
-  trialBanner: {
+  headerSub: { ...typography.small, color: colors.textMuted, marginTop: 2, fontWeight: '600' },
+  statusCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: '#FFF6DA',
-    borderRadius: radius.pill,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.background,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.accentLight,
-    alignSelf: 'flex-start',
+    borderColor: colors.divider,
+    shadowColor: '#0E1730',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
-  trialBannerIcon: { fontSize: 16 },
-  trialBannerText: { ...typography.caption, color: colors.accentDark, fontWeight: '700' },
-  balancePill: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+  statusCardTrial: {
+    backgroundColor: colors.warningLight,
+    borderColor: colors.accentLight,
+  },
+  statusCardIcon: { fontSize: 24 },
+  statusCardTitle: { ...typography.bodyBold, color: colors.accentDark, flex: 1 },
+  statusCardLabel: { ...typography.small, color: colors.textSecondary },
+  statusCardValue: { ...typography.bodyBold, color: colors.success, fontSize: 18 },
+  topUpMini: {
+    backgroundColor: colors.primary,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
-    backgroundColor: colors.successLight,
     borderRadius: radius.pill,
-    alignSelf: 'flex-start',
   },
-  balancePillText: { ...typography.caption, color: colors.success, fontWeight: '700' },
+  topUpMiniText: { ...typography.small, color: colors.white, fontWeight: '700' },
   topupBanner: {
     backgroundColor: colors.errorLight,
     borderColor: '#F5B5B5',
@@ -417,8 +457,24 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   topupBannerText: { ...typography.small, color: '#B00020', flex: 1 },
   topupBannerBtn: { ...typography.bodyBold, color: colors.primary },
-  onlineSwitch: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  onlineLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
+  onlinePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  onlinePillActive: {
+    borderColor: colors.success,
+    backgroundColor: colors.successLight,
+  },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  onlineLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: '700' },
   onlineLabelActive: { color: colors.success },
   list: { padding: spacing.md },
   card: {
@@ -538,7 +594,35 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   acceptBtnDisabled: { shadowOpacity: 0, elevation: 0 },
   acceptBtnText: { ...typography.bodyBold, color: '#0E1B3D' },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyEmoji: { fontSize: 72, marginBottom: spacing.md },
-  emptyText: { ...typography.body, color: colors.textSecondary },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl },
+  emptyIconCircle: {
+    width: 108,
+    height: 108,
+    borderRadius: 54,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  emptyEmoji: { fontSize: 52 },
+  emptyTitle: { ...typography.h3, color: colors.text, textAlign: 'center', marginBottom: spacing.xs },
+  emptySubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    lineHeight: 20,
+  },
+  refreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
+  refreshBtnText: { ...typography.bodyBold, color: colors.primary },
 });
