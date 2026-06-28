@@ -14,7 +14,7 @@ import { typography, spacing, radius } from '../src/theme';
 const FAQ: { q: string; a: string }[] = [
   {
     q: 'Ilovaga qanday kiraman?',
-    a: "Telefon raqamingizni kiriting va Telegram/SMS orqali kelgan kodni tasdiqlang. Avval botda (\"Haydovchi bo'lish\") ro'yxatdan o'tgan bo'lishingiz kerak.",
+    a: "\"Telegram orqali kirish\" tugmasini bosing, botda raqamingizni ulashing — avtomatik kirasiz. So'ng ilovaning o'zida hujjatlaringizni (guvohnoma va texpasportning ikkala tomoni) yuklaysiz.",
   },
   {
     q: 'Birinchi oy haqiqatan ham bepulmi?',
