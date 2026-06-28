@@ -9,23 +9,87 @@ import { api } from '../api/client';
 import i18n from '../i18n';
 
 // ---------------------------------------------------------------------------
+// New-order de-duplication.
+//
+// A new order reaches the driver over TWO channels: the realtime WebSocket
+// (instant, only while the app is open) and an Expo PUSH (works in background /
+// when the app is closed — as long as the driver is toggled ONLINE). To avoid a
+// double alert we remember which order ids were just alerted and skip the second
+// channel. Whichever arrives first wins; the other is suppressed. If one channel
+// misses (e.g. a dropped WS frame in the foreground), the other still alerts —
+// so the driver reliably gets exactly one notification.
+// ---------------------------------------------------------------------------
+const DEDUP_TTL_MS = 45000;
+const recentlyAlerted = new Map<number, number>();
+
+export function wasOrderAlerted(orderId?: number): boolean {
+  if (!orderId) return false;
+  const ts = recentlyAlerted.get(orderId);
+  return !!ts && Date.now() - ts < DEDUP_TTL_MS;
+}
+
+export function markOrderAlerted(orderId?: number): void {
+  if (!orderId) return;
+  const now = Date.now();
+  recentlyAlerted.set(orderId, now);
+  // Opportunistic cleanup so the map can't grow unbounded.
+  for (const [id, ts] of recentlyAlerted) {
+    if (now - ts >= DEDUP_TTL_MS) recentlyAlerted.delete(id);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Notification handler: controls what happens when a notification arrives
 // while the app is in the foreground.
 //
-// For new-order alerts we ALWAYS show the alert AND play sound — this ensures
-// the driver hears the notification regardless of app state or expo-av issues.
+// For a REMOTE new-order push received in the foreground, if the realtime
+// WebSocket already alerted this exact order we drop the push (no duplicate);
+// otherwise we show it AND record it so a late WS frame won't double-alert.
+// This handler only runs for notifications received while foregrounded — when
+// the app is backgrounded/closed the system shows the push directly, so an
+// online driver still gets alerted with the app shut.
 // ---------------------------------------------------------------------------
+const SHOW_NOTIFICATION = {
+  shouldShowBanner: true,
+  shouldShowList: true,
+  shouldShowAlert: true,
+  shouldPlaySound: true,
+  shouldSetBadge: true,
+} as any;
+
+const SUPPRESS_NOTIFICATION = {
+  shouldShowBanner: false,
+  shouldShowList: false,
+  shouldShowAlert: false,
+  shouldPlaySound: false,
+  shouldSetBadge: false,
+} as any;
+
 Notifications.setNotificationHandler({
-  handleNotification: async () =>
-    ({
-      // New API (SDK 52+) — present the banner & list entry...
-      shouldShowBanner: true,
-      shouldShowList: true,
-      // ...and keep the legacy field for older runtimes.
-      shouldShowAlert: true,
-      shouldPlaySound: true, // ALWAYS play — this is the primary sound mechanism
-      shouldSetBadge: true,
-    }) as any,
+  handleNotification: async (notification) => {
+    const data = (notification.request.content?.data || {}) as any;
+    const isLocalAlert = data.alert === true; // our own scheduled alert
+    const orderId = typeof data.order_id === 'number' ? data.order_id : undefined;
+    const appActive = AppState.currentState === 'active';
+
+    // Foreground duplicate handling for REMOTE pushes only (our local alerts
+    // always show).
+    if (appActive && !isLocalAlert) {
+      if (data.type === 'new_order') {
+        if (wasOrderAlerted(orderId)) {
+          // Already alerted in-app via the WebSocket -> drop the push duplicate.
+          return SUPPRESS_NOTIFICATION;
+        }
+        // Push won the race -> show it and record so the WS won't double-alert.
+        markOrderAlerted(orderId);
+      } else if (data.type === 'order_cancelled') {
+        // The in-app realtime layer already fires the cancel alert in foreground.
+        return SUPPRESS_NOTIFICATION;
+      }
+    }
+
+    return SHOW_NOTIFICATION;
+  },
 });
 
 // Android notification channel id for new orders. We use a *versioned* id:
@@ -156,8 +220,15 @@ const NEW_ORDER_SOUND = require('../../assets/sounds/new_order.wav');
 
 /**
  * Loud alert for a new order. Fires notification sound + expo-av audio + vibration.
+ * Pass `orderId` so the alert de-dupes against the parallel push channel (an
+ * online driver receives the same order over both the WebSocket and a push).
  */
-export async function playNewOrderAlert(opts?: { from?: string; to?: string; price?: number }) {
+export async function playNewOrderAlert(opts?: { from?: string; to?: string; price?: number; orderId?: number }) {
+  // De-dup: if this order was already alerted (e.g. the push arrived first),
+  // don't alert again. Otherwise claim it so the push handler stays quiet.
+  if (opts?.orderId && wasOrderAlerted(opts.orderId)) return;
+  markOrderAlerted(opts?.orderId);
+
   const body =
     opts?.from && opts?.to
       ? `${opts.from} → ${opts.to}${opts.price ? ` · ${opts.price.toLocaleString()} so'm` : ''}`
@@ -173,7 +244,7 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
         sound: 'new_order.wav',
         priority: Notifications.AndroidNotificationPriority.MAX,
         vibrate: ALERT_VIBRATION,
-        data: { alert: true, type: 'new_order' },
+        data: { alert: true, type: 'new_order', order_id: opts?.orderId },
         ...(Platform.OS === 'android' ? { channelId: ORDERS_CHANNEL } : {}),
       },
       trigger: null, // fire immediately

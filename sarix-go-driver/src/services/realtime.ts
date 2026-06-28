@@ -103,6 +103,7 @@ function handleMessage(data: any) {
       from: order.from_city,
       to: order.to_city,
       price: order.price,
+      orderId: order.id,
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addNotification({

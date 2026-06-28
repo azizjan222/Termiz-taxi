@@ -880,6 +880,31 @@ async def _accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAU
         except Exception as e:
             logger.error(f"WS to passenger failed: {e}")
 
+        # Notify the admin that a driver accepted this order.
+        try:
+            if ADMIN_ID:
+                service_label = {
+                    "parcel": "📦 Pochta",
+                    "full_car": "🚗 To'liq mashina",
+                }.get(order.service_type, "🚕 Taksi")
+                d_name = (driver.first_name or "Haydovchi").strip()
+                d_car = " · ".join(p for p in [driver.car_model, driver.car_number] if p) or "—"
+                d_price = f"{order.price:,}".replace(",", " ") + " so'm" if order.price else "Kelishiladi"
+                await context.bot.send_message(
+                    ADMIN_ID,
+                    (
+                        "✅ <b>Zakas qabul qilindi</b>\n\n"
+                        f"🆔 Zakas #{order.id}\n"
+                        f"👨‍✈️ Haydovchi: <b>{d_name}</b> ({driver.phone or '—'})\n"
+                        f"🚗 {d_car}\n"
+                        f"📍 {order.from_city or '—'} → {order.to_city or '—'}\n"
+                        f"{service_label} · 💰 {d_price}"
+                    ),
+                    parse_mode="HTML",
+                )
+        except Exception as e:
+            logger.error(f"Admin accept notify (bot) failed: {e}")
+
         # Confirm to the driver in Telegram.
         narx_str = f"{order.price:,}".replace(",", " ")
         if order.service_type == "parcel":
