@@ -46,6 +46,8 @@ const uz = {
     available: 'Yangi zakaslar',
     active: 'Faol zakaslar',
     noOrders: "Hozirda yangi zakaslar yo'q",
+    noOrdersHint: "Onlayn turing — yangi zakaslar shu yerda paydo bo'ladi",
+    offlineHint: "Zakas olish uchun Onlayn rejimni yoqing",
     refresh: 'Yangilash',
     onlineToday: 'Bugun onlayn',
   },
@@ -265,6 +267,8 @@ const ru = {
     online: 'Онлайн', offline: 'Оффлайн',
     available: 'Новые заказы', active: 'Активные заказы',
     noOrders: 'Сейчас нет новых заказов', refresh: 'Обновить',
+    noOrdersHint: 'Оставайтесь онлайн — новые заказы появятся здесь',
+    offlineHint: 'Включите режим Онлайн, чтобы получать заказы',
     onlineToday: 'Онлайн сегодня',
   },
   order: {
@@ -442,6 +446,8 @@ const en = {
     online: 'Online', offline: 'Offline',
     available: 'New orders', active: 'Active orders',
     noOrders: 'No new orders right now', refresh: 'Refresh',
+    noOrdersHint: 'Stay online — new orders will appear here',
+    offlineHint: 'Turn on Online mode to receive orders',
     onlineToday: 'Online today',
   },
   order: {
@@ -618,6 +624,8 @@ const uzCyrl = {
     online: 'Онлайн', offline: 'Офлайн',
     available: 'Янги заказлар', active: 'Фаол заказлар',
     noOrders: 'Ҳозирда янги заказлар йўқ', refresh: 'Янгилаш',
+    noOrdersHint: 'Онлайн туринг — янги заказлар шу ерда пайдо бўлади',
+    offlineHint: 'Заказ олиш учун Онлайн режимни ёқинг',
     onlineToday: 'Бугун онлайн',
   },
   order: {
