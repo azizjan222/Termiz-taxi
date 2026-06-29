@@ -1146,15 +1146,29 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
         if order.status not in ("accepted", "in_progress"):
             return web.json_response({"error": "Bekor qilib bo'lmaydi"}, status=400)
 
-        # Refund commission only if it was already charged (deferred window). Either way,
-        # mark it charged so the scheduler won't deduct from a cancelled order.
+        # Driver cancelled their OWN accepted order -> this is the driver's fault, so
+        # the commission is still owed. This closes the "accept to lock the order off
+        # the market, then cancel for free" loophole and keeps behaviour consistent
+        # with silently abandoning an order (which the scheduler charges after the
+        # window). Passenger-initiated cancellations are NOT charged (see cancel_order).
+        # Drivers on the free trial / active subscription are never charged.
         d = session.query(Driver).filter_by(id=driver.id).first()
-        if d and order.commission_charged:
-            d.balance = (d.balance or 0) + (order.commission or 0)
+        now = datetime.utcnow()
+        subscription_active = bool(d and d.subscription_until and d.subscription_until > now)
+        charged = False
+        if d and not subscription_active and not order.commission_charged:
+            # Window may not have elapsed yet; charge now since the driver bailed.
+            commission = order.commission or 0
+            if commission > 0:
+                d.balance = (d.balance or 0) - commission
+                order.commission_collected = True
+                charged = True
+        # If commission_charged was already True the deferred scheduler already deducted
+        # it -> no refund (driver's fault). Mark handled either way.
         order.commission_charged = True
 
         order.status = "cancelled"
-        order.cancelled_at = datetime.utcnow()
+        order.cancelled_at = now
         order.cancelled_by = "driver"
 
         session.add(OrderHistory(
@@ -1179,6 +1193,7 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
         return web.json_response({
             "success": True,
             "balance": d.balance if d else 0,
+            "commission_charged": charged,
         })
     finally:
         session.close()
