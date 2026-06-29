@@ -1,0 +1,54 @@
+name: Daily DB Backup (Postgres)
+
+# Creates a daily gzipped pg_dump of the production database and stores it as a
+# downloadable GitHub artifact (kept 30 days).
+#
+# SETUP (one-time):
+#   1. This only works for a POSTGRES database that is reachable from the internet.
+#      On Railway use the PUBLIC connection string (the internal *.railway.internal
+#      host is NOT reachable from GitHub Actions).
+#   2. Add it as a repository secret named DATABASE_URL:
+#         Settings -> Secrets and variables -> Actions -> New repository secret
+#   3. (Optional) trigger a manual run from the Actions tab to test.
+#
+# NOTE: If the app runs on SQLite (a Railway volume), GitHub Actions cannot reach that
+# file. Use `python scripts/backup_db.py` on the server instead (e.g. a scheduled job),
+# or switch to Postgres.
+
+on:
+  schedule:
+    - cron: "0 2 * * *"   # every day at 02:00 UTC
+  workflow_dispatch: {}    # allow manual runs
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Dump database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::warning::DATABASE_URL secret is not set - skipping backup."
+            exit 0
+          fi
+          # Normalise the legacy postgres:// scheme to postgresql:// for pg_dump.
+          URL="${DATABASE_URL/postgres:\/\//postgresql://}"
+          ts=$(date -u +%Y%m%d-%H%M%S)
+          mkdir -p backups
+          pg_dump --no-owner --no-privileges "$URL" | gzip > "backups/sarixgo-$ts.sql.gz"
+          ls -lh backups
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backups/*.sql.gz
+          retention-days: 30
+          if-no-files-found: ignore
