@@ -127,6 +127,10 @@ COMMISSION_PERCENT = _get_int("COMMISSION_PERCENT", 10)
 # contact/agree with the passenger. The commission is charged once the window elapses
 # (whether or not the ride was completed). The driver app shows a countdown.
 COMMISSION_WINDOW_MINUTES = _get_int("COMMISSION_WINDOW_MINUTES", 15)
+# Order auto-expiry: an IMMEDIATE ("Hozir") order left in "new" status (no driver
+# accepted) for this many minutes is automatically marked "expired" and the passenger
+# is notified (so they aren't stuck on the "searching" screen forever).
+ORDER_EXPIRY_MINUTES = _get_int("ORDER_EXPIRY_MINUTES", 15)
 PARCEL_PRICE = _get_int("PARCEL_PRICE", 30000)
 FULL_CAR_PRICE = _get_int("FULL_CAR_PRICE", 400000)
 MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 20000)  # Minimum balance to accept any order
