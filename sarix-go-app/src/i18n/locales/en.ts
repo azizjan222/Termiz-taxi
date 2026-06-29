@@ -155,6 +155,7 @@ export default {
     step1: 'Tap the button below',
     step2: 'Telegram bot opens — tap "Start"',
     step3: 'Share your number — you log in automatically',
+    numberNote: "❗ Note: the number you share in the bot becomes your registration number. Make sure it's a working number linked to Telegram.",
     button: '📲 Login via Telegram',
     waiting: 'Waiting for Telegram confirmation...',
     waitingHint: 'Share your number in Telegram',

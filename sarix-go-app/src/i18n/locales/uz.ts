@@ -155,6 +155,7 @@ export default {
     step1: 'Pastdagi tugmani bosing',
     step2: 'Telegram bot ochiladi — "Boshlash"ni bosing',
     step3: 'Raqamingizni ulashing — avtomatik kirasiz',
+    numberNote: "❗ Diqqat: botda ulagan raqamingiz — ro'yxatdan o'tish raqamingiz bo'ladi. Ishlaydigan, Telegram'ga ulangan raqam ekaniga ishonch hosil qiling.",
     button: '📲 Telegram orqali kirish',
     waiting: 'Telegram tasdiqlanishini kutmoqda...',
     waitingHint: "Telegram'da raqamingizni ulashing",

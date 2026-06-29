@@ -118,6 +118,10 @@ export default function TelegramLoginScreen() {
               <Step n="1" text={t('telegramLogin.step1')} />
               <Step n="2" text={t('telegramLogin.step2')} />
               <Step n="3" text={t('telegramLogin.step3')} />
+
+              <View style={styles.noteBox}>
+                <Text style={styles.noteText}>{t('telegramLogin.numberNote')}</Text>
+              </View>
             </View>
           )}
 
@@ -168,6 +172,16 @@ const styles = StyleSheet.create({
   },
   stepNumText: { ...typography.bodyBold, color: colors.primary, fontWeight: '800' },
   stepText: { flex: 1, ...typography.body, color: colors.white },
+  noteBox: {
+    marginTop: spacing.md,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  noteText: { ...typography.caption, color: colors.white, opacity: 0.95, lineHeight: 18 },
   waitingBox: { alignItems: 'center', gap: spacing.md },
   waitingText: { ...typography.h3, color: colors.white, textAlign: 'center' },
   waitingHint: { ...typography.body, color: colors.accent, opacity: 0.9, textAlign: 'center' },
