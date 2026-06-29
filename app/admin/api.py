@@ -925,7 +925,7 @@ async def api_statistics(request: web.Request) -> web.Response:
                     monthly[key] += 1
         monthly_new_users = [{"month": k, "count": v} for k, v in monthly.items()]
 
-        avg_driver_rating = round(session.query(func.avg(Driver.rating)).scalar() or 0, 2)
+        avg_driver_rating = round(float(session.query(func.avg(Driver.rating)).scalar() or 0), 2)
 
         return web.json_response({
             "new_users": new_users,
