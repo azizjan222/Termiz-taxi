@@ -1,6 +1,6 @@
 """Orders API: create, list, accept, cancel."""
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from aiohttp import web
 from sqlalchemy import or_
 
@@ -107,6 +107,43 @@ def _calc_price_and_commission(
     return price, commission, None
 
 
+def _check_order_abuse(session, user_id: int, now: datetime) -> str | None:
+    """Anti-spam guard for order creation. Returns an error message to reject with, or None.
+
+    1) Active-order cap: a passenger may not pile up more than MAX_ACTIVE_ORDERS_PER_USER
+       simultaneous live orders (new/accepted/in_progress). This is the main defence
+       against blasting every driver with push/WS notifications by spamming "new" orders.
+    2) Rate limit: no more than ORDER_RATE_LIMIT_PER_MINUTE orders created in the last
+       60 seconds (catches automated create+cancel spam loops).
+    """
+    active = (
+        session.query(Order)
+        .filter(
+            Order.passenger_id == user_id,
+            Order.status.in_(["new", "accepted", "in_progress"]),
+        )
+        .count()
+    )
+    if active >= config.MAX_ACTIVE_ORDERS_PER_USER:
+        return (
+            "Sizda faol buyurtma bor. Yangi buyurtma berishdan oldin uni "
+            "yakunlang yoki bekor qiling."
+        )
+
+    recent = (
+        session.query(Order)
+        .filter(
+            Order.passenger_id == user_id,
+            Order.created_at >= now - timedelta(seconds=60),
+        )
+        .count()
+    )
+    if recent >= config.ORDER_RATE_LIMIT_PER_MINUTE:
+        return "Juda tez-tez buyurtma bermoqdasiz. Iltimos, bir daqiqa kutib turing."
+
+    return None
+
+
 @require_auth
 async def create_order(request: web.Request) -> web.Response:
     """POST /api/orders
@@ -154,6 +191,12 @@ async def create_order(request: web.Request) -> web.Response:
 
     session = get_session()
     try:
+        # Anti-spam: reject if the passenger already has too many live orders or is
+        # creating orders too quickly (protects drivers from notification spam).
+        abuse_err = _check_order_abuse(session, user.id, datetime.utcnow())
+        if abuse_err:
+            return web.json_response({"error": abuse_err}, status=429)
+
         price, commission, err = _calc_price_and_commission(
             session, from_city, to_city, service_type, person_count
         )

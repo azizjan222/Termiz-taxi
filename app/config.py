@@ -133,6 +133,12 @@ COMMISSION_WINDOW_MINUTES = _get_int("COMMISSION_WINDOW_MINUTES", 15)
 ORDER_EXPIRY_MINUTES = _get_int("ORDER_EXPIRY_MINUTES", 15)
 PARCEL_PRICE = _get_int("PARCEL_PRICE", 30000)
 FULL_CAR_PRICE = _get_int("FULL_CAR_PRICE", 400000)
+# Anti-abuse (passenger order spam). MAX_ACTIVE_ORDERS_PER_USER caps how many live
+# orders (new/accepted/in_progress) one passenger may hold at once -> stops blasting
+# every driver with notifications by piling up "new" orders. ORDER_RATE_LIMIT_PER_MINUTE
+# caps how many orders one passenger may create per rolling 60s (stops create+cancel loops).
+MAX_ACTIVE_ORDERS_PER_USER = _get_int("MAX_ACTIVE_ORDERS_PER_USER", 2)
+ORDER_RATE_LIMIT_PER_MINUTE = _get_int("ORDER_RATE_LIMIT_PER_MINUTE", 4)
 MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 20000)  # Minimum balance to accept any order
 # Max simultaneously-active TAXI / full-car orders a driver may hold. Parcel (pochta)
 # orders are unlimited and do NOT count toward this limit.
