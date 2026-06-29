@@ -205,7 +205,7 @@ async def create_order(request: web.Request) -> web.Response:
 
         order = Order(
             passenger_id=user.id,
-            passenger_phone=user.phone,
+            passenger_phone=user.contact_phone or user.phone,
             passenger_name=user.first_name or "",
             service_type=service_type,
             from_city=from_city,
@@ -356,7 +356,7 @@ async def get_order(request: web.Request) -> web.Response:
             if driver:
                 result["driver"] = {
                     "first_name": driver.first_name,
-                    "phone": driver.phone,
+                    "phone": driver.contact_phone or driver.phone,
                     "car_model": driver.car_model,
                     "car_number": driver.car_number,
                     "car_color": driver.car_color,
