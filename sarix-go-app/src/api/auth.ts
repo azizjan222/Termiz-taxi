@@ -3,7 +3,6 @@ import { api, setAuthToken } from './client';
 export interface User {
   id: number;
   phone: string;
-  contact_phone?: string | null;
   first_name: string | null;
   last_name: string | null;
   language: string;

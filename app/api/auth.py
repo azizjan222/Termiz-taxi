@@ -107,7 +107,6 @@ async def verify_otp_endpoint(request: web.Request) -> web.Response:
             "user": {
                 "id": user.id,
                 "phone": user.phone,
-                "contact_phone": user.contact_phone,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "language": user.language,
@@ -126,7 +125,6 @@ async def me(request: web.Request) -> web.Response:
     return web.json_response({
         "id": user.id,
         "phone": user.phone,
-        "contact_phone": user.contact_phone,
         "first_name": user.first_name,
         "last_name": user.last_name,
         "language": user.language,
@@ -155,12 +153,6 @@ async def update_profile(request: web.Request) -> web.Response:
             u.first_name = data["first_name"][:100] if data["first_name"] else None
         if "last_name" in data:
             u.last_name = data["last_name"][:100] if data["last_name"] else None
-        if "contact_phone" in data:
-            from app.services.otp import normalize_phone
-            cp = normalize_phone(str(data.get("contact_phone") or "")) if data.get("contact_phone") else ""
-            if cp and not (cp.startswith("+998") and len(cp) == 13):
-                return web.json_response({"error": "Telefon raqam noto'g'ri"}, status=400)
-            u.contact_phone = cp or None
         if "language" in data and data["language"] in ("uz", "uz-cyrl", "ru", "en"):
             u.language = data["language"]
 
@@ -172,7 +164,6 @@ async def update_profile(request: web.Request) -> web.Response:
             "user": {
                 "id": u.id,
                 "phone": u.phone,
-                "contact_phone": u.contact_phone,
                 "first_name": u.first_name,
                 "last_name": u.last_name,
                 "language": u.language,
@@ -263,7 +254,6 @@ async def telegram_check(request: web.Request) -> web.Response:
             "user": {
                 "id": user.id,
                 "phone": user.phone,
-                "contact_phone": user.contact_phone,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "language": user.language,

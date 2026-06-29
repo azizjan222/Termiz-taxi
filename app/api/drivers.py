@@ -445,7 +445,6 @@ def _serialize_driver(d: Driver) -> dict:
         "id": d.id,
         "telegram_id": d.telegram_id,
         "phone": d.phone,
-        "contact_phone": d.contact_phone,
         "first_name": d.first_name,
         "last_name": d.last_name,
         "pinfl": d.pinfl,
@@ -600,12 +599,6 @@ async def driver_update_me(request: web.Request) -> web.Response:
             d.first_name = (str(data.get("first_name") or "")).strip() or None
         if "last_name" in data:
             d.last_name = (str(data.get("last_name") or "")).strip() or None
-        if "contact_phone" in data:
-            from app.services.otp import normalize_phone
-            cp = normalize_phone(str(data.get("contact_phone") or "")) if data.get("contact_phone") else ""
-            if cp and not (cp.startswith("+998") and len(cp) == 13):
-                return web.json_response({"error": "Telefon raqam noto'g'ri"}, status=400)
-            d.contact_phone = cp or None
         if "pinfl" in data:
             pinfl = "".join(ch for ch in str(data.get("pinfl") or "") if ch.isdigit())
             if pinfl and len(pinfl) != 14:

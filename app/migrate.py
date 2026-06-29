@@ -36,7 +36,6 @@ def _apply_schema_migrations() -> int:
         ("users", "referral_bonus_earned", "INTEGER DEFAULT 0"),
         ("users", "theme", "VARCHAR(20) DEFAULT 'auto'"),
         ("users", "profile_photo_url", "VARCHAR(500)"),
-        ("users", "contact_phone", "VARCHAR(20)"),
         # Driver new columns
         ("drivers", "car_photo_url", "VARCHAR(500)"),
         ("drivers", "license_photo_url", "VARCHAR(500)"),
@@ -44,7 +43,6 @@ def _apply_schema_migrations() -> int:
         ("drivers", "tech_passport_url", "VARCHAR(500)"),
         ("drivers", "tech_passport_back_url", "VARCHAR(500)"),
         ("drivers", "profile_photo_url", "VARCHAR(500)"),
-        ("drivers", "contact_phone", "VARCHAR(20)"),
         ("drivers", "seats", "INTEGER DEFAULT 4"),
         ("drivers", "is_verified", BOOL_FALSE),
         ("drivers", "rating_count", "INTEGER DEFAULT 0"),
