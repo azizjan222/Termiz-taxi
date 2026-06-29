@@ -1011,6 +1011,30 @@ async def accept_order(request: web.Request) -> web.Response:
         except Exception as e:
             logger.error(f"Admin accept notify failed: {e}")
 
+        # Telegram DM to the PASSENGER (reliable even when their app is closed),
+        # if they signed in via Telegram. This is the no-FCM background path.
+        try:
+            bot = request.app.get("bot")
+            if bot and order.passenger_id:
+                from app.models import User
+                passenger = session.query(User).filter_by(id=order.passenger_id).first()
+                if passenger and passenger.telegram_id:
+                    p_car = " · ".join(p for p in [d.car_model, d.car_number] if p) or "—"
+                    await bot.send_message(
+                        passenger.telegram_id,
+                        (
+                            "✅ <b>Haydovchi topildi!</b>\n\n"
+                            f"👨‍✈️ {(d.first_name or 'Haydovchi').strip()}\n"
+                            f"🚗 {p_car}\n"
+                            f"📞 {d.phone or '—'}\n"
+                            f"📍 {order.from_city or '—'} → {order.to_city or '—'}\n\n"
+                            "Haydovchi tez orada siz bilan bog'lanadi."
+                        ),
+                        parse_mode="HTML",
+                    )
+        except Exception as e:
+            logger.error(f"Passenger TG notify failed: {e}")
+
         # Reveal the passenger phone now that the driver accepted, and tell the app the
         # 15-minute contact window has started (countdown shown to the driver).
         return web.json_response({

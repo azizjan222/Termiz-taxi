@@ -905,6 +905,28 @@ async def _accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAU
         except Exception as e:
             logger.error(f"Admin accept notify (bot) failed: {e}")
 
+        # Telegram DM to the passenger (reliable even with their app closed).
+        try:
+            from app.models import User as _User
+            if order.passenger_id:
+                passenger = session.query(_User).filter_by(id=order.passenger_id).first()
+                if passenger and passenger.telegram_id:
+                    p_car = " · ".join(p for p in [driver.car_model, driver.car_number] if p) or "—"
+                    await context.bot.send_message(
+                        passenger.telegram_id,
+                        (
+                            "✅ <b>Haydovchi topildi!</b>\n\n"
+                            f"👨‍✈️ {(driver.first_name or 'Haydovchi').strip()}\n"
+                            f"🚗 {p_car}\n"
+                            f"📞 {driver.phone or '—'}\n"
+                            f"📍 {order.from_city or '—'} → {order.to_city or '—'}\n\n"
+                            "Haydovchi tez orada siz bilan bog'lanadi."
+                        ),
+                        parse_mode="HTML",
+                    )
+        except Exception as e:
+            logger.error(f"Passenger TG notify (bot) failed: {e}")
+
         # Confirm to the driver in Telegram.
         narx_str = f"{order.price:,}".replace(",", " ")
         if order.service_type == "parcel":
@@ -1106,6 +1128,45 @@ async def notify_drivers_about_new_app_order(order):
             parse_mode="HTML",
             reply_markup=keyboard,
         )
+
+        # Reliable per-driver delivery (no FCM needed): DM each eligible ONLINE
+        # driver individually. Group messages are often muted, but a personal
+        # Telegram DM reliably notifies the driver even when the app is closed —
+        # Telegram itself delivers it. Each send is guarded so one failure never
+        # blocks the others.
+        try:
+            from app.database import get_session as _get_session
+            from app.models import Driver as _Driver
+            min_balance = getattr(app_config, "MIN_DRIVER_BALANCE", 20000)
+            _s = _get_session()
+            try:
+                now = datetime.utcnow()
+                online_drivers = _s.query(_Driver).filter(
+                    _Driver.is_online == True,  # noqa: E712
+                    _Driver.is_blocked == False,  # noqa: E712
+                    _Driver.telegram_id.isnot(None),
+                ).all()
+                for d in online_drivers:
+                    can_take = (
+                        (d.subscription_until and d.subscription_until > now)
+                        or (d.balance or 0) >= min_balance
+                    )
+                    if not can_take:
+                        continue
+                    try:
+                        await bot.send_message(
+                            chat_id=d.telegram_id,
+                            text=text,
+                            parse_mode="HTML",
+                            reply_markup=keyboard,
+                        )
+                    except Exception:
+                        pass
+            finally:
+                _s.close()
+        except Exception as e:
+            logger.error(f"Per-driver DM notify failed: {e}")
+
         await bot.shutdown()
     except Exception as e:
         logger.error(f"Failed to notify drivers about app order: {e}")
