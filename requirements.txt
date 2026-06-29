@@ -9,3 +9,6 @@ PyJWT>=2.8.0
 bcrypt>=4.1.0
 
 fpdf2>=2.7.0
+
+# Optional error monitoring. Only active when SENTRY_DSN is set (see app/services/monitoring.py).
+sentry-sdk>=2.0.0

@@ -38,6 +38,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("sarixgo.bot")
 
+# Initialise optional error monitoring as early as possible (no-op unless SENTRY_DSN is
+# set AND sentry-sdk is installed). Never raises, so it can't affect startup.
+try:
+    from app.services.monitoring import init_sentry
+    init_sentry()
+except Exception as _e:  # pragma: no cover - defensive
+    logger.error(f"Monitoring init skipped: {_e}")
+
 # ================== ⚙️ SOZLAMALAR ==================
 TOKEN = app_config.BOT_TOKEN
 DRIVERS_GROUP_ID = app_config.DRIVERS_GROUP_ID
