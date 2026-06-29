@@ -249,6 +249,32 @@ async def notify_passenger_no_driver(session: Session, order):
     )
 
 
+async def notify_driver_commission_soon(session: Session, order, minutes_left: int):
+    """Heads-up to the driver that the deferred commission is about to be charged.
+
+    Sent ~COMMISSION_WARN_MINUTES before the deduction so the driver can complete or
+    cancel the order knowingly, instead of being surprised by the balance change.
+    """
+    if not getattr(order, "driver_id", None):
+        return
+    await send_push(
+        session,
+        recipient_type="driver",
+        recipient_id=order.driver_id,
+        title="⏳ Komissiya tez orada yechiladi",
+        body=(
+            f"{order.from_city} → {order.to_city} · {minutes_left} daqiqadan so'ng "
+            f"{_fmt_amount(order.commission or 0)} so'm komissiya balansingizdan yechiladi"
+        ),
+        data={
+            "type": "commission_warning",
+            "order_id": order.id,
+            "minutes_left": minutes_left,
+        },
+        channel_id="balance",
+    )
+
+
 async def notify_balance_topup(session: Session, driver_id: int, amount: int, bonus: int = 0):
     """Notify driver about balance top-up."""
     body = f"+{_fmt_amount(amount)} so'm"

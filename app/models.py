@@ -167,6 +167,9 @@ class Order(Base):
     # money, so commission_collected stays False -> trial orders count as 0 commission in
     # all money reports (admin dashboard, bot /revenue) and don't confuse the stats.
     commission_collected = Column(Boolean, default=False)
+    # Set True once the driver has been sent the "commission will be charged in N
+    # minutes" heads-up, so the scheduler never warns the same order twice.
+    commission_warned = Column(Boolean, default=False)
 
     # Status
     status = Column(String(30), default="new", index=True)
