@@ -127,6 +127,9 @@ COMMISSION_PERCENT = _get_int("COMMISSION_PERCENT", 10)
 # contact/agree with the passenger. The commission is charged once the window elapses
 # (whether or not the ride was completed). The driver app shows a countdown.
 COMMISSION_WINDOW_MINUTES = _get_int("COMMISSION_WINDOW_MINUTES", 15)
+# How many minutes BEFORE the commission is charged the driver gets a heads-up push
+# ("commission will be deducted in N minutes"). Must be < COMMISSION_WINDOW_MINUTES.
+COMMISSION_WARN_MINUTES = _get_int("COMMISSION_WARN_MINUTES", 5)
 # Order auto-expiry: an IMMEDIATE ("Hozir") order left in "new" status (no driver
 # accepted) for this many minutes is automatically marked "expired" and the passenger
 # is notified (so they aren't stuck on the "searching" screen forever).
