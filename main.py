@@ -872,7 +872,7 @@ async def _accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAU
                     "order_id": order.id,
                     "driver": {
                         "first_name": driver.first_name,
-                        "phone": driver.phone,
+                        "phone": driver.contact_phone or driver.phone,
                         "car_model": driver.car_model,
                         "car_number": driver.car_number,
                     },

@@ -15,6 +15,14 @@ export const SUPPORTED_LANGUAGES: { code: SupportedLanguage; label: string; flag
 ];
 
 const uz = {
+  contact: {
+    title: 'Aloqa raqami',
+    question: "Ro'yxatdan o'tgan raqamingiz ishlashiga ishonchingiz komilmi? Buyurtmalarda yo'lovchi aynan shu raqamga qo'ng'iroq qiladi.",
+    worksYes: 'Ha, ishlaydi',
+    change: "Raqamni o'zgartirish",
+    newLabel: 'Yangi ishlaydigan raqam',
+    save: 'Saqlash',
+  },
   common: {
     next: 'Davom etish',
     back: 'Orqaga',
@@ -248,6 +256,14 @@ const uz = {
 };
 
 const ru = {
+  contact: {
+    title: 'Контактный номер',
+    question: 'Вы уверены, что ваш зарегистрированный номер работает? В заказах пассажир будет звонить именно на этот номер.',
+    worksYes: 'Да, работает',
+    change: 'Изменить номер',
+    newLabel: 'Новый рабочий номер',
+    save: 'Сохранить',
+  },
   common: {
     next: 'Далее', back: 'Назад', cancel: 'Отмена', confirm: 'Подтвердить',
     yes: 'Да', no: 'Нет', loading: 'Загрузка...', error: 'Ошибка',
@@ -429,6 +445,14 @@ const ru = {
 };
 
 const en = {
+  contact: {
+    title: 'Contact number',
+    question: "Are you sure your registered number works? The passenger will call this exact number for orders.",
+    worksYes: 'Yes, it works',
+    change: 'Change number',
+    newLabel: 'New working number',
+    save: 'Save',
+  },
   common: {
     next: 'Continue', back: 'Back', cancel: 'Cancel', confirm: 'Confirm',
     yes: 'Yes', no: 'No', loading: 'Loading...', error: 'Error',
@@ -608,6 +632,14 @@ const en = {
 };
 
 const uzCyrl = {
+  contact: {
+    title: 'Алоқа рақами',
+    question: "Рўйхатдан ўтган рақамингиз ишлашига ишончингиз комилми? Буюртмаларда йўловчи айнан шу рақамга қўнғироқ қилади.",
+    worksYes: 'Ҳа, ишлайди',
+    change: 'Рақамни ўзгартириш',
+    newLabel: 'Янги ишлайдиган рақам',
+    save: 'Сақлаш',
+  },
   common: {
     next: 'Давом этиш', back: 'Орқага', cancel: 'Бекор қилиш', confirm: 'Тасдиқлаш',
     yes: 'Ҳа', no: 'Йўқ', loading: 'Юкланмоқда...', error: 'Хатолик',
