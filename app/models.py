@@ -16,6 +16,9 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     phone = Column(String(20), unique=True, nullable=False, index=True)
+    # Identity phone above (from OTP / Telegram contact). contact_phone is the number
+    # the user TYPES in the app profile and the one shown to the other party on orders.
+    contact_phone = Column(String(20), nullable=True)
     telegram_id = Column(BigInteger, unique=True, nullable=True, index=True)
     first_name = Column(String(100))
     last_name = Column(String(100))
@@ -46,6 +49,9 @@ class Driver(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
     phone = Column(String(20), unique=True, nullable=False)
+    # Identity phone above. contact_phone is the number the driver TYPES in the app and
+    # the one shown to the passenger on orders (instead of the Telegram contact number).
+    contact_phone = Column(String(20), nullable=True)
     first_name = Column(String(100))
     last_name = Column(String(100))
     car_model = Column(String(100))

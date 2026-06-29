@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '../src/components/Button';
 import { API_URL } from '../src/api/client';
@@ -15,9 +16,25 @@ import {
 } from '../src/api/driver';
 import { colors, typography, spacing, radius } from '../src/theme';
 
+// Pretty +998 formatter: fixed "+998 " prefix + grouped 9 local digits.
+const formatPhone = (text: string): string => {
+  let digits = text.replace(/\D/g, '');
+  if (digits.startsWith('998')) digits = digits.slice(3);
+  digits = digits.slice(0, 9);
+  let out = '+998';
+  if (digits.length > 0) out += ' ' + digits.slice(0, 2);
+  if (digits.length > 2) out += ' ' + digits.slice(2, 5);
+  if (digits.length > 5) out += ' ' + digits.slice(5, 7);
+  if (digits.length > 7) out += ' ' + digits.slice(7, 9);
+  return out;
+};
+const localDigits = (text: string) => text.replace(/\D/g, '').replace(/^998/, '');
+const isValidPhone = (text: string) => localDigits(text).length === 9;
+
 // In-app driver registration-completion form. Mirrors the bot's fields EXCEPT the car
 // photo (mashinaning rasmi), which is intentionally not collected here.
 export default function DriverInfoScreen() {
+  const { t } = useTranslation();
   const driver = useDriverStore((s) => s.driver);
   const setDriver = useDriverStore((s) => s.setDriver);
 
@@ -27,6 +44,12 @@ export default function DriverInfoScreen() {
   const [carNumber, setCarNumber] = useState('');
   const [carModel, setCarModel] = useState('');
   const [carYear, setCarYear] = useState('');
+
+  // Contact number shown to passengers on orders (defaults to the registered number).
+  const [displayNumber, setDisplayNumber] = useState('');
+  const [phoneEditing, setPhoneEditing] = useState(false);
+  const [newPhone, setNewPhone] = useState('+998 ');
+  const [contactToSave, setContactToSave] = useState<string | null>(null);
 
   const [techUri, setTechUri] = useState<string | null>(null);
   const [licenseUri, setLicenseUri] = useState<string | null>(null);
@@ -46,6 +69,7 @@ export default function DriverInfoScreen() {
       setCarNumber(d.car_number || '');
       setCarModel(d.car_model || '');
       setCarYear(d.car_year || '');
+      setDisplayNumber(d.contact_phone || d.phone || '');
       if (d.tech_passport_url) {
         setTechUri(d.tech_passport_url.startsWith('http') ? d.tech_passport_url : `${API_URL}${d.tech_passport_url}`);
       }
@@ -73,6 +97,10 @@ export default function DriverInfoScreen() {
   };
 
   const save = async () => {
+    if (!firstName.trim()) {
+      Alert.alert('❌', 'Ismni kiriting');
+      return;
+    }
     if (pinfl && pinfl.replace(/\D/g, '').length !== 14) {
       Alert.alert('❌', 'JSHSHIR 14 ta raqamdan iborat bo\'lishi kerak');
       return;
@@ -83,6 +111,7 @@ export default function DriverInfoScreen() {
       const { driver: updated } = await updateDriverInfo({
         first_name: firstName,
         last_name: lastName,
+        ...(contactToSave ? { contact_phone: contactToSave } : {}),
         pinfl,
         car_number: carNumber,
         car_model: carModel,
@@ -105,6 +134,17 @@ export default function DriverInfoScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveNewNumber = () => {
+    if (!isValidPhone(newPhone)) return;
+    setContactToSave('+998' + localDigits(newPhone));
+    setDisplayNumber(formatPhone(newPhone));
+    setPhoneEditing(false);
+  };
+  const startEditingPhone = () => {
+    setNewPhone(displayNumber && displayNumber.startsWith('+998') ? formatPhone(displayNumber) : '+998 ');
+    setPhoneEditing(true);
   };
 
   const filteredModels = search
@@ -132,6 +172,42 @@ export default function DriverInfoScreen() {
 
         <Text style={styles.label}>Familiya</Text>
         <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="Familiya" />
+
+        {/* Contact-number card: shown to passengers on orders; confirm it works or change it. */}
+        <View style={styles.contactCard}>
+          <View style={styles.contactTop}>
+            <View style={styles.phoneBadge}><Text style={styles.phoneBadgeIcon}>📞</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.contactLabel}>{t('contact.title')}</Text>
+              <Text style={styles.contactNumber}>{displayNumber || '—'}</Text>
+            </View>
+          </View>
+          {phoneEditing ? (
+            <View style={{ marginTop: spacing.md }}>
+              <TextInput
+                style={styles.input}
+                value={newPhone}
+                onChangeText={(v) => setNewPhone(formatPhone(v))}
+                keyboardType="phone-pad"
+                placeholder="+998 90 123 45 67"
+                autoFocus
+              />
+              <Button
+                title={t('contact.save')}
+                onPress={saveNewNumber}
+                variant="accent"
+                style={{ marginTop: spacing.sm, opacity: isValidPhone(newPhone) ? 1 : 0.5 }}
+              />
+            </View>
+          ) : (
+            <>
+              <Text style={styles.contactQuestion}>{t('contact.question')}</Text>
+              <TouchableOpacity style={styles.changeBtn} onPress={startEditingPhone} activeOpacity={0.85}>
+                <Text style={styles.changeBtnText}>{t('contact.change')}</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
 
         <Text style={styles.label}>JSHSHIR (14 raqam)</Text>
         <TextInput style={styles.input} value={pinfl} onChangeText={setPinfl} placeholder="JSHSHIR" keyboardType="number-pad" maxLength={14} />
@@ -224,6 +300,34 @@ const styles = StyleSheet.create({
   },
   pickerValue: { fontSize: 16, color: colors.text },
   pickerPlaceholder: { fontSize: 16, color: colors.textMuted },
+  contactCard: {
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  contactTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  phoneBadge: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: '#EDE7FF',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  phoneBadgeIcon: { fontSize: 20 },
+  contactLabel: { ...typography.caption, color: colors.textSecondary },
+  contactNumber: { ...typography.h3, color: colors.text, marginTop: 2, letterSpacing: 0.5 },
+  contactQuestion: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.md, lineHeight: 19 },
+  changeBtn: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  changeBtnText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
   preview: {
     width: '100%',
     aspectRatio: 4 / 3,
