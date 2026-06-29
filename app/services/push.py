@@ -228,6 +228,27 @@ async def notify_order_completed(session: Session, order):
     )
 
 
+async def notify_passenger_no_driver(session: Session, order):
+    """Notify passenger that no driver accepted in time (order auto-expired)."""
+    if not order.passenger_id:
+        return
+    await send_push(
+        session,
+        recipient_type="user",
+        recipient_id=order.passenger_id,
+        title="⏰ Haydovchi topilmadi",
+        body=(
+            f"{order.from_city} → {order.to_city} · "
+            "Afsuski, hozircha haydovchi topilmadi. Qaytadan urinib ko'ring."
+        ),
+        data={
+            "type": "order_expired",
+            "order_id": order.id,
+        },
+        channel_id="orders_v2",
+    )
+
+
 async def notify_balance_topup(session: Session, driver_id: int, amount: int, bonus: int = 0):
     """Notify driver about balance top-up."""
     body = f"+{_fmt_amount(amount)} so'm"

@@ -1562,6 +1562,15 @@ async def run():
     except Exception as e:
         logger.error(f"Commission scheduler failed to start: {e}")
 
+    # Start the order auto-expiry background task (marks immediate "new" orders as
+    # "expired" after ORDER_EXPIRY_MINUTES with no driver, and notifies the passenger).
+    try:
+        from app.services.order_expiry import start_order_expiry_scheduler
+        start_order_expiry_scheduler()
+        logger.info("✅ Order-expiry scheduler started")
+    except Exception as e:
+        logger.error(f"Order-expiry scheduler failed to start: {e}")
+
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
