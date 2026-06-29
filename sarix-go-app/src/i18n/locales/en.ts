@@ -24,6 +24,7 @@ export default {
     welcomeSubtitle: 'Sarix Go - Termiz Sariosiyo taxi',
     enterPhone: 'Enter your phone number',
     phoneHint: 'An SMS will be sent for verification',
+    telegramNote: "📱 Enter a working number linked to Telegram — the verification code is sent to that number's Telegram.",
     phonePlaceholder: '+998 __ ___ __ __',
     sendCode: 'Send code',
     enterCode: 'Verification code',

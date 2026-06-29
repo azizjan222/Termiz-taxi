@@ -24,6 +24,7 @@ export default {
     welcomeSubtitle: 'Sarix Go - Termiz Sariosiyo taksi',
     enterPhone: 'Telefon raqamingizni kiriting',
     phoneHint: 'Tasdiqlash uchun SMS yuboriladi',
+    telegramNote: "📱 Telegram'ga ulangan, ishlaydigan raqamingizni kiriting — tasdiqlash kodi o'sha raqamning Telegram'iga yuboriladi.",
     phonePlaceholder: '+998 __ ___ __ __',
     sendCode: 'Kodni yuborish',
     enterCode: 'Tasdiqlash kodi',

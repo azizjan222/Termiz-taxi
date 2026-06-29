@@ -24,6 +24,7 @@ export default {
     welcomeSubtitle: 'Sarix Go - Termiz Sariosiyo такси',
     enterPhone: 'Введите номер телефона',
     phoneHint: 'SMS будет отправлен для подтверждения',
+    telegramNote: '📱 Укажите действующий номер, привязанный к Telegram — код подтверждения придёт в Telegram этого номера.',
     phonePlaceholder: '+998 __ ___ __ __',
     sendCode: 'Отправить код',
     enterCode: 'Код подтверждения',
