@@ -41,14 +41,28 @@ Notifications.setNotificationHandler({
   },
 });
 
+// Versioned orders channel id. Must match the backend's `channel_id="orders_v2"`
+// used by all order pushes. Android does not let a channel's importance/sound
+// change after creation, so we use a fresh versioned id (and delete the legacy
+// 'orders' channel) to guarantee MAX importance — heads-up + audible + prompt
+// (incl. background) delivery.
+export const ORDERS_CHANNEL = 'orders_v2';
+
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('orders', {
+    // Remove the legacy channel whose settings got "stuck" at a lower importance.
+    try {
+      await Notifications.deleteNotificationChannelAsync('orders');
+    } catch {}
+
+    await Notifications.setNotificationChannelAsync(ORDERS_CHANNEL, {
       name: 'Buyurtmalar',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#F4C430',
       sound: 'default',
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
     await Notifications.setNotificationChannelAsync('balance', {
       name: 'Balans',
@@ -140,7 +154,7 @@ export async function presentLocalNotification(
   title: string,
   body: string,
   data: Record<string, any> = {},
-  channelId: string = 'orders'
+  channelId: string = ORDERS_CHANNEL
 ): Promise<void> {
   try {
     await Notifications.scheduleNotificationAsync({
