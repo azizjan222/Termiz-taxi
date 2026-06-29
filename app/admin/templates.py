@@ -25,6 +25,7 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans
 <nav class="col-md-2 sidebar p-0">
 <div class="p-3 text-white fw-bold">Sarix Go Admin</div>
 <a href="/admin/">Dashboard</a>
+<a href="/admin/statistics">📊 Statistika</a>
 <a href="/admin/drivers">Haydovchilar</a>
 <a href="/admin/passengers">Yo'lovchilar</a>
 <a href="/admin/orders">Buyurtmalar</a>
@@ -117,6 +118,186 @@ tb.innerHTML='';
 const online=d.is_online?'<span class="badge bg-info">Online</span>':'<span class="badge bg-secondary">Oflayn</span>';
 tb.innerHTML+=`<tr><td>${i+1}</td><td>${esc((d.first_name||'')+' '+(d.last_name||''))}</td><td>${esc(d.phone||'')}</td><td>${d.total_orders||0}</td><td>${(d.rating||5).toFixed(1)}</td><td>${online}</td></tr>`;
 });
+}).catch(e=>console.error(e));
+</script>"""
+
+STATISTICS_HTML = """<h2>📊 Statistika</h2>
+<p class="text-muted">Foydalanuvchilar o'sishi, faollik va hududlar bo'yicha tahlil</p>
+
+<h5 class="mt-3">🆕 Yangi foydalanuvchilar (yo'lovchilar) — ro'yxatdan o'tganlar</h5>
+<div class="row g-3 mb-3">
+<div class="col-md-3"><div class="stat-card bg-primary"><h6>So'nggi 24 soat</h6><h3 id="nu-day">...</h3></div></div>
+<div class="col-md-3"><div class="stat-card bg-info"><h6>So'nggi 7 kun</h6><h3 id="nu-week">...</h3></div></div>
+<div class="col-md-3"><div class="stat-card bg-success"><h6>So'nggi 30 kun</h6><h3 id="nu-month">...</h3></div></div>
+<div class="col-md-3"><div class="stat-card bg-dark"><h6>So'nggi 1 yil</h6><h3 id="nu-year">...</h3></div></div>
+</div>
+<p class="text-muted small">Jami yo'lovchilar: <b id="nu-total">...</b> · Jami haydovchilar: <b id="nd-total">...</b></p>
+
+<h5 class="mt-4">🔥 Faol foydalanuvchilar — ilovadan haqiqatda foydalanganlar</h5>
+<div class="row g-3 mb-3">
+<div class="col-md-3"><div class="stat-card bg-primary"><h6>Kunlik faol (DAU)</h6><h3 id="au-day">...</h3><small>so'nggi 24 soat</small></div></div>
+<div class="col-md-3"><div class="stat-card bg-info"><h6>Haftalik faol (WAU)</h6><h3 id="au-week">...</h3><small>so'nggi 7 kun</small></div></div>
+<div class="col-md-3"><div class="stat-card bg-success"><h6>Oylik faol (MAU)</h6><h3 id="au-month">...</h3><small>so'nggi 30 kun</small></div></div>
+<div class="col-md-3"><div class="stat-card bg-dark"><h6>Yillik faol</h6><h3 id="au-year">...</h3><small>so'nggi 1 yil</small></div></div>
+</div>
+<p class="text-muted small">Faol haydovchilar — kunlik: <b id="ad-day">...</b> · haftalik: <b id="ad-week">...</b> · oylik: <b id="ad-month">...</b></p>
+
+<div class="row">
+<div class="col-md-8">
+<div class="card mb-3"><div class="card-body">
+<h6>📈 Kunlik yangi foydalanuvchilar (so'nggi 30 kun)</h6>
+<canvas id="chart-daily" height="110"></canvas>
+</div></div>
+</div>
+<div class="col-md-4">
+<div class="card mb-3"><div class="card-body">
+<h6>🧩 Buyurtma holatlari</h6>
+<canvas id="chart-status" height="220"></canvas>
+</div></div>
+</div>
+</div>
+
+<div class="row">
+<div class="col-md-6">
+<div class="card mb-3"><div class="card-body">
+<h6>📅 Oylik o'sish (so'nggi 12 oy)</h6>
+<canvas id="chart-monthly" height="170"></canvas>
+</div></div>
+</div>
+<div class="col-md-6">
+<div class="card mb-3"><div class="card-body">
+<h6>🕐 Faollik soatlari — qaysi soatda ko'p buyurtma berilgan</h6>
+<canvas id="chart-hours" height="170"></canvas>
+</div></div>
+</div>
+</div>
+
+<div class="row">
+<div class="col-md-6">
+<div class="card mb-3"><div class="card-body">
+<h6>🗓️ Hafta kunlari bo'yicha faollik — eng band kun</h6>
+<canvas id="chart-weekday" height="170"></canvas>
+</div></div>
+</div>
+<div class="col-md-6">
+<div class="card mb-3"><div class="card-body">
+<h6>💎 Mijozlar sodiqligi</h6>
+<canvas id="chart-loyalty" height="170"></canvas>
+<p class="text-muted small mt-2 mb-0">Takroriy mijozlar = bir martadan ko'p buyurtma berganlar. Bu ko'rsatkich qanchalik yuqori bo'lsa, ilova shunchalik "yopishqoq" (sodiqlik kuchli).</p>
+</div></div>
+</div>
+</div>
+
+<h5 class="mt-2">💰 Moliyaviy va sodiqlik ko'rsatkichlari</h5>
+<div class="row g-3 mb-4">
+<div class="col-md-3"><div class="stat-card bg-success"><h6>Umumiy aylanma (GMV)</h6><h3 id="fin-gmv">...</h3><small>yakunlangan buyurtmalar</small></div></div>
+<div class="col-md-3"><div class="stat-card bg-primary"><h6>O'rtacha buyurtma summasi</h6><h3 id="fin-aov">...</h3><small>so'm</small></div></div>
+<div class="col-md-3"><div class="stat-card bg-info"><h6>Takroriy mijozlar</h6><h3 id="fin-repeat">...</h3><small id="fin-repeat-rate"></small></div></div>
+<div class="col-md-3"><div class="stat-card bg-dark"><h6>Jami unikal mijozlar</h6><h3 id="fin-distinct">...</h3><small>buyurtma berganlar</small></div></div>
+</div>
+
+<div class="row">
+<div class="col-md-6">
+<div class="card mb-3"><div class="card-body">
+<h6>🏙️ Eng faol tumanlar/shaharlar (jo'nash joyi bo'yicha)</h6>
+<canvas id="chart-districts" height="200"></canvas>
+<table class="table table-sm mt-3" id="districts-table"><thead><tr><th>#</th><th>Tuman / Shahar</th><th>Buyurtmalar</th></tr></thead><tbody></tbody></table>
+</div></div>
+</div>
+<div class="col-md-6">
+<div class="card mb-3"><div class="card-body">
+<h6>🛣️ Top yo'nalishlar</h6>
+<table class="table table-sm" id="routes-stat-table"><thead><tr><th>#</th><th>Yo'nalish</th><th>Soni</th></tr></thead><tbody></tbody></table>
+<h6 class="mt-3">🚕 Xizmat turlari</h6>
+<canvas id="chart-services" height="140"></canvas>
+</div></div>
+</div>
+</div>
+
+<div class="row g-3 mb-4">
+<div class="col-md-3"><div class="stat-card bg-success"><h6>Yakunlangan buyurtmalar</h6><h3 id="sum-completed">...</h3><small id="sum-completion-rate"></small></div></div>
+<div class="col-md-3"><div class="stat-card bg-danger"><h6>Bekor qilingan</h6><h3 id="sum-cancelled">...</h3><small id="sum-cancel-rate"></small></div></div>
+<div class="col-md-3"><div class="stat-card bg-warning"><h6>O'rtacha haydovchi reytingi</h6><h3 id="sum-rating">...</h3><small>5 yulduzdan</small></div></div>
+<div class="col-md-3"><div class="stat-card bg-secondary"><h6>Yangi haydovchilar (30 kun)</h6><h3 id="sum-new-drivers">...</h3></div></div>
+</div>"""
+
+STATISTICS_JS = """<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const _fmt=n=>(Number(n)||0).toLocaleString();
+const STATUS_LABELS={completed:'Yakunlangan',cancelled:'Bekor qilingan',new:'Yangi',accepted:'Qabul qilingan',in_progress:'Jarayonda',expired:'Muddati o\\'tgan',unknown:'Nomalum'};
+const SERVICE_LABELS={taxi:'Taksi',parcel:'Pochta',full_car:'To\\'liq mashina'};
+const PALETTE=['#0d6efd','#198754','#dc3545','#ffc107','#0dcaf0','#6610f2','#fd7e14','#20c997','#6c757d','#d63384'];
+let _charts={};
+function _mkChart(id,cfg){
+  const el=document.getElementById(id);
+  if(!el||typeof Chart==='undefined')return;
+  if(_charts[id])_charts[id].destroy();
+  _charts[id]=new Chart(el,cfg);
+}
+fetch('/admin/api/statistics').then(r=>r.json()).then(d=>{
+  // ----- New users cards -----
+  document.getElementById('nu-day').textContent=_fmt(d.new_users.day);
+  document.getElementById('nu-week').textContent=_fmt(d.new_users.week);
+  document.getElementById('nu-month').textContent=_fmt(d.new_users.month);
+  document.getElementById('nu-year').textContent=_fmt(d.new_users.year);
+  document.getElementById('nu-total').textContent=_fmt(d.new_users.total);
+  document.getElementById('nd-total').textContent=_fmt(d.new_drivers.total);
+  // ----- Active users cards -----
+  document.getElementById('au-day').textContent=_fmt(d.active.dau);
+  document.getElementById('au-week').textContent=_fmt(d.active.wau);
+  document.getElementById('au-month').textContent=_fmt(d.active.mau);
+  document.getElementById('au-year').textContent=_fmt(d.active.yau);
+  document.getElementById('ad-day').textContent=_fmt(d.active.driver_dau);
+  document.getElementById('ad-week').textContent=_fmt(d.active.driver_wau);
+  document.getElementById('ad-month').textContent=_fmt(d.active.driver_mau);
+  // ----- Summary cards -----
+  document.getElementById('sum-completed').textContent=_fmt(d.completed_orders);
+  document.getElementById('sum-completion-rate').textContent='Konversiya: '+d.completion_rate+'%';
+  document.getElementById('sum-cancelled').textContent=_fmt(d.cancelled_orders);
+  document.getElementById('sum-cancel-rate').textContent=d.cancellation_rate+'% bekor';
+  document.getElementById('sum-rating').textContent=(d.avg_driver_rating||0).toFixed(2);
+  document.getElementById('sum-new-drivers').textContent=_fmt(d.new_drivers.month);
+
+  // ----- Daily new users (line) -----
+  _mkChart('chart-daily',{type:'line',data:{labels:d.daily_new_users.map(x=>x.date.slice(5)),datasets:[{label:'Yangi foydalanuvchilar',data:d.daily_new_users.map(x=>x.count),borderColor:'#0d6efd',backgroundColor:'rgba(13,110,253,.15)',fill:true,tension:.3,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+
+  // ----- Monthly growth (bar) -----
+  _mkChart('chart-monthly',{type:'bar',data:{labels:d.monthly_new_users.map(x=>x.month),datasets:[{label:'Yangi foydalanuvchilar',data:d.monthly_new_users.map(x=>x.count),backgroundColor:'#198754'}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+
+  // ----- Hours (bar) -----
+  _mkChart('chart-hours',{type:'bar',data:{labels:d.orders_by_hour.map(x=>x.hour+':00'),datasets:[{label:'Buyurtmalar',data:d.orders_by_hour.map(x=>x.count),backgroundColor:'#fd7e14'}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+
+  // ----- Weekday activity (bar) -----
+  _mkChart('chart-weekday',{type:'bar',data:{labels:(d.orders_by_weekday||[]).map(x=>x.day),datasets:[{label:'Buyurtmalar',data:(d.orders_by_weekday||[]).map(x=>x.count),backgroundColor:'#20c997'}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+
+  // ----- Loyalty (doughnut: repeat vs one-time) -----
+  _mkChart('chart-loyalty',{type:'doughnut',data:{labels:['Takroriy mijozlar','Bir martalik'],datasets:[{data:[d.repeat_customers||0,d.one_time_customers||0],backgroundColor:['#198754','#adb5bd']}]},options:{plugins:{legend:{position:'bottom'}}}});
+
+  // ----- Financial / loyalty cards -----
+  document.getElementById('fin-gmv').textContent=_fmt(d.total_gmv)+" so'm";
+  document.getElementById('fin-aov').textContent=_fmt(d.avg_order_value);
+  document.getElementById('fin-repeat').textContent=_fmt(d.repeat_customers);
+  document.getElementById('fin-repeat-rate').textContent='Sodiqlik: '+(d.repeat_rate||0)+'%';
+  document.getElementById('fin-distinct').textContent=_fmt(d.distinct_customers);
+
+  // ----- Status (doughnut) -----
+  const stK=Object.keys(d.order_status||{});
+  _mkChart('chart-status',{type:'doughnut',data:{labels:stK.map(k=>STATUS_LABELS[k]||k),datasets:[{data:stK.map(k=>d.order_status[k]),backgroundColor:PALETTE}]},options:{plugins:{legend:{position:'bottom'}}}});
+
+  // ----- Services (doughnut) -----
+  const svK=Object.keys(d.service_types||{});
+  _mkChart('chart-services',{type:'doughnut',data:{labels:svK.map(k=>SERVICE_LABELS[k]||k),datasets:[{data:svK.map(k=>d.service_types[k]),backgroundColor:PALETTE}]},options:{plugins:{legend:{position:'bottom'}}}});
+
+  // ----- Districts (horizontal bar + table) -----
+  _mkChart('chart-districts',{type:'bar',data:{labels:d.districts.map(x=>x.name),datasets:[{label:'Buyurtmalar',data:d.districts.map(x=>x.count),backgroundColor:'#6610f2'}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}}});
+  const dtb=document.querySelector('#districts-table tbody');dtb.innerHTML='';
+  if(!d.districts.length)dtb.innerHTML='<tr><td colspan="3" class="text-muted">Hozircha ma\\'lumot yo\\'q</td></tr>';
+  d.districts.forEach((x,i)=>{dtb.innerHTML+=`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td>${_fmt(x.count)}</td></tr>`;});
+
+  // ----- Top routes (table) -----
+  const rtb=document.querySelector('#routes-stat-table tbody');rtb.innerHTML='';
+  if(!d.top_routes.length)rtb.innerHTML='<tr><td colspan="3" class="text-muted">Hozircha ma\\'lumot yo\\'q</td></tr>';
+  d.top_routes.forEach((x,i)=>{rtb.innerHTML+=`<tr><td>${i+1}</td><td>${esc(x.route)}</td><td>${_fmt(x.count)}</td></tr>`;});
 }).catch(e=>console.error(e));
 </script>"""
 
