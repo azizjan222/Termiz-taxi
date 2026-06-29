@@ -13,6 +13,8 @@ from app.admin.templates import (
     render_login,
     DASHBOARD_HTML,
     DASHBOARD_JS,
+    STATISTICS_HTML,
+    STATISTICS_JS,
     DRIVERS_HTML,
     DRIVERS_JS,
     PASSENGERS_HTML,
@@ -67,13 +69,21 @@ async def dashboard(request: web.Request) -> web.Response:
 
 
 @require_admin
+async def statistics_page(request: web.Request) -> web.Response:
+    """GET /admin/statistics - analytics page (growth, activity, districts)."""
+    return web.Response(
+        text=render_page("Statistika", STATISTICS_HTML, STATISTICS_JS),
+        content_type="text/html",
+    )
+
+
+@require_admin
 async def drivers_page(request: web.Request) -> web.Response:
     """GET /admin/drivers - drivers table."""
     return web.Response(
         text=render_page("Haydovchilar", DRIVERS_HTML, DRIVERS_JS),
         content_type="text/html",
     )
-
 
 @require_admin
 async def passengers_page(request: web.Request) -> web.Response:
@@ -126,6 +136,7 @@ def setup_page_routes(app: web.Application):
     app.router.add_post("/admin/login", login_post)
     app.router.add_get("/admin/logout", logout)
     app.router.add_get("/admin/", dashboard)
+    app.router.add_get("/admin/statistics", statistics_page)
     app.router.add_get("/admin/drivers", drivers_page)
     app.router.add_get("/admin/passengers", passengers_page)
     app.router.add_get("/admin/orders", orders_page)

@@ -1,8 +1,10 @@
 """Admin panel JSON API endpoints."""
 import logging
-from datetime import datetime
+from collections import Counter, OrderedDict
+from datetime import datetime, timedelta
 
 from aiohttp import web
+from sqlalchemy import func
 
 from app.admin.middleware import require_admin_api
 from app.database import get_session
@@ -767,8 +769,196 @@ async def api_create_driver(request: web.Request) -> web.Response:
         session.close()
 
 
+@require_admin_api
+async def api_statistics(request: web.Request) -> web.Response:
+    """GET /admin/api/statistics - rich analytics for the statistics page.
+
+    Returns: new users/drivers over rolling windows (24h / 7d / 30d / 1y), active
+    users (DAU/WAU/MAU/yearly via last_active), district usage (by order from_city),
+    daily growth (30 days), monthly growth (12 months), peak hours, order-status and
+    service-type breakdown, top routes, completion/cancellation rates and avg rating.
+
+    All aggregation is done in Python (not SQL date functions) so it works identically
+    on SQLite and Postgres.
+    """
+    session = get_session()
+    try:
+        now = datetime.utcnow()
+        day_ago = now - timedelta(days=1)
+        week_ago = now - timedelta(days=7)
+        month_ago = now - timedelta(days=30)
+        year_ago = now - timedelta(days=365)
+
+        def _count_since(model, column, since):
+            return session.query(model).filter(column >= since).count()
+
+        # ---- New registrations over rolling windows ----
+        new_users = {
+            "day": _count_since(User, User.created_at, day_ago),
+            "week": _count_since(User, User.created_at, week_ago),
+            "month": _count_since(User, User.created_at, month_ago),
+            "year": _count_since(User, User.created_at, year_ago),
+            "total": session.query(User).count(),
+        }
+        new_drivers = {
+            "day": _count_since(Driver, Driver.created_at, day_ago),
+            "week": _count_since(Driver, Driver.created_at, week_ago),
+            "month": _count_since(Driver, Driver.created_at, month_ago),
+            "year": _count_since(Driver, Driver.created_at, year_ago),
+            "total": session.query(Driver).count(),
+        }
+
+        # ---- Active users / drivers (last_active) ----
+        active = {
+            "dau": _count_since(User, User.last_active, day_ago),
+            "wau": _count_since(User, User.last_active, week_ago),
+            "mau": _count_since(User, User.last_active, month_ago),
+            "yau": _count_since(User, User.last_active, year_ago),
+            "driver_dau": _count_since(Driver, Driver.last_active, day_ago),
+            "driver_wau": _count_since(Driver, Driver.last_active, week_ago),
+            "driver_mau": _count_since(Driver, Driver.last_active, month_ago),
+        }
+
+        # ---- Single pass over orders for districts / routes / status / hours ----
+        order_rows = session.query(
+            Order.created_at,
+            Order.from_city,
+            Order.to_city,
+            Order.status,
+            Order.service_type,
+            Order.price,
+            Order.passenger_phone,
+        ).all()
+
+        district_counter = Counter()   # which district's residents order most (by from_city)
+        route_counter = Counter()
+        status_counter = Counter()
+        service_counter = Counter()
+        hour_counter = [0] * 24
+        weekday_counter = [0] * 7      # Mon..Sun (Python weekday(): Mon=0)
+        phone_counter = Counter()      # orders per passenger -> repeat-customer analysis
+        gmv = 0                        # total money from completed orders (turnover)
+        completed_priced = 0
+
+        for created_at, from_city, to_city, status, service_type, price, phone in order_rows:
+            fc = (from_city or "").strip()
+            tc = (to_city or "").strip()
+            if fc:
+                district_counter[fc] += 1
+            if fc and tc:
+                route_counter[f"{fc} \u2192 {tc}"] += 1
+            status_counter[(status or "unknown")] += 1
+            service_counter[(service_type or "taxi")] += 1
+            if created_at is not None:
+                hour_counter[created_at.hour] += 1
+                weekday_counter[created_at.weekday()] += 1
+            if phone:
+                phone_counter[phone] += 1
+            if status == "completed":
+                gmv += (price or 0)
+                completed_priced += 1
+
+        districts = [
+            {"name": name, "count": cnt}
+            for name, cnt in district_counter.most_common(10)
+        ]
+        top_routes = [
+            {"route": name, "count": cnt}
+            for name, cnt in route_counter.most_common(10)
+        ]
+        orders_by_hour = [{"hour": h, "count": hour_counter[h]} for h in range(24)]
+
+        total_orders = sum(status_counter.values())
+        completed = status_counter.get("completed", 0)
+        cancelled = status_counter.get("cancelled", 0)
+        completion_rate = round(completed / total_orders * 100, 1) if total_orders else 0.0
+        cancellation_rate = round(cancelled / total_orders * 100, 1) if total_orders else 0.0
+
+        # ---- Loyalty / money metrics (my own additions) ----
+        # Repeat customers = passengers who placed more than one order. A high repeat
+        # rate is the strongest signal of product-market fit for a taxi service.
+        repeat_customers = sum(1 for c in phone_counter.values() if c >= 2)
+        one_time_customers = sum(1 for c in phone_counter.values() if c == 1)
+        distinct_customers = len(phone_counter)
+        repeat_rate = round(
+            repeat_customers / distinct_customers * 100, 1
+        ) if distinct_customers else 0.0
+        avg_order_value = int(gmv / completed_priced) if completed_priced else 0
+        weekdays = [
+            "Dushanba", "Seshanba", "Chorshanba", "Payshanba",
+            "Juma", "Shanba", "Yakshanba",
+        ]
+        orders_by_weekday = [
+            {"day": weekdays[i], "count": weekday_counter[i]} for i in range(7)
+        ]
+
+        # ---- Daily new users (last 30 days) ----
+        daily = OrderedDict()
+        for i in range(29, -1, -1):
+            key = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+            daily[key] = 0
+        for (created_at,) in session.query(User.created_at).filter(
+            User.created_at >= now - timedelta(days=30)
+        ).all():
+            if created_at is not None:
+                key = created_at.strftime("%Y-%m-%d")
+                if key in daily:
+                    daily[key] += 1
+        daily_new_users = [{"date": k, "count": v} for k, v in daily.items()]
+
+        # ---- Monthly new users (last 12 months) ----
+        monthly = OrderedDict()
+        y, m = now.year, now.month
+        for i in range(11, -1, -1):
+            mm = m - i
+            yy = y
+            while mm <= 0:
+                mm += 12
+                yy -= 1
+            monthly[f"{yy:04d}-{mm:02d}"] = 0
+        for (created_at,) in session.query(User.created_at).filter(
+            User.created_at >= now - timedelta(days=366)
+        ).all():
+            if created_at is not None:
+                key = created_at.strftime("%Y-%m")
+                if key in monthly:
+                    monthly[key] += 1
+        monthly_new_users = [{"month": k, "count": v} for k, v in monthly.items()]
+
+        avg_driver_rating = round(session.query(func.avg(Driver.rating)).scalar() or 0, 2)
+
+        return web.json_response({
+            "new_users": new_users,
+            "new_drivers": new_drivers,
+            "active": active,
+            "districts": districts,
+            "top_routes": top_routes,
+            "orders_by_hour": orders_by_hour,
+            "daily_new_users": daily_new_users,
+            "monthly_new_users": monthly_new_users,
+            "order_status": dict(status_counter),
+            "service_types": dict(service_counter),
+            "total_orders": total_orders,
+            "completed_orders": completed,
+            "cancelled_orders": cancelled,
+            "completion_rate": completion_rate,
+            "cancellation_rate": cancellation_rate,
+            "avg_driver_rating": avg_driver_rating,
+            "orders_by_weekday": orders_by_weekday,
+            "repeat_customers": repeat_customers,
+            "one_time_customers": one_time_customers,
+            "distinct_customers": distinct_customers,
+            "repeat_rate": repeat_rate,
+            "avg_order_value": avg_order_value,
+            "total_gmv": gmv,
+        })
+    finally:
+        session.close()
+
+
 def setup_api_routes(app: web.Application):
     app.router.add_get("/admin/api/stats", api_stats)
+    app.router.add_get("/admin/api/statistics", api_statistics)
     app.router.add_get("/admin/api/drivers", api_drivers)
     app.router.add_post("/admin/api/drivers", api_create_driver)
     app.router.add_get("/admin/api/drivers/{id}", api_driver_detail)
