@@ -148,6 +148,46 @@ export function buildNavCandidates(lat: number, lon: number, _os: 'ios' | 'andro
 }
 
 /**
+ * Join an address line with its city, avoiding duplication, into a single search query.
+ * e.g. ("Mustaqillik ko'chasi 306", "Denov") -> "Mustaqillik ko'chasi 306, Denov".
+ * When the address already mentions the city, the city is not appended. TOTAL: never throws.
+ */
+export function navTextFor(addr?: string | null, city?: string | null): string {
+  const a = (addr || '').trim();
+  const c = (city || '').trim();
+  if (a && c && !a.toLowerCase().includes(c.toLowerCase())) return `${a}, ${c}`;
+  return a || c;
+}
+
+/**
+ * The best text query for the CURRENT navigation stage, used as a fallback when precise
+ * coordinates are missing (most inter-city orders only carry city/address text, not a pin):
+ *  - status 'in_progress' (passenger on board) -> destination text (to_address/to_city)
+ *  - otherwise (heading to pickup)             -> pickup text (from_address/from_city)
+ * Returns '' when there is no usable text. TOTAL: never throws.
+ */
+export function buildNavTextQuery(order: DriverOrder | null): string {
+  if (!order) return '';
+  if (isEnRouteToDestination(order)) return navTextFor(order.to_address, order.to_city);
+  return navTextFor(order.from_address, order.from_city);
+}
+
+/**
+ * Ordered Yandex candidate URLs that open a SEARCH for the given text (used when we have
+ * no coordinates, only an address/city). Order: Yandex Navigator -> Yandex Maps app ->
+ * Yandex Maps web. Returns [] for an empty query. TOTAL: never throws.
+ */
+export function buildNavCandidatesByText(query: string): string[] {
+  const q = encodeURIComponent((query || '').trim());
+  if (!q) return [];
+  return [
+    `yandexnavi://map_search?text=${q}`,
+    `yandexmaps://maps.yandex.ru/?text=${q}`,
+    `https://yandex.com/maps/?text=${q}`,
+  ];
+}
+
+/**
  * Shorten a long Yandex address line to a clear, driver-friendly label.
  *
  * Yandex `getAddressLine()` returns the FULL chain, e.g.

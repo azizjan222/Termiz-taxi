@@ -15,6 +15,8 @@ import { useRealtimeStore } from '../../src/store/realtime';
 import YandexMap, { type YandexMapHandle } from '../../src/components/YandexMap';
 import {
   buildNavCandidates,
+  buildNavCandidatesByText,
+  buildNavTextQuery,
   deriveTarget,
   isEnRouteToDestination,
   deriveMapVisible,
@@ -180,21 +182,34 @@ export default function OrderDetailScreen() {
     // Navigate to the current stage target: passenger pickup before pickup,
     // destination once the passenger is on board.
     const target = deriveTarget(order);
-    if (!target) {
-      Alert.alert(
-        t('common.error'),
-        isEnRouteToDestination(order)
-          ? t('more.locUnavailableDest')
-          : order?.service_type === 'parcel'
-            ? t('more.locUnavailableParcel')
-            : t('more.locUnavailablePassenger'),
-      );
-      return;
+    let candidates: string[];
+    let webFallback: string;
+
+    if (target) {
+      // We have a precise pin -> route straight to the coordinates.
+      candidates = buildNavCandidates(target.lat, target.lon, Platform.OS === 'ios' ? 'ios' : 'android');
+      webFallback = `https://yandex.com/maps/?rtext=~${target.lat}%2C${target.lon}&rtt=auto`;
+    } else {
+      // No coordinates (common for inter-city orders that only carry city/address
+      // text) -> fall back to a Yandex SEARCH for the address text instead of failing.
+      const query = buildNavTextQuery(order);
+      if (!query) {
+        // Truly nothing to navigate to: neither a pin nor an address/city.
+        Alert.alert(
+          t('common.error'),
+          isEnRouteToDestination(order)
+            ? t('more.locUnavailableDest')
+            : order?.service_type === 'parcel'
+              ? t('more.locUnavailableParcel')
+              : t('more.locUnavailablePassenger'),
+        );
+        return;
+      }
+      candidates = buildNavCandidatesByText(query);
+      webFallback = `https://yandex.com/maps/?text=${encodeURIComponent(query)}`;
     }
-    const lat = target.lat;
-    const lon = target.lon;
-    // Try Yandex Navigator, then Yandex Maps, then a universal geo/Google fallback.
-    const candidates = buildNavCandidates(lat, lon, Platform.OS === 'ios' ? 'ios' : 'android');
+
+    // Try Yandex Navigator, then Yandex Maps app, then the web fallback.
     for (const url of candidates) {
       try {
         const ok = await Linking.canOpenURL(url);
@@ -205,7 +220,7 @@ export default function OrderDetailScreen() {
       } catch {}
     }
     // Last resort: open Yandex Maps on the web (never Google Maps).
-    Linking.openURL(`https://yandex.com/maps/?rtext=~${lat}%2C${lon}&rtt=auto`).catch(() => {});
+    Linking.openURL(webFallback).catch(() => {});
   };
 
   const callPassenger = () => {
