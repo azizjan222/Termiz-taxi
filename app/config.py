@@ -202,3 +202,11 @@ BOT_USERNAME = _get("BOT_USERNAME", "termizsariosiyotaxi_bot")
 # Admin panel credentials
 ADMIN_USERNAME = _get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = _get("ADMIN_PASSWORD", "admin123")
+
+
+
+# Error monitoring (optional). Set SENTRY_DSN to enable Sentry crash/error reporting.
+# When empty (or the sentry-sdk package is not installed) monitoring is a no-op, so the
+# app runs exactly as before. ENVIRONMENT tags events (e.g. "production", "staging").
+SENTRY_DSN = _get("SENTRY_DSN", "")
+ENVIRONMENT = _get("ENVIRONMENT", "production")
