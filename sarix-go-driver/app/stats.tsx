@@ -106,9 +106,12 @@ export default function StatsScreen() {
             style={styles.hero}
           >
             <Text style={styles.heroLabel}>{t('stats.netEarnings')}</Text>
-            <Text style={styles.heroValue}>
-              {formatPrice(stats.net_earnings)} <Text style={styles.heroCurrency}>{t('more.currency')}</Text>
-            </Text>
+            <View style={styles.heroValueRow}>
+              <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
+                {formatPrice(stats.net_earnings)}
+              </Text>
+              <Text style={styles.heroCurrency}> {t('more.currency')}</Text>
+            </View>
             <View style={styles.heroChips}>
               <View style={styles.heroChip}>
                 <Text style={styles.heroChipText}>
@@ -312,8 +315,33 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     elevation: 6,
   },
   heroLabel: { ...typography.caption, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
-  heroValue: { ...typography.h1, fontSize: 34, color: colors.accent, marginVertical: spacing.xs },
-  heroCurrency: { ...typography.h3, color: colors.accent, fontWeight: '700' },
+  heroValueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    flexWrap: 'nowrap',
+    marginVertical: spacing.xs,
+  },
+  heroValue: {
+    ...typography.h1,
+    fontSize: 36,
+    lineHeight: 46,
+    paddingVertical: 2,
+    flexShrink: 1,
+    color: colors.accent,
+    fontWeight: '900',
+    textShadowColor: 'rgba(14,23,48,0.25)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  heroCurrency: {
+    ...typography.h3,
+    color: colors.accent,
+    fontWeight: '800',
+    marginBottom: 5,
+    textShadowColor: 'rgba(14,23,48,0.25)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
   heroChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   heroChip: {
     backgroundColor: 'rgba(255,255,255,0.16)',
