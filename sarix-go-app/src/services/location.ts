@@ -32,6 +32,15 @@ export type DetectResult = DetectSuccess | DetectError;
 export interface DetectOptions {
   /** Maximum time to wait for a fix, in milliseconds. Defaults to 5000. */
   timeoutMs?: number;
+  /**
+   * Called every time a MORE ACCURATE fix arrives before the detection settles.
+   * Lets the UI move the pin / re-resolve the address progressively as the GPS
+   * chip warms up (the first fix is often coarse, later fixes converge to a tight
+   * radius). Without this, a cold start would block for the whole timeout and then
+   * apply a single — possibly coarse — fix, which is why the location used to look
+   * "wrong" on the first try and only correct on a second attempt.
+   */
+  onUpdate?: (fix: DetectSuccess) => void;
 }
 
 /** Default Detection_Timeout, in milliseconds. */
@@ -113,23 +122,34 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
         resolve(value);
       };
 
+      // Record a fix and, if it is the most accurate one seen so far, keep it and
+      // notify the caller so the UI can move the pin / re-resolve the address as the
+      // GPS chip converges. Returns the fix's accuracy for the early-finish check.
+      const consider = (pos: Location.LocationObject): number => {
+        const fix: DetectSuccess = {
+          status: 'success',
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          accuracy: pos.coords.accuracy ?? null,
+        };
+        const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
+        if (!bestFix || acc < (bestFix.accuracy ?? Number.POSITIVE_INFINITY)) {
+          bestFix = fix;
+          // Push every improvement to the caller (ignore listener errors).
+          try {
+            opts?.onUpdate?.(fix);
+          } catch {}
+        }
+        return acc;
+      };
+
       timer = setTimeout(() => finish(bestFix ?? 'timeout'), timeoutMs);
 
       // Seed quickly with a single current-position read so we always have something
       // even if the watch is slow to emit, then let the watch refine it.
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest })
         .then((pos) => {
-          const fix: DetectSuccess = {
-            status: 'success',
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude,
-            accuracy: pos.coords.accuracy ?? null,
-          };
-          const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
-          if (!bestFix || acc < (bestFix.accuracy ?? Number.POSITIVE_INFINITY)) {
-            bestFix = fix;
-          }
-          if (acc <= TARGET_ACCURACY_M) finish(fix);
+          if (consider(pos) <= TARGET_ACCURACY_M && bestFix) finish(bestFix);
         })
         .catch(() => {});
 
@@ -140,18 +160,8 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
           distanceInterval: 0,
         },
         (pos) => {
-          const fix: DetectSuccess = {
-            status: 'success',
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude,
-            accuracy: pos.coords.accuracy ?? null,
-          };
-          const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
-          if (!bestFix || acc < (bestFix.accuracy ?? Number.POSITIVE_INFINITY)) {
-            bestFix = fix;
-          }
           // Good enough -> stop early so the UI doesn't wait the full timeout.
-          if (acc <= TARGET_ACCURACY_M) finish(fix);
+          if (consider(pos) <= TARGET_ACCURACY_M && bestFix) finish(bestFix);
         },
       )
         .then((sub) => {
