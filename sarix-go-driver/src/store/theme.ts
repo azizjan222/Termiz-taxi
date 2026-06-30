@@ -23,7 +23,9 @@ function resolveIsDark(mode: ThemeMode): boolean {
 }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
-  mode: 'auto',
+  // Default to LIGHT (not the device/system theme). New users always start in light
+  // mode; they can switch to 'auto' or 'dark' themselves and that choice is persisted.
+  mode: 'light',
   isDark: false,
   colors: lightColors,
 
@@ -35,7 +37,8 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
 
   init: async () => {
     const saved = (await AsyncStorage.getItem(THEME_KEY)) as ThemeMode | null;
-    const mode: ThemeMode = saved || 'auto';
+    // No saved preference -> default to LIGHT (not the system theme).
+    const mode: ThemeMode = saved || 'light';
     const isDark = resolveIsDark(mode);
     set({ mode, isDark, colors: isDark ? darkColors : lightColors });
 

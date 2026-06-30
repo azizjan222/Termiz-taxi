@@ -1113,23 +1113,60 @@ async def notify_drivers_about_new_app_order(order):
 
 async def notify_driver_order_cancelled(driver_telegram_id, order_id, refunded):
     """Called when a passenger cancels an order in the app.
-    Send the assigned driver a Telegram DM so they don't keep waiting.
+
+    The cancellation notice is sent to the ADMIN ONLY (not to the driver). The
+    driver's app is already updated in real time over WebSocket, so the driver
+    does not need — and per product decision should not receive — a Telegram bot
+    "order cancelled" message. Admin gets the bot message instead, enriched with
+    the order / driver / passenger context for monitoring.
     """
-    if not driver_telegram_id:
+    if not ADMIN_ID:
         return
+
+    # Gather context (route, passenger, driver) for the admin message. Best-effort:
+    # never let a DB hiccup block the notification path.
+    from_city = to_city = passenger_name = driver_label = None
+    session = get_session()
+    try:
+        from app.models import Order as _Order
+        order = session.query(_Order).filter_by(id=order_id).first()
+        if order:
+            from_city = order.from_city
+            to_city = order.to_city
+            passenger_name = order.passenger_name
+        drv = None
+        if driver_telegram_id:
+            drv = session.query(DBDriver).filter_by(telegram_id=driver_telegram_id).first()
+        if drv:
+            name = " ".join(p for p in [drv.first_name, drv.last_name] if p) or "—"
+            driver_label = f"{name} ({drv.phone or '—'})"
+    except Exception as e:
+        logger.error(f"Cancel-notify context lookup failed: {e}")
+    finally:
+        session.close()
+
     try:
         from telegram import Bot
         bot = Bot(token=TOKEN)
-        text = (
-            f"❌ <b>Yo'lovchi zakasni bekor qildi</b>\n"
-            f"🧷 Zakas #{order_id}"
-        )
+        lines = [
+            "🚫 <b>Yo'lovchi zakasni bekor qildi</b>",
+            f"🧷 Zakas #{order_id}",
+        ]
+        if from_city or to_city:
+            lines.append(f"📍 {from_city or '—'} → {to_city or '—'}")
+        if passenger_name:
+            lines.append(f"👤 Yo'lovchi: {passenger_name}")
+        if driver_label:
+            lines.append(f"🚖 Haydovchi: {driver_label}")
+        elif driver_telegram_id:
+            lines.append(f"🚖 Haydovchi ID: {driver_telegram_id}")
         if refunded:
-            text += "\n💰 Komissiya balansingizga qaytarildi."
-        await bot.send_message(chat_id=driver_telegram_id, text=text, parse_mode="HTML")
+            lines.append("💰 Komissiya haydovchiga qaytarildi.")
+        await bot.send_message(chat_id=ADMIN_ID, text="\n".join(lines), parse_mode="HTML")
         await bot.shutdown()
     except Exception as e:
-        logger.error(f"Failed to notify driver about cancel: {e}")
+        logger.error(f"Failed to notify admin about cancel: {e}")
+
 
 
 # ================== HAYDOVCHI RO'YXATDAN O'TISH (HUJJATLAR) ==================
@@ -1551,7 +1588,7 @@ async def run():
     )
     # Register callbacks for app→bot integration
     api_app["notify_drivers_callback"] = notify_drivers_about_new_app_order
-    api_app["bot_notify_driver_cancel"] = notify_driver_order_cancelled
+    api_app["bot_notify_order_cancel"] = notify_driver_order_cancelled
 
     # Start the deferred-commission background task (charges commission 15 min after
     # a driver accepts an order, skipping drivers on the free trial).
