@@ -78,8 +78,11 @@ async def send_push(
         "priority": priority,
         "data": data or {},
     }
-    if channel_id:
-        payload["channelId"] = channel_id
+    # Always pin a HIGH/MAX-importance Android channel. Without a channelId (or with one
+    # the app never registered) Android demotes the push to a low-importance fallback,
+    # which Doze then delays on a closed app -> the notification arrives late. Defaulting
+    # to the registered "orders_v2" (MAX) channel keeps closed-app delivery real-time.
+    payload["channelId"] = channel_id or "orders_v2"
 
     log_entry = NotificationLog(
         recipient_type=recipient_type,
