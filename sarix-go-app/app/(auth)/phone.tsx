@@ -77,6 +77,10 @@ export default function PhoneScreen() {
             hint={t('auth.phoneHint')}
             autoFocus
           />
+
+          <View style={styles.noteBox}>
+            <Text style={styles.noteText}>{t('auth.telegramNote')}</Text>
+          </View>
         </View>
 
         <View style={styles.footer}>
@@ -120,6 +124,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   body: { flex: 1 },
+  noteBox: {
+    marginTop: spacing.md,
+    backgroundColor: '#EAF2FF',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#2AABEE',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  noteText: {
+    ...typography.caption,
+    color: colors.primary,
+    lineHeight: 18,
+  },
   footer: { paddingBottom: spacing.lg, gap: spacing.md },
   backLink: { alignItems: 'center', padding: spacing.md },
   backLinkText: {
