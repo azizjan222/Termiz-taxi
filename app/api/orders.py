@@ -435,9 +435,11 @@ async def cancel_order(request: web.Request) -> web.Response:
                 "refunded": refunded,
             })
 
-        # Notify driver via Telegram bot
+        # Notify the ADMIN (not the driver) about the cancellation via the Telegram bot.
+        # The driver already gets the real-time WS update above; per product decision the
+        # driver must NOT receive a bot "order cancelled" message — only the admin does.
         if order.driver_telegram_id:
-            bot_notify = request.app.get("bot_notify_driver_cancel")
+            bot_notify = request.app.get("bot_notify_order_cancel")
             if bot_notify:
                 try:
                     await bot_notify(order.driver_telegram_id, order.id, refunded)
