@@ -119,6 +119,10 @@ export default function OrderEntryScreen() {
   // Whether the map WebView has finished loading. Kept in a ref (not state) so
   // resolveAddress always reads the current value without stale closures.
   const mapReadyRef = useRef(false);
+  // Whether the detected location has been centered+zoomed at least once. We only
+  // apply the close-up DETECT_ZOOM on the FIRST fix; later refinements just nudge the
+  // center so the map doesn't keep re-animating/zooming under the user.
+  const zoomedRef = useRef(false);
 
   const resolveAddress = useCallback((lat: number, lon: number) => {
     lastCoordsRef.current = { lat, lon };
@@ -173,7 +177,8 @@ export default function OrderEntryScreen() {
     // just re-resolve the address for the current center.
     const detected = detectedRef.current;
     if (detected) {
-      mapRef.current?.setCenter(detected.lat, detected.lon, DETECT_ZOOM);
+      mapRef.current?.setCenter(detected.lat, detected.lon, zoomedRef.current ? undefined : DETECT_ZOOM);
+      zoomedRef.current = true;
       resolveAddress(detected.lat, detected.lon);
       return;
     }
@@ -186,29 +191,53 @@ export default function OrderEntryScreen() {
     [cities]
   );
 
+  // Apply a detected fix to the UI: remember it, move the map center (zooming in close
+  // only the first time) and re-resolve its address. Used for both the initial fix and
+  // every progressive refinement as the GPS converges.
+  const applyFix = useCallback(
+    (lat: number, lon: number) => {
+      detectedRef.current = { lat, lon };
+      setCenter({ lat, lon });
+      if (mapReadyRef.current) {
+        mapRef.current?.setCenter(lat, lon, zoomedRef.current ? undefined : DETECT_ZOOM);
+        zoomedRef.current = true;
+      }
+      resolveAddress(lat, lon);
+    },
+    [resolveAddress]
+  );
+
   // Auto-detect the device location on mount (requests GPS permission).
   const detect = useCallback(async () => {
     setDetecting(true);
+    zoomedRef.current = false;
+    let gotFix = false;
     try {
-      const result = await detectLocation({ timeoutMs: 5000 });
+      const result = await detectLocation({
+        timeoutMs: 12000,
+        // As the GPS chip warms up it emits progressively tighter fixes. Apply each
+        // one immediately so the pin + address self-correct on screen — this is what
+        // removes the old "wrong address on the first try, correct on the second"
+        // behaviour for BOTH taxi and parcel (pochta) order entry.
+        onUpdate: (fix) => {
+          gotFix = true;
+          setDetecting(false);
+          applyFix(fix.lat, fix.lon);
+        },
+      });
       if (result.status === 'success') {
-        detectedRef.current = { lat: result.lat, lon: result.lon };
-        setCenter({ lat: result.lat, lon: result.lon });
-        // Zoom in close on the passenger's exact spot. If the map isn't ready yet,
-        // handleMapReady will apply this center+zoom once it loads.
-        if (mapReadyRef.current) {
-          mapRef.current?.setCenter(result.lat, result.lon, DETECT_ZOOM);
-        }
-        resolveAddress(result.lat, result.lon);
-      } else {
-        // Fall back to default center; still resolve an address for it.
+        applyFix(result.lat, result.lon);
+      } else if (!gotFix) {
+        // No fix at all (permission denied / services off / hard timeout with zero
+        // readings). Resolve an address for the current map center so the card isn't
+        // blank, but only if we never managed to detect anything.
         resolveAddress(center.lat, center.lon);
       }
     } finally {
       setDetecting(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolveAddress]);
+  }, [resolveAddress, applyFix]);
 
   useEffect(() => {
     listCities().then(setCities).catch(() => setCities([]));
