@@ -79,6 +79,7 @@ class Driver(Base):
     rating_count = Column(Integer, default=0)
     total_orders = Column(Integer, default=0)
     push_token = Column(String(200))  # Expo push token
+    language = Column(String(10), default="uz")  # uz, uz-cyrl, ru, en (for localized push)
     theme = Column(String(20), default="auto")
     # Live location (sent by the driver app every ~10s while on an active order).
     # Broadcast to the passenger so they can see the driver moving on the map.

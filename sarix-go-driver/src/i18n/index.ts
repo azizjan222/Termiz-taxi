@@ -854,6 +854,11 @@ export async function initI18n() {
 export async function changeLanguage(lang: SupportedLanguage) {
   await AsyncStorage.setItem(LANGUAGE_KEY, lang);
   await i18n.changeLanguage(lang);
+  // Re-register the push token so the backend localizes notifications to the new
+  // language immediately (dynamic import avoids a circular dependency).
+  import('../services/notifications')
+    .then((m) => m.registerPushToken())
+    .catch(() => {});
 }
 
 export default i18n;

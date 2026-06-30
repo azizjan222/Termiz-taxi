@@ -4,6 +4,7 @@ import { Platform, AppState } from 'react-native';
 import Constants from 'expo-constants';
 
 import { api } from '../api/client';
+import i18n from '../i18n';
 
 // Order events the passenger app ALSO surfaces in-app over the realtime
 // WebSocket (a local notification) while a screen is open. For these, when the
@@ -116,7 +117,7 @@ export async function registerPushToken(): Promise<boolean> {
     const token = await getExpoPushToken();
     if (!token) return false;
 
-    await api.post('/api/notifications/register-token', { token });
+    await api.post('/api/notifications/register-token', { token, language: i18n.language });
     return true;
   } catch (e) {
     return false;
