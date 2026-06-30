@@ -975,10 +975,14 @@ async def accept_order(request: web.Request) -> web.Response:
 
         # Notify passenger via WebSocket
         if order.passenger_id:
+            driver_payload = _serialize_driver(d)
+            # Passenger must see the driver's chosen contact number, not the raw
+            # Telegram/identity phone (consistent with GET /api/orders/{id}).
+            driver_payload["phone"] = d.contact_phone or d.phone
             await ws_manager.send_to_passenger(order.passenger_id, {
                 "type": "order_accepted",
                 "order_id": order.id,
-                "driver": _serialize_driver(d),
+                "driver": driver_payload,
             })
 
         # Push notification

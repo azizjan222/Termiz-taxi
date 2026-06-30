@@ -184,6 +184,7 @@ export default function DriverInfoScreen() {
           </View>
           {phoneEditing ? (
             <View style={{ marginTop: spacing.md }}>
+              <Text style={styles.label}>{t('contact.newLabel')}</Text>
               <TextInput
                 style={styles.input}
                 value={newPhone}
@@ -195,9 +196,13 @@ export default function DriverInfoScreen() {
               <Button
                 title={t('contact.save')}
                 onPress={saveNewNumber}
+                disabled={!isValidPhone(newPhone)}
                 variant="accent"
                 style={{ marginTop: spacing.sm, opacity: isValidPhone(newPhone) ? 1 : 0.5 }}
               />
+              <TouchableOpacity style={styles.phoneCancel} onPress={() => setPhoneEditing(false)} activeOpacity={0.7}>
+                <Text style={styles.phoneCancelText}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <>
@@ -328,6 +333,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   changeBtnText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  phoneCancel: { alignSelf: 'center', paddingVertical: spacing.md, marginTop: spacing.xs },
+  phoneCancelText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
   preview: {
     width: '100%',
     aspectRatio: 4 / 3,

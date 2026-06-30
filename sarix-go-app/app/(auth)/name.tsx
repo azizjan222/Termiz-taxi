@@ -166,6 +166,9 @@ export default function NameScreen() {
                   disabled={!isValidPhone(newPhone)}
                   variant="accent"
                 />
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setMode('idle')} activeOpacity={0.7}>
+                  <Text style={styles.cancelText}>{t('common.cancel')}</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.actionsRow}>
@@ -265,5 +268,7 @@ const styles = StyleSheet.create({
   pillTextGhost: { color: colors.text },
   editBox: { marginTop: spacing.md },
   checkIcon: { color: colors.success, fontWeight: '800', fontSize: 18 },
+  cancelBtn: { alignSelf: 'center', paddingVertical: spacing.md, marginTop: spacing.xs },
+  cancelText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
   footer: { paddingBottom: spacing.lg, paddingTop: spacing.sm },
 });

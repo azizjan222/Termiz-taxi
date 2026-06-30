@@ -54,11 +54,10 @@ export default function OtpScreen() {
     try {
       const res = await verifyOtp(phone, c, '', i18n.language);
       if (res.is_new) {
-        // New user - go to name screen
-        router.replace({
-          pathname: '/(auth)/name',
-          params: { phone },
-        });
+        // New user: set the user in the store first (so the name screen can show the
+        // registered number for confirmation), then go to the name screen.
+        setUser(res.user);
+        router.replace('/(auth)/name');
       } else {
         setUser(res.user);
         router.replace('/(tabs)/home');
