@@ -106,6 +106,10 @@ async def send_push(
                 if isinstance(receipts, dict) and receipts.get("status") == "error":
                     log_entry.status = "failed"
                     log_entry.error = receipts.get("message", "Unknown")
+                    # Stale/uninstalled device -> drop the dead token so we stop wasting
+                    # sends on it (repeated invalid tokens also get the app throttled by Expo).
+                    if (receipts.get("details") or {}).get("error") == "DeviceNotRegistered":
+                        recipient.push_token = None
                     session.add(log_entry)
                     session.commit()
                     return False
@@ -126,24 +130,85 @@ async def send_push(
         return False
 
 
+async def _expo_send_batch(messages: list) -> list:
+    """POST a batch of Expo push messages in ONE request and return the tickets list
+    (aligned to `messages`). Expo accepts up to 100 messages per call. Returns [] on
+    transport failure so callers can mark everything failed without crashing.
+    """
+    if not messages:
+        return []
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.post(
+                EXPO_PUSH_URL,
+                json=messages,
+                headers={
+                    "Accept": "application/json",
+                    "Accept-Encoding": "gzip, deflate",
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                result = await resp.json()
+                data = result.get("data", [])
+                if isinstance(data, dict):  # single-message response shape
+                    data = [data]
+                return data if isinstance(data, list) else []
+    except Exception as e:
+        logger.error(f"Expo batch send error: {e}")
+        return []
+
+
 async def notify_driver_new_order(session: Session, order, drivers: list):
-    """Notify all online drivers about new order."""
-    for driver in drivers:
-        if not driver.push_token or not driver.is_online:
-            continue
-        await send_push(
-            session,
-            recipient_type="driver",
-            recipient_id=driver.id,
-            title=_new_order_title(order),
-            body=f"{order.from_city} → {order.to_city} · {_order_subject(order)} · {_fmt_amount(order.price)} so'm",
-            data={
-                "type": "new_order",
-                "order_id": order.id,
-            },
-            sound="new_order.wav",
-            channel_id="orders_v2",
-        )
+    """Notify all online drivers about a new order — sent as ONE batched Expo request
+    instead of N sequential HTTP calls, so every driver is alerted at the same instant
+    (sequential sending made the last drivers in a big list get the push noticeably late).
+    Dead tokens (DeviceNotRegistered) are cleared as a side effect.
+    """
+    targets = [d for d in drivers if d.push_token and d.is_online]
+    if not targets:
+        return
+
+    title = _new_order_title(order)
+    body = f"{order.from_city} → {order.to_city} · {_order_subject(order)} · {_fmt_amount(order.price)} so'm"
+    data = {"type": "new_order", "order_id": order.id}
+    data_json = json.dumps(data)
+
+    # Expo caps a batch at 100 messages.
+    for start in range(0, len(targets), 100):
+        chunk = targets[start:start + 100]
+        messages = [
+            {
+                "to": d.push_token,
+                "title": title,
+                "body": body,
+                "sound": "new_order.wav",
+                "priority": "high",
+                "channelId": "orders_v2",
+                "data": data,
+            }
+            for d in chunk
+        ]
+        tickets = await _expo_send_batch(messages)
+        for i, d in enumerate(chunk):
+            ticket = tickets[i] if i < len(tickets) else None
+            ok = isinstance(ticket, dict) and ticket.get("status") == "ok"
+            log_entry = NotificationLog(
+                recipient_type="driver",
+                recipient_id=d.id,
+                title=title,
+                body=body,
+                data=data_json,
+            )
+            log_entry.status = "sent" if ok else "failed"
+            if not ok:
+                log_entry.error = (
+                    ticket.get("message", "Unknown") if isinstance(ticket, dict) else "No ticket"
+                )
+                if isinstance(ticket, dict) and (ticket.get("details") or {}).get("error") == "DeviceNotRegistered":
+                    d.push_token = None  # drop the dead token
+            session.add(log_entry)
+        session.commit()
 
 
 async def notify_passenger_order_accepted(session: Session, order, driver):
