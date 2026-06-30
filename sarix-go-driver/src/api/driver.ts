@@ -4,6 +4,7 @@ export interface Driver {
   id: number;
   telegram_id: number;
   phone: string;
+  contact_phone?: string | null;
   first_name: string | null;
   last_name: string | null;
   pinfl?: string | null;
@@ -193,6 +194,7 @@ export async function uploadDriverProfilePhoto(uri: string): Promise<{ url: stri
 export interface DriverInfoUpdate {
   first_name?: string;
   last_name?: string;
+  contact_phone?: string;
   pinfl?: string;
   car_number?: string;
   car_model?: string;

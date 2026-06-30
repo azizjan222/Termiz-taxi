@@ -9,8 +9,18 @@ from sqlalchemy import func
 from app.admin.middleware import require_admin_api
 from app.database import get_session
 from app.models import User, Driver, Order, Route, Setting
-from app.services.push import send_push
+from app.services.push import send_push, send_push_bulk
+from app.services import notify_i18n as nt
 from app.services.driver_pdf import build_driver_pdf
+
+
+def _recipient_language(session, recipient_type: str, recipient_id: int) -> str:
+    """Look up a push recipient's chosen language (uz fallback)."""
+    if recipient_type == "driver":
+        r = session.query(Driver).filter_by(id=recipient_id).first()
+    else:
+        r = session.query(User).filter_by(id=recipient_id).first()
+    return (r.language if r and r.language else "uz")
 
 logger = logging.getLogger(__name__)
 
@@ -195,61 +205,42 @@ async def api_push(request: web.Request) -> web.Response:
         if target == "specific":
             if not recipient_id:
                 return web.json_response({"error": "recipient_id kerak"}, status=400)
+            lang = nt.norm_lang(_recipient_language(session, recipient_type, int(recipient_id)))
             ok = await send_push(
                 session,
                 recipient_type=recipient_type,
                 recipient_id=int(recipient_id),
-                title="Admin xabar",
+                title=nt.admin_title(lang),
                 body=message,
+                data={"type": "admin"},
             )
             sent_count = 1 if ok else 0
-        elif target == "drivers":
-            drivers = session.query(Driver).filter(Driver.push_token.isnot(None)).all()
-            for d in drivers:
-                ok = await send_push(
-                    session,
-                    recipient_type="driver",
-                    recipient_id=d.id,
-                    title="Admin xabar",
-                    body=message,
-                )
-                if ok:
-                    sent_count += 1
-        elif target == "passengers":
-            users = session.query(User).filter(User.push_token.isnot(None)).all()
-            for u in users:
-                ok = await send_push(
-                    session,
-                    recipient_type="user",
-                    recipient_id=u.id,
-                    title="Admin xabar",
-                    body=message,
-                )
-                if ok:
-                    sent_count += 1
-        else:  # all
-            drivers = session.query(Driver).filter(Driver.push_token.isnot(None)).all()
-            for d in drivers:
-                ok = await send_push(
-                    session,
-                    recipient_type="driver",
-                    recipient_id=d.id,
-                    title="Admin xabar",
-                    body=message,
-                )
-                if ok:
-                    sent_count += 1
-            users = session.query(User).filter(User.push_token.isnot(None)).all()
-            for u in users:
-                ok = await send_push(
-                    session,
-                    recipient_type="user",
-                    recipient_id=u.id,
-                    title="Admin xabar",
-                    body=message,
-                )
-                if ok:
-                    sent_count += 1
+        else:
+            # Build a localized message per recipient and send them in batched Expo
+            # requests (instead of one-by-one) so a large broadcast reaches everyone at
+            # once instead of the last users getting it minutes late.
+            items = []
+            if target in ("drivers", "all"):
+                for d in session.query(Driver).filter(Driver.push_token.isnot(None)).all():
+                    items.append({
+                        "recipient_type": "driver",
+                        "recipient_id": d.id,
+                        "token": d.push_token,
+                        "title": nt.admin_title(nt.norm_lang(d.language)),
+                        "body": message,
+                        "data": {"type": "admin"},
+                    })
+            if target in ("passengers", "all"):
+                for u in session.query(User).filter(User.push_token.isnot(None)).all():
+                    items.append({
+                        "recipient_type": "user",
+                        "recipient_id": u.id,
+                        "token": u.push_token,
+                        "title": nt.admin_title(nt.norm_lang(u.language)),
+                        "body": message,
+                        "data": {"type": "admin"},
+                    })
+            sent_count = await send_push_bulk(session, items)
 
         return web.json_response({
             "ok": True,

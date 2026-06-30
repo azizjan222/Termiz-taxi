@@ -445,6 +445,7 @@ def _serialize_driver(d: Driver) -> dict:
         "id": d.id,
         "telegram_id": d.telegram_id,
         "phone": d.phone,
+        "contact_phone": d.contact_phone,
         "first_name": d.first_name,
         "last_name": d.last_name,
         "pinfl": d.pinfl,
@@ -599,6 +600,12 @@ async def driver_update_me(request: web.Request) -> web.Response:
             d.first_name = (str(data.get("first_name") or "")).strip() or None
         if "last_name" in data:
             d.last_name = (str(data.get("last_name") or "")).strip() or None
+        if "contact_phone" in data:
+            from app.services.otp import normalize_phone
+            cp = normalize_phone(str(data.get("contact_phone") or "")) if data.get("contact_phone") else ""
+            if cp and not (cp.startswith("+998") and len(cp) == 13):
+                return web.json_response({"error": "Telefon raqam noto'g'ri"}, status=400)
+            d.contact_phone = cp or None
         if "pinfl" in data:
             pinfl = "".join(ch for ch in str(data.get("pinfl") or "") if ch.isdigit())
             if pinfl and len(pinfl) != 14:
@@ -968,10 +975,14 @@ async def accept_order(request: web.Request) -> web.Response:
 
         # Notify passenger via WebSocket
         if order.passenger_id:
+            driver_payload = _serialize_driver(d)
+            # Passenger must see the driver's chosen contact number, not the raw
+            # Telegram/identity phone (consistent with GET /api/orders/{id}).
+            driver_payload["phone"] = d.contact_phone or d.phone
             await ws_manager.send_to_passenger(order.passenger_id, {
                 "type": "order_accepted",
                 "order_id": order.id,
-                "driver": _serialize_driver(d),
+                "driver": driver_payload,
             })
 
         # Push notification
@@ -1146,15 +1157,29 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
         if order.status not in ("accepted", "in_progress"):
             return web.json_response({"error": "Bekor qilib bo'lmaydi"}, status=400)
 
-        # Refund commission only if it was already charged (deferred window). Either way,
-        # mark it charged so the scheduler won't deduct from a cancelled order.
+        # Driver cancelled their OWN accepted order -> this is the driver's fault, so
+        # the commission is still owed. This closes the "accept to lock the order off
+        # the market, then cancel for free" loophole and keeps behaviour consistent
+        # with silently abandoning an order (which the scheduler charges after the
+        # window). Passenger-initiated cancellations are NOT charged (see cancel_order).
+        # Drivers on the free trial / active subscription are never charged.
         d = session.query(Driver).filter_by(id=driver.id).first()
-        if d and order.commission_charged:
-            d.balance = (d.balance or 0) + (order.commission or 0)
+        now = datetime.utcnow()
+        subscription_active = bool(d and d.subscription_until and d.subscription_until > now)
+        charged = False
+        if d and not subscription_active and not order.commission_charged:
+            # Window may not have elapsed yet; charge now since the driver bailed.
+            commission = order.commission or 0
+            if commission > 0:
+                d.balance = (d.balance or 0) - commission
+                order.commission_collected = True
+                charged = True
+        # If commission_charged was already True the deferred scheduler already deducted
+        # it -> no refund (driver's fault). Mark handled either way.
         order.commission_charged = True
 
         order.status = "cancelled"
-        order.cancelled_at = datetime.utcnow()
+        order.cancelled_at = now
         order.cancelled_by = "driver"
 
         session.add(OrderHistory(
@@ -1179,6 +1204,7 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
         return web.json_response({
             "success": True,
             "balance": d.balance if d else 0,
+            "commission_charged": charged,
         })
     finally:
         session.close()

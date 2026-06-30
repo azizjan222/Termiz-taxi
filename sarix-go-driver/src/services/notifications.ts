@@ -171,7 +171,7 @@ export async function registerPushToken(): Promise<boolean> {
     await setupNotificationChannels();
     const token = await getExpoPushToken();
     if (!token) return false;
-    await api.post('/api/notifications/register-token', { token });
+    await api.post('/api/notifications/register-token', { token, language: i18n.language });
     return true;
   } catch {
     return false;

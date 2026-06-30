@@ -36,6 +36,7 @@ def _apply_schema_migrations() -> int:
         ("users", "referral_bonus_earned", "INTEGER DEFAULT 0"),
         ("users", "theme", "VARCHAR(20) DEFAULT 'auto'"),
         ("users", "profile_photo_url", "VARCHAR(500)"),
+        ("users", "contact_phone", "VARCHAR(20)"),
         # Driver new columns
         ("drivers", "car_photo_url", "VARCHAR(500)"),
         ("drivers", "license_photo_url", "VARCHAR(500)"),
@@ -43,11 +44,13 @@ def _apply_schema_migrations() -> int:
         ("drivers", "tech_passport_url", "VARCHAR(500)"),
         ("drivers", "tech_passport_back_url", "VARCHAR(500)"),
         ("drivers", "profile_photo_url", "VARCHAR(500)"),
+        ("drivers", "contact_phone", "VARCHAR(20)"),
         ("drivers", "seats", "INTEGER DEFAULT 4"),
         ("drivers", "is_verified", BOOL_FALSE),
         ("drivers", "rating_count", "INTEGER DEFAULT 0"),
         ("drivers", "push_token", "VARCHAR(200)"),
         ("drivers", "theme", "VARCHAR(20) DEFAULT 'auto'"),
+        ("drivers", "language", "VARCHAR(10) DEFAULT 'uz'"),
         ("drivers", "subscription_until", DT),
         ("drivers", "car_year", "VARCHAR(10)"),
         ("drivers", "pinfl", "VARCHAR(20)"),
@@ -66,6 +69,7 @@ def _apply_schema_migrations() -> int:
         ("orders", "target_driver_id", "INTEGER"),
         ("orders", "commission_charged", BOOL_FALSE),
         ("orders", "commission_collected", BOOL_FALSE),
+        ("orders", "commission_warned", BOOL_FALSE),
     ]
 
     inspector = inspect(engine)

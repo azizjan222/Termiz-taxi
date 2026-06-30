@@ -4,6 +4,7 @@ import { Platform, AppState } from 'react-native';
 import Constants from 'expo-constants';
 
 import { api } from '../api/client';
+import i18n from '../i18n';
 
 // Order events the passenger app ALSO surfaces in-app over the realtime
 // WebSocket (a local notification) while a screen is open. For these, when the
@@ -41,14 +42,27 @@ Notifications.setNotificationHandler({
   },
 });
 
+// Android channel id for order notifications. MUST match the channelId the backend
+// sends in push payloads (app/services/push.py uses "orders_v2"). Previously this app
+// registered only "orders" while the backend pushed "orders_v2" -> on a CLOSED app the
+// push landed on a non-existent channel and Android demoted it to a low-importance
+// fallback, which is why order notifications arrived late when the app was shut.
+export const ORDERS_CHANNEL = 'orders_v2';
+
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('orders', {
+    // Drop the legacy "orders" channel so we don't leave a stale duplicate.
+    try {
+      await Notifications.deleteNotificationChannelAsync('orders');
+    } catch {}
+    await Notifications.setNotificationChannelAsync(ORDERS_CHANNEL, {
       name: 'Buyurtmalar',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#F4C430',
       sound: 'default',
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
     await Notifications.setNotificationChannelAsync('balance', {
       name: 'Balans',
@@ -103,7 +117,7 @@ export async function registerPushToken(): Promise<boolean> {
     const token = await getExpoPushToken();
     if (!token) return false;
 
-    await api.post('/api/notifications/register-token', { token });
+    await api.post('/api/notifications/register-token', { token, language: i18n.language });
     return true;
   } catch (e) {
     return false;
@@ -140,7 +154,7 @@ export async function presentLocalNotification(
   title: string,
   body: string,
   data: Record<string, any> = {},
-  channelId: string = 'orders'
+  channelId: string = ORDERS_CHANNEL
 ): Promise<void> {
   try {
     await Notifications.scheduleNotificationAsync({

@@ -7,7 +7,8 @@ from sqlalchemy import func
 
 from app.database import DbContext
 from app.models import Driver, User, Order, OrderHistory, Payment, Route, Setting
-from app.services.push import send_push
+from app.services.push import send_push, send_push_bulk
+from app.services import notify_i18n as nt
 from app import config
 
 
@@ -624,37 +625,23 @@ async def cmd_push_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    success = 0
-    failed = 0
-
     with DbContext() as session:
-        users = session.query(User).filter(User.push_token.isnot(None)).all()
-        for u in users:
-            result = await send_push(
-                session,
-                recipient_type="user",
-                recipient_id=u.id,
-                title="\U0001f4e2 Admin xabar",
-                body=text,
-            )
-            if result:
-                success += 1
-            else:
-                failed += 1
-
-        drivers = session.query(Driver).filter(Driver.push_token.isnot(None)).all()
-        for d in drivers:
-            result = await send_push(
-                session,
-                recipient_type="driver",
-                recipient_id=d.id,
-                title="\U0001f4e2 Admin xabar",
-                body=text,
-            )
-            if result:
-                success += 1
-            else:
-                failed += 1
+        items = []
+        for u in session.query(User).filter(User.push_token.isnot(None)).all():
+            items.append({
+                "recipient_type": "user", "recipient_id": u.id, "token": u.push_token,
+                "title": nt.admin_title(nt.norm_lang(u.language)), "body": text,
+                "data": {"type": "admin"},
+            })
+        for d in session.query(Driver).filter(Driver.push_token.isnot(None)).all():
+            items.append({
+                "recipient_type": "driver", "recipient_id": d.id, "token": d.push_token,
+                "title": nt.admin_title(nt.norm_lang(d.language)), "body": text,
+                "data": {"type": "admin"},
+            })
+        total = len(items)
+        success = await send_push_bulk(session, items)
+        failed = total - success
 
     await update.effective_message.reply_text(
         f"\u2705 Push yuborildi!\n\n"
@@ -676,23 +663,17 @@ async def cmd_push_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    success = 0
-    failed = 0
-
     with DbContext() as session:
-        drivers = session.query(Driver).filter(Driver.push_token.isnot(None)).all()
-        for d in drivers:
-            result = await send_push(
-                session,
-                recipient_type="driver",
-                recipient_id=d.id,
-                title="\U0001f4e2 Admin xabar",
-                body=text,
-            )
-            if result:
-                success += 1
-            else:
-                failed += 1
+        items = []
+        for d in session.query(Driver).filter(Driver.push_token.isnot(None)).all():
+            items.append({
+                "recipient_type": "driver", "recipient_id": d.id, "token": d.push_token,
+                "title": nt.admin_title(nt.norm_lang(d.language)), "body": text,
+                "data": {"type": "admin"},
+            })
+        total = len(items)
+        success = await send_push_bulk(session, items)
+        failed = total - success
 
     await update.effective_message.reply_text(
         f"\u2705 Push yuborildi (haydovchilar)!\n\n"
@@ -714,23 +695,17 @@ async def cmd_push_passengers(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
 
-    success = 0
-    failed = 0
-
     with DbContext() as session:
-        users = session.query(User).filter(User.push_token.isnot(None)).all()
-        for u in users:
-            result = await send_push(
-                session,
-                recipient_type="user",
-                recipient_id=u.id,
-                title="\U0001f4e2 Admin xabar",
-                body=text,
-            )
-            if result:
-                success += 1
-            else:
-                failed += 1
+        items = []
+        for u in session.query(User).filter(User.push_token.isnot(None)).all():
+            items.append({
+                "recipient_type": "user", "recipient_id": u.id, "token": u.push_token,
+                "title": nt.admin_title(nt.norm_lang(u.language)), "body": text,
+                "data": {"type": "admin"},
+            })
+        total = len(items)
+        success = await send_push_bulk(session, items)
+        failed = total - success
 
     await update.effective_message.reply_text(
         f"\u2705 Push yuborildi (yo'lovchilar)!\n\n"
@@ -811,12 +786,18 @@ async def cmd_push_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        if recipient_type == "driver":
+            _r = session.query(Driver).filter_by(id=recipient_id).first()
+        else:
+            _r = session.query(User).filter_by(id=recipient_id).first()
+        lang = nt.norm_lang(_r.language if _r else None)
         result = await send_push(
             session,
             recipient_type=recipient_type,
             recipient_id=recipient_id,
-            title="\U0001f4e2 Admin xabar",
+            title=nt.admin_title(lang),
             body=text,
+            data={"type": "admin"},
         )
 
     if result:

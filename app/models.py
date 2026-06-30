@@ -16,6 +16,9 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     phone = Column(String(20), unique=True, nullable=False, index=True)
+    # Identity phone above (from OTP / Telegram contact). contact_phone is the number
+    # the user TYPES in the app profile and the one shown to the other party on orders.
+    contact_phone = Column(String(20), nullable=True)
     telegram_id = Column(BigInteger, unique=True, nullable=True, index=True)
     first_name = Column(String(100))
     last_name = Column(String(100))
@@ -46,6 +49,9 @@ class Driver(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
     phone = Column(String(20), unique=True, nullable=False)
+    # Identity phone above. contact_phone is the number the driver TYPES in the app and
+    # the one shown to the passenger on orders (instead of the Telegram contact number).
+    contact_phone = Column(String(20), nullable=True)
     first_name = Column(String(100))
     last_name = Column(String(100))
     car_model = Column(String(100))
@@ -73,6 +79,7 @@ class Driver(Base):
     rating_count = Column(Integer, default=0)
     total_orders = Column(Integer, default=0)
     push_token = Column(String(200))  # Expo push token
+    language = Column(String(10), default="uz")  # uz, uz-cyrl, ru, en (for localized push)
     theme = Column(String(20), default="auto")
     # Live location (sent by the driver app every ~10s while on an active order).
     # Broadcast to the passenger so they can see the driver moving on the map.
@@ -167,6 +174,9 @@ class Order(Base):
     # money, so commission_collected stays False -> trial orders count as 0 commission in
     # all money reports (admin dashboard, bot /revenue) and don't confuse the stats.
     commission_collected = Column(Boolean, default=False)
+    # Set True once the driver has been sent the "commission will be charged in N
+    # minutes" heads-up, so the scheduler never warns the same order twice.
+    commission_warned = Column(Boolean, default=False)
 
     # Status
     status = Column(String(30), default="new", index=True)

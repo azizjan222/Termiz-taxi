@@ -20,6 +20,11 @@ async def register_token(request: web.Request) -> web.Response:
     if not token:
         return web.json_response({"error": "Token kerak"}, status=400)
 
+    # Optional language so push notifications can be localized to the user's choice.
+    lang = (data.get("language") or "").strip()
+    if lang not in ("uz", "uz-cyrl", "ru", "en"):
+        lang = None
+
     # Check driver auth first
     driver = _get_driver_from_request(request)
     if driver:
@@ -28,6 +33,8 @@ async def register_token(request: web.Request) -> web.Response:
             d = session.query(Driver).filter_by(id=driver.id).first()
             if d:
                 d.push_token = token
+                if lang:
+                    d.language = lang
                 session.commit()
                 return web.json_response({"success": True, "role": "driver"})
         finally:
@@ -42,6 +49,8 @@ async def register_token(request: web.Request) -> web.Response:
             u = session.query(User).filter_by(id=user.id).first()
             if u:
                 u.push_token = token
+                if lang:
+                    u.language = lang
                 session.commit()
                 return web.json_response({"success": True, "role": "passenger"})
         finally:
