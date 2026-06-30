@@ -391,14 +391,18 @@ async def cancel_order(request: web.Request) -> web.Response:
         if order.status in ("completed", "cancelled", "expired"):
             return web.json_response({"error": "Bekor qilib bo'lmaydi"}, status=400)
 
-        # Refund driver only if the commission was already charged (deferred 15-min
-        # window). If it hasn't been charged yet, we simply mark it so the scheduler
-        # skips it — no refund needed because nothing was deducted.
+        # Refund the driver ONLY if the commission was actually COLLECTED (real money
+        # deducted from their balance). `commission_charged` alone is not enough: during
+        # the free trial / active subscription the scheduler marks commission_charged=True
+        # WITHOUT taking any money (commission_collected stays False). Refunding on
+        # commission_charged therefore (a) wrongly credited trial drivers with free money
+        # and (b) sent them a misleading "commission refunded" message.
         refunded = False
         if order.status in ("accepted", "in_progress") and order.driver_id:
             driver = session.query(Driver).filter_by(id=order.driver_id).first()
-            if driver and order.commission_charged:
+            if driver and order.commission_collected:
                 driver.balance = (driver.balance or 0) + (order.commission or 0)
+                order.commission_collected = False  # given back
                 refunded = True
         # Stop the scheduler from charging a cancelled order later.
         order.commission_charged = True
