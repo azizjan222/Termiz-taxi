@@ -48,6 +48,7 @@ def _apply_schema_migrations() -> int:
         ("drivers", "rating_count", "INTEGER DEFAULT 0"),
         ("drivers", "push_token", "VARCHAR(200)"),
         ("drivers", "theme", "VARCHAR(20) DEFAULT 'auto'"),
+        ("drivers", "language", "VARCHAR(10) DEFAULT 'uz'"),
         ("drivers", "subscription_until", DT),
         ("drivers", "car_year", "VARCHAR(10)"),
         ("drivers", "pinfl", "VARCHAR(20)"),
