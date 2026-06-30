@@ -361,15 +361,20 @@ async def notify_driver_commission_soon(session: Session, order, minutes_left: i
     """
     if not getattr(order, "driver_id", None):
         return
+    lang = _lang(session, "driver", order.driver_id)
+    title, body = nt.commission_soon(
+        lang,
+        from_city=order.from_city,
+        to_city=order.to_city,
+        minutes=minutes_left,
+        amount_str=_fmt_amount(order.commission or 0),
+    )
     await send_push(
         session,
         recipient_type="driver",
         recipient_id=order.driver_id,
-        title="⏳ Komissiya tez orada yechiladi",
-        body=(
-            f"{order.from_city} → {order.to_city} · {minutes_left} daqiqadan so'ng "
-            f"{_fmt_amount(order.commission or 0)} so'm komissiya balansingizdan yechiladi"
-        ),
+        title=title,
+        body=body,
         data={
             "type": "commission_warning",
             "order_id": order.id,
