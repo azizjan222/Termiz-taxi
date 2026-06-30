@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,10 +15,14 @@ import { Button } from '../src/components/Button';
 import { Input } from '../src/components/Input';
 import { createOrder, getPriceQuote, type PriceQuote } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 export default function ConfirmOrderScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const orderStore = useOrderStore();
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState('');
@@ -206,7 +210,7 @@ export default function ConfirmOrderScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white },
   header: {
     flexDirection: 'row',

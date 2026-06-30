@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Linking, Alert, Platform, ActivityIndicator, Image,
@@ -30,7 +30,9 @@ import {
   ETA_AVG_SPEED_KMH,
   type Coords,
 } from '../../src/components/driverMap.helpers';
-import { colors, typography, spacing, radius, gradients } from '../../src/theme';
+import { typography, spacing, radius, gradients } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 const CONTACT_WINDOW_MINUTES = 15;
 // Live-distance watcher tuning: update the display on meter-level movement while
@@ -43,6 +45,8 @@ const ETA_HINT_ENABLED = true;
 
 export default function OrderDetailScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [order, setOrder] = useState<DriverOrder | null>(null);
@@ -565,7 +569,7 @@ export default function OrderDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
@@ -661,7 +665,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   timerEmoji: { fontSize: 28, marginRight: spacing.md },
-  timerText: { ...typography.bodyBold, color: colors.white },
+  timerText: { ...typography.bodyBold, color: colors.textOnPrimary },
   timerSub: { ...typography.small, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
   timerCountdown: { ...typography.h2, color: colors.accent, fontVariant: ['tabular-nums'] },
   card: {
@@ -689,7 +693,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  avatarText: { fontSize: 22, color: colors.white, fontWeight: '700' },
+  avatarText: { fontSize: 22, color: colors.textOnPrimary, fontWeight: '700' },
   passengerName: { ...typography.bodyBold, color: colors.text },
   passengerPhone: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   callBtn: {
@@ -750,7 +754,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   navBtnIcon: { fontSize: 20, marginRight: spacing.sm },
-  navBtnText: { ...typography.button, color: colors.white },
+  navBtnText: { ...typography.button, color: colors.textOnPrimary },
   completeBtn: {
     alignItems: 'center',
     justifyContent: 'center',

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,9 @@ import { suggestAddress, geocodeAddress } from '../src/services/geocoding';
 import { resolveRouteCity } from '../src/services/cityResolver';
 import { searchSurxondaryoPlaces, type LocalPlace } from '../src/data/surxondaryoPlaces';
 import { useOrderStore } from '../src/store/order';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 type Field = 'from' | 'to';
 
@@ -34,6 +36,8 @@ type Field = 'from' | 'to';
 export default function RouteSelectScreen() {
   const { mode } = useLocalSearchParams<{ mode: 'from' | 'to' }>();
   const orderStore = useOrderStore();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isParcel = orderStore.serviceType === 'parcel';
 
   const [active, setActive] = useState<Field>(mode === 'from' ? 'from' : 'to');
@@ -379,7 +383,7 @@ export default function RouteSelectScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.resultTitle}>
                   <Text style={styles.resultHighlight}>
-                    {highlightMatch(item.item.title, search)}
+                    {highlightMatch(item.item.title, search, colors)}
                   </Text>
                 </Text>
                 {!!item.item.subtitle && (
@@ -401,7 +405,7 @@ export default function RouteSelectScreen() {
 }
 
 /** Highlight matching text portion */
-function highlightMatch(text: string, query: string): React.ReactNode {
+function highlightMatch(text: string, query: string, colors: ThemeColors): React.ReactNode {
   if (!query || query.length < 2) return text;
   const idx = text.toLowerCase().indexOf(query.toLowerCase());
   if (idx === -1) return text;
@@ -468,7 +472,7 @@ async function suggestAddressRich(query: string): Promise<Array<{ title: string;
   }
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   handleWrap: { alignItems: 'center', paddingVertical: spacing.sm },
   handle: {

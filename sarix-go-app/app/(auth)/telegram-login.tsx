@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, Linking, ActivityIndicator, AppState, Animated, Easing,
 } from 'react-native';
@@ -11,13 +11,17 @@ import { Logo } from '../../src/components/Logo';
 import { Button } from '../../src/components/Button';
 import { telegramStart, telegramCheck } from '../../src/api/auth';
 import { useAuthStore } from '../../src/store/auth';
-import { colors, typography, spacing, radius } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing, radius } from '../../src/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 // Passenger entry palette — DARK BLUE / navy ("to'q ko'k").
 const DARK_BLUE_GRADIENT: [string, string, string] = ['#1A3B7A', '#0E2050', '#070E28'];
 
 export default function TelegramLoginScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const setUser = useAuthStore((s) => s.setUser);
 
   const [token, setToken] = useState<string | null>(null);
@@ -137,8 +141,8 @@ export default function TelegramLoginScreen() {
               title={t('telegramLogin.openAgain')}
               onPress={() => token && Linking.openURL(`https://t.me/termizsariosiyotaxi_bot?start=auth_${token}`)}
               variant="outline"
-              textStyle={{ color: colors.white }}
-              style={{ borderColor: colors.white }}
+              textStyle={{ color: colors.textOnPrimary }}
+              style={{ borderColor: colors.textOnPrimary }}
             />
           )}
         </View>
@@ -147,17 +151,21 @@ export default function TelegramLoginScreen() {
   );
 }
 
-const Step: React.FC<{ n: string; text: string }> = ({ n, text }) => (
-  <View style={styles.stepRow}>
-    <View style={styles.stepNum}><Text style={styles.stepNumText}>{n}</Text></View>
-    <Text style={styles.stepText}>{text}</Text>
-  </View>
-);
+const Step: React.FC<{ n: string; text: string }> = ({ n, text }) => {
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  return (
+    <View style={styles.stepRow}>
+      <View style={styles.stepNum}><Text style={styles.stepNumText}>{n}</Text></View>
+      <Text style={styles.stepText}>{text}</Text>
+    </View>
+  );
+};
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent', paddingHorizontal: spacing.lg },
   header: { alignItems: 'center', paddingTop: spacing.xl },
-  title: { ...typography.h1, color: colors.white, marginTop: spacing.md, textAlign: 'center' },
+  title: { ...typography.h1, color: colors.textOnPrimary, marginTop: spacing.md, textAlign: 'center' },
   subtitle: { ...typography.body, color: colors.accent, marginTop: spacing.xs, textAlign: 'center' },
   body: { flex: 1, justifyContent: 'center' },
   steps: { gap: spacing.md },
@@ -167,9 +175,9 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   stepNumText: { ...typography.bodyBold, color: colors.primary, fontWeight: '800' },
-  stepText: { flex: 1, ...typography.body, color: colors.white },
+  stepText: { flex: 1, ...typography.body, color: colors.textOnPrimary },
   waitingBox: { alignItems: 'center', gap: spacing.md },
-  waitingText: { ...typography.h3, color: colors.white, textAlign: 'center' },
+  waitingText: { ...typography.h3, color: colors.textOnPrimary, textAlign: 'center' },
   waitingHint: { ...typography.body, color: colors.accent, opacity: 0.9, textAlign: 'center' },
   error: { ...typography.caption, color: '#FCA5A5', textAlign: 'center', marginTop: spacing.lg },
   footer: { paddingBottom: spacing.lg },

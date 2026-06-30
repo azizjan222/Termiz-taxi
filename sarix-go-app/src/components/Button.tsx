@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -8,7 +8,9 @@ import {
   TextStyle,
   StyleProp,
 } from 'react-native';
-import { colors, typography, radius, spacing } from '../theme';
+import { typography, radius, spacing } from '../theme';
+import { useThemeStore } from '../store/theme';
+import type { ThemeColors } from '../theme/colors-themed';
 
 interface ButtonProps {
   title: string;
@@ -35,6 +37,8 @@ export const Button: React.FC<ButtonProps> = ({
   textStyle,
   icon,
 }) => {
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isDisabled = disabled || loading;
 
   return (
@@ -76,7 +80,7 @@ export const Button: React.FC<ButtonProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   base: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -97,7 +101,7 @@ const styles = StyleSheet.create({
   },
   ghostBg: { backgroundColor: 'transparent' },
 
-  primaryText: { color: colors.white },
+  primaryText: { color: colors.textOnPrimary },
   accentText: { color: colors.primary },
   outlineText: { color: colors.primary },
   ghostText: { color: colors.primary },

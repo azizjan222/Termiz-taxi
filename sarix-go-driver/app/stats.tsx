@@ -299,7 +299,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     shadowOpacity: 0.35,
   },
   tabText: { ...typography.bodyBold, color: colors.textSecondary },
-  tabTextActive: { color: colors.white },
+  tabTextActive: { color: colors.textOnPrimary },
 
   scroll: { padding: spacing.md, paddingBottom: spacing.xl },
 
@@ -349,7 +349,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: radius.pill,
   },
-  heroChipText: { ...typography.small, color: colors.white, fontWeight: '600' },
+  heroChipText: { ...typography.small, color: colors.textOnPrimary, fontWeight: '600' },
 
   // Generic card
   card: {

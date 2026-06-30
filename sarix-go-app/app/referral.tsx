@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, Share, ActivityIndicator, Clipboard,
 } from 'react-native';
@@ -6,9 +6,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { getReferralInfo, type ReferralInfo } from '../src/api/promo';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 export default function ReferralScreen() {
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [info, setInfo] = useState<ReferralInfo | null>(null);
 
   useEffect(() => {
@@ -96,7 +100,7 @@ export default function ReferralScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
@@ -121,7 +125,7 @@ const styles = StyleSheet.create({
   heroTitle: { ...typography.h1, color: colors.accent, textAlign: 'center' },
   heroSubtitle: {
     ...typography.body,
-    color: colors.white,
+    color: colors.textOnPrimary,
     opacity: 0.9,
     marginTop: spacing.xs,
     textAlign: 'center',

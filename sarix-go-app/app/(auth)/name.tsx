@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,10 +15,14 @@ import { Button } from '../../src/components/Button';
 import { Input } from '../../src/components/Input';
 import { updateProfile } from '../../src/api/auth';
 import { useAuthStore } from '../../src/store/auth';
-import { colors, typography, spacing } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing } from '../../src/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 export default function NameScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const setUser = useAuthStore((s) => s.setUser);
@@ -73,7 +77,7 @@ export default function NameScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.white,

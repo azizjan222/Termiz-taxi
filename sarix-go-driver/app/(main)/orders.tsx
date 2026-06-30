@@ -447,7 +447,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.xs + 2,
     borderRadius: radius.pill,
   },
-  topUpMiniText: { ...typography.small, color: colors.white, fontWeight: '700' },
+  topUpMiniText: { ...typography.small, color: colors.textOnPrimary, fontWeight: '700' },
   topupBanner: {
     backgroundColor: colors.errorLight,
     borderColor: '#F5B5B5',

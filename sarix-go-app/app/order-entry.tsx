@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,9 @@ import { resolveRouteCity } from '../src/services/cityResolver';
 import { detectLocation } from '../src/services/location';
 import { listCities, listRoutes } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 // Termiz, Surxondaryo (default center)
 const DEFAULT_LAT = 37.224;
@@ -77,6 +79,8 @@ function formatDisplayAddress(full: string): string {
  */
 export default function OrderEntryScreen() {
   const orderStore = useOrderStore();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   // `pick` selects what the map center represents:
   //  - 'from' (default) -> the pickup point (Yo'lovchini olish nuqtasi)
@@ -404,7 +408,7 @@ export default function OrderEntryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white },
   mapWrap: { flex: 1, overflow: 'hidden' },
   topCard: {
@@ -431,7 +435,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    borderColor: colors.white,
+    borderColor: colors.textOnPrimary,
   },
   pinEmoji: { fontSize: 24 },
   pinStick: { width: 3, height: 22, backgroundColor: '#222', marginTop: -2 },

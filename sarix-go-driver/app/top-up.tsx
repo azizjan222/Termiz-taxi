@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -29,13 +29,17 @@ import {
 } from '../src/api/payments';
 import { useDriverStore } from '../src/store/driver';
 import { BOT_USERNAME } from '../src/api/client';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 const PRESET_AMOUNTS = [10000, 20000, 50000, 100000];
 const MIN_AMOUNT = 1000;
 
 export default function TopUpScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const driver = useDriverStore((s) => s.driver);
   const loadDriver = useDriverStore((s) => s.loadDriver);
 
@@ -367,7 +371,7 @@ export default function TopUpScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
@@ -390,7 +394,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     alignItems: 'center',
   },
-  balanceLabel: { ...typography.caption, color: colors.white, opacity: 0.8 },
+  balanceLabel: { ...typography.caption, color: colors.textOnPrimary, opacity: 0.8 },
   balanceValue: { ...typography.h1, color: colors.accent, marginVertical: spacing.xs },
   balanceWarning: {
     ...typography.small,

@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity, Linking,
 } from 'react-native';
 
-import { colors, typography, spacing, radius } from '../theme';
+import { typography, spacing, radius } from '../theme';
+import { useThemeStore } from '../store/theme';
+import type { ThemeColors } from '../theme/colors-themed';
 
 interface Props {
   visible: boolean;
@@ -12,6 +14,8 @@ interface Props {
 }
 
 export const ForceUpdateModal: React.FC<Props> = ({ visible, playUrl, message }) => {
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.container}>
@@ -34,7 +38,7 @@ export const ForceUpdateModal: React.FC<Props> = ({ visible, playUrl, message })
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.85)',

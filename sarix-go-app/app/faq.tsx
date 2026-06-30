@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking,
 } from 'react-native';
@@ -7,7 +7,9 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { getSupportInfo } from '../src/api/ai';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 // Static FAQ content (Uzbek) for passengers.
 const FAQ: { q: string; a: string }[] = [
@@ -47,6 +49,8 @@ const FAQ: { q: string; a: string }[] = [
 
 export default function FaqScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [supportUrl, setSupportUrl] = useState('https://t.me/termizsariosiyotaxi_bot');
   const [supportUsername, setSupportUsername] = useState('termizsariosiyotaxi_bot');
   const [open, setOpen] = useState<number | null>(0);
@@ -106,7 +110,7 @@ export default function FaqScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
@@ -141,7 +145,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   supportIcon: { fontSize: 26, marginRight: spacing.md },
-  supportTitle: { ...typography.bodyBold, color: colors.white },
-  supportSub: { ...typography.small, color: colors.white, opacity: 0.8, marginTop: 2 },
-  supportArrow: { fontSize: 24, color: colors.white },
+  supportTitle: { ...typography.bodyBold, color: colors.textOnPrimary },
+  supportSub: { ...typography.small, color: colors.textOnPrimary, opacity: 0.8, marginTop: 2 },
+  supportArrow: { fontSize: 24, color: colors.textOnPrimary },
 });

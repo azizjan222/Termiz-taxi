@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, Alert, ScrollView,
   TextInput, Modal, FlatList, ActivityIndicator,
@@ -13,13 +13,17 @@ import { useDriverStore } from '../src/store/driver';
 import {
   getMe, updateDriverInfo, uploadTechPassport, uploadLicenseImage, getCarModels,
 } from '../src/api/driver';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 // In-app driver registration-completion form. Mirrors the bot's fields EXCEPT the car
 // photo (mashinaning rasmi), which is intentionally not collected here.
 export default function DriverInfoScreen() {
   const driver = useDriverStore((s) => s.driver);
   const setDriver = useDriverStore((s) => s.setDriver);
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -194,7 +198,7 @@ export default function DriverInfoScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
