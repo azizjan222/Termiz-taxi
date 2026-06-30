@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, Linking,
   Modal, TextInput, KeyboardAvoidingView, Platform,
@@ -7,7 +7,9 @@ import * as Location from 'expo-location';
 
 import { Button } from './Button';
 import { triggerSos } from '../api/sos';
-import { colors, typography, spacing, radius } from '../theme';
+import { typography, spacing, radius } from '../theme';
+import { useThemeStore } from '../store/theme';
+import type { ThemeColors } from '../theme/colors-themed';
 
 interface Props {
   orderId?: number;
@@ -15,6 +17,8 @@ interface Props {
 }
 
 export const SosButton: React.FC<Props> = ({ orderId, style }) => {
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [modalOpen, setModalOpen] = useState(false);
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
@@ -108,7 +112,7 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
                 loading={loading}
                 fullWidth={false}
                 style={{ flex: 1, marginLeft: spacing.sm, backgroundColor: colors.error }}
-                textStyle={{ color: colors.white }}
+                textStyle={{ color: colors.textOnPrimary }}
               />
             </View>
           </View>
@@ -118,7 +122,7 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   button: {
     backgroundColor: colors.error,
     width: 56,

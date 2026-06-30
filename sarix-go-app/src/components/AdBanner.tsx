@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, typography, spacing, radius } from '../theme';
+import { typography, spacing, radius } from '../theme';
+import { useThemeStore } from '../store/theme';
+import type { ThemeColors } from '../theme/colors-themed';
 import { gradients } from '../theme/colors';
 
 /** How long the ad stays on screen before it auto-dismisses. */
@@ -48,6 +50,8 @@ export default function AdBanner({
   imageUrl,
   durationSec = AD_DURATION_SEC,
 }: AdBannerProps) {
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [remaining, setRemaining] = useState(durationSec);
   const img = imageUrl ?? AD_IMAGE_URL;
 
@@ -115,7 +119,7 @@ export default function AdBanner({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(8,10,30,0.85)',
@@ -155,7 +159,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   promoLogo: { fontSize: 64, marginBottom: spacing.md },
-  promoTitle: { ...typography.h1, color: colors.white, marginBottom: spacing.sm },
+  promoTitle: { ...typography.h1, color: colors.textOnPrimary, marginBottom: spacing.sm },
   promoSubtitle: {
     ...typography.body,
     color: 'rgba(255,255,255,0.92)',
@@ -169,7 +173,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
-  promoTagText: { ...typography.caption, color: colors.white, fontWeight: '700' },
+  promoTagText: { ...typography.caption, color: colors.textOnPrimary, fontWeight: '700' },
   skip: {
     position: 'absolute',
     top: spacing.md,
@@ -179,5 +183,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
-  skipText: { ...typography.caption, color: colors.white, fontWeight: '700' },
+  skipText: { ...typography.caption, color: colors.textOnPrimary, fontWeight: '700' },
 });

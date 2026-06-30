@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { SUPPORTED_LANGUAGES, changeLanguage, type SupportedLanguage } from '../src/i18n';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 const ONBOARDED_KEY = '@sarixgo-driver/onboarded';
 
@@ -15,6 +17,8 @@ const ONBOARDED_KEY = '@sarixgo-driver/onboarded';
  * then continues to the login screen.
  */
 export default function DriverLanguageScreen() {
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [busy, setBusy] = useState<SupportedLanguage | null>(null);
 
   const choose = async (code: SupportedLanguage) => {
@@ -62,7 +66,7 @@ export default function DriverLanguageScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white, paddingHorizontal: spacing.lg },
   header: { alignItems: 'center', paddingTop: spacing.xxl, paddingBottom: spacing.xl },
   logoBox: {

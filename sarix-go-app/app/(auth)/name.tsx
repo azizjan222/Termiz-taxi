@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,9 @@ import { Button } from '../../src/components/Button';
 import { Input } from '../../src/components/Input';
 import { updateProfile } from '../../src/api/auth';
 import { useAuthStore } from '../../src/store/auth';
-import { colors, typography, spacing, radius } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing, radius } from '../../src/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 // Pretty +998 formatter: keeps a fixed "+998 " prefix and groups the 9 local digits.
 const formatPhone = (text: string): string => {
@@ -38,6 +40,8 @@ type Mode = 'idle' | 'confirmed' | 'editing';
 
 export default function NameScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
 
@@ -203,7 +207,7 @@ export default function NameScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.white,
@@ -243,7 +247,7 @@ const styles = StyleSheet.create({
     width: 28, height: 28, borderRadius: 14, backgroundColor: colors.success,
     alignItems: 'center', justifyContent: 'center',
   },
-  okBadgeText: { color: colors.white, fontWeight: '800', fontSize: 15 },
+  okBadgeText: { color: colors.textOnPrimary, fontWeight: '800', fontSize: 15 },
   cardQuestion: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -263,7 +267,7 @@ const styles = StyleSheet.create({
   pillConfirmed: { backgroundColor: colors.successLight, borderWidth: 1, borderColor: colors.success },
   pillGhost: { backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.border },
   pillText: { ...typography.caption, fontWeight: '700' },
-  pillTextPrimary: { color: colors.white },
+  pillTextPrimary: { color: colors.textOnPrimary },
   pillTextConfirmed: { color: colors.success },
   pillTextGhost: { color: colors.text },
   editBox: { marginTop: spacing.md },

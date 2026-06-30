@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   TouchableOpacity, Text, StyleSheet, ActivityIndicator,
   ViewStyle, TextStyle, StyleProp,
 } from 'react-native';
-import { colors, typography, radius } from '../theme';
+import { typography, radius } from '../theme';
+import { useThemeStore } from '../store/theme';
+import type { ThemeColors } from '../theme/colors-themed';
 
 interface ButtonProps {
   title: string;
@@ -20,6 +22,8 @@ export const Button: React.FC<ButtonProps> = ({
   title, onPress, variant = 'accent',
   loading, disabled, fullWidth = true, style, textStyle,
 }) => {
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isDisabled = disabled || loading;
   const bgMap = {
     primary: colors.primary,
@@ -64,7 +68,7 @@ export const Button: React.FC<ButtonProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   base: {
     flexDirection: 'row',
     alignItems: 'center',

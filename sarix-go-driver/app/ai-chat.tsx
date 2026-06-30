@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,9 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { askAi, getSupportInfo, type ChatMessage } from '../src/api/ai';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 interface DisplayMessage extends ChatMessage {
   id: string;
@@ -25,6 +27,8 @@ interface DisplayMessage extends ChatMessage {
 
 export default function AiChatScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [messages, setMessages] = useState<DisplayMessage[]>([
     {
       id: 'welcome',
@@ -216,7 +220,7 @@ export default function AiChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
@@ -285,7 +289,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 22,
   },
-  userMessageText: { color: colors.white },
+  userMessageText: { color: colors.textOnPrimary },
   sourceTag: {
     ...typography.small,
     color: colors.textMuted,
@@ -352,5 +356,5 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     alignItems: 'center',
   },
-  needHumanText: { ...typography.caption, color: colors.white, fontWeight: '600' },
+  needHumanText: { ...typography.caption, color: colors.textOnPrimary, fontWeight: '600' },
 });

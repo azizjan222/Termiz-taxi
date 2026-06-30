@@ -268,7 +268,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   heroTextWrap: { flex: 1, paddingRight: spacing.md },
   heroTitle: {
     ...typography.h1,
-    color: colors.white,
+    color: colors.textOnPrimary,
     marginBottom: spacing.xs,
   },
   heroSubtitle: {

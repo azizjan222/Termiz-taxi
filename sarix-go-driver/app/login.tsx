@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Alert, Animated, Easing,
   KeyboardAvoidingView, Platform, Linking, TouchableOpacity, ActivityIndicator,
@@ -12,13 +12,17 @@ import { Button } from '../src/components/Button';
 import { telegramStart, telegramCheck } from '../src/api/driver';
 import { useDriverStore } from '../src/store/driver';
 import { BOT_USERNAME } from '../src/api/client';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 // Driver entry palette — vivid BLUE ("ko'k").
 const BLUE_GRADIENT: [string, string, string] = ['#2E8BFF', '#1565E0', '#0B3FA8'];
 
 export default function LoginScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const setDriver = useDriverStore((s) => s.setDriver);
 
   const [loading, setLoading] = useState(false);
@@ -143,14 +147,18 @@ export default function LoginScreen() {
   );
 }
 
-const Step: React.FC<{ n: string; text: string }> = ({ n, text }) => (
-  <View style={styles.stepRow}>
-    <View style={styles.stepNum}><Text style={styles.stepNumText}>{n}</Text></View>
-    <Text style={styles.stepText}>{text}</Text>
-  </View>
-);
+const Step: React.FC<{ n: string; text: string }> = ({ n, text }) => {
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  return (
+    <View style={styles.stepRow}>
+      <View style={styles.stepNum}><Text style={styles.stepNumText}>{n}</Text></View>
+      <Text style={styles.stepText}>{text}</Text>
+    </View>
+  );
+};
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent', paddingHorizontal: spacing.lg },
   header: { alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.lg },
   logoBox: {
@@ -158,8 +166,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md,
   },
   logoEmoji: { fontSize: 56 },
-  title: { ...typography.h1, color: colors.white },
-  subtitle: { ...typography.body, color: colors.white, opacity: 0.8, marginTop: 4 },
+  title: { ...typography.h1, color: colors.textOnPrimary },
+  subtitle: { ...typography.body, color: colors.textOnPrimary, opacity: 0.8, marginTop: 4 },
   body: { flex: 1, justifyContent: 'center' },
   steps: { gap: spacing.md },
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
@@ -168,12 +176,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   stepNumText: { ...typography.bodyBold, color: colors.primary, fontWeight: '800' },
-  stepText: { flex: 1, ...typography.body, color: colors.white },
+  stepText: { flex: 1, ...typography.body, color: colors.textOnPrimary },
   errorText: { ...typography.caption, color: '#FCA5A5', textAlign: 'center', marginTop: spacing.md },
   waitingBox: { alignItems: 'center', gap: spacing.md },
-  waitingText: { ...typography.h3, color: colors.white, textAlign: 'center' },
+  waitingText: { ...typography.h3, color: colors.textOnPrimary, textAlign: 'center' },
   waitingHint: { ...typography.body, color: colors.accent, textAlign: 'center' },
-  linkText: { ...typography.body, color: colors.white, textDecorationLine: 'underline', marginTop: spacing.sm },
+  linkText: { ...typography.body, color: colors.textOnPrimary, textDecorationLine: 'underline', marginTop: spacing.sm },
   footer: { paddingBottom: spacing.lg },
-  note: { ...typography.small, color: colors.white, opacity: 0.7, textAlign: 'center', marginTop: spacing.md },
+  note: { ...typography.small, color: colors.textOnPrimary, opacity: 0.7, textAlign: 'center', marginTop: spacing.md },
 });

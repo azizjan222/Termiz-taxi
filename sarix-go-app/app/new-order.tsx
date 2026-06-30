@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -21,14 +21,18 @@ import {
   type PriceQuote,
 } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
 import { gradients } from '../src/theme/colors';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 // Step 3 — departure time presets (Ketadigan vaqti)
 const TIME_OPTIONS = ['Hozir', '30 daqiqadan', '1 soatdan', '2 soatdan', 'Ertaga'];
 
 export default function NewOrderScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const orderStore = useOrderStore();
 
   const [quote, setQuote] = useState<PriceQuote | null>(null);
@@ -447,7 +451,7 @@ export default function NewOrderScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
@@ -538,7 +542,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   personChipText: { ...typography.bodyBold, color: colors.text },
-  personChipTextSelected: { ...typography.bodyBold, color: colors.white },
+  personChipTextSelected: { ...typography.bodyBold, color: colors.textOnPrimary },
 
   // Bo'sh mashina (full car) option
   fullCarChip: {
@@ -571,8 +575,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     marginBottom: spacing.md,
   },
-  priceBarLabel: { ...typography.bodyBold, color: colors.white },
-  priceBarValue: { ...typography.h2, color: colors.white },
+  priceBarLabel: { ...typography.bodyBold, color: colors.textOnPrimary },
+  priceBarValue: { ...typography.h2, color: colors.textOnPrimary },
   unavailableBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -735,7 +739,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  recAvatarText: { fontSize: 22, color: colors.white, fontWeight: '700' },
+  recAvatarText: { fontSize: 22, color: colors.textOnPrimary, fontWeight: '700' },
   recName: { ...typography.bodyBold, color: colors.text },
   recCar: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   recMeta: { ...typography.small, color: colors.textSecondary, marginTop: 2 },

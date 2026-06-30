@@ -475,7 +475,7 @@ export default function ProfileScreen() {
                 disabled={saving}
               >
                 {saving ? (
-                  <ActivityIndicator color={colors.white} />
+                  <ActivityIndicator color={colors.textOnPrimary} />
                 ) : (
                   <Text style={styles.modalBtnSaveText}>{t('common.save')}</Text>
                 )}
@@ -508,7 +508,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.xs + 2,
     borderRadius: radius.pill,
   },
-  editPillText: { ...typography.small, color: colors.white, fontWeight: '700' },
+  editPillText: { ...typography.small, color: colors.textOnPrimary, fontWeight: '700' },
   avatar: {
     width: 92,
     height: 92,
@@ -520,7 +520,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 3,
     borderColor: 'rgba(255,255,255,0.25)',
   },
-  avatarText: { fontSize: 40, color: colors.white, fontWeight: '700' },
+  avatarText: { fontSize: 40, color: colors.textOnPrimary, fontWeight: '700' },
   avatarEdit: {
     position: 'absolute',
     right: -2,
@@ -532,10 +532,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.white,
+    borderColor: colors.textOnPrimary,
   },
   avatarEditText: { fontSize: 14 },
-  userName: { ...typography.h2, color: colors.white },
+  userName: { ...typography.h2, color: colors.textOnPrimary },
   userPhone: { ...typography.body, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
   body: { padding: spacing.lg, marginTop: -spacing.md },
   balanceCard: {
@@ -564,7 +564,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   balanceIconText: { fontSize: 24 },
   balanceLabel: { ...typography.caption, color: 'rgba(255,255,255,0.8)' },
   balanceValue: { ...typography.h2, color: colors.accent, marginVertical: spacing.xs },
-  balanceWarning: { ...typography.small, color: colors.white, marginTop: 4 },
+  balanceWarning: { ...typography.small, color: colors.textOnPrimary, marginTop: 4 },
   topUpBtn: {
     backgroundColor: colors.accent,
     paddingHorizontal: spacing.md,
@@ -711,5 +711,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   modalBtnCancelText: { ...typography.bodyBold, color: colors.textSecondary },
   modalBtnSave: { backgroundColor: colors.primary },
-  modalBtnSaveText: { ...typography.bodyBold, color: colors.white },
+  modalBtnSaveText: { ...typography.bodyBold, color: colors.textOnPrimary },
 });

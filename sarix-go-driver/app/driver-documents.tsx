@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,9 @@ import {
   getCarModels,
 } from '../src/api/driver';
 import { useDriverStore } from '../src/store/driver';
-import { colors, typography, spacing, radius, gradients } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius, gradients } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 type DocKey = 'licenseFront' | 'licenseBack' | 'techFront' | 'techBack';
 
@@ -57,6 +59,8 @@ const uploaders: Record<DocKey, (uri: string) => Promise<{ url: string }>> = {
 export default function DriverDocumentsScreen() {
   const driver = useDriverStore((s) => s.driver);
   const setDriver = useDriverStore((s) => s.setDriver);
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   // Personal info — first name is required, surname is optional.
   const [firstName, setFirstName] = useState(driver?.first_name || '');
@@ -364,7 +368,7 @@ export default function DriverDocumentsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
 
   // Gradient header
@@ -386,7 +390,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   headerEmoji: { fontSize: 32 },
-  title: { ...typography.h2, color: colors.white },
+  title: { ...typography.h2, color: colors.textOnPrimary },
   subtitle: {
     ...typography.caption,
     color: 'rgba(255,255,255,0.9)',
@@ -482,7 +486,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  doneBadgeText: { color: colors.white, fontWeight: '700', fontSize: 14 },
+  doneBadgeText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 14 },
   slotSide: { ...typography.bodyBold, color: colors.text, marginTop: spacing.sm, fontSize: 14 },
   slotGuide: { ...typography.small, color: colors.textSecondary, marginTop: 1 },
 

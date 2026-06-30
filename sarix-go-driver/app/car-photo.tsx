@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, Alert, ActivityIndicator,
 } from 'react-native';
@@ -9,10 +9,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { Button } from '../src/components/Button';
 import { api, API_URL } from '../src/api/client';
 import { useDriverStore } from '../src/store/driver';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 export default function CarPhotoScreen() {
   const driver = useDriverStore((s) => s.driver);
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [imageUri, setImageUri] = useState<string | null>(
     driver?.car_photo_url ? `${API_URL}${driver.car_photo_url}` : null
   );
@@ -133,7 +137,7 @@ export default function CarPhotoScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',

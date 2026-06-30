@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,9 @@ import { useAuthStore } from '../src/store/auth';
 import { WS_URL, getAuthToken } from '../src/api/client';
 import { presentLocalNotification } from '../src/services/notifications';
 import { addNotification } from '../src/services/notificationHistory';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -54,6 +56,8 @@ const AUTO_ROTATE_MS = 7000;
 
 export default function SearchingScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const user = useAuthStore((s) => s.user);
   const [status, setStatus] = useState<'new' | 'accepted'>('new');
@@ -295,7 +299,7 @@ export default function SearchingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   statusCard: {
     alignItems: 'center',

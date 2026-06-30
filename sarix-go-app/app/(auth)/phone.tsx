@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -16,10 +16,14 @@ import { Logo } from '../../src/components/Logo';
 import { Button } from '../../src/components/Button';
 import { Input } from '../../src/components/Input';
 import { requestOtp } from '../../src/api/auth';
-import { colors, typography, spacing } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing } from '../../src/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 export default function PhoneScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [phone, setPhone] = useState('+998');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -98,7 +102,7 @@ export default function PhoneScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.white,

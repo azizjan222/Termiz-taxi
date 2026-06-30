@@ -39,7 +39,7 @@ export const darkColors: typeof lightColors = {
   accent: '#FFC400',
   accentLight: '#FFD75A',
   accentDark: '#D4A920',
-  white: '#FFFFFF',
+  white: '#1E2D52',
   background: '#0F1729',
   surface: '#1A2B4D',
   border: '#2E4A8F',

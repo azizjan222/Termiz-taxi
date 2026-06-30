@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,12 +16,16 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../../src/components/Button';
 import { requestOtp, verifyOtp } from '../../src/api/auth';
 import { useAuthStore } from '../../src/store/auth';
-import { colors, typography, spacing, radius } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing, radius } from '../../src/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 const CODE_LENGTH = 6;
 
 export default function OtpScreen() {
   const { t, i18n } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { phone, devCode } = useLocalSearchParams<{
     phone: string;
     devCode?: string;
@@ -167,7 +171,7 @@ export default function OtpScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.white,

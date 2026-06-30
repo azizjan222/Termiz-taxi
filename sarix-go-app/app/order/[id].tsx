@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -21,10 +21,14 @@ import { presentLocalNotification } from '../../src/services/notifications';
 import { addNotification } from '../../src/services/notificationHistory';
 import { useAuthStore } from '../../src/store/auth';
 import { API_URL, WS_URL, getAuthToken } from '../../src/api/client';
-import { colors, typography, spacing, radius } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing, radius } from '../../src/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 export default function OrderDetailScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
   const [order, setOrder] = useState<Order | null>(null);
@@ -348,7 +352,7 @@ const CARD_SHADOW = {
   elevation: 3,
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white },
   header: {
     flexDirection: 'row',
@@ -372,14 +376,14 @@ const styles = StyleSheet.create({
     ...CARD_SHADOW,
   },
   statusEmoji: { fontSize: 28, marginRight: spacing.md },
-  statusText: { ...typography.h3, color: colors.white, flex: 1 },
+  statusText: { ...typography.h3, color: colors.textOnPrimary, flex: 1 },
   serviceChip: {
     backgroundColor: 'rgba(255,255,255,0.22)',
     borderRadius: radius.pill,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
-  serviceChipText: { ...typography.small, color: colors.white, fontWeight: '700' },
+  serviceChipText: { ...typography.small, color: colors.textOnPrimary, fontWeight: '700' },
   acceptedInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -425,7 +429,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  driverAvatarText: { fontSize: 24, color: colors.white, fontWeight: '700' },
+  driverAvatarText: { fontSize: 24, color: colors.textOnPrimary, fontWeight: '700' },
   driverInfo: { flex: 1 },
   driverName: { ...typography.bodyBold, color: colors.text },
   driverPhone: { ...typography.caption, color: colors.primary, marginTop: 2, fontWeight: '600' },

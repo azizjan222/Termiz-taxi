@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TextInput, KeyboardAvoidingView,
   Platform, Alert, TouchableOpacity,
@@ -10,12 +10,16 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../src/components/Button';
 import { requestDriverOtp, verifyDriverOtp } from '../src/api/driver';
 import { useDriverStore } from '../src/store/driver';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 const CODE_LENGTH = 6;
 
 export default function LoginOtpScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { phone, devCode } = useLocalSearchParams<{
     phone: string;
     devCode?: string;
@@ -153,11 +157,11 @@ export default function LoginOtpScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.primary, paddingHorizontal: spacing.lg },
   header: { alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.lg },
-  title: { ...typography.h1, color: colors.white },
-  subtitle: { ...typography.body, color: colors.white, opacity: 0.8, marginTop: spacing.sm },
+  title: { ...typography.h1, color: colors.textOnPrimary },
+  subtitle: { ...typography.body, color: colors.textOnPrimary, opacity: 0.8, marginTop: spacing.sm },
   body: { flex: 1, paddingTop: spacing.lg },
   boxRow: {
     flexDirection: 'row',
@@ -174,9 +178,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  boxFilled: { borderColor: colors.white },
+  boxFilled: { borderColor: colors.textOnPrimary },
   boxActive: { borderColor: colors.accent },
-  boxText: { fontSize: 24, fontWeight: '700', color: colors.white },
+  boxText: { fontSize: 24, fontWeight: '700', color: colors.textOnPrimary },
   hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
   error: {
     ...typography.caption,
@@ -185,9 +189,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   resend: { alignItems: 'center', padding: spacing.lg },
-  resendText: { ...typography.body, color: colors.white, opacity: 0.7 },
+  resendText: { ...typography.body, color: colors.textOnPrimary, opacity: 0.7 },
   resendActive: { opacity: 1, fontWeight: '600' },
   footer: { paddingBottom: spacing.lg, gap: spacing.md },
   backLink: { alignItems: 'center', padding: spacing.sm },
-  backLinkText: { ...typography.body, color: colors.white, opacity: 0.7 },
+  backLinkText: { ...typography.body, color: colors.textOnPrimary, opacity: 0.7 },
 });

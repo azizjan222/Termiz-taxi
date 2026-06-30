@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, Alert,
   KeyboardAvoidingView, Platform,
@@ -9,7 +9,9 @@ import { useTranslation } from 'react-i18next';
 
 import { Button } from '../src/components/Button';
 import { ratePassenger } from '../src/api/ratings';
-import { colors, typography, spacing, radius } from '../src/theme';
+import { useThemeStore } from '../src/store/theme';
+import { typography, spacing, radius } from '../src/theme';
+import type { ThemeColors } from '../src/theme/colors-themed';
 
 const STARS_LABELS = [
   'Juda yomon',
@@ -21,6 +23,8 @@ const STARS_LABELS = [
 
 export default function RateDriverScreen() {
   const { t } = useTranslation();
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { orderId, driverName } = useLocalSearchParams<{
     orderId: string;
     driverName?: string;
@@ -103,7 +107,7 @@ export default function RateDriverScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white, padding: spacing.lg },
   header: { alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.xl },
   title: { ...typography.h2, color: colors.primary, textAlign: 'center' },

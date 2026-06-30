@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -7,9 +7,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Logo } from '../../src/components/Logo';
 import { Button } from '../../src/components/Button';
 import { changeLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from '../../src/i18n';
-import { colors, typography, spacing, radius } from '../../src/theme';
+import { useThemeStore } from '../../src/store/theme';
+import { typography, spacing, radius } from '../../src/theme';
+import type { ThemeColors } from '../../src/theme/colors-themed';
 
 export default function LanguageScreen() {
+  const colors = useThemeStore((s) => s.colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [selected, setSelected] = useState<SupportedLanguage>('uz');
 
   const handleNext = async () => {
@@ -65,7 +69,7 @@ export default function LanguageScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.white,

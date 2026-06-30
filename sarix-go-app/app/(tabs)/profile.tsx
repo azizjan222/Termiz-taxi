@@ -365,7 +365,7 @@ export default function ProfileScreen() {
                 disabled={saving}
               >
                 {saving ? (
-                  <ActivityIndicator color={colors.white} />
+                  <ActivityIndicator color={colors.textOnPrimary} />
                 ) : (
                   <Text style={styles.modalBtnSaveText}>Saqlash</Text>
                 )}
@@ -409,9 +409,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    borderColor: colors.white,
+    borderColor: colors.textOnPrimary,
   },
-  avatarText: { ...typography.h1, color: colors.white },
+  avatarText: { ...typography.h1, color: colors.textOnPrimary },
   avatarEdit: {
     position: 'absolute',
     right: 0,
@@ -437,7 +437,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginVertical: spacing.md,
   },
   promoIcon: { fontSize: 24, marginRight: spacing.md },
-  promoText: { flex: 1, ...typography.body, color: colors.white },
+  promoText: { flex: 1, ...typography.body, color: colors.textOnPrimary },
   driverWrap: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
@@ -572,5 +572,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   modalBtnCancelText: { ...typography.bodyBold, color: colors.textSecondary },
   modalBtnSave: { backgroundColor: colors.primary },
-  modalBtnSaveText: { ...typography.bodyBold, color: colors.white },
+  modalBtnSaveText: { ...typography.bodyBold, color: colors.textOnPrimary },
 });
