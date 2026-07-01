@@ -21,7 +21,8 @@ async def request_otp(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    phone_raw = data.get("phone", "").strip()
+    # Use `or ""` (not a get-default) so an explicit JSON null doesn't crash .strip().
+    phone_raw = (data.get("phone") or "").strip()
     if not phone_raw:
         return web.json_response({"error": "Telefon raqam kerak"}, status=400)
 
@@ -61,10 +62,12 @@ async def verify_otp_endpoint(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    phone_raw = data.get("phone", "")
+    # `or ""` guards against an explicit JSON null (e.g. {"first_name": null}), which a
+    # get-default would NOT catch and would crash .strip() with a 500 instead of a 400.
+    phone_raw = (data.get("phone") or "")
     code = str(data.get("code", "")).strip()
-    first_name = data.get("first_name", "").strip()
-    language = data.get("language", "uz")
+    first_name = (data.get("first_name") or "").strip()
+    language = data.get("language") or "uz"
 
     if not phone_raw or not code:
         return web.json_response({"error": "Telefon va kod kerak"}, status=400)
