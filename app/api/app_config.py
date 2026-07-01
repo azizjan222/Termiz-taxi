@@ -2,6 +2,7 @@
 from aiohttp import web
 
 from app import config
+from app.services.dynamic_settings import get_min_driver_balance
 
 
 async def get_app_config(request: web.Request) -> web.Response:
@@ -34,5 +35,5 @@ async def get_app_config(request: web.Request) -> web.Response:
         },
         "support_telegram": config.SUPPORT_TELEGRAM,
         "bot_username": "termizsariosiyotaxi_bot",
-        "min_driver_balance": config.MIN_DRIVER_BALANCE,
+        "min_driver_balance": get_min_driver_balance(),
     })

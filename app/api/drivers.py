@@ -9,6 +9,11 @@ from app.models import Driver, Order, OrderHistory, Setting
 from app.api.websocket import ws_manager
 from app.utils.timefmt import iso_utc
 from app import config
+from app.services.dynamic_settings import (
+    get_min_driver_balance,
+    get_free_trial_days,
+    get_free_trial_limit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +34,21 @@ def _subscription_days_left(driver: Driver, now: datetime | None = None) -> int:
     return (driver.subscription_until - now).days + 1
 
 
-def driver_can_accept(driver: Driver, now: datetime | None = None) -> bool:
+def driver_can_accept(
+    driver: Driver, now: datetime | None = None, min_balance: int | None = None
+) -> bool:
     """A driver may receive/accept orders while on the free trial OR if their balance
-    is at least the minimum. Drivers with no balance get NO orders (must top up)."""
+    is at least the minimum. Drivers with no balance get NO orders (must top up).
+
+    ``min_balance`` is the admin-configurable threshold; when not supplied it falls back
+    to the env constant. Callers with a DB session should pass
+    ``get_min_driver_balance(session)`` so the admin Settings value is honored.
+    """
     if _subscription_active(driver, now):
         return True
-    return (driver.balance or 0) >= config.MIN_DRIVER_BALANCE
+    if min_balance is None:
+        min_balance = config.MIN_DRIVER_BALANCE
+    return (driver.balance or 0) >= min_balance
 
 
 def _today_str(now: datetime | None = None) -> str:
@@ -124,7 +138,10 @@ def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
     The global cap is enforced with an ATOMIC conditional UPDATE on the Setting counter,
     so concurrent first-logins can't exceed the limit (works on SQLite and Postgres).
     """
-    if config.FREE_TRIAL_DRIVER_LIMIT <= 0 or config.FREE_TRIAL_DAYS <= 0:
+    # Admin-configurable limit/length (Settings page), falling back to env constants.
+    trial_limit = get_free_trial_limit(session)
+    trial_days = get_free_trial_days(session)
+    if trial_limit <= 0 or trial_days <= 0:
         return
     # Already decided for this driver (granted before, or trial already used/expired).
     if driver.subscription_until is not None:
@@ -158,12 +175,12 @@ def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
                 "UPDATE settings SET value = CAST(value AS INTEGER) + 1 "
                 "WHERE key = :k AND CAST(value AS INTEGER) < :lim"
             ),
-            {"k": _FREE_TRIAL_SETTING_KEY, "lim": config.FREE_TRIAL_DRIVER_LIMIT},
+            {"k": _FREE_TRIAL_SETTING_KEY, "lim": trial_limit},
         )
         session.commit()
 
         if (result.rowcount or 0) > 0:
-            driver.subscription_until = datetime.utcnow() + timedelta(days=config.FREE_TRIAL_DAYS)
+            driver.subscription_until = datetime.utcnow() + timedelta(days=trial_days)
             session.commit()
     except Exception:
         session.rollback()
@@ -825,15 +842,16 @@ async def list_available_orders(request: web.Request) -> web.Response:
     session = get_session()
     try:
         d = session.query(Driver).filter_by(id=driver.id).first() or driver
-        if not driver_can_accept(d):
+        min_balance = get_min_driver_balance(session)
+        if not driver_can_accept(d, min_balance=min_balance):
             return web.json_response({
                 "orders": [],
                 "can_receive": False,
                 "balance": d.balance or 0,
-                "min_required": config.MIN_DRIVER_BALANCE,
+                "min_required": min_balance,
                 "message": (
                     "⚠️ Balansingizda mablag' yetarli emas. Yangi zakaslarni olish uchun "
-                    f"balansni kamida {config.MIN_DRIVER_BALANCE:,} so'mga to'ldiring."
+                    f"balansni kamida {min_balance:,} so'mga to'ldiring."
                 ).replace(",", " "),
             })
 
@@ -922,15 +940,16 @@ async def accept_order(request: web.Request) -> web.Response:
 
         if not on_free_trial:
             # Minimum balance check (driver must have at least this much to accept any order)
-            if (d.balance or 0) < config.MIN_DRIVER_BALANCE:
+            min_balance = get_min_driver_balance(session)
+            if (d.balance or 0) < min_balance:
                 return web.json_response({
                     "error": (
                         f"Zakas qabul qilish uchun balansingizda kamida "
-                        f"{config.MIN_DRIVER_BALANCE:,} so'm bo'lishi kerak. "
+                        f"{min_balance:,} so'm bo'lishi kerak. "
                         f"Hozir: {d.balance or 0:,} so'm"
                     ).replace(",", " "),
                     "balance": d.balance,
-                    "min_required": config.MIN_DRIVER_BALANCE,
+                    "min_required": min_balance,
                     "code": "min_balance",
                 }, status=400)
 
@@ -1286,8 +1305,9 @@ async def list_recommended_drivers(request: web.Request) -> web.Response:
         )
 
         recommendations = []
+        min_balance = get_min_driver_balance(session)
         for d in drivers:
-            if not driver_can_accept(d, now):
+            if not driver_can_accept(d, now, min_balance=min_balance):
                 continue
             recommendations.append({
                 "id": d.id,

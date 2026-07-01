@@ -10,6 +10,7 @@ from app.utils.auth import require_auth
 from app.utils.timefmt import iso_utc
 from app.api.websocket import ws_manager
 from app import config
+from app.services.dynamic_settings import get_min_driver_balance
 
 logger = logging.getLogger(__name__)
 
@@ -241,11 +242,12 @@ async def create_order(request: web.Request) -> web.Response:
         # Only drivers who can actually take the order (free trial OR enough balance)
         # should receive it. Drivers with no balance get nothing (they must top up).
         now = datetime.utcnow()
+        min_balance = get_min_driver_balance(session)
         eligible_drivers = session.query(Driver).filter(
             Driver.is_blocked == False,  # noqa
             or_(
                 Driver.subscription_until > now,
-                Driver.balance >= config.MIN_DRIVER_BALANCE,
+                Driver.balance >= min_balance,
             ),
         ).all()
 
