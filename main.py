@@ -1248,26 +1248,37 @@ async def _send_driver_pdf(bot, chat_id: int, uid: int):
     data = dict(haydovchi_hujjatlar.get(uid, {}))
     data['telegram_id'] = uid
     data.setdefault('phone', haydovchilar.get(uid))
-    # Fallback to DB if in-memory docs are missing
-    if not data.get('license_file_id'):
+    # Always merge the DB record so the app-uploaded document URLs are included.
+    # Documents are now uploaded IN THE APP (stored as file URLs), not collected by the
+    # bot as Telegram file_ids — so the PDF must read those URLs, otherwise it comes out
+    # empty ("Rasm yuborilmagan") for every app-registered driver.
+    try:
+        from app.database import get_session as _gs
+        s = _gs()
         try:
-            from app.database import get_session as _gs
-            s = _gs()
-            try:
-                d = s.query(DBDriver).filter_by(telegram_id=uid).first()
-                if d:
-                    data.update({
-                        'first_name': d.first_name, 'last_name': d.last_name,
-                        'pinfl': d.pinfl, 'phone': d.phone, 'car_model': d.car_model,
-                        'car_number': d.car_number, 'car_year': d.car_year,
-                        'license_file_id': d.license_file_id,
-                        'tech_passport_file_id': d.tech_passport_file_id,
-                        'car_photo_file_id': d.car_photo_file_id,
-                    })
-            finally:
-                s.close()
-        except Exception as e:
-            logger.error(f"PDF DB fallback error: {e}")
+            d = s.query(DBDriver).filter_by(telegram_id=uid).first()
+            if d:
+                data.setdefault('first_name', d.first_name)
+                data.setdefault('last_name', d.last_name)
+                data.setdefault('pinfl', d.pinfl)
+                data.setdefault('phone', d.phone)
+                data.setdefault('car_model', d.car_model)
+                data.setdefault('car_number', d.car_number)
+                data.setdefault('car_year', d.car_year)
+                # Legacy Telegram file_ids (old bot flow).
+                data.setdefault('license_file_id', d.license_file_id)
+                data.setdefault('tech_passport_file_id', d.tech_passport_file_id)
+                data.setdefault('car_photo_file_id', d.car_photo_file_id)
+                # App-uploaded document URLs (current flow).
+                data['license_photo_url'] = d.license_photo_url
+                data['license_back_url'] = d.license_back_url
+                data['tech_passport_url'] = d.tech_passport_url
+                data['tech_passport_back_url'] = d.tech_passport_back_url
+                data['car_photo_url'] = d.car_photo_url
+        finally:
+            s.close()
+    except Exception as e:
+        logger.error(f"PDF DB fetch error: {e}")
     try:
         pdf_bytes = await build_driver_pdf(bot, data)
         bio = io.BytesIO(pdf_bytes)

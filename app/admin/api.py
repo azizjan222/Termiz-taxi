@@ -534,9 +534,17 @@ async def api_driver_pdf(request: web.Request) -> web.Response:
             "car_number": driver.car_number,
             "car_year": driver.car_year,
             "telegram_id": driver.telegram_id,
+            # Legacy Telegram file_ids (old bot flow).
             "license_file_id": driver.license_file_id,
             "tech_passport_file_id": driver.tech_passport_file_id,
             "car_photo_file_id": driver.car_photo_file_id,
+            # App-uploaded document URLs (current flow) — without these the PDF was
+            # empty for every driver who uploaded documents in the app.
+            "license_photo_url": driver.license_photo_url,
+            "license_back_url": driver.license_back_url,
+            "tech_passport_url": driver.tech_passport_url,
+            "tech_passport_back_url": driver.tech_passport_back_url,
+            "car_photo_url": driver.car_photo_url,
         }
     finally:
         session.close()
