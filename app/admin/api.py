@@ -192,7 +192,8 @@ async def api_push(request: web.Request) -> web.Response:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
     target = data.get("target", "all")
-    message = data.get("message", "").strip()
+    # `or ""` so an explicit JSON null message doesn't crash .strip() (500 -> clean 400).
+    message = (data.get("message") or "").strip()
     recipient_id = data.get("recipient_id")
     recipient_type = data.get("recipient_type", "driver")
 
