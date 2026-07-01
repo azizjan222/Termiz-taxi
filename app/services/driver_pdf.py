@@ -21,12 +21,44 @@ async def _download_photo(bot, file_id):
         return None
 
 
+def _load_local_image(url):
+    """Load an app-uploaded document image from local disk.
+
+    Documents are now uploaded IN THE APP and stored under the uploads dir, served at
+    ``/uploads/<filename>``. The admin PDF must embed these files (the old code only
+    knew about Telegram ``file_id``s, so app-registered drivers' PDFs came out empty).
+    Returns BytesIO or None.
+    """
+    if not url:
+        return None
+    try:
+        from app import config
+        # url is like "/uploads/driver_1_license_ab12cd.jpg" (or an absolute http URL,
+        # which we can't read from disk — skip those).
+        if str(url).startswith("http://") or str(url).startswith("https://"):
+            return None
+        filename = str(url).rsplit("/", 1)[-1]
+        if not filename or ".." in filename or "\\" in filename:
+            return None
+        path = os.path.join(str(config.UPLOAD_DIR), filename)
+        if not os.path.exists(path):
+            return None
+        with open(path, "rb") as f:
+            return io.BytesIO(f.read())
+    except Exception as e:
+        logger.warning("Could not load local image %s: %s", url, e)
+        return None
+
+
 async def build_driver_pdf(bot, driver: dict) -> bytes:
     """Build a PDF (bytes) with the driver's details and document photos.
 
     `driver` keys: first_name, last_name, pinfl, phone, car_model, car_number,
-    car_year, telegram_id, and the three file_ids:
-    license_file_id, tech_passport_file_id, car_photo_file_id.
+    car_year, telegram_id, the Telegram file_ids (license_file_id,
+    tech_passport_file_id, car_photo_file_id) collected by the old bot flow, AND the
+    app-uploaded document URLs (license_photo_url, license_back_url, tech_passport_url,
+    tech_passport_back_url, car_photo_url). For each document the Telegram file is
+    tried first, then the app-uploaded local file.
     """
     from fpdf import FPDF
 
@@ -68,14 +100,19 @@ async def build_driver_pdf(bot, driver: dict) -> bytes:
     for label, value in fields:
         line(f"{label}: {value if value not in (None, '') else '-'}")
 
-    # Photos
+    # Photos. Each entry: (caption, telegram_file_id, app_uploaded_url). We prefer the
+    # Telegram file (legacy bot flow) and fall back to the app-uploaded local file.
     photos = [
-        ("Haydovchilik guvohnomasi", driver.get("license_file_id")),
-        ("Texnik pasport", driver.get("tech_passport_file_id")),
-        ("Mashina fotosurati", driver.get("car_photo_file_id")),
+        ("Haydovchilik guvohnomasi (old tomoni)", driver.get("license_file_id"), driver.get("license_photo_url")),
+        ("Haydovchilik guvohnomasi (orqa tomoni)", None, driver.get("license_back_url")),
+        ("Texnik pasport (old tomoni)", driver.get("tech_passport_file_id"), driver.get("tech_passport_url")),
+        ("Texnik pasport (orqa tomoni)", None, driver.get("tech_passport_back_url")),
+        ("Mashina fotosurati", driver.get("car_photo_file_id"), driver.get("car_photo_url")),
     ]
-    for caption, file_id in photos:
+    for caption, file_id, url in photos:
         buf = await _download_photo(bot, file_id)
+        if buf is None:
+            buf = _load_local_image(url)
         pdf.add_page()
         line(caption, h=10, bold=True, size=13)
         if buf is not None:
