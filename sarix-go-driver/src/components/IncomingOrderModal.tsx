@@ -86,7 +86,10 @@ export const IncomingOrderModal: React.FC<Props> = ({
       setSecsLeft((s) => {
         if (s <= 1) {
           clearInterval(tick);
-          onDismiss();
+          // Defer onDismiss out of the state updater to avoid calling a parent
+          // setState from inside this updater (React "Cannot update a component
+          // while rendering a different component" warning) — same guard AdBanner uses.
+          setTimeout(onDismiss, 0);
           return 0;
         }
         return s - 1;
