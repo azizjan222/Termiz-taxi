@@ -39,7 +39,9 @@
         "ACCESS_COARSE_LOCATION",
         "INTERNET",
         "VIBRATE",
-        "RECEIVE_BOOT_COMPLETED"
+        "WAKE_LOCK",
+        "RECEIVE_BOOT_COMPLETED",
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -49,6 +51,7 @@
     "plugins": [
       "expo-router",
       "expo-localization",
+      "expo-notifications",
       [
         "expo-location",
         {
