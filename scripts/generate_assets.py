@@ -1,7 +1,7 @@
 """Generate Sarix Go app icons, splash, and other assets."""
 import os
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 
 # Brand colors
 PRIMARY = (14, 27, 61)       # #0E1B3D
