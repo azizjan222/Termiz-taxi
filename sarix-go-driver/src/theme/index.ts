@@ -1,7 +1,7 @@
 export const colors = {
-  primary: '#6C4DF6',
-  primaryLight: '#8A6BFF',
-  primaryDark: '#5A3DE0',
+  primary: '#0E9D5A',
+  primaryLight: '#3FBE84',
+  primaryDark: '#0A7A45',
   accent: '#FFC400',
   accentLight: '#FFD451',
   accentDark: '#E3A800',
@@ -40,7 +40,10 @@ export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48 };
 export const radius = { sm: 8, md: 12, lg: 16, xl: 24, pill: 999 };
 
 export const gradients = {
-  purple: ['#7B61FF', '#5B3DF5'] as const,
+  // Driver brand is green (matches the recoloured SARIX GO logo). The key name
+  // `purple` is kept so existing imports don't break; the values are now green.
+  purple: ['#12A35E', '#0A7A45'] as const,
   gold: ['#FFD23F', '#FFB300'] as const,
-  navy: ['#0E1B3D', '#1B2B5A'] as const,
+  // `navy` header gradient recoloured to deep green for the driver identity.
+  navy: ['#0D3F2C', '#125A3C'] as const,
 };
