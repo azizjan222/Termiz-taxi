@@ -17,7 +17,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0E1B3D"
+      "backgroundColor": "#194083"
     },
     "ios": {
       "supportsTablet": false,
@@ -30,7 +30,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0E1B3D"
+        "backgroundColor": "#1E56B5"
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",

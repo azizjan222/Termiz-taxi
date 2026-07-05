@@ -3,9 +3,9 @@
 // theme-aware screens read from the theme store (useThemeStore().colors).
 
 export const lightColors = {
-  primary: '#6C4DF6',
-  primaryLight: '#8A6BFF',
-  primaryDark: '#5A3DE0',
+  primary: '#1E5BC4',
+  primaryLight: '#4E86E8',
+  primaryDark: '#123E8F',
   accent: '#FFC400',
   accentLight: '#FFD451',
   accentDark: '#E3A800',
@@ -30,9 +30,9 @@ export const lightColors = {
 };
 
 export const darkColors: typeof lightColors = {
-  primary: '#8A6BFF',
-  primaryLight: '#2E4A8F',
-  primaryDark: '#0E1B3D',
+  primary: '#5B8DEF',
+  primaryLight: '#1E3A6E',
+  primaryDark: '#0F2A5C',
   accent: '#FFC400',
   accentLight: '#FFD75A',
   accentDark: '#D4A920',
