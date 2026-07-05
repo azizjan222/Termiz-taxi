@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { WS_URL, getAuthToken } from '../api/client';
 import { type DriverOrder } from '../api/driver';
 import { useRealtimeStore } from '../store/realtime';
+import { useDriverStore } from '../store/driver';
 import { playNewOrderAlert, playOrderCancelledAlert } from './notifications';
 import { addNotification } from './notificationHistory';
 
@@ -96,6 +97,10 @@ function handleMessage(data: any) {
   if (!msg || typeof msg !== 'object') return;
 
   if (msg.type === 'new_order' && msg.order) {
+    // Never alert an OFFLINE driver about a new order. The backend already skips
+    // offline drivers, but a direct/recommended order or a toggle race could still
+    // deliver one here — so guard the loud alarm + list update on the online flag.
+    if (!useDriverStore.getState().isOnline) return;
     const order = msg.order as DriverOrder;
     // Loud sound + strong vibration + haptic feedback for the new order. This
     // now fires globally (any screen) instead of only on the Orders tab.

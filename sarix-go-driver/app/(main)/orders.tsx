@@ -33,6 +33,9 @@ export default function OrdersScreen() {
   // The newest incoming order shown in the ride-hailing style popup.
   const [incomingOrder, setIncomingOrder] = useState<DriverOrder | null>(null);
   const canReceiveRef = useRef(true);
+  // Mirror the online flag into a ref so the realtime consumer (which runs off a
+  // store subscription) always reads the freshest value without re-subscribing.
+  const isOnlineRef = useRef(isOnline);
   // Last realtime event we've already consumed (by monotonic seq) so we never
   // re-process the same event on an unrelated re-render.
   const lastSeqRef = useRef(0);
@@ -41,6 +44,10 @@ export default function OrdersScreen() {
   useEffect(() => {
     canReceiveRef.current = canReceive;
   }, [canReceive]);
+
+  useEffect(() => {
+    isOnlineRef.current = isOnline;
+  }, [isOnline]);
 
   const load = async () => {
     setRefreshing(true);
@@ -69,8 +76,10 @@ export default function OrdersScreen() {
     lastSeqRef.current = lastEvent.seq;
 
     if (lastEvent.kind === 'new_order' && lastEvent.order) {
-      // No balance / no trial -> ignore incoming orders (defense in depth).
-      if (!canReceiveRef.current) return;
+      // Ignore incoming orders when offline or with no balance/trial (defense in
+      // depth — the backend already filters these out, this guards against a race
+      // where a WS event arrives just as the driver toggles offline).
+      if (!isOnlineRef.current || !canReceiveRef.current) return;
       const order = lastEvent.order;
       setOrders((prev) => {
         if (prev.find((o) => o.id === order.id)) return prev;
@@ -86,6 +95,16 @@ export default function OrdersScreen() {
 
   const toggleOnline = async (val: boolean) => {
     setOnlineLocal(val);
+    isOnlineRef.current = val;
+    // Going offline: immediately clear the visible list + any incoming popup so the
+    // driver doesn't keep seeing stale orders during the 15s poll gap. Going online:
+    // refresh right away so orders appear without waiting for the next poll.
+    if (!val) {
+      setOrders([]);
+      setIncomingOrder(null);
+    } else {
+      load();
+    }
     try {
       await apiSetOnline(val);
       // Keep the driver object in sync so other screens see the change.

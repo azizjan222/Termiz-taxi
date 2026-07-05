@@ -842,6 +842,16 @@ async def list_available_orders(request: web.Request) -> web.Response:
     session = get_session()
     try:
         d = session.query(Driver).filter_by(id=driver.id).first() or driver
+        # Offline drivers receive NO new orders — they toggled themselves off. This
+        # mirrors the create_order broadcast filter so the polled list can't leak
+        # new orders to an offline driver.
+        if not d.is_online:
+            return web.json_response({
+                "orders": [],
+                "can_receive": True,
+                "is_online": False,
+                "message": "🔴 Siz oflayn rejimdasiz. Yangi zakaslarni olish uchun onlayn rejimni yoqing.",
+            })
         min_balance = get_min_driver_balance(session)
         if not driver_can_accept(d, min_balance=min_balance):
             return web.json_response({
