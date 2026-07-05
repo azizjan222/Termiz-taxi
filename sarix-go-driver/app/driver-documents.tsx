@@ -32,6 +32,21 @@ import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius, gradients } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
+// Pretty +998 formatter: fixed "+998 " prefix + grouped 9 local digits.
+const formatPhone = (text: string): string => {
+  let digits = text.replace(/\D/g, '');
+  if (digits.startsWith('998')) digits = digits.slice(3);
+  digits = digits.slice(0, 9);
+  let out = '+998';
+  if (digits.length > 0) out += ' ' + digits.slice(0, 2);
+  if (digits.length > 2) out += ' ' + digits.slice(2, 5);
+  if (digits.length > 5) out += ' ' + digits.slice(5, 7);
+  if (digits.length > 7) out += ' ' + digits.slice(7, 9);
+  return out;
+};
+const localDigits = (text: string) => text.replace(/\D/g, '').replace(/^998/, '');
+const isValidPhone = (text: string) => localDigits(text).length === 9;
+
 type DocKey = 'licenseFront' | 'licenseBack' | 'techFront' | 'techBack';
 
 interface DocSpec {
@@ -65,6 +80,12 @@ export default function DriverDocumentsScreen() {
   // Personal info — first name is required, surname is optional.
   const [firstName, setFirstName] = useState(driver?.first_name || '');
   const [lastName, setLastName] = useState(driver?.last_name || '');
+
+  // Contact number shown to passengers. Defaults to the registered (login) number;
+  // the driver confirms it or changes it here (variant A).
+  const [displayNumber, setDisplayNumber] = useState(driver?.contact_phone || driver?.phone || '');
+  const [phoneEditing, setPhoneEditing] = useState(false);
+  const [newPhone, setNewPhone] = useState('+998 ');
 
   const [carModel, setCarModel] = useState(driver?.car_model || '');
   const [carYear, setCarYear] = useState(driver?.car_year || '');
@@ -113,13 +134,28 @@ export default function DriverDocumentsScreen() {
     }
   };
 
+  const saveNewNumber = () => {
+    if (!isValidPhone(newPhone)) return;
+    setDisplayNumber('+998' + localDigits(newPhone));
+    setPhoneEditing(false);
+  };
+  const startEditingPhone = () => {
+    setNewPhone(displayNumber && displayNumber.startsWith('+998') ? formatPhone(displayNumber) : '+998 ');
+    setPhoneEditing(true);
+  };
+
   const allUploaded = uploaded.licenseFront && uploaded.licenseBack && uploaded.techFront && uploaded.techBack;
   const allDone =
-    !!firstName.trim() && !!carModel.trim() && !!carYear.trim() && !!carNumber.trim() && allUploaded;
+    !!firstName.trim() && isValidPhone(displayNumber) && !!carModel.trim() &&
+    !!carYear.trim() && !!carNumber.trim() && allUploaded;
 
   const handleSubmit = async () => {
     if (!firstName.trim()) {
       Alert.alert('Diqqat', 'Ismingizni kiriting.');
+      return;
+    }
+    if (!isValidPhone(displayNumber)) {
+      Alert.alert('Diqqat', "Bog'lanish uchun to'g'ri telefon raqamini kiriting.");
       return;
     }
     if (!carModel.trim() || !carYear.trim() || !carNumber.trim()) {
@@ -135,6 +171,7 @@ export default function DriverDocumentsScreen() {
       await updateDriverInfo({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
+        contact_phone: '+998' + localDigits(displayNumber),
         car_model: carModel.trim(),
         car_year: carYear.trim(),
         car_number: carNumber.trim().toUpperCase(),
@@ -256,6 +293,51 @@ export default function DriverDocumentsScreen() {
             autoCapitalize="words"
             maxLength={50}
           />
+
+          {/* Contact number shown to passengers on orders. Defaults to the
+              registered number; the driver confirms or changes it here. */}
+          <View style={styles.contactCard}>
+            <View style={styles.contactTop}>
+              <View style={styles.phoneBadge}><Text style={styles.phoneBadgeIcon}>📞</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.contactLabel}>Bog'lanish uchun raqam</Text>
+                <Text style={styles.contactNumber}>{displayNumber ? formatPhone(displayNumber) : '—'}</Text>
+              </View>
+            </View>
+            {phoneEditing ? (
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={styles.label}>Yangi raqam</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newPhone}
+                  onChangeText={(v) => setNewPhone(formatPhone(v))}
+                  keyboardType="phone-pad"
+                  placeholder="+998 90 123 45 67"
+                  placeholderTextColor={colors.textMuted}
+                  autoFocus
+                />
+                <Button
+                  title="Saqlash"
+                  onPress={saveNewNumber}
+                  disabled={!isValidPhone(newPhone)}
+                  variant="accent"
+                  style={{ marginTop: spacing.sm, opacity: isValidPhone(newPhone) ? 1 : 0.5 }}
+                />
+                <TouchableOpacity style={styles.phoneCancel} onPress={() => setPhoneEditing(false)} activeOpacity={0.7}>
+                  <Text style={styles.phoneCancelText}>Bekor qilish</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.contactQuestion}>
+                  Yo'lovchilar shu raqam orqali bog'lanadi. To'g'ri bo'lsa davom eting, aks holda o'zgartiring.
+                </Text>
+                <TouchableOpacity style={styles.changeBtn} onPress={startEditingPhone} activeOpacity={0.85}>
+                  <Text style={styles.changeBtnText}>Raqamni o'zgartirish</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
         </View>
 
         {/* Car info */}
@@ -447,6 +529,41 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   inputValue: { fontSize: 16, color: colors.text },
   inputPlaceholder: { fontSize: 16, color: colors.textMuted },
+
+  // Contact-number card
+  contactCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  contactTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  phoneBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phoneBadgeIcon: { fontSize: 20 },
+  contactLabel: { ...typography.caption, color: colors.textSecondary },
+  contactNumber: { ...typography.h3, color: colors.text, marginTop: 2, letterSpacing: 0.5 },
+  contactQuestion: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.md, lineHeight: 19 },
+  changeBtn: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  changeBtnText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  phoneCancel: { alignSelf: 'center', paddingVertical: spacing.md, marginTop: spacing.xs },
+  phoneCancelText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
 
   // Document slots
   slotRow: { flexDirection: 'row', gap: spacing.md },
