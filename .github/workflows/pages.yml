@@ -1,0 +1,52 @@
+name: Deploy Legal Pages (GitHub Pages)
+
+# Publishes the static site in /docs (privacy policy + terms of service, in
+# UZ/RU/EN) to GitHub Pages. The resulting public URLs are required by Google
+# Play (Privacy Policy link) and by the app store listings.
+#
+# ONE-TIME SETUP: in the repo, open Settings -> Pages -> "Build and deployment"
+# and set Source = "GitHub Actions". After that this workflow publishes on every
+# push to main that touches doc/ (or when run manually).
+#
+# Public base URL after first deploy:
+#   https://azizjan222.github.io/Termiz-taxi/
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload docs artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
