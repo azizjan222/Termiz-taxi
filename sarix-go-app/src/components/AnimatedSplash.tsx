@@ -135,7 +135,7 @@ export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
       {/* Logo */}
       <Animated.View style={{ transform: [{ scale: logoScale }], opacity: logoOpacity }}>
         <View style={styles.logoCard}>
-          <Image source={require('../../assets/splash-logo.jpg')} style={styles.logo} resizeMode="cover" />
+          <Image source={require('../../assets/splash-logo.png')} style={styles.logo} resizeMode="cover" />
         </View>
       </Animated.View>
 
