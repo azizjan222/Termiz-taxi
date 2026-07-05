@@ -55,6 +55,17 @@ const DEFAULT_TIMEOUT_MS = 5000;
 const TARGET_ACCURACY_M = 5;
 
 /**
+ * Maximum age (ms) for a fix to count as "fresh". A cold-start `getCurrentPositionAsync`
+ * on Android often returns the device's LAST-KNOWN location immediately — an old, cached
+ * position (from wherever the phone last had a fix) that still reports a small accuracy.
+ * Early-resolving on that stale reading was the root cause of the "coarse/far pin on the
+ * first try, correct only on the second try" bug: the second try happened after the GPS
+ * had warmed up. We therefore ignore stale readings for both the early-finish decision
+ * and the on-screen pin, so the first detection converges to a real, live fix.
+ */
+const FRESH_MS = 10000;
+
+/**
  * Detect the device's current location.
  *
  * Performs the full permission -> services-enabled -> bounded acquisition flow:
@@ -110,7 +121,11 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
     // as soon as a fix at or below TARGET_ACCURACY_M arrives; otherwise we return the
     // best reading collected by the time the timeout elapses (R3.1, R3.2, R3.4, R7.5).
     const best = await new Promise<DetectSuccess | 'timeout'>((resolve) => {
-      let bestFix: DetectSuccess | null = null;
+      // Best FRESH (live) fix — the only kind we move the pin to / early-finish on.
+      let bestFresh: DetectSuccess | null = null;
+      // Best fix regardless of freshness — a last-resort fallback for the timeout so
+      // we still return SOMETHING if the GPS never produced a live fix in the window.
+      let bestAny: DetectSuccess | null = null;
       let watcher: Location.LocationSubscription | null = null;
       let settled = false;
 
@@ -122,10 +137,11 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
         resolve(value);
       };
 
-      // Record a fix and, if it is the most accurate one seen so far, keep it and
-      // notify the caller so the UI can move the pin / re-resolve the address as the
-      // GPS chip converges. Returns the fix's accuracy for the early-finish check.
-      const consider = (pos: Location.LocationObject): number => {
+      // Record a fix. Stale (cached last-known) readings update only the fallback and
+      // are NEVER surfaced to the UI, so the pin can't jump to an old, far-away
+      // position. A fresh reading that is the most accurate one seen updates the pin
+      // via onUpdate. Returns true when THIS fix is fresh AND tight enough to stop early.
+      const consider = (pos: Location.LocationObject): boolean => {
         const fix: DetectSuccess = {
           status: 'success',
           lat: pos.coords.latitude,
@@ -133,23 +149,35 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
           accuracy: pos.coords.accuracy ?? null,
         };
         const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
-        if (!bestFix || acc < (bestFix.accuracy ?? Number.POSITIVE_INFINITY)) {
-          bestFix = fix;
-          // Push every improvement to the caller (ignore listener errors).
+        const ts = pos.timestamp ?? Date.now();
+        const fresh = Date.now() - ts <= FRESH_MS;
+
+        if (!bestAny || acc < (bestAny.accuracy ?? Number.POSITIVE_INFINITY)) {
+          bestAny = fix;
+        }
+        if (!fresh) return false;
+
+        if (!bestFresh || acc < (bestFresh.accuracy ?? Number.POSITIVE_INFINITY)) {
+          bestFresh = fix;
+          // Surface only fresh improvements so the pin + address converge on a real,
+          // live position (ignore listener errors).
           try {
             opts?.onUpdate?.(fix);
           } catch {}
         }
-        return acc;
+        return acc <= TARGET_ACCURACY_M;
       };
 
-      timer = setTimeout(() => finish(bestFix ?? 'timeout'), timeoutMs);
+      // On timeout prefer the best fresh fix; fall back to any fix, else report timeout.
+      timer = setTimeout(() => finish(bestFresh ?? bestAny ?? 'timeout'), timeoutMs);
 
       // Seed quickly with a single current-position read so we always have something
-      // even if the watch is slow to emit, then let the watch refine it.
+      // even if the watch is slow to emit, then let the watch refine it. A stale seed
+      // will NOT early-finish (consider returns false for stale), so a cold start keeps
+      // watching until a live fix arrives instead of locking onto last-known.
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest })
         .then((pos) => {
-          if (consider(pos) <= TARGET_ACCURACY_M && bestFix) finish(bestFix);
+          if (consider(pos) && bestFresh) finish(bestFresh);
         })
         .catch(() => {});
 
@@ -160,8 +188,8 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
           distanceInterval: 0,
         },
         (pos) => {
-          // Good enough -> stop early so the UI doesn't wait the full timeout.
-          if (consider(pos) <= TARGET_ACCURACY_M && bestFix) finish(bestFix);
+          // Fresh + good enough -> stop early so the UI doesn't wait the full timeout.
+          if (consider(pos) && bestFresh) finish(bestFresh);
         },
       )
         .then((sub) => {
