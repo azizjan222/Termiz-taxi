@@ -42,9 +42,11 @@ def edge_bg(im):
 # Passenger: original navy logo. Canvas matches the logo's own navy edge.
 gen('../sarix-go-app/assets', rgb, w, h, edge_bg(rgb))
 
-# Driver: recolour navy background -> deep green, then the same set.
+# Driver: recolour navy background -> royal blue (matches the OLD driver logo),
+# then the same set.
 t = time.time()
-drv = p.recolor_bg(w, h, rgb, (16, 74, 52))
+drv = p.recolor_bg(w, h, rgb, (44, 110, 224))
 print('recoloured driver in', round(time.time()-t, 1), 's')
+print('driver edge bg =', edge_bg(drv))
 gen('../sarix-go-driver/assets', drv, w, h, edge_bg(drv))
 print('ALL DONE in', round(time.time()-t0, 1), 's')
