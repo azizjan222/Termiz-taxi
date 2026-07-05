@@ -243,8 +243,14 @@ async def create_order(request: web.Request) -> web.Response:
         # should receive it. Drivers with no balance get nothing (they must top up).
         now = datetime.utcnow()
         min_balance = get_min_driver_balance(session)
+        # Only ONLINE drivers who can also take the order (free trial OR enough balance)
+        # should receive it. An offline driver toggled themselves off and must get
+        # neither the realtime WS event nor a push (previously only the push path
+        # filtered is_online, so offline drivers still got the WS new-order + in-app
+        # alert/list — that was the bug).
         eligible_drivers = session.query(Driver).filter(
             Driver.is_blocked == False,  # noqa
+            Driver.is_online == True,  # noqa
             or_(
                 Driver.subscription_until > now,
                 Driver.balance >= min_balance,
@@ -436,6 +442,22 @@ async def cancel_order(request: web.Request) -> web.Response:
                 "by": "passenger",
                 "refunded": refunded,
             })
+
+        # Also send a PUSH so a driver whose app is backgrounded/closed still learns the
+        # order was cancelled (the WS event only reaches an open app). The driver app
+        # suppresses this push in the foreground, so an open app won't double-alert.
+        if order.driver_id:
+            try:
+                from app.services.push import notify_order_cancelled
+                await notify_order_cancelled(
+                    session,
+                    order,
+                    by="passenger",
+                    recipient_type="driver",
+                    recipient_id=order.driver_id,
+                )
+            except Exception as e:
+                logger.error(f"Push notify driver cancel failed: {e}")
 
         # Notify the ADMIN (not the driver) about the cancellation via the Telegram bot.
         # The driver already gets the real-time WS update above; per product decision the

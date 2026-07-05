@@ -52,6 +52,10 @@ export default function OrderDetailScreen() {
   const [order, setOrder] = useState<DriverOrder | null>(null);
   const [loading, setLoading] = useState(false);
   const [remainingSec, setRemainingSec] = useState<number | null>(null);
+  // Set the moment THIS order is cancelled (by the passenger) so the heavy live
+  // effects (GPS watcher + map route redraw) stop immediately instead of running
+  // behind the cancellation alert — which previously made the screen freeze.
+  const [cancelled, setCancelled] = useState(false);
 
   // Imperative handle + live driver position for the in-app pickup map.
   const mapRef = useRef<YandexMapHandle>(null);
@@ -84,6 +88,9 @@ export default function OrderDetailScreen() {
     if (!lastEvent || lastEvent.seq <= handledSeqRef.current) return;
     handledSeqRef.current = lastEvent.seq;
     if (lastEvent.kind === 'order_cancelled' && String(lastEvent.orderId) === String(id)) {
+      // Stop the live GPS watcher + map route redraw right away (see `cancelled`
+      // guards below) so the screen can't keep doing heavy work behind the alert.
+      setCancelled(true);
       Alert.alert(
         t('notifications.orderCancelled'),
         t('notifications.orderCancelledBody'),
@@ -119,11 +126,11 @@ export default function OrderDetailScreen() {
   // backend broadcast (updateDriverLocation) is throttled to its existing ~10s cadence
   // so we don't increase backend traffic. A single subscription is kept at all times.
   useEffect(() => {
-    if (!order || !['accepted', 'in_progress'].includes(order.status)) return;
-    let cancelled = false;
+    if (cancelled || !order || !['accepted', 'in_progress'].includes(order.status)) return;
+    let torndown = false;
 
     const onPosition = async (pos: Location.LocationObject) => {
-      if (cancelled) return;
+      if (torndown) return;
       try {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
@@ -141,7 +148,7 @@ export default function OrderDetailScreen() {
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted' || cancelled) return;
+        if (status !== 'granted' || torndown) return;
         const sub = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,
@@ -151,7 +158,7 @@ export default function OrderDetailScreen() {
           onPosition,
         );
         // If we were torn down while awaiting, remove immediately to keep <=1 active.
-        if (cancelled) {
+        if (torndown) {
           sub.remove();
           return;
         }
@@ -160,18 +167,18 @@ export default function OrderDetailScreen() {
     })();
 
     return () => {
-      cancelled = true;
+      torndown = true;
       subscriptionRef.current?.remove();
       subscriptionRef.current = null;
     };
-  }, [order?.id, order?.status]);
+  }, [order?.id, order?.status, cancelled]);
 
   // Keep the in-app map in sync with the driver's movement. The target depends on the
   // trip stage: BEFORE pickup (accepted) it's the passenger's location; AFTER pickup
   // (in_progress) it's the destination. Draw/refit the driver->target route when both
   // points exist, otherwise just center on the target.
   useEffect(() => {
-    if (!mapReady) return;
+    if (!mapReady || cancelled) return;
     const target = deriveTarget(order);
     const driver = driverCoords;
     if (deriveShouldDrawRoute(driver, target)) {
@@ -180,7 +187,7 @@ export default function OrderDetailScreen() {
     } else if (target) {
       mapRef.current?.setCenter(target.lat, target.lon);
     }
-  }, [mapReady, driverCoords, order?.status, order?.from_lat, order?.from_lon, order?.to_lat, order?.to_lon]);
+  }, [mapReady, driverCoords, cancelled, order?.status, order?.from_lat, order?.from_lon, order?.to_lat, order?.to_lon]);
 
   const openNavigation = async () => {
     // Navigate to the current stage target: passenger pickup before pickup,
