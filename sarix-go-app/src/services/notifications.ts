@@ -49,6 +49,11 @@ Notifications.setNotificationHandler({
 // fallback, which is why order notifications arrived late when the app was shut.
 export const ORDERS_CHANNEL = 'orders_v2';
 
+// Channel for order cancellations / general updates. MUST match the channel id the
+// backend sends for cancellations (app/services/push.py -> "alerts_v1"). Kept separate
+// from ORDERS_CHANNEL so cancellations are grouped/handled independently of order alerts.
+export const ALERTS_CHANNEL = 'alerts_v1';
+
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
     // Drop the legacy "orders" channel so we don't leave a stale duplicate.
@@ -69,6 +74,14 @@ export async function setupNotificationChannels() {
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 200, 100, 200],
       lightColor: '#10B981',
+    });
+    // Dedicated channel for order cancellations / updates (default system sound).
+    await Notifications.setNotificationChannelAsync(ALERTS_CHANNEL, {
+      name: 'Bildirishnomalar',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 400, 200, 400],
+      lightColor: '#EF4444',
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
