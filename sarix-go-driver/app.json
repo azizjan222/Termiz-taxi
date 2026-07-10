@@ -48,7 +48,10 @@
       [
         "expo-notifications",
         {
-          "sounds": ["./assets/sounds/new_order.wav"]
+          "sounds": [
+            "./assets/sounds/new_order.wav",
+            "./assets/sounds/order_cancelled.wav"
+          ]
         }
       ],
       [

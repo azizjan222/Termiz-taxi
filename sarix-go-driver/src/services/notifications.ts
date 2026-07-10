@@ -132,15 +132,15 @@ export async function setupNotificationChannels() {
       lightColor: '#10B981',
     });
 
-    // Dedicated channel for order cancellations / updates. It intentionally uses the
-    // DEFAULT system sound (no custom `sound`) so a cancellation does NOT play the loud
-    // new-order tone baked into ORDERS_CHANNEL. HIGH importance keeps it prompt (heads-up)
-    // without hijacking the new-order alert sound.
+    // Dedicated channel for order cancellations / updates. Uses its OWN distinct sound
+    // (order_cancelled.wav) so a cancellation is clearly different from the loud
+    // new-order tone (new_order.wav) on ORDERS_CHANNEL. HIGH importance keeps it prompt.
     await Notifications.setNotificationChannelAsync(ALERTS_CHANNEL, {
       name: 'Bildirishnomalar',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 400, 200, 400],
       enableVibrate: true,
+      sound: 'order_cancelled.wav',
       lightColor: '#EF4444',
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
@@ -342,7 +342,7 @@ export async function stopAlert() {
 //
 // Fired when a passenger cancels their order (taxi OR parcel). The driver gets:
 //   1. A strong one-shot vibration.
-//   2. A local notification (visual banner + the device's default sound).
+//   2. A local notification (visual banner + the distinct order_cancelled.wav sound).
 //
 // The spoken (TTS) voice warning was removed per request — it could fire at the
 // wrong moment (e.g. announcing "zakas bekor qilindi" on a new order). Each step
@@ -352,13 +352,13 @@ export async function playOrderCancelledAlert() {
   const title = i18n.t('notifications.orderCancelled');
   const body = i18n.t('notifications.orderCancelledBody');
 
-  // 1) LOCAL NOTIFICATION — visual banner + default sound.
+  // 1) LOCAL NOTIFICATION — visual banner + distinct cancel sound.
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
-        sound: 'default',
+        sound: 'order_cancelled.wav',
         priority: Notifications.AndroidNotificationPriority.HIGH,
         vibrate: ALERT_VIBRATION,
         data: { alert: true, type: 'order_cancelled' },

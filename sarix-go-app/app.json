@@ -52,7 +52,12 @@
     "plugins": [
       "expo-router",
       "expo-localization",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "sounds": ["./assets/sounds/order_cancelled.wav"]
+        }
+      ],
       [
         "expo-location",
         {
