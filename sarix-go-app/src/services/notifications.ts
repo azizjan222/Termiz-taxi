@@ -75,11 +75,12 @@ export async function setupNotificationChannels() {
       vibrationPattern: [0, 200, 100, 200],
       lightColor: '#10B981',
     });
-    // Dedicated channel for order cancellations / updates (default system sound).
+    // Dedicated channel for order cancellations / updates with its own distinct sound.
     await Notifications.setNotificationChannelAsync(ALERTS_CHANNEL, {
       name: 'Bildirishnomalar',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 400, 200, 400],
+      sound: 'order_cancelled.wav',
       lightColor: '#EF4444',
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
