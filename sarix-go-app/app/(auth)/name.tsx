@@ -51,15 +51,22 @@ export default function NameScreen() {
 
   // The number currently registered for this account (Telegram contact / OTP phone).
   const registered = user?.contact_phone || user?.phone || '';
+  const hasRegistered = isValidPhone(registered);
   const [displayNumber, setDisplayNumber] = useState(registered);
-  const [mode, setMode] = useState<Mode>('idle');
+  // Phone is REQUIRED: if we have no valid registered number, start in editing mode
+  // so the user must enter one before continuing.
+  const [mode, setMode] = useState<Mode>(hasRegistered ? 'idle' : 'editing');
   const [newPhone, setNewPhone] = useState('+998 ');
   // Set only when the user typed a new working number they want shown on orders.
   const [contactToSave, setContactToSave] = useState<string | null>(null);
 
-  const canContinue = !!name.trim() && mode === 'confirmed';
+  // Ism (majburiy) + Telefon (majburiy). Familiya is optional.
+  const canContinue =
+    !!name.trim() && mode === 'confirmed' && isValidPhone(displayNumber);
 
   const confirmRegistered = () => {
+    // Guard: only confirm when there is a valid number to confirm.
+    if (!isValidPhone(displayNumber)) return;
     setContactToSave(null);
     setMode('confirmed');
   };
@@ -170,9 +177,13 @@ export default function NameScreen() {
                   disabled={!isValidPhone(newPhone)}
                   variant="accent"
                 />
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => setMode('idle')} activeOpacity={0.7}>
-                  <Text style={styles.cancelText}>{t('common.cancel')}</Text>
-                </TouchableOpacity>
+                {/* Cancel only when there is already a valid number to fall back to;
+                    a phone is required, so we don't let the user leave with none. */}
+                {hasRegistered && (
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setMode('idle')} activeOpacity={0.7}>
+                    <Text style={styles.cancelText}>{t('common.cancel')}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               <View style={styles.actionsRow}>

@@ -81,7 +81,13 @@ export default function TelegramLoginScreen() {
         if (res.status === 'verified' && res.user) {
           stopPolling();
           setUser(res.user);
-          if (res.is_new && !res.user.first_name) {
+          // Always collect the profile (Ism majburiy, Familiya ixtiyoriy, Telefon
+          // majburiy) when it is incomplete — new users, or anyone still missing a
+          // name or a phone number. Otherwise go straight home.
+          const u = res.user;
+          const needsProfile =
+            res.is_new || !u.first_name || !(u.contact_phone || u.phone);
+          if (needsProfile) {
             router.replace('/(auth)/name');
           } else {
             router.replace('/(tabs)/home');
