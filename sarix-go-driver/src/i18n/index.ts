@@ -136,6 +136,7 @@ const uz = {
     themeAuto: 'Avtomatik',
     themeLight: "Yorug'",
     themeDark: "Qorong'i",
+    terms: 'Foydalanish shartlari',
   },
   notifications: {
     newOrder: '🚕 Yangi zakas keldi!',
@@ -329,6 +330,7 @@ const ru = {
   settings: {
     title: 'Настройки', language: 'Язык', theme: 'Тема',
     themeAuto: 'Авто', themeLight: 'Светлая', themeDark: 'Тёмная',
+    terms: 'Условия использования',
   },
   notifications: {
     newOrder: '🚕 Новый заказ!',
@@ -516,6 +518,7 @@ const en = {
   settings: {
     title: 'Settings', language: 'Language', theme: 'Theme',
     themeAuto: 'Auto', themeLight: 'Light', themeDark: 'Dark',
+    terms: 'Terms of Use',
   },
   notifications: {
     newOrder: '🚕 New order!',
@@ -703,6 +706,7 @@ const uzCyrl = {
   settings: {
     title: 'Созламалар', language: 'Тил', theme: 'Мавзу',
     themeAuto: 'Автоматик', themeLight: 'Ёруғ', themeDark: 'Қоронғи',
+    terms: 'Фойдаланиш шартлари',
   },
   notifications: {
     newOrder: '🚕 Янги заказ келди!',

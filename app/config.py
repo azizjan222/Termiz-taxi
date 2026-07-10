@@ -163,8 +163,16 @@ TEST_DRIVER_PHONES = [
     p.strip() for p in _get("TEST_DRIVER_PHONES", "+998907465161").split(",") if p.strip()
 ]
 
-# Support contact
-SUPPORT_TELEGRAM = _get("SUPPORT_TELEGRAM", "termizsariosiyotaxi_bot")
+# Support contact — the public @username users are pointed to for help/feedback.
+# This is now the dedicated support bot (SarixGo_support_bot), NOT a personal account.
+SUPPORT_TELEGRAM = _get("SUPPORT_TELEGRAM", "SarixGo_support_bot")
+
+# Dedicated "support / feedback" bot (SEPARATE from the main BOT_TOKEN). Users message
+# it with questions/suggestions and the admin (SUPPORT_ADMIN_ID, defaults to ADMIN_ID)
+# receives them and replies. Token is a SECRET — provide it via env, never hardcode.
+SUPPORT_BOT_TOKEN = _get("SUPPORT_BOT_TOKEN", "")
+# Telegram numeric ID that receives & answers support messages. 0 -> fall back to ADMIN_ID.
+SUPPORT_ADMIN_ID = _get_int("SUPPORT_ADMIN_ID", 0)
 
 # AI Assistant
 OPENAI_API_KEY = _get("OPENAI_API_KEY", "")

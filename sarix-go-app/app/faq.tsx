@@ -51,8 +51,8 @@ export default function FaqScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [supportUrl, setSupportUrl] = useState('https://t.me/termizsariosiyotaxi_bot');
-  const [supportUsername, setSupportUsername] = useState('termizsariosiyotaxi_bot');
+  const [supportUrl, setSupportUrl] = useState('https://t.me/SarixGo_support_bot');
+  const [supportUsername, setSupportUsername] = useState('SarixGo_support_bot');
   const [open, setOpen] = useState<number | null>(0);
 
   useEffect(() => {

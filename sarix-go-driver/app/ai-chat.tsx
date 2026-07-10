@@ -38,7 +38,7 @@ export default function AiChatScreen() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [supportUrl, setSupportUrl] = useState('https://t.me/termizsariosiyotaxi_bot');
+  const [supportUrl, setSupportUrl] = useState('https://t.me/SarixGo_support_bot');
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {

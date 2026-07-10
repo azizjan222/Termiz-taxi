@@ -86,6 +86,19 @@ export default function SettingsScreen() {
             );
           })}
         </View>
+
+        {/* Foydalanish shartlari (Terms of Use) */}
+        <View style={[styles.card, { marginTop: spacing.lg }]}>
+          <TouchableOpacity
+            style={[styles.option, { borderBottomWidth: 0 }]}
+            onPress={() => router.push('/terms')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.optionFlag}>📄</Text>
+            <Text style={styles.optionLabel}>{t('settings.terms')}</Text>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -129,4 +142,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   optionLabel: { flex: 1, ...typography.body, color: colors.text },
   optionLabelSelected: { fontWeight: '600' },
   optionCheck: { ...typography.h3, color: colors.success, fontWeight: '700' },
+  chevron: { fontSize: 24, color: colors.textSecondary },
 });

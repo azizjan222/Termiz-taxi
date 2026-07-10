@@ -130,6 +130,7 @@ export default {
     notifications: 'Notifications',
     sound: 'Sound',
     vibration: 'Vibration',
+    terms: 'Terms of Use',
   },
   errors: {
     networkError: 'Connection problem',

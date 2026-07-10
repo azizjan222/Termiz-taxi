@@ -356,7 +356,7 @@ FAQ_PATTERNS_PASSENGER = [
             "• Haydovchi ismi, telefoni, reytingi ko'rinadi\n"
             "• Mashina raqami va modeli ko'rinadi\n"
             "• Ayol yo'lovchi uchun maxsus filtr (ayol haydovchi yoki ayol yo'lovchi bor mashina)\n"
-            "• Tashvish bo'lsa: @tg_adminstator ga yozing"
+            "• Tashvish bo'lsa: @SarixGo_support_bot ga yozing"
         ),
     },
     {

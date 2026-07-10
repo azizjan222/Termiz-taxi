@@ -130,6 +130,7 @@ export default {
     notifications: 'Bildirishnomalar',
     sound: 'Ovoz',
     vibration: 'Tebranish',
+    terms: 'Foydalanish shartlari',
   },
   errors: {
     networkError: "Internet ulanishida muammo bor",

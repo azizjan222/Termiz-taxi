@@ -130,6 +130,7 @@ export default {
     notifications: 'Билдиришномалар',
     sound: 'Овоз',
     vibration: 'Тебраниш',
+    terms: 'Фойдаланиш шартлари',
   },
   errors: {
     networkError: 'Интернет уланишида муаммо бор',

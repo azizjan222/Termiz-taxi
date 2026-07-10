@@ -109,7 +109,7 @@ export default function ProfileScreen() {
     if (support?.telegram_url) {
       Linking.openURL(support.telegram_url);
     } else {
-      Linking.openURL('https://t.me/tg_adminstator');
+      Linking.openURL('https://t.me/SarixGo_support_bot');
     }
   };
 

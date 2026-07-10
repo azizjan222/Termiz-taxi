@@ -86,6 +86,19 @@ export default function SettingsScreen() {
             );
           })}
         </View>
+
+        {/* Foydalanish shartlari (Terms of Use) */}
+        <View style={[styles.card, { backgroundColor: colors.background, marginTop: spacing.lg }]}>
+          <TouchableOpacity
+            style={[styles.option, { borderBottomWidth: 0 }]}
+            onPress={() => router.push('/terms')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.optionFlag}>📄</Text>
+            <Text style={[styles.optionLabel, { color: colors.text }]}>{t('settings.terms')}</Text>
+            <Text style={{ fontSize: 24, color: colors.textSecondary }}>›</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
