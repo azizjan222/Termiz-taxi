@@ -315,7 +315,13 @@ async def notify_order_cancelled(
         title=title,
         body=body,
         data={"type": "order_cancelled", "order_id": order.id, "by": by},
-        channel_id="orders_v2",
+        # NOT "orders_v2": on Android the sound is a per-CHANNEL setting, and the
+        # orders_v2 channel is pinned to the loud new_order.wav. Sending the cancel
+        # there made a cancellation sound identical to a new order. Route it to a
+        # dedicated HIGH-importance channel that uses the default notification sound
+        # so the two events are clearly distinguishable.
+        sound="default",
+        channel_id="alerts_v1",
     )
 
 

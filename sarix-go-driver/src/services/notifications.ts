@@ -97,6 +97,11 @@ Notifications.setNotificationHandler({
 // so bumping the id is the only reliable way to (re)apply the custom sound.
 export const ORDERS_CHANNEL = 'orders_v2';
 
+// Channel for order cancellations / general updates. Uses the DEFAULT system sound
+// (distinct from the loud new-order tone on ORDERS_CHANNEL). MUST match the channel id
+// the backend sends for cancellations (app/services/push.py -> "alerts_v1").
+export const ALERTS_CHANNEL = 'alerts_v1';
+
 // ---------------------------------------------------------------------------
 // Notification channels (Android only)
 // ---------------------------------------------------------------------------
@@ -125,6 +130,19 @@ export async function setupNotificationChannels() {
       name: 'Balans',
       importance: Notifications.AndroidImportance.HIGH,
       lightColor: '#10B981',
+    });
+
+    // Dedicated channel for order cancellations / updates. It intentionally uses the
+    // DEFAULT system sound (no custom `sound`) so a cancellation does NOT play the loud
+    // new-order tone baked into ORDERS_CHANNEL. HIGH importance keeps it prompt (heads-up)
+    // without hijacking the new-order alert sound.
+    await Notifications.setNotificationChannelAsync(ALERTS_CHANNEL, {
+      name: 'Bildirishnomalar',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 400, 200, 400],
+      enableVibrate: true,
+      lightColor: '#EF4444',
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
 
     await Notifications.setNotificationChannelAsync('default', {
@@ -344,7 +362,7 @@ export async function playOrderCancelledAlert() {
         priority: Notifications.AndroidNotificationPriority.HIGH,
         vibrate: ALERT_VIBRATION,
         data: { alert: true, type: 'order_cancelled' },
-        ...(Platform.OS === 'android' ? { channelId: 'default' } : {}),
+        ...(Platform.OS === 'android' ? { channelId: ALERTS_CHANNEL } : {}),
       },
       trigger: null, // fire immediately
     });
