@@ -17,6 +17,7 @@ Notes
   to ``ADMIN_ID``). Telegram bots cannot have "admins" added the way groups can, so
   this id is how we decide who receives and answers messages.
 """
+import html
 import logging
 
 from telegram import Update
@@ -36,6 +37,9 @@ logger = logging.getLogger("sarixgo.support_bot")
 # admin can just hit "reply" to answer. In-memory is fine for a lightweight support
 # flow (a process restart only loses the ability to reply to older, un-answered items).
 _relay_map: dict[int, int] = {}
+
+# Holds the running Application so it isn't garbage-collected while polling.
+_application = None
 
 _WELCOME = (
     "👋 Assalomu alaykum! Bu — SARIX GO qo'llab-quvvatlash xizmati.\n\n"
@@ -67,9 +71,9 @@ async def _on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         reply = msg.reply_to_message
         target = _relay_map.get(reply.message_id) if reply else None
         if target is None:
+            # Plain text (no parse_mode) so nothing can break on special characters.
             await msg.reply_text(
-                "ℹ️ Javob berish uchun foydalanuvchi xabariga *reply* qiling.",
-                parse_mode="Markdown",
+                "ℹ️ Javob berish uchun foydalanuvchi murojaatiga (reply) qilib yozing."
             )
             return
         try:
@@ -86,16 +90,22 @@ async def _on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     # ---- User side: relay the message to the admin. ----
     user = update.effective_user
     uname = f"@{user.username}" if user and user.username else "—"
-    full_name = " ".join(filter(None, [user.first_name, user.last_name])) if user else ""
+    raw_name = " ".join(filter(None, [user.first_name, user.last_name])) if user else ""
+    # Escape user-controlled text — a name containing <, > or & would otherwise break
+    # HTML parse_mode and make the whole relay fail.
+    safe_name = html.escape(raw_name) or "Foydalanuvchi"
     header = (
         "📩 <b>Yangi murojaat</b>\n"
-        f"👤 {full_name or 'Foydalanuvchi'}\n"
-        f"🔗 {uname}\n"
+        f"👤 {safe_name}\n"
+        f"🔗 {html.escape(uname)}\n"
         f"🆔 <code>{chat_id}</code>\n"
-        "↩️ Javob berish uchun quyidagi xabarga reply qiling."
+        "↩️ Javob berish uchun shu xabarlardan biriga reply qiling."
     )
     try:
-        await context.bot.send_message(admin_id, header, parse_mode="HTML")
+        # Map BOTH the header and the copied message to the user, so the admin can
+        # reply to either one (a common mistake is replying to the header).
+        sent = await context.bot.send_message(admin_id, header, parse_mode="HTML")
+        _relay_map[sent.message_id] = chat_id
         copied = await context.bot.copy_message(
             chat_id=admin_id, from_chat_id=chat_id, message_id=msg.message_id
         )
@@ -119,11 +129,18 @@ async def start_support_bot():
 
     application = ApplicationBuilder().token(token).build()
     application.add_handler(CommandHandler("start", _cmd_start))
-    # Everything else (text, photos, voice, ...) that is not a command is relayed.
-    application.add_handler(MessageHandler(~filters.COMMAND, _on_message))
+    # Only private chats: relay every non-command message. This ignores the bot being
+    # added to any group and keeps the flow strictly 1:1 (user <-> admin).
+    application.add_handler(
+        MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, _on_message)
+    )
 
     await application.initialize()
     await application.start()
     await application.updater.start_polling(drop_pending_updates=True)
     logger.info("✅ Support bot (@SarixGo_support_bot feedback) started")
+
+    # Keep a module-level reference so the running Application is never garbage-collected.
+    global _application
+    _application = application
     return application
