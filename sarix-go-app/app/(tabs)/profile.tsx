@@ -67,7 +67,7 @@ export default function ProfileScreen() {
   const headerGradient = (isDark
     ? [colors.surface, colors.background]
     : ['#F2EEFF', '#FFFFFF']) as [string, string];
-  const [supportUrl, setSupportUrl] = useState('https://t.me/tg_adminstator');
+  const [supportUrl, setSupportUrl] = useState('https://t.me/SarixGo_support_bot');
   const [uploading, setUploading] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [nameDraft, setNameDraft] = useState('');

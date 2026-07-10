@@ -53,7 +53,7 @@ export default function FaqScreen() {
   }, []);
 
   const openSupport = () => {
-    Linking.openURL(support?.telegram_url || 'https://t.me/termizsariosiyotaxi_bot');
+    Linking.openURL(support?.telegram_url || 'https://t.me/SarixGo_support_bot');
   };
 
   return (

@@ -1623,6 +1623,16 @@ async def run():
     await app.start()
     await app.updater.start_polling()
     logger.info("✅ Bot ishga tushdi (Sarix Go API + Telegram Bot)")
+
+    # Start the separate support/feedback bot (@SarixGo_support_bot) if configured.
+    # Users message it and the admin receives & replies. Disabled when SUPPORT_BOT_TOKEN
+    # is not set, so this never affects the main bot.
+    try:
+        from app.support_bot import start_support_bot
+        await start_support_bot()
+    except Exception as e:
+        logger.error(f"Support bot failed to start: {e}")
+
     await asyncio.Event().wait()
 
 
