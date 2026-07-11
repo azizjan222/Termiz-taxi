@@ -49,8 +49,48 @@ async def create_and_send_otp(
     Returns: {"success": bool, "message": str, "dev_code": str | None}
     """
     phone = normalize_phone(phone)
+    now = datetime.utcnow()
+
+    # --- Anti-abuse rate limiting (SMS/OTP bombing protection) ---
+    # 1) Resend cooldown: reject if a code was already issued very recently.
+    cooldown = config.OTP_RESEND_COOLDOWN_SECONDS
+    if cooldown > 0:
+        last = (
+            session.query(OtpCode)
+            .filter(OtpCode.phone == phone)
+            .order_by(OtpCode.created_at.desc())
+            .first()
+        )
+        if last and last.created_at:
+            elapsed = (now - last.created_at).total_seconds()
+            if elapsed < cooldown:
+                wait = int(cooldown - elapsed)
+                return {
+                    "success": False,
+                    "message": f"Iltimos {wait} soniyadan so'ng qayta urinib ko'ring",
+                    "dev_code": None,
+                    "retry_after": wait,
+                }
+    # 2) Hourly cap: reject if too many codes were requested for this phone in the last hour.
+    if config.OTP_MAX_PER_HOUR > 0:
+        recent_count = (
+            session.query(OtpCode)
+            .filter(
+                OtpCode.phone == phone,
+                OtpCode.created_at >= now - timedelta(hours=1),
+            )
+            .count()
+        )
+        if recent_count >= config.OTP_MAX_PER_HOUR:
+            return {
+                "success": False,
+                "message": "Juda ko'p urinish. Bir soatdan so'ng qayta urinib ko'ring.",
+                "dev_code": None,
+                "retry_after": 3600,
+            }
+
     code = generate_code()
-    expires_at = datetime.utcnow() + timedelta(minutes=config.OTP_EXPIRES_MINUTES)
+    expires_at = now + timedelta(minutes=config.OTP_EXPIRES_MINUTES)
 
     # Invalidate any pending codes for this phone
     session.query(OtpCode).filter(

@@ -1500,6 +1500,9 @@ async def run():
         if not TOKEN:
             raise SystemExit("BOT_TOKEN not configured. Set it in .env")
 
+    # Log security advisories (auto-generated secrets, weak/unset admin password, etc.)
+    app_config.log_security_status()
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
