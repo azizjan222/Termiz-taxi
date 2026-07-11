@@ -214,7 +214,7 @@ export default function RouteSelectScreen() {
           onPress={() => fromInputRef.current?.focus()}
           activeOpacity={0.9}
         >
-          <View style={[styles.fieldIconTile, { backgroundColor: '#EDE7FF' }]}>
+          <View style={[styles.fieldIconTile, { backgroundColor: '#E0E7FF' }]}>
             <Text style={styles.fieldIconText}>🏃</Text>
           </View>
           <View style={{ flex: 1 }}>
@@ -247,7 +247,7 @@ export default function RouteSelectScreen() {
           onPress={() => toInputRef.current?.focus()}
           activeOpacity={0.9}
         >
-          <View style={[styles.fieldIconTile, { backgroundColor: '#EDE7FF' }]}>
+          <View style={[styles.fieldIconTile, { backgroundColor: '#E0E7FF' }]}>
             <Text style={styles.fieldIconText}>🏁</Text>
           </View>
           <View style={{ flex: 1 }}>

@@ -149,7 +149,7 @@ export default function SavedAddressesScreen() {
                 title="Saqlash"
                 onPress={handleAdd}
                 loading={saving}
-                variant="accent"
+                variant="primary"
                 fullWidth={false}
                 style={{ flex: 1, marginLeft: spacing.md }}
               />

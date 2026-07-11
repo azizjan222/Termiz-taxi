@@ -1,20 +1,54 @@
 export const colors = {
+  // Brand (royal blue)
   primary: '#1E5BC4',
   primaryLight: '#4E86E8',
   primaryDark: '#123E8F',
   accent: '#FFC400',
   accentLight: '#FFD451',
   accentDark: '#E3A800',
+
+  // Brand tonal scale (50 -> 900)
+  primary50: '#EAF1FC',
+  primary100: '#D2E0F8',
+  primary200: '#A9C4F1',
+  primary300: '#7BA3E9',
+  primary400: '#4E86E8',
+  primary500: '#2E6BE0',
+  primary600: '#1E5BC4',
+  primary700: '#123E8F',
+  primary800: '#0F2A5C',
+  primary900: '#0A1E45',
+
+  // Neutrals
   white: '#FFFFFF',
   background: '#FFFFFF',
   surface: '#F4F6FB',
+  card: '#FFFFFF',
+  elevated: '#FFFFFF',
   border: '#E7E9F2',
+  outline: '#E7E9F2',
   divider: '#EEF1F8',
+
+  // Neutral tonal scale (50 -> 900)
+  neutral50: '#F8FAFC',
+  neutral100: '#F1F4F9',
+  neutral200: '#E7E9F2',
+  neutral300: '#D3D8E3',
+  neutral400: '#9CA3AF',
+  neutral500: '#6B7280',
+  neutral600: '#4B5563',
+  neutral700: '#374151',
+  neutral800: '#1F2937',
+  neutral900: '#0E1730',
+
+  // Text — AA compliant hierarchy
   text: '#0E1730',
-  textSecondary: '#6B7280',
-  textMuted: '#9CA3AF',
+  textSecondary: '#4B5563',
+  textMuted: '#6B7280',
   textOnPrimary: '#FFFFFF',
   textOnAccent: '#0E1730',
+
+  // Semantic
   success: '#10B981',
   successLight: '#D1FAE5',
   error: '#EF4444',

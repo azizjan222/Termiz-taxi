@@ -36,7 +36,7 @@ const BANNERS: Banner[] = [
     emoji: '🚖',
     title: 'Buyurtmangiz qabul qilindi',
     text: 'Sarix Go yaqin atrofdagi haydovchilarni qidirmoqda — biroz kuting.',
-    bg: '#EDE7FF',
+    bg: '#E0E7FF',
   },
   {
     emoji: '☀️',

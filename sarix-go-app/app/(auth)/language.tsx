@@ -63,7 +63,7 @@ export default function LanguageScreen() {
       </View>
 
       <View style={styles.footer}>
-        <Button title="Davom etish / Next" onPress={handleNext} variant="accent" />
+        <Button title="Davom etish / Next" onPress={handleNext} variant="primary" />
       </View>
     </SafeAreaView>
   );

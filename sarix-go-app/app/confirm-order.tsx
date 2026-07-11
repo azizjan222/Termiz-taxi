@@ -201,7 +201,7 @@ export default function ConfirmOrderScreen() {
           title={t('order.confirm')}
           onPress={handleConfirm}
           loading={loading}
-          variant="accent"
+          variant="primary"
           fullWidth={false}
           style={{ flex: 1, marginLeft: spacing.md }}
         />

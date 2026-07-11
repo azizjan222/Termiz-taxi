@@ -175,7 +175,7 @@ export default function NameScreen() {
                   title={t('auth.saveNumber')}
                   onPress={saveNewNumber}
                   disabled={!isValidPhone(newPhone)}
-                  variant="accent"
+                  variant="primary"
                 />
                 {/* Cancel only when there is already a valid number to fall back to;
                     a phone is required, so we don't let the user leave with none. */}
@@ -210,7 +210,7 @@ export default function NameScreen() {
             onPress={handleSubmit}
             loading={loading}
             disabled={!canContinue}
-            variant="accent"
+            variant="primary"
           />
         </View>
       </KeyboardAvoidingView>
@@ -248,7 +248,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   phoneBadge: {
     width: 46, height: 46, borderRadius: 23,
-    backgroundColor: '#EDE7FF',
+    backgroundColor: '#E0E7FF',
     alignItems: 'center', justifyContent: 'center',
   },
   phoneBadgeIcon: { fontSize: 22 },
