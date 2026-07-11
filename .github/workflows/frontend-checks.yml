@@ -42,3 +42,6 @@ jobs:
 
       - name: Lint (ESLint)
         run: npm run lint
+
+      - name: Unit tests (Jest)
+        run: npm test -- --ci
