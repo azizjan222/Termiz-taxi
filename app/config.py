@@ -1,8 +1,9 @@
 """Configuration loader from environment variables."""
-import os
 import logging
+import os
 import secrets as _secrets
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)

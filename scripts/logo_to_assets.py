@@ -3,6 +3,7 @@
 Passenger app uses logo.jpg, Driver app uses logo-driver.jpg.
 """
 from pathlib import Path
+
 from PIL import Image
 
 PRIMARY = (14, 27, 61)  # #0E1B3D dark blue

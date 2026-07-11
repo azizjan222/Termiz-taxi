@@ -3,13 +3,14 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 import uuid
-import logging
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
+
 from aiohttp import web
 
 from app import config

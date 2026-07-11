@@ -1,23 +1,24 @@
 """Aiohttp API server setup."""
 import logging
+
 from aiohttp import web
 
-from app.api import auth as auth_api
-from app.api import orders as orders_api
-from app.api import routes_api as routes_api
-from app.api import drivers as drivers_api
-from app.api import ai_assistant as ai_api
-from app.api import payments as payments_api
-from app.api import notifications as notif_api
-from app.api import ratings as ratings_api
+from app import config
 from app.api import addresses as addresses_api
-from app.api import promo as promo_api
-from app.api import driver_stats as driver_stats_api
+from app.api import ai_assistant as ai_api
 from app.api import app_config as app_config_api
+from app.api import auth as auth_api
+from app.api import driver_stats as driver_stats_api
+from app.api import drivers as drivers_api
+from app.api import notifications as notif_api
+from app.api import orders as orders_api
+from app.api import payments as payments_api
+from app.api import promo as promo_api
+from app.api import ratings as ratings_api
+from app.api import routes_api as routes_api
 from app.api import sos as sos_api
 from app.api import uploads as uploads_api
 from app.api.websocket import websocket_handler
-from app import config
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +89,9 @@ async def health_db(request: web.Request) -> web.Response:
     'missing' list is non-empty, Driver/User/Order queries will 500 and the apps will
     appear broken (orders/online/etc.) — re-deploy so run_migration() can add them.
     """
-    from app.database import engine
     from sqlalchemy import inspect
+
+    from app.database import engine
     expected = {
         "drivers": ["profile_photo_url", "seats", "documents_submitted",
                     "subscription_until", "pinfl", "car_year",

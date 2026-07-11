@@ -1,12 +1,13 @@
 """SOS / Emergency alert endpoints."""
 import logging
+
 from aiohttp import web
 
-from app.database import get_session
-from app.models import SosAlert, Order
-from app.utils.auth import get_current_user
-from app.api.drivers import _get_driver_from_request
 from app import config
+from app.api.drivers import _get_driver_from_request
+from app.database import get_session
+from app.models import Order, SosAlert
+from app.utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 

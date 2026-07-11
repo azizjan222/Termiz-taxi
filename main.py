@@ -1,35 +1,37 @@
 import asyncio
-import json
-import os
 import csv
 import io
+import json
 import logging
+import os
 from datetime import datetime, timedelta
+
 from telegram import (
-    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
+    Update,
 )
 from telegram.ext import (
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
-    MessageHandler,
-    filters,
     ContextTypes,
     ConversationHandler,
-    CallbackQueryHandler
+    MessageHandler,
+    filters,
 )
+
+from app import car_models
 
 # Load environment configuration
 from app import config as app_config
-from app.database import init_db, get_session
 from app.api.server import start_api_server
+from app.database import get_session, init_db
 from app.migrate import run_migration
 from app.models import Driver as DBDriver
-from app import car_models
 from app.services.driver_pdf import build_driver_pdf
 
 logging.basicConfig(
@@ -354,8 +356,8 @@ async def app_topup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     from app.api.payments import credit_driver_payment
-    from app.services.push import send_push, notify_balance_topup
     from app.models import Payment
+    from app.services.push import notify_balance_topup, send_push
 
     session = get_session()
     try:
@@ -799,11 +801,12 @@ async def _accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAU
     Triggered when a driver taps "✅ Zakasni olish" in the drivers group for an
     order created in the mobile app. Notifies the passenger (push + WebSocket).
     """
-    from app.database import get_session as _gs
-    from app.models import Order, Driver as DBDriver
-    from app.services.push import notify_passenger_order_accepted
-    from app.api.websocket import ws_manager
     from app import config
+    from app.api.websocket import ws_manager
+    from app.database import get_session as _gs
+    from app.models import Driver as DBDriver
+    from app.models import Order
+    from app.services.push import notify_passenger_order_accepted
 
     session = _gs()
     try:

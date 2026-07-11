@@ -3,10 +3,10 @@ import json
 import os
 from datetime import datetime
 
-from app.database import init_db, DbContext, engine
-from app.models import Driver, Setting, OrderHistory
-from app.seed_data import seed_routes
 from app.config import LEGACY_JSON_PATH
+from app.database import DbContext, engine, init_db
+from app.models import Driver, OrderHistory, Setting
+from app.seed_data import seed_routes
 
 
 def _apply_schema_migrations() -> int:
@@ -18,7 +18,7 @@ def _apply_schema_migrations() -> int:
     Driver/User query failed (500) and the apps hung forever on "waiting for Telegram
     confirmation". This now migrates Postgres too.
     """
-    from sqlalchemy import text, inspect
+    from sqlalchemy import inspect, text
 
     is_pg = engine.dialect.name == "postgresql"
     BOOL_FALSE = "BOOLEAN DEFAULT FALSE" if is_pg else "BOOLEAN DEFAULT 0"

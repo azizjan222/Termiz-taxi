@@ -1,19 +1,20 @@
 """Driver-side API endpoints (used by driver mobile app)."""
 import logging
 from datetime import datetime, timedelta
-from aiohttp import web
-import jwt
 
+import jwt
+from aiohttp import web
+
+from app import config
+from app.api.websocket import ws_manager
 from app.database import get_session
 from app.models import Driver, Order, OrderHistory, Setting
-from app.api.websocket import ws_manager
-from app.utils.timefmt import iso_utc
-from app import config
 from app.services.dynamic_settings import (
-    get_min_driver_balance,
     get_free_trial_days,
     get_free_trial_limit,
+    get_min_driver_balance,
 )
+from app.utils.timefmt import iso_utc
 
 logger = logging.getLogger(__name__)
 
@@ -326,7 +327,7 @@ async def driver_request_otp(request: web.Request) -> web.Response:
     Body: {"phone": "+998901234567"}
     Sends OTP via SMS or Telegram bot. Driver must be already registered.
     """
-    from app.services.otp import normalize_phone, create_and_send_otp
+    from app.services.otp import create_and_send_otp, normalize_phone
 
     try:
         data = await request.json()
@@ -387,7 +388,8 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
     Body: {"phone": "+998...", "code": "123456"}
     Returns: JWT token for driver.
     """
-    from app.services.otp import normalize_phone, verify_otp as verify_otp_fn
+    from app.services.otp import normalize_phone
+    from app.services.otp import verify_otp as verify_otp_fn
 
     try:
         data = await request.json()
@@ -1271,8 +1273,8 @@ async def driver_balance_history(request: web.Request) -> web.Response:
 
 
 # ============= DRIVER RECOMMENDATIONS (group D) =============
-from app.utils.auth import get_current_user as _get_passenger
 from app.models import Route as _Route
+from app.utils.auth import get_current_user as _get_passenger
 
 
 async def list_recommended_drivers(request: web.Request) -> web.Response:
