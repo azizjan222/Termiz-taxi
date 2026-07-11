@@ -1,0 +1,31 @@
+# Ruff configuration for the Sarix Go backend (Python).
+# Goal: catch real bugs (undefined names, unused imports, etc.) on new code without
+# forcing a large, risky rewrite of the existing live codebase. The stylistic one-liner
+# rules that are pervasive in the Telegram bot code are ignored (tracked for later).
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Only lint the backend; the mobile apps have their own JS/TS tooling.
+extend-exclude = [
+    "sarix-go-app",
+    "sarix-go-driver",
+    "data",
+    "docs",
+    "assets-src",
+]
+
+[tool.ruff.lint]
+# E/W = pycodestyle, F = pyflakes (the important correctness rules), I = import sorting.
+select = ["E", "W", "F", "I"]
+ignore = [
+    "E501",  # line too long — long strings/URLs are fine; not worth churning.
+    "E701",  # multiple statements on one line (colon) — common `except: pass` style.
+    "E702",  # multiple statements on one line (semicolon).
+    "E401",  # multiple imports on one line.
+    "E402",  # module import not at top — several files defer imports on purpose.
+    "E722",  # bare `except` — pervasive in bot code; tracked for future cleanup.
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

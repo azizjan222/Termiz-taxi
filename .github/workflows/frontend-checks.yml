@@ -1,0 +1,47 @@
+name: Frontend Checks
+
+# Type-checks and lints both Expo apps (passenger + driver) on any change to their
+# source. Type errors fail the build; lint warnings are reported but do not fail.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sarix-go-app/**'
+      - 'sarix-go-driver/**'
+      - '.github/workflows/frontend-checks.yml'
+  pull_request:
+    paths:
+      - 'sarix-go-app/**'
+      - 'sarix-go-driver/**'
+      - '.github/workflows/frontend-checks.yml'
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [sarix-go-app, sarix-go-driver]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Unit tests (Jest)
+        run: npm test -- --ci

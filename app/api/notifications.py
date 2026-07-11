@@ -1,9 +1,9 @@
 """API endpoints for push notification management."""
 from aiohttp import web
 
-from app.database import get_session
-from app.models import User, Driver
 from app.api.drivers import _get_driver_from_request
+from app.database import get_session
+from app.models import Driver, User
 
 
 async def register_token(request: web.Request) -> web.Response:

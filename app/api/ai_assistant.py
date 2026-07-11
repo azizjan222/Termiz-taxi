@@ -1,7 +1,8 @@
 """AI Assistant for drivers and passengers - answers FAQ via OpenAI or built-in fallback."""
 import logging
-from aiohttp import web
+
 import aiohttp
+from aiohttp import web
 
 from app import config
 from app.api.drivers import _get_driver_from_request

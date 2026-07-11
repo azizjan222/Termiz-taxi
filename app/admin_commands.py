@@ -1,15 +1,15 @@
 """Admin Telegram commands for managing apps via bot."""
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
 
 from sqlalchemy import func
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ContextTypes
 
-from app.database import DbContext
-from app.models import Driver, User, Order, OrderHistory, Payment, Route, Setting
-from app.services.push import send_push, send_push_bulk
-from app.services import notify_i18n as nt
 from app import config
+from app.database import DbContext
+from app.models import Driver, Order, OrderHistory, Payment, Route, Setting, User
+from app.services import notify_i18n as nt
+from app.services.push import send_push, send_push_bulk
 
 
 def is_admin(uid: int) -> bool:

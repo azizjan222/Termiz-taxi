@@ -1,10 +1,10 @@
 """Ratings API: passenger ↔ driver feedback after order completion."""
 from aiohttp import web
 
-from app.database import get_session
-from app.models import Order, Rating, Driver, User
-from app.utils.auth import require_auth
 from app.api.drivers import _get_driver_from_request
+from app.database import get_session
+from app.models import Driver, Order, Rating, User
+from app.utils.auth import require_auth
 
 
 @require_auth

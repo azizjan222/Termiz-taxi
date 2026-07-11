@@ -19,9 +19,9 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
+from app import config
 from app.database import get_session
 from app.models import Order
-from app import config
 
 logger = logging.getLogger("sarixgo.expiry")
 

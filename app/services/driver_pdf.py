@@ -1,7 +1,7 @@
 """Generate a PDF of a driver's registration documents (admin only)."""
 import io
-import os
 import logging
+import os
 
 logger = logging.getLogger("sarixgo.driver_pdf")
 
