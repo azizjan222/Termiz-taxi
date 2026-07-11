@@ -3,41 +3,264 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sarix Go - Termiz Sariosiyo Taxi</title>
+    <title>Sarix Go — Termiz Sariosiyo Taxi</title>
+    <meta name="description" content="Sarix Go — Termiz va Sariosiyo bo'ylab tez, arzon va ishonchli taksi xizmati. Ilovani yuklab oling va bir necha soniyada mashina chaqiring.">
+    <meta property="og:title" content="Sarix Go — Termiz Sariosiyo Taxi">
+    <meta property="og:description" content="Tez, arzon va ishonchli taksi xizmati. Bir necha soniyada mashina chaqiring.">
+    <meta property="og:image" content="./logo.png">
+    <meta property="og:type" content="website">
+    <link rel="icon" href="./logo.png">
     <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-light: #6366F1;
+            --primary-dark: #4338CA;
+            --accent: #FFC400;
+            --accent-dark: #E3A800;
+            --bg: #0F1729;
+            --surface: #1A2B4D;
+            --card: #1E2D52;
+            --elevated: #243761;
+            --border: #2E4A8F;
+            --text: #FFFFFF;
+            --text-secondary: #AEB9CC;
+            --text-muted: #8E9BB1;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0E1B3D; color: #fff; min-height: 100vh; }
-        .container { max-width: 600px; margin: 0 auto; padding: 40px 20px; text-align: center; }
-        .logo { font-size: 48px; margin-bottom: 16px; }
-        h1 { color: #F4C430; font-size: 32px; margin-bottom: 8px; }
-        .subtitle { color: rgba(255,255,255,0.8); font-size: 16px; margin-bottom: 40px; }
-        .links { display: flex; flex-direction: column; gap: 12px; margin-top: 32px; }
-        a { display: block; background: rgba(255,255,255,0.1); color: #fff; text-decoration: none; padding: 16px 24px; border-radius: 12px; font-size: 16px; transition: background 0.2s; }
-        a:hover { background: rgba(244, 196, 48, 0.2); }
-        .badge { display: inline-block; background: #F4C430; color: #0E1B3D; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-left: 8px; }
-        .footer { margin-top: 60px; color: rgba(255,255,255,0.5); font-size: 13px; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: inherit; text-decoration: none; }
+        .wrap { max-width: 1000px; margin: 0 auto; padding: 0 20px; }
+
+        /* Header */
+        header {
+            position: sticky; top: 0; z-index: 50;
+            background: rgba(15,23,41,0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+        .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; }
+        .brand img { width: 36px; height: 36px; border-radius: 9px; object-fit: cover; }
+        .brand span { color: var(--accent); }
+        .nav-links { display: flex; gap: 24px; font-size: 15px; color: var(--text-secondary); }
+        .nav-links a:hover { color: var(--accent); }
+        @media (max-width: 640px) { .nav-links { display: none; } }
+
+        /* Hero */
+        .hero {
+            position: relative;
+            text-align: center;
+            padding: 80px 20px 90px;
+            background:
+                radial-gradient(900px 400px at 50% -10%, rgba(79,70,229,0.45), transparent 70%),
+                radial-gradient(600px 300px at 90% 10%, rgba(255,196,0,0.10), transparent 70%);
+        }
+        .hero-logo {
+            width: 96px; height: 96px; border-radius: 24px; object-fit: cover;
+            box-shadow: 0 20px 50px rgba(79,70,229,0.5);
+            margin-bottom: 24px;
+        }
+        .hero h1 { font-size: clamp(34px, 7vw, 56px); font-weight: 900; letter-spacing: -1px; }
+        .hero h1 .go { color: var(--accent); }
+        .hero .tag {
+            display: inline-block; margin-top: 14px; margin-bottom: 8px;
+            color: var(--text-secondary); font-size: clamp(16px, 3vw, 20px); max-width: 620px;
+        }
+        .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 34px; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 10px;
+            padding: 15px 26px; border-radius: 14px; font-weight: 700; font-size: 16px;
+            transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-primary { background: var(--accent); color: #0E1730; box-shadow: 0 10px 30px rgba(255,196,0,0.35); }
+        .btn-ghost { background: rgba(255,255,255,0.06); color: #fff; border: 1px solid var(--border); }
+        .btn small { display: block; font-size: 11px; font-weight: 600; opacity: .7; line-height: 1; }
+        .btn b { font-size: 17px; line-height: 1.15; }
+        .soon { font-size: 13px; color: var(--text-muted); margin-top: 16px; }
+
+        /* Section */
+        section { padding: 70px 0; }
+        .section-title { text-align: center; font-size: clamp(26px, 5vw, 38px); font-weight: 800; margin-bottom: 10px; }
+        .section-sub { text-align: center; color: var(--text-secondary); max-width: 560px; margin: 0 auto 44px; }
+        .accent-line { width: 56px; height: 4px; background: var(--accent); border-radius: 4px; margin: 0 auto 20px; }
+
+        /* Features grid */
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+        .card {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 18px; padding: 28px 24px; transition: border-color .2s, transform .2s;
+        }
+        .card:hover { border-color: var(--primary-light); transform: translateY(-4px); }
+        .card .ico {
+            width: 52px; height: 52px; border-radius: 13px; display: grid; place-items: center;
+            font-size: 26px; margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        }
+        .card h3 { font-size: 19px; margin-bottom: 8px; }
+        .card p { color: var(--text-secondary); font-size: 15px; }
+
+        /* Steps */
+        .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 24px; }
+        .step { text-align: center; }
+        .step .num {
+            width: 54px; height: 54px; margin: 0 auto 16px; border-radius: 50%;
+            display: grid; place-items: center; font-weight: 800; font-size: 22px;
+            color: var(--accent); border: 2px solid var(--accent);
+        }
+        .step h3 { font-size: 18px; margin-bottom: 6px; }
+        .step p { color: var(--text-secondary); font-size: 15px; }
+
+        /* Driver band */
+        .band {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 24px; padding: 48px 32px; text-align: center;
+        }
+        .band h2 { font-size: clamp(24px, 5vw, 34px); font-weight: 800; margin-bottom: 12px; }
+        .band p { color: rgba(255,255,255,0.85); max-width: 560px; margin: 0 auto 26px; }
+
+        /* Support */
+        .support-card {
+            background: var(--card); border: 1px solid var(--border); border-radius: 20px;
+            padding: 40px 28px; text-align: center; max-width: 520px; margin: 0 auto;
+        }
+        .support-card .tg { font-size: 44px; margin-bottom: 12px; }
+        .support-card p { color: var(--text-secondary); margin-bottom: 22px; }
+
+        /* Footer */
+        footer { border-top: 1px solid var(--border); padding: 44px 0 40px; margin-top: 30px; }
+        .foot-grid { display: flex; flex-wrap: wrap; gap: 30px; justify-content: space-between; }
+        .foot-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; margin-bottom: 10px; }
+        .foot-brand img { width: 30px; height: 30px; border-radius: 8px; }
+        .foot-col h4 { font-size: 14px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 14px; }
+        .foot-col a { display: block; color: var(--text-secondary); font-size: 15px; margin-bottom: 9px; }
+        .foot-col a:hover { color: var(--accent); }
+        .copyright { text-align: center; color: var(--text-muted); font-size: 13px; margin-top: 36px; }
+        .lang-badges a { display: inline-block; margin: 0 4px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo">🚕</div>
-        <h1>SARIX GO</h1>
-        <p class="subtitle">Termiz Sariosiyo Taxi — Yo'lovchi va Haydovchi ilovalari</p>
-
-        <div class="links">
-            <a href="./privacy-policy.html">📄 Maxfiylik siyosati (Privacy Policy) <span class="badge">UZ</span></a>
-            <a href="./privacy-policy-ru.html">📄 Политика конфиденциальности <span class="badge">RU</span></a>
-            <a href="./privacy-policy-en.html">📄 Privacy Policy <span class="badge">EN</span></a>
-            <a href="./terms.html">📋 Foydalanish shartlari <span class="badge">UZ</span></a>
-            <a href="./terms-ru.html">📋 Условия использования <span class="badge">RU</span></a>
-            <a href="./terms-en.html">📋 Terms of Service <span class="badge">EN</span></a>
+    <header>
+        <div class="wrap nav">
+            <div class="brand"><img src="./logo.png" alt="Sarix Go"> Sarix<span>Go</span></div>
+            <nav class="nav-links">
+                <a href="#features">Imkoniyatlar</a>
+                <a href="#how">Qanday ishlaydi</a>
+                <a href="#driver">Haydovchilarga</a>
+                <a href="#support">Yordam</a>
+            </nav>
         </div>
+    </header>
 
-        <div class="footer">
-            <p>Sarix Go &copy; 2026</p>
-            <p>Telegram: <a href="https://t.me/tg_adminstator" style="background:none;padding:0;display:inline;color:#F4C430;">@tg_adminstator</a></p>
-            <p>Bot: <a href="https://t.me/termizsariosiyotaxi_bot" style="background:none;padding:0;display:inline;color:#F4C430;">@termizsariosiyotaxi_bot</a></p>
+    <!-- HERO -->
+    <div class="hero">
+        <div class="wrap">
+            <img class="hero-logo" src="./logo.png" alt="Sarix Go logo">
+            <h1>Sarix <span class="go">Go</span></h1>
+            <p class="tag">Termiz va Sariosiyo bo'ylab tez, arzon va ishonchli taksi xizmati. Bir necha soniyada mashina chaqiring.</p>
+            <div class="cta">
+                <a class="btn btn-primary" href="#download"><span>▶</span><span><small>TEZ KUNDA</small><b>Google Play</b></span></a>
+                <a class="btn btn-ghost" href="#driver"><span>👨‍✈️</span><span><small>DAROMAD TOPING</small><b>Haydovchi bo'lish</b></span></a>
+            </div>
+            <p class="soon">📱 Yo'lovchi va Haydovchi ilovalari tez orada Google Play'da</p>
         </div>
     </div>
+
+    <!-- FEATURES -->
+    <section id="features">
+        <div class="wrap">
+            <div class="accent-line"></div>
+            <h2 class="section-title">Nega aynan Sarix Go?</h2>
+            <p class="section-sub">Kundalik yurishlaringizni qulay, xavfsiz va tejamkor qiladigan zamonaviy taksi xizmati.</p>
+            <div class="grid">
+                <div class="card"><div class="ico">⚡</div><h3>Tez chaqiruv</h3><p>Bir necha marta bosish bilan eng yaqin haydovchi siz tomon yo'lga chiqadi.</p></div>
+                <div class="card"><div class="ico">💰</div><h3>Aniq narx</h3><p>Buyurtmadan oldin yo'l narxini ko'rasiz — yashirin to'lovlarsiz.</p></div>
+                <div class="card"><div class="ico">🗺️</div><h3>Jonli xarita</h3><p>Haydovchi qayerdaligini va yo'l harakatini real vaqtda kuzating.</p></div>
+                <div class="card"><div class="ico">🛡️</div><h3>Xavfsizlik</h3><p>SOS tugmasi va safar ma'lumotlari bilan har doim himoyadasiz.</p></div>
+                <div class="card"><div class="ico">⭐</div><h3>Reyting</h3><p>Har bir safardan so'ng haydovchini baholang — sifat doim yuqori.</p></div>
+                <div class="card"><div class="ico">🎁</div><h3>Promo va chegirmalar</h3><p>Promo-kodlar va aksiyalar bilan yanada tejamkor yuring.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section id="how" style="background: var(--surface);">
+        <div class="wrap">
+            <div class="accent-line"></div>
+            <h2 class="section-title">Qanday ishlaydi</h2>
+            <p class="section-sub">Uch oddiy qadamda manzilingizga yetib boring.</p>
+            <div class="steps">
+                <div class="step"><div class="num">1</div><h3>Manzilni tanlang</h3><p>Qayerdan va qayerga borishni kiriting.</p></div>
+                <div class="step"><div class="num">2</div><h3>Mashina chaqiring</h3><p>Narxni ko'ring va buyurtmani tasdiqlang.</p></div>
+                <div class="step"><div class="num">3</div><h3>Manzilga yeting</h3><p>Haydovchi keladi va sizni tez, xavfsiz yetkazadi.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- DRIVER -->
+    <section id="driver">
+        <div class="wrap">
+            <div class="band">
+                <h2>Haydovchi bo'ling — daromad toping</h2>
+                <p>O'z vaqtingizga moslab ishlang. Sarix Go Haydovchi ilovasi orqali buyurtmalarni qabul qiling, marshrutni ko'ring va daromadingizni kuzatib boring.</p>
+                <a class="btn btn-primary" href="#download">Haydovchi ilovasini olish</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- SUPPORT -->
+    <section id="support" style="background: var(--surface);">
+        <div class="wrap">
+            <div class="accent-line"></div>
+            <h2 class="section-title">Yordam kerakmi?</h2>
+            <p class="section-sub">Savol, taklif yoki muammo bo'lsa — Telegram support botimizga yozing. Tez orada javob beramiz.</p>
+            <div class="support-card">
+                <div class="tg">💬</div>
+                <h3>Telegram qo'llab-quvvatlash</h3>
+                <p>@SarixGo_support_bot</p>
+                <a class="btn btn-primary" href="https://t.me/SarixGo_support_bot" target="_blank" rel="noopener">Telegramda yozish</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer id="download">
+        <div class="wrap">
+            <div class="foot-grid">
+                <div class="foot-col" style="max-width: 280px;">
+                    <div class="foot-brand"><img src="./logo.png" alt="Sarix Go"> Sarix Go</div>
+                    <p style="color: var(--text-secondary); font-size: 15px;">Termiz Sariosiyo Taxi — tez, arzon va ishonchli taksi xizmati.</p>
+                </div>
+                <div class="foot-col">
+                    <h4>Maxfiylik siyosati</h4>
+                    <div class="lang-badges">
+                        <a href="./privacy-policy.html">O'zbekcha</a>
+                        <a href="./privacy-policy-ru.html">Русский</a>
+                        <a href="./privacy-policy-en.html">English</a>
+                    </div>
+                </div>
+                <div class="foot-col">
+                    <h4>Foydalanish shartlari</h4>
+                    <div class="lang-badges">
+                        <a href="./terms.html">O'zbekcha</a>
+                        <a href="./terms-ru.html">Русский</a>
+                        <a href="./terms-en.html">English</a>
+                    </div>
+                </div>
+                <div class="foot-col">
+                    <h4>Aloqa</h4>
+                    <a href="https://t.me/SarixGo_support_bot" target="_blank" rel="noopener">💬 @SarixGo_support_bot</a>
+                </div>
+            </div>
+            <p class="copyright">Sarix Go &copy; 2026 — Barcha huquqlar himoyalangan.</p>
+        </div>
+    </footer>
 </body>
 </html>
