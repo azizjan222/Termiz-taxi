@@ -74,10 +74,10 @@ export const lightColors = {
   divider: '#EEF1F8',
   backdrop: 'rgba(14,23,48,0.45)',
 
-  // Text — AA compliant hierarchy
+  // Text — AA compliant on BOTH white bg and surface cards
   text: '#0E1730',
   textSecondary: '#4B5563',
-  textMuted: '#6B7280',
+  textMuted: '#656B78',
   textOnPrimary: '#FFFFFF',
   textOnAccent: '#0E1730',
 
@@ -114,10 +114,10 @@ export const darkColors: typeof lightColors = {
   divider: '#1F3360',
   backdrop: 'rgba(0,0,0,0.6)',
 
-  // Text — AA compliant on the dark navy background
+  // Text — AA compliant on BOTH the dark background and raised surfaces/cards
   text: '#FFFFFF',
   textSecondary: '#AEB9CC',
-  textMuted: '#8592A6',
+  textMuted: '#8E9BB1',
   textOnPrimary: '#FFFFFF',
   textOnAccent: '#0E1730',
 
