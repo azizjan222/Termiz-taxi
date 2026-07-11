@@ -13,6 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import {
+  CarFront,
+  Package,
+  ShieldCheck,
+  ChevronRight,
+  type LucideIcon,
+} from 'lucide-react-native';
 
 import { useAuthStore } from '../../src/store/auth';
 import { useOrderStore } from '../../src/store/order';
@@ -24,24 +31,24 @@ import AdBanner from '../../src/components/AdBanner';
 const { width: SCREEN_W } = Dimensions.get('window');
 
 // Rotating promo banners shown at the top of the home screen.
-type PromoBanner = { title: string; subtitle: string; emoji: string; colors: [string, string] };
+type PromoBanner = { title: string; subtitle: string; Icon: LucideIcon; colors: [string, string] };
 const PROMO_BANNERS: PromoBanner[] = [
   {
     title: 'Marhamat!',
-    subtitle: "Tez va qulay xizmatlar biz bilan 😊",
-    emoji: '🚕',
+    subtitle: 'Tez va qulay xizmatlar biz bilan',
+    Icon: CarFront,
     colors: ['#7C5CFC', '#5B3FD9'],
   },
   {
-    title: 'Pochta yuboring 📦',
+    title: 'Pochta yuboring',
     subtitle: "Hujjat va buyumlaringizni tez, xavfsiz yetkazamiz",
-    emoji: '📦',
+    Icon: Package,
     colors: ['#F59E0B', '#D97706'],
   },
   {
-    title: 'Ishonchli haydovchilar ⭐',
+    title: 'Ishonchli haydovchilar',
     subtitle: "Tekshirilgan haydovchilar bilan xavfsiz safar qiling",
-    emoji: '🛡️',
+    Icon: ShieldCheck,
     colors: ['#10B981', '#059669'],
   },
 ];
@@ -133,7 +140,9 @@ export default function HomeScreen() {
                 <Text style={styles.heroTitle}>{b.title}</Text>
                 <Text style={styles.heroSubtitle}>{b.subtitle}</Text>
               </View>
-              <Text style={styles.heroEmoji}>{b.emoji}</Text>
+              <View style={styles.heroIconWrap}>
+                <b.Icon size={44} color="#FFFFFF" strokeWidth={1.8} />
+              </View>
             </LinearGradient>
           ))}
         </ScrollView>
@@ -158,7 +167,7 @@ export default function HomeScreen() {
           activeOpacity={0.85}
         >
           <View style={[styles.serviceIcon, { backgroundColor: colors.accent }]}>
-            <Text style={styles.serviceEmoji}>🚕</Text>
+            <CarFront size={28} color={colors.textOnAccent} strokeWidth={2} />
           </View>
           <View style={styles.serviceText}>
             <Text style={styles.serviceTitle}>{t('home.orderTaxi')}</Text>
@@ -177,7 +186,7 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={styles.chevronCircle}>
-            <Text style={styles.serviceArrow}>›</Text>
+            <ChevronRight size={20} color={colors.textMuted} strokeWidth={2.2} />
           </View>
         </TouchableOpacity>
 
@@ -188,7 +197,7 @@ export default function HomeScreen() {
           activeOpacity={0.85}
         >
           <View style={[styles.serviceIcon, { backgroundColor: '#EDE7FF' }]}>
-            <Text style={styles.serviceEmoji}>📦</Text>
+            <Package size={28} color={colors.primary} strokeWidth={2} />
           </View>
           <View style={styles.serviceText}>
             <Text style={styles.serviceTitle}>{t('home.orderParcel')}</Text>
@@ -207,7 +216,7 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={styles.chevronCircle}>
-            <Text style={styles.serviceArrow}>›</Text>
+            <ChevronRight size={20} color={colors.textMuted} strokeWidth={2.2} />
           </View>
         </TouchableOpacity>
 
@@ -275,7 +284,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     ...typography.body,
     color: 'rgba(255,255,255,0.92)',
   },
-  heroEmoji: { fontSize: 72 },
+  heroIconWrap: {
+    width: 76,
+    height: 76,
+    borderRadius: radius.xl,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // Carousel dots
   dots: {
@@ -324,7 +340,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  serviceEmoji: { fontSize: 28 },
   serviceText: { flex: 1 },
   serviceTitle: { ...typography.bodyBold, color: colors.text },
   serviceSub: {
@@ -355,11 +370,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: spacing.sm,
-  },
-  serviceArrow: {
-    fontSize: 22,
-    color: colors.textMuted,
-    fontWeight: '400',
-    lineHeight: 24,
   },
 });
