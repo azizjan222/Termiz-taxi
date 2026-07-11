@@ -232,6 +232,7 @@ export default {
     title: 'Yordam / FAQ',
     contactSupport: 'Yordam xizmati bilan bog\'lanish',
     contactHint: 'Savolingizga javob topmadingizmi?',
+    emailSupport: 'Email orqali yozish',
   },
   driverMap: {
     title: 'Haydovchi joylashuvi',

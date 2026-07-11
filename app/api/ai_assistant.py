@@ -452,4 +452,5 @@ async def get_support_info(request: web.Request) -> web.Response:
         "telegram_url": f"https://t.me/{config.SUPPORT_TELEGRAM}",
         "bot_username": "termizsariosiyotaxi_bot",
         "bot_url": "https://t.me/termizsariosiyotaxi_bot",
+        "email": config.SUPPORT_EMAIL,
     })

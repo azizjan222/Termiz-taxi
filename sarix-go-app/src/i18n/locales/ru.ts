@@ -179,6 +179,7 @@ export default {
     title: 'Помощь / FAQ',
     contactSupport: 'Связаться со службой поддержки',
     contactHint: 'Не нашли ответ на свой вопрос?',
+    emailSupport: 'Написать на email',
   },
   driverMap: {
     title: 'Местоположение водителя',

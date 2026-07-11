@@ -167,6 +167,9 @@ TEST_DRIVER_PHONES = [
 # This is now the dedicated support bot (SarixGo_support_bot), NOT a personal account.
 SUPPORT_TELEGRAM = _get("SUPPORT_TELEGRAM", "SarixGo_support_bot")
 
+# Support email for questions & suggestions (shown alongside the Telegram contact).
+SUPPORT_EMAIL = _get("SUPPORT_EMAIL", "sarixgo.support@gmail.com")
+
 # Dedicated "support / feedback" bot (SEPARATE from the main BOT_TOKEN). Users message
 # it with questions/suggestions and the admin (SUPPORT_ADMIN_ID, defaults to ADMIN_ID)
 # receives them and replies. Token is a SECRET — provide it via env, never hardcode.

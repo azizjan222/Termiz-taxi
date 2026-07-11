@@ -179,6 +179,7 @@ export default {
     title: 'Help / FAQ',
     contactSupport: 'Contact support',
     contactHint: "Didn't find an answer to your question?",
+    emailSupport: 'Email us',
   },
   driverMap: {
     title: 'Driver location',
