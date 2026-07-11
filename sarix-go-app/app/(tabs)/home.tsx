@@ -30,7 +30,7 @@ const PROMO_BANNERS: PromoBanner[] = [
     title: 'Marhamat!',
     subtitle: "Tez va qulay xizmatlar biz bilan 😊",
     emoji: '🚕',
-    colors: ['#7C5CFC', '#5B3FD9'],
+    colors: ['#6366F1', '#4F46E5'],
   },
   {
     title: 'Pochta yuboring 📦',
@@ -187,7 +187,7 @@ export default function HomeScreen() {
           onPress={() => startOrder('parcel')}
           activeOpacity={0.85}
         >
-          <View style={[styles.serviceIcon, { backgroundColor: '#EDE7FF' }]}>
+          <View style={[styles.serviceIcon, { backgroundColor: '#E0E7FF' }]}>
             <Text style={styles.serviceEmoji}>📦</Text>
           </View>
           <View style={styles.serviceText}>
@@ -197,7 +197,7 @@ export default function HomeScreen() {
               {['Xavfsiz', 'Ishonchli', 'Tezkor'].map((label) => (
                 <View
                   key={label}
-                  style={[styles.chip, { backgroundColor: '#EDE7FF' }]}
+                  style={[styles.chip, { backgroundColor: '#E0E7FF' }]}
                 >
                   <Text style={[styles.chipText, { color: colors.primary }]}>
                     {label}

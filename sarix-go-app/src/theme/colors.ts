@@ -5,10 +5,10 @@
  * export is used by a couple of theme-independent spots (splash, logo).
  */
 export const colors = {
-  // Primary brand
-  primary: '#6C4DF6',
-  primaryLight: '#8A6BFF',
-  primaryDark: '#5A3DE0',
+  // Primary brand (indigo)
+  primary: '#4F46E5',
+  primaryLight: '#6366F1',
+  primaryDark: '#4338CA',
 
   // Accent (gold)
   accent: '#FFC400',
@@ -16,16 +16,16 @@ export const colors = {
   accentDark: '#E3A800',
 
   // Brand tonal scale (50 -> 900)
-  primary50: '#F2EFFE',
-  primary100: '#E5DFFD',
-  primary200: '#CDBFFB',
-  primary300: '#B29CF9',
-  primary400: '#9573F7',
-  primary500: '#7D5CF6',
-  primary600: '#6C4DF6',
-  primary700: '#5A3DE0',
-  primary800: '#472DB0',
-  primary900: '#2E1C7A',
+  primary50: '#EEF2FF',
+  primary100: '#E0E7FF',
+  primary200: '#C7D2FE',
+  primary300: '#A5B4FC',
+  primary400: '#818CF8',
+  primary500: '#6366F1',
+  primary600: '#4F46E5',
+  primary700: '#4338CA',
+  primary800: '#3730A3',
+  primary900: '#312E81',
 
   // Neutrals
   white: '#FFFFFF',
@@ -69,19 +69,20 @@ export const colors = {
   // Status (for orders)
   statusNew: '#3B82F6',
   statusAccepted: '#F59E0B',
-  statusInProgress: '#6C4DF6',
+  statusInProgress: '#4F46E5',
   statusCompleted: '#10B981',
   statusCancelled: '#EF4444',
 
   // Map
   mapMarker: '#F4C430',
-  mapRoute: '#6C4DF6',
+  mapRoute: '#4F46E5',
 } as const;
 
 export type ColorKey = keyof typeof colors;
 
 export const gradients = {
-  purple: ['#7B61FF', '#5B3DF5'] as const,
+  // Kept the key name `purple` so existing imports don't break; values are now indigo.
+  purple: ['#6366F1', '#4F46E5'] as const,
   gold: ['#FFD23F', '#FFB300'] as const,
   header: ['#FFE08A', '#FFC400'] as const,
 };

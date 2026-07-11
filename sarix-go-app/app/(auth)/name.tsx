@@ -248,7 +248,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   phoneBadge: {
     width: 46, height: 46, borderRadius: 23,
-    backgroundColor: '#EDE7FF',
+    backgroundColor: '#E0E7FF',
     alignItems: 'center', justifyContent: 'center',
   },
   phoneBadgeIcon: { fontSize: 22 },

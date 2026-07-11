@@ -48,7 +48,7 @@ const ICON_TINTS: Record<string, string> = {
   'profile.paymentMethods': '#FFF3CC',   // gold
   'profile.notifications': '#FEF3C7',    // yellow
   'profile.promoCodes': '#D1FAE5',       // green
-  'ai.title': '#EDE7FF',                 // purple
+  'ai.title': '#E0E7FF',                 // indigo
   'profile.faq': '#FEE2E2',              // red
   'profile.helpSupport': '#DBEAFE',      // blue
   'profile.settings': '#EEF1F8',         // gray
@@ -395,7 +395,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     right: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EDE7FF',
+    backgroundColor: '#E0E7FF',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,

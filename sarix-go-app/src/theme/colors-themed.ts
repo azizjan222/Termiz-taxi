@@ -5,7 +5,7 @@
  *  - A full tonal scale (50–900) for the brand (violet) and neutrals so every
  *    surface / border / hover / disabled state has a consistent, non-guessed value.
  *  - WCAG AA contrast (>= 4.5:1) for all text-on-background pairs. Verified:
- *      • white on primary (#6C4DF6)      = 5.2:1  ✓
+ *      • white on primary (#4F46E5)      = 6.3:1  ✓
  *      • dark text on accent (#FFC400)   = 11.3:1 ✓
  *      • textSecondary (#4B5563) on bg   = 7.4:1  ✓
  *      • textMuted (#6B7280) on bg       = 4.8:1  ✓
@@ -19,16 +19,16 @@
 
 // Absolute tonal scales (theme-independent).
 const primaryScale = {
-  primary50: '#F2EFFE',
-  primary100: '#E5DFFD',
-  primary200: '#CDBFFB',
-  primary300: '#B29CF9',
-  primary400: '#9573F7',
-  primary500: '#7D5CF6',
-  primary600: '#6C4DF6', // brand base
-  primary700: '#5A3DE0',
-  primary800: '#472DB0',
-  primary900: '#2E1C7A',
+  primary50: '#EEF2FF',
+  primary100: '#E0E7FF',
+  primary200: '#C7D2FE',
+  primary300: '#A5B4FC',
+  primary400: '#818CF8',
+  primary500: '#6366F1',
+  primary600: '#4F46E5', // brand base (indigo)
+  primary700: '#4338CA',
+  primary800: '#3730A3',
+  primary900: '#312E81',
 } as const;
 
 const neutralScale = {
@@ -62,10 +62,10 @@ const scales = { ...primaryScale, ...neutralScale, ...accentScale };
 export const lightColors = {
   ...scales,
 
-  // Brand
-  primary: '#6C4DF6',
-  primaryLight: '#8A6BFF',
-  primaryDark: '#5A3DE0',
+  // Brand (indigo)
+  primary: '#4F46E5',
+  primaryLight: '#6366F1',
+  primaryDark: '#4338CA',
   accent: '#FFC400',
   accentLight: '#FFD451',
   accentDark: '#E3A800',
@@ -101,22 +101,22 @@ export const lightColors = {
   // Order statuses
   statusNew: '#3B82F6',
   statusAccepted: '#F59E0B',
-  statusInProgress: '#6C4DF6',
+  statusInProgress: '#4F46E5',
   statusCompleted: '#10B981',
   statusCancelled: '#EF4444',
 
   // Map
   mapMarker: '#FFC400',
-  mapRoute: '#6C4DF6',
+  mapRoute: '#4F46E5',
 };
 
 export const darkColors: typeof lightColors = {
   ...scales,
 
-  // Brand — keep the violet identity in dark mode
-  primary: '#8A6BFF',
-  primaryLight: '#A78BFF',
-  primaryDark: '#5A3DE0',
+  // Brand — keep the indigo identity in dark mode (lighter for vibrancy on navy)
+  primary: '#6366F1',
+  primaryLight: '#818CF8',
+  primaryDark: '#4338CA',
   accent: '#FFC400',
   accentLight: '#FFD75A',
   accentDark: '#D4A920',
@@ -153,13 +153,13 @@ export const darkColors: typeof lightColors = {
   // Order statuses
   statusNew: '#4DABF7',
   statusAccepted: '#FAB005',
-  statusInProgress: '#A78BFF',
+  statusInProgress: '#818CF8',
   statusCompleted: '#12B886',
   statusCancelled: '#FA5252',
 
-  // Map — keep the brand violet route visible on dark tiles
+  // Map — keep the brand indigo route visible on dark tiles
   mapMarker: '#FFC42E',
-  mapRoute: '#8A6BFF',
+  mapRoute: '#818CF8',
 };
 
 export type ThemeColors = typeof lightColors;
