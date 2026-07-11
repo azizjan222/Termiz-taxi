@@ -56,6 +56,9 @@ export default function FaqScreen() {
     Linking.openURL(support?.telegram_url || 'https://t.me/SarixGo_support_bot');
   };
 
+  const supportEmail = support?.email || 'sarixgo.support@gmail.com';
+  const openEmail = () => Linking.openURL(`mailto:${supportEmail}`);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.surface }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
@@ -99,6 +102,20 @@ export default function FaqScreen() {
           </View>
           <Text style={styles.supportArrow}>›</Text>
         </TouchableOpacity>
+
+        {/* Email — questions & suggestions */}
+        <TouchableOpacity
+          style={[styles.emailBtn, { backgroundColor: colors.background, borderColor: colors.primary }]}
+          onPress={openEmail}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.emailIcon}>📧</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.emailTitle, { color: colors.primary }]}>{t('faq.emailSupport')}</Text>
+            <Text style={[styles.emailSub, { color: colors.textSecondary }]}>{supportEmail}</Text>
+          </View>
+          <Text style={[styles.emailArrow, { color: colors.primary }]}>›</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -133,4 +150,16 @@ const styles = StyleSheet.create({
   supportTitle: { ...typography.bodyBold, color: '#FFFFFF' },
   supportSub: { ...typography.small, color: '#FFFFFF', opacity: 0.8, marginTop: 2 },
   supportArrow: { fontSize: 24, color: '#FFFFFF' },
+  emailBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+  },
+  emailIcon: { fontSize: 24, marginRight: spacing.md },
+  emailTitle: { ...typography.bodyBold },
+  emailSub: { ...typography.small, marginTop: 2 },
+  emailArrow: { fontSize: 24 },
 });

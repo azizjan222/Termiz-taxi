@@ -179,6 +179,7 @@ export default {
     title: 'Ёрдам / FAQ',
     contactSupport: 'Ёрдам хизмати билан боғланиш',
     contactHint: 'Саволингизга жавоб топмадингизми?',
+    emailSupport: 'Email орқали ёзиш',
   },
   driverMap: {
     title: 'Ҳайдовчи жойлашуви',

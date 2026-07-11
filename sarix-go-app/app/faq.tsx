@@ -53,6 +53,7 @@ export default function FaqScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [supportUrl, setSupportUrl] = useState('https://t.me/SarixGo_support_bot');
   const [supportUsername, setSupportUsername] = useState('SarixGo_support_bot');
+  const [supportEmail, setSupportEmail] = useState('sarixgo.support@gmail.com');
   const [open, setOpen] = useState<number | null>(0);
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export default function FaqScreen() {
       .then((info) => {
         if (info.telegram_url) setSupportUrl(info.telegram_url);
         if (info.telegram_username) setSupportUsername(info.telegram_username);
+        if (info.email) setSupportEmail(info.email);
       })
       .catch(() => {});
   }, []);
@@ -105,6 +107,20 @@ export default function FaqScreen() {
           </View>
           <Text style={styles.supportArrow}>›</Text>
         </TouchableOpacity>
+
+        {/* Email — questions & suggestions */}
+        <TouchableOpacity
+          style={styles.emailBtn}
+          onPress={() => Linking.openURL(`mailto:${supportEmail}`)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.emailIcon}>📧</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.emailTitle}>{t('faq.emailSupport')}</Text>
+            <Text style={styles.emailSub}>{supportEmail}</Text>
+          </View>
+          <Text style={styles.emailArrow}>›</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -148,4 +164,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   supportTitle: { ...typography.bodyBold, color: colors.textOnPrimary },
   supportSub: { ...typography.small, color: colors.textOnPrimary, opacity: 0.8, marginTop: 2 },
   supportArrow: { fontSize: 24, color: colors.textOnPrimary },
+  emailBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginTop: spacing.sm,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  emailIcon: { fontSize: 24, marginRight: spacing.md },
+  emailTitle: { ...typography.bodyBold, color: colors.primary },
+  emailSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
+  emailArrow: { fontSize: 24, color: colors.primary },
 });

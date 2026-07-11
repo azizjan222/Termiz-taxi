@@ -152,6 +152,7 @@ const uz = {
     title: 'Yordam / FAQ',
     contactSupport: "Admin bilan bog'lanish",
     contactHint: 'Savolingizga javob topmadingizmi?',
+    emailSupport: 'Email orqali yozish',
   },
   ai: {
     title: 'AI Yordamchi',
@@ -343,6 +344,7 @@ const ru = {
   faq: {
     title: 'Помощь / FAQ', contactSupport: 'Связаться с админом',
     contactHint: 'Не нашли ответ на свой вопрос?',
+    emailSupport: 'Написать на email',
   },
   ai: {
     title: 'AI Помощник',
@@ -531,6 +533,7 @@ const en = {
   faq: {
     title: 'Help / FAQ', contactSupport: 'Contact admin',
     contactHint: "Didn't find an answer to your question?",
+    emailSupport: 'Email us',
   },
   ai: {
     title: 'AI Assistant',
@@ -719,6 +722,7 @@ const uzCyrl = {
   faq: {
     title: 'Ёрдам / FAQ', contactSupport: 'Админ билан боғланиш',
     contactHint: 'Саволингизга жавоб топмадингизми?',
+    emailSupport: 'Email орқали ёзиш',
   },
   ai: {
     title: 'AI Ёрдамчи',

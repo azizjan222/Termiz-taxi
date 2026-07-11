@@ -34,6 +34,7 @@ async def get_app_config(request: web.Request) -> web.Response:
             "push_notifications": True,
         },
         "support_telegram": config.SUPPORT_TELEGRAM,
+        "support_email": config.SUPPORT_EMAIL,
         "bot_username": "termizsariosiyotaxi_bot",
         "min_driver_balance": get_min_driver_balance(),
     })

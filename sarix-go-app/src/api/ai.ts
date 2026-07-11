@@ -15,6 +15,7 @@ export interface SupportInfo {
   telegram_url: string;
   bot_username: string;
   bot_url: string;
+  email?: string;
 }
 
 export async function askAi(messages: ChatMessage[]): Promise<ChatResponse> {
