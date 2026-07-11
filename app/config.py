@@ -183,6 +183,15 @@ JWT_SECRET = _persistent_secret("JWT_SECRET", filename="jwt_secret", label="JWT 
 JWT_ALGORITHM = _get("JWT_ALGORITHM", "HS256")
 JWT_EXPIRES_DAYS = _get_int("JWT_EXPIRES_DAYS", 30)
 
+# CORS — comma-separated list of browser origins allowed to call the API, or "*" for
+# any (default, unchanged behavior). Native mobile apps do NOT enforce CORS, so
+# restricting this never affects the passenger/driver apps; the admin panel is served
+# same-origin. Lock it down (e.g. "https://azizjan222.github.io") once your web origins
+# are known for defense-in-depth.
+CORS_ALLOWED_ORIGINS = [
+    o.strip() for o in _get("CORS_ALLOWED_ORIGINS", "*").split(",") if o.strip()
+]
+
 # OTP
 OTP_PROVIDER = _get("OTP_PROVIDER", "telegram").lower()
 OTP_LENGTH = _get_int("OTP_LENGTH", 6)
