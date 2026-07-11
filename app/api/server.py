@@ -63,6 +63,10 @@ async def cors_middleware(request: web.Request, handler):
         raise
     except Exception as e:
         logger.exception(f"Unhandled error in {request.path}: {e}")
+        # Report to Sentry (no-op unless SENTRY_DSN is configured). The exception is
+        # swallowed here to return a clean 500, so capture it explicitly.
+        from app.services.monitoring import capture_exception
+        capture_exception(e)
         response = web.json_response(
             {"error": "Internal server error"}, status=500
         )

@@ -33,12 +33,16 @@ from app.database import get_session, init_db
 from app.migrate import run_migration
 from app.models import Driver as DBDriver
 from app.services.driver_pdf import build_driver_pdf
+from app.services.monitoring import init_sentry
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("sarixgo.bot")
+
+# Initialize error monitoring as early as possible (no-op unless SENTRY_DSN is set).
+init_sentry()
 
 # ================== ⚙️ SOZLAMALAR ==================
 TOKEN = app_config.BOT_TOKEN
