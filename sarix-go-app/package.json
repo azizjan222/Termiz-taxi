@@ -8,7 +8,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build:android": "eas build --platform android",
-    "build:ios": "eas build --platform ios"
+    "build:ios": "eas build --platform ios",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "expo": "~52.0.0",
@@ -48,6 +50,8 @@
   "devDependencies": {
     "@babel/core": "^7.25.0",
     "@types/react": "~18.3.12",
+    "eslint": "^8.57.0",
+    "eslint-config-expo": "~8.0.1",
     "typescript": "^5.3.3"
   },
   "private": true
