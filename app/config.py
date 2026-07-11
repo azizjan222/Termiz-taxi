@@ -196,6 +196,11 @@ CORS_ALLOWED_ORIGINS = [
 OTP_PROVIDER = _get("OTP_PROVIDER", "telegram").lower()
 OTP_LENGTH = _get_int("OTP_LENGTH", 6)
 OTP_EXPIRES_MINUTES = _get_int("OTP_EXPIRES_MINUTES", 5)
+# Anti-abuse (SMS/OTP bombing): a phone must wait OTP_RESEND_COOLDOWN_SECONDS between
+# requests, and may request at most OTP_MAX_PER_HOUR codes per rolling hour. This stops
+# attackers from spamming OTPs to a victim's number (which also wastes paid SMS credit).
+OTP_RESEND_COOLDOWN_SECONDS = _get_int("OTP_RESEND_COOLDOWN_SECONDS", 60)
+OTP_MAX_PER_HOUR = _get_int("OTP_MAX_PER_HOUR", 5)
 
 # SMS / Eskiz
 ESKIZ_EMAIL = _get("ESKIZ_EMAIL")
