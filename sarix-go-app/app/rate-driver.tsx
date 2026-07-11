@@ -96,7 +96,7 @@ export default function RateDriverScreen() {
             title="Yuborish"
             onPress={handleSubmit}
             loading={loading}
-            variant="accent"
+            variant="primary"
           />
           <TouchableOpacity onPress={handleSkip} style={styles.skipBtn}>
             <Text style={styles.skipText}>Keyinroq</Text>

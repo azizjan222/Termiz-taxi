@@ -88,7 +88,7 @@ export default function PhoneScreen() {
             title={t('auth.sendCode')}
             onPress={handleSubmit}
             loading={loading}
-            variant="accent"
+            variant="primary"
           />
           <TouchableOpacity
             style={styles.backLink}

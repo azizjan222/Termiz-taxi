@@ -263,7 +263,7 @@ export default function TariffScreen() {
         <Button
           title={t('common.next')}
           onPress={() => router.push('/confirm-order')}
-          variant="accent"
+          variant="primary"
           fullWidth={false}
           style={{ flex: 1, marginLeft: spacing.md }}
         />

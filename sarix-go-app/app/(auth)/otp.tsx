@@ -163,7 +163,7 @@ export default function OtpScreen() {
             onPress={() => handleVerify()}
             loading={loading}
             disabled={code.length !== CODE_LENGTH}
-            variant="accent"
+            variant="primary"
           />
         </View>
       </KeyboardAvoidingView>

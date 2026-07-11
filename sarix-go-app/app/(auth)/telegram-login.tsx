@@ -140,7 +140,7 @@ export default function TelegramLoginScreen() {
               title={t('telegramLogin.button')}
               onPress={startLogin}
               loading={starting}
-              variant="accent"
+              variant="primary"
             />
           ) : (
             <Button

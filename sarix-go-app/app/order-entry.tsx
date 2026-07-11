@@ -576,11 +576,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   destPreviewIcon: { fontSize: 20, marginRight: spacing.md },
   destPreviewText: { flex: 1, ...typography.bodyBold, color: colors.text },
   confirmBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  confirmBtnText: { ...typography.h3, color: colors.textOnAccent },
+  confirmBtnText: { ...typography.h3, color: colors.textOnPrimary },
 });
