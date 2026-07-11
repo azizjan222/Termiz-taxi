@@ -49,10 +49,10 @@ export const colors = {
   neutral800: '#1F2937',
   neutral900: '#0E1730',
 
-  // Text — AA compliant hierarchy
+  // Text — AA compliant hierarchy (white bg + surface cards)
   text: '#0E1730',
   textSecondary: '#4B5563',
-  textMuted: '#6B7280',
+  textMuted: '#656B78',
   textOnPrimary: '#FFFFFF',
   textOnAccent: '#0E1730',
 
