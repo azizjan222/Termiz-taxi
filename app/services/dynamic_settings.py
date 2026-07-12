@@ -49,3 +49,41 @@ def get_free_trial_days(session) -> int:
 def get_free_trial_limit(session) -> int:
     """How many drivers get the free trial (admin key ``free_trial_limit``)."""
     return get_int_setting(session, "free_trial_limit", config.FREE_TRIAL_DRIVER_LIMIT, lo=0)
+
+
+# ============= Loyalty & referral (admin-editable) =============
+
+def get_loyalty_points_per_ride(session) -> int:
+    """Points earned per completed ride (admin key ``loyalty_points_per_ride``)."""
+    return get_int_setting(session, "loyalty_points_per_ride", config.LOYALTY_POINTS_PER_RIDE, lo=0)
+
+
+def get_loyalty_threshold(session) -> int:
+    """Points needed before they convert to bonus (admin key ``loyalty_reward_threshold``)."""
+    return get_int_setting(session, "loyalty_reward_threshold", config.LOYALTY_REWARD_THRESHOLD, lo=1)
+
+
+def get_loyalty_reward(session) -> int:
+    """Bonus granted each time the threshold is reached (admin key ``loyalty_reward_bonus``)."""
+    return get_int_setting(session, "loyalty_reward_bonus", config.LOYALTY_REWARD_BONUS, lo=0)
+
+
+def get_referral_referrer_bonus(session) -> int:
+    """Bonus paid to the referrer (admin key ``referral_referrer_bonus``)."""
+    return get_int_setting(session, "referral_referrer_bonus", config.REFERRAL_REFERRER_BONUS, lo=0)
+
+
+def get_referral_new_user_bonus(session) -> int:
+    """Bonus paid to an invited passenger per qualifying ride (``referral_new_user_bonus``)."""
+    return get_int_setting(session, "referral_new_user_bonus", config.REFERRAL_NEW_USER_BONUS, lo=0)
+
+
+def get_referral_new_user_max_rides(session) -> int:
+    """How many of the invited passenger's first rides earn the new-user bonus
+    (admin key ``referral_new_user_max_rides``)."""
+    return get_int_setting(session, "referral_new_user_max_rides", config.REFERRAL_NEW_USER_MAX_RIDES, lo=0)
+
+
+def get_bonus_max_per_ride(session) -> int:
+    """Max bonus applied to a single ride (admin key ``bonus_max_per_ride``)."""
+    return get_int_setting(session, "bonus_max_per_ride", config.BONUS_MAX_PER_RIDE, lo=0)

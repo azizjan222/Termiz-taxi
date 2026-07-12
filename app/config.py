@@ -143,6 +143,25 @@ FULL_CAR_PRICE = _get_int("FULL_CAR_PRICE", 400000)
 MAX_ACTIVE_ORDERS_PER_USER = _get_int("MAX_ACTIVE_ORDERS_PER_USER", 2)
 ORDER_RATE_LIMIT_PER_MINUTE = _get_int("ORDER_RATE_LIMIT_PER_MINUTE", 4)
 MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 20000)  # Minimum balance to accept any order
+
+# ============= LOYALTY & REFERRAL (single bonus wallet) =============
+# Loyalty: a passenger earns LOYALTY_POINTS_PER_RIDE points for every COMPLETED ride
+# (1 point == 1 so'm). Once points reach LOYALTY_REWARD_THRESHOLD they convert into
+# LOYALTY_REWARD_BONUS spendable bonus and the points reset by the threshold.
+LOYALTY_POINTS_PER_RIDE = _get_int("LOYALTY_POINTS_PER_RIDE", 1000)
+LOYALTY_REWARD_THRESHOLD = _get_int("LOYALTY_REWARD_THRESHOLD", 5000)
+LOYALTY_REWARD_BONUS = _get_int("LOYALTY_REWARD_BONUS", 5000)
+# Referral: the referrer is rewarded REFERRAL_REFERRER_BONUS ONCE, after the invited
+# passenger completes their first ride. The invited passenger also earns
+# REFERRAL_NEW_USER_BONUS on each of their first REFERRAL_NEW_USER_MAX_RIDES rides.
+REFERRAL_REFERRER_BONUS = _get_int("REFERRAL_REFERRER_BONUS", 5000)
+REFERRAL_NEW_USER_BONUS = _get_int("REFERRAL_NEW_USER_BONUS", 5000)
+REFERRAL_NEW_USER_MAX_RIDES = _get_int("REFERRAL_NEW_USER_MAX_RIDES", 3)
+# Redemption: the most bonus that may be applied to ONE ride. The effective discount is
+# min(this, that ride's commission, wallet balance) so the platform funds it purely from
+# forgone commission (driver net unchanged) and never pays cash out of pocket. Bonus is
+# NEVER applied on a free-trial/subscription driver's ride (no commission to fund it).
+BONUS_MAX_PER_RIDE = _get_int("BONUS_MAX_PER_RIDE", 5000)
 # Max simultaneously-active TAXI / full-car orders a driver may hold. Parcel (pochta)
 # orders are unlimited and do NOT count toward this limit.
 MAX_ACTIVE_NONPARCEL_ORDERS = _get_int("MAX_ACTIVE_NONPARCEL_ORDERS", 4)

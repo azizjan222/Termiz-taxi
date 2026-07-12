@@ -47,7 +47,9 @@ async def api_stats(request: web.Request) -> web.Response:
             Order.commission_collected == True,  # noqa: E712
             Order.completed_at >= today_start,
         ).all()
-        revenue_today = sum(o.commission or 0 for o in rev_today_result)
+        # Net of any bonus the passenger spent (bonus is funded from commission, so real
+        # revenue is commission - bonus_used).
+        revenue_today = sum(max(0, (o.commission or 0) - (o.bonus_used or 0)) for o in rev_today_result)
 
         # Revenue this month
         month_start = today_start.replace(day=1)
@@ -56,7 +58,7 @@ async def api_stats(request: web.Request) -> web.Response:
             Order.commission_collected == True,  # noqa: E712
             Order.completed_at >= month_start,
         ).all()
-        revenue_month = sum(o.commission or 0 for o in rev_month_result)
+        revenue_month = sum(max(0, (o.commission or 0) - (o.bonus_used or 0)) for o in rev_month_result)
 
         return web.json_response({
             "drivers_count": drivers_count,

@@ -5,7 +5,7 @@ from aiohttp import web
 import jwt
 
 from app.database import get_session
-from app.models import Driver, Order, OrderHistory, Setting
+from app.models import Driver, Order, OrderHistory, Setting, User
 from app.api.websocket import ws_manager
 from app.utils.timefmt import iso_utc
 from app import config
@@ -1136,6 +1136,24 @@ async def complete_order(request: web.Request) -> web.Response:
         d = session.query(Driver).filter_by(id=driver.id).first()
         if d:
             d.total_orders = (d.total_orders or 0) + 1
+
+        # ===== Bonus wallet: redeem then earn (single wallet, two programs) =====
+        # Load the passenger (app users only; bot orders have no passenger_id).
+        passenger = (
+            session.query(User).filter_by(id=order.passenger_id).first()
+            if order.passenger_id else None
+        )
+        try:
+            from app.services import rewards
+            # 1) Spend bonus on THIS ride first, using the balance the rider had BEFORE
+            #    this ride's earnings. Dormant until the app sets order.use_bonus, and
+            #    only ever funded from this ride's commission (driver net unchanged).
+            rewards.redeem_bonus_for_order(session, order, d, passenger)
+            # 2) Grant loyalty points + any referral rewards for the completed ride.
+            if passenger:
+                rewards.apply_ride_rewards(session, order, passenger)
+        except Exception as e:  # never let rewards break ride completion
+            logger.error(f"Reward processing failed for order {order.id}: {e}")
 
         session.add(OrderHistory(
             order_id=order.id,

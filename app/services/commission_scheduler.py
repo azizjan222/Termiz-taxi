@@ -62,7 +62,11 @@ def charge_due_commissions(now: datetime | None = None) -> int:
                 order.commission_charged = True
                 continue
 
-            commission = order.commission or 0
+            # Charge the commission NET of any bonus the passenger spent on this ride
+            # (bonus is funded from commission, so the platform collects the remainder).
+            # For orders with no bonus this equals the gross commission.
+            from app.services.rewards import effective_commission
+            commission = effective_commission(order)
             if commission > 0:
                 driver.balance = (driver.balance or 0) - commission
                 # Money was actually deducted -> count it in revenue/stats.
