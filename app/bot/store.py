@@ -37,9 +37,16 @@ logger = logging.getLogger("sarixgo.bot.store")
 UZ_TZ_OFFSET = timedelta(hours=5)
 
 # Setting keys for the small collections that used to be JSON dicts/sets/flags.
+# These keys are SHARED with the migration (app/bot/../migrate.py) and, for
+# `first_payers`, with the mobile-app payment code (app/api/payments.py). They must
+# stay identical everywhere or state silently diverges (e.g. a driver getting the
+# first-payment bonus twice). Do not rename without updating all consumers.
 _KEY_MAINTENANCE = "maintenance_mode"
 _KEY_BANNED = "bot_banned_ids"
-_KEY_FIRST_PAYMENT = "bot_first_payment_ids"
+# NOTE: `first_payers` is the canonical, app-shared key. The bot MUST read/write the
+# same key the app's credit_driver_payment() uses, otherwise the 50% first-payment
+# bonus is granted twice (once per subsystem).
+_KEY_FIRST_PAYMENT = "first_payers"
 _KEY_PASSENGERS = "bot_passenger_ids"
 
 
@@ -236,19 +243,16 @@ class BotStore:
     # ------------------------------------------------------------------ #
     # Bans, maintenance, first-payment (Setting-backed)
     # ------------------------------------------------------------------ #
-    def is_banned(self, telegram_id: int) -> bool:
-        session = self._session_factory()
-        try:
-            return telegram_id in self._get_id_set(session, _KEY_BANNED)
-        finally:
-            session.close()
-
     def ban(self, telegram_id: int) -> None:
         session = self._session_factory()
         try:
             ids = self._get_id_set(session, _KEY_BANNED)
             ids.add(telegram_id)
             self._set_id_set(session, _KEY_BANNED, ids)
+            # Keep the app in sync: if the target is a driver, block them there too.
+            driver = session.query(Driver).filter_by(telegram_id=telegram_id).first()
+            if driver:
+                driver.is_blocked = True
             session.commit()
         finally:
             session.close()
@@ -259,7 +263,26 @@ class BotStore:
             ids = self._get_id_set(session, _KEY_BANNED)
             ids.discard(telegram_id)
             self._set_id_set(session, _KEY_BANNED, ids)
+            driver = session.query(Driver).filter_by(telegram_id=telegram_id).first()
+            if driver:
+                driver.is_blocked = False
             session.commit()
+        finally:
+            session.close()
+
+    def is_banned(self, telegram_id: int) -> bool:
+        """Blocked if the bot ban list OR the driver's is_blocked flag says so.
+
+        Checking both keeps the bot consistent with app-side blocks (a driver blocked
+        via the admin panel is also refused by the bot) and preserves legacy bans that
+        the migration recorded as Driver.is_blocked.
+        """
+        session = self._session_factory()
+        try:
+            if telegram_id in self._get_id_set(session, _KEY_BANNED):
+                return True
+            driver = session.query(Driver).filter_by(telegram_id=telegram_id).first()
+            return bool(driver and driver.is_blocked)
         finally:
             session.close()
 
