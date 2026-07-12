@@ -4,29 +4,29 @@ from aiohttp import web
 from app import config as app_config
 from app.admin.middleware import (
     check_session,
-    create_session_cookie,
     clear_session_cookie,
+    create_session_cookie,
     require_admin,
 )
 from app.admin.templates import (
-    render_page,
-    render_login,
     DASHBOARD_HTML,
     DASHBOARD_JS,
-    STATISTICS_HTML,
-    STATISTICS_JS,
     DRIVERS_HTML,
     DRIVERS_JS,
-    PASSENGERS_HTML,
-    PASSENGERS_JS,
     ORDERS_HTML,
     ORDERS_JS,
+    PASSENGERS_HTML,
+    PASSENGERS_JS,
     PUSH_HTML,
     PUSH_JS,
     ROUTES_HTML,
     ROUTES_JS,
     SETTINGS_HTML,
     SETTINGS_JS,
+    STATISTICS_HTML,
+    STATISTICS_JS,
+    render_login,
+    render_page,
 )
 
 

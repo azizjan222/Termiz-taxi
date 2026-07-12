@@ -12,9 +12,9 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
-from app.database import get_session
-from app.models import Order, Driver
 from app import config
+from app.database import get_session
+from app.models import Driver, Order
 
 logger = logging.getLogger("sarixgo.commission")
 

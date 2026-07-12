@@ -1,8 +1,9 @@
 """WebSocket manager for real-time order updates."""
 import json
 import logging
-from typing import Set, Dict
-from aiohttp import web, WSMsgType
+from typing import Dict, Set
+
+from aiohttp import WSMsgType, web
 
 logger = logging.getLogger(__name__)
 

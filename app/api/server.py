@@ -1,19 +1,21 @@
 """Aiohttp API server setup."""
 import logging
+
 from aiohttp import web
 
-from app.api import auth as auth_api
-from app.api import orders as orders_api
-from app.api import routes_api as routes_api
-from app.api import drivers as drivers_api
-from app.api import ai_assistant as ai_api
-from app.api import payments as payments_api
-from app.api import notifications as notif_api
-from app.api import ratings as ratings_api
+from app import config
 from app.api import addresses as addresses_api
-from app.api import promo as promo_api
-from app.api import driver_stats as driver_stats_api
+from app.api import ai_assistant as ai_api
 from app.api import app_config as app_config_api
+from app.api import auth as auth_api
+from app.api import driver_stats as driver_stats_api
+from app.api import drivers as drivers_api
+from app.api import notifications as notif_api
+from app.api import orders as orders_api
+from app.api import payments as payments_api
+from app.api import promo as promo_api
+from app.api import ratings as ratings_api
+from app.api import routes_api as routes_api
 from app.api import sos as sos_api
 from app.api import uploads as uploads_api
 from app.api.websocket import websocket_handler
@@ -21,29 +23,58 @@ from app.api.websocket import websocket_handler
 logger = logging.getLogger(__name__)
 
 
+def _resolve_cors_origin(request: web.Request) -> str:
+    """Return the value to use for Access-Control-Allow-Origin, or "" to deny.
+
+    - If CORS_ALLOWED_ORIGINS is "*" (default) -> allow any origin ("*").
+    - Otherwise -> only echo the request's Origin back when it is in the allowlist
+      (proper per-origin CORS). Disallowed browser origins get no CORS header and are
+      blocked by the browser. Native mobile apps are unaffected (no CORS enforcement).
+    """
+    allowed = config.CORS_ALLOWED_ORIGINS
+    if not allowed or "*" in allowed:
+        return "*"
+    origin = request.headers.get("Origin", "")
+    if origin and origin in allowed:
+        return origin
+    return ""
+
+
 @web.middleware
 async def cors_middleware(request: web.Request, handler):
-    """Add CORS headers to all responses."""
+    """Add CORS headers to all responses (origin controlled by CORS_ALLOWED_ORIGINS)."""
+    allow_origin = _resolve_cors_origin(request)
+
     if request.method == "OPTIONS":
-        return web.Response(
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization",
-                "Access-Control-Max-Age": "3600",
-            }
-        )
+        headers = {
+            "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Max-Age": "3600",
+        }
+        if allow_origin:
+            headers["Access-Control-Allow-Origin"] = allow_origin
+        if allow_origin != "*":
+            headers["Vary"] = "Origin"
+        return web.Response(headers=headers)
+
     try:
         response = await handler(request)
     except web.HTTPException:
         raise
     except Exception as e:
         logger.exception(f"Unhandled error in {request.path}: {e}")
+        # Report to Sentry (no-op unless SENTRY_DSN is configured). The exception is
+        # swallowed here to return a clean 500, so capture it explicitly.
+        from app.services.monitoring import capture_exception
+        capture_exception(e)
         response = web.json_response(
             {"error": "Internal server error"}, status=500
         )
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    if allow_origin:
+        response.headers["Access-Control-Allow-Origin"] = allow_origin
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    if allow_origin != "*":
+        response.headers["Vary"] = "Origin"
     return response
 
 
@@ -62,8 +93,9 @@ async def health_db(request: web.Request) -> web.Response:
     'missing' list is non-empty, Driver/User/Order queries will 500 and the apps will
     appear broken (orders/online/etc.) — re-deploy so run_migration() can add them.
     """
-    from app.database import engine
     from sqlalchemy import inspect
+
+    from app.database import engine
     expected = {
         "drivers": ["profile_photo_url", "seats", "documents_submitted",
                     "subscription_until", "pinfl", "car_year",

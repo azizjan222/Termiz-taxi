@@ -1,11 +1,29 @@
 """Configuration loader from environment variables."""
+import logging
 import os
+import secrets as _secrets
 from pathlib import Path
+
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 # Load .env file from project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
+
+# Values that were shipped as weak development defaults. They live in the public repo,
+# so if any of them reaches production an attacker could forge JWTs / admin sessions or
+# guess the admin password. We treat them as "not configured" everywhere.
+INSECURE_VALUES = {
+    "",
+    "dev-secret",
+    "dev-jwt-secret",
+    "change_this_to_random_string_in_production",
+    "admin",
+    "admin123",
+    "password",
+}
 
 
 def _get(key: str, default: str = "") -> str:
@@ -15,6 +33,13 @@ def _get(key: str, default: str = "") -> str:
 def _get_int(key: str, default: int) -> int:
     try:
         return int(os.getenv(key, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _get_float(key: str, default: float) -> float:
+    try:
+        return float(os.getenv(key, str(default)))
     except (TypeError, ValueError):
         return default
 
@@ -94,20 +119,96 @@ def _resolve_upload_dir() -> str:
 
 UPLOAD_DIR = _resolve_upload_dir()
 
+
+def _secrets_dir() -> str:
+    """Directory on the persistent volume where auto-generated secrets are stored."""
+    base = PERSISTENT_DATA_DIR if os.path.isdir(PERSISTENT_DATA_DIR) else "./data"
+    d = os.path.join(base, ".secrets")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        pass
+    return d
+
+
+def _persistent_secret(env_key: str, *, filename: str, label: str,
+                       nbytes: int = 48, log_value: bool = False) -> str:
+    """Resolve a secret that MUST stay stable across restarts.
+
+    Resolution order:
+      1. Use the env var if it is set to a non-insecure value (operator's choice wins).
+      2. Else reuse a previously generated secret stored on the persistent volume.
+      3. Else generate a strong random secret, persist it (chmod 600), and use it.
+
+    This removes the weak hardcoded defaults (which are visible in the public repo and
+    would let an attacker forge JWT tokens or admin sessions) while requiring ZERO
+    manual setup: the app just works and is secure by default. Because the secret is
+    persisted on the same volume as the DB, it stays stable across restarts, so users
+    are NOT logged out on every redeploy.
+    """
+    val = os.getenv(env_key, "").strip()
+    if val and val not in INSECURE_VALUES:
+        return val
+
+    path = os.path.join(_secrets_dir(), filename)
+    try:
+        if os.path.exists(path):
+            with open(path) as f:
+                saved = f.read().strip()
+            if saved:
+                return saved
+    except OSError:
+        pass
+
+    generated = _secrets.token_urlsafe(nbytes)
+    try:
+        with open(path, "w") as f:
+            f.write(generated)
+        os.chmod(path, 0o600)
+        if log_value:
+            logger.warning("🔐 Generated %s: %s  — set the %s env var to use your own.",
+                           label, generated, env_key)
+        else:
+            logger.warning("🔐 Generated a persistent %s on the data volume. "
+                           "Set the %s env var to use your own.", label, env_key)
+    except OSError:
+        logger.warning("⚠️ Could not persist %s (data volume not writable); using an "
+                       "in-memory value that changes on restart. Set the %s env var.",
+                       label, env_key)
+    return generated
+
+
 # API
 API_HOST = _get("API_HOST", "0.0.0.0")
 API_PORT = _get_int("API_PORT", 8080)
-API_SECRET_KEY = _get("API_SECRET_KEY", "dev-secret")
+# HMAC key for admin session cookies. Auto-generated & persisted if not provided.
+API_SECRET_KEY = _persistent_secret("API_SECRET_KEY", filename="api_secret_key",
+                                    label="API secret key")
 
-# JWT
-JWT_SECRET = _get("JWT_SECRET", "dev-jwt-secret")
+# JWT — signs mobile-app auth tokens. Auto-generated & persisted if not provided.
+# MUST be strong and STABLE (if it changes, everyone is logged out).
+JWT_SECRET = _persistent_secret("JWT_SECRET", filename="jwt_secret", label="JWT secret")
 JWT_ALGORITHM = _get("JWT_ALGORITHM", "HS256")
 JWT_EXPIRES_DAYS = _get_int("JWT_EXPIRES_DAYS", 30)
+
+# CORS — comma-separated list of browser origins allowed to call the API, or "*" for
+# any (default, unchanged behavior). Native mobile apps do NOT enforce CORS, so
+# restricting this never affects the passenger/driver apps; the admin panel is served
+# same-origin. Lock it down (e.g. "https://azizjan222.github.io") once your web origins
+# are known for defense-in-depth.
+CORS_ALLOWED_ORIGINS = [
+    o.strip() for o in _get("CORS_ALLOWED_ORIGINS", "*").split(",") if o.strip()
+]
 
 # OTP
 OTP_PROVIDER = _get("OTP_PROVIDER", "telegram").lower()
 OTP_LENGTH = _get_int("OTP_LENGTH", 6)
 OTP_EXPIRES_MINUTES = _get_int("OTP_EXPIRES_MINUTES", 5)
+# Anti-abuse (SMS/OTP bombing): a phone must wait OTP_RESEND_COOLDOWN_SECONDS between
+# requests, and may request at most OTP_MAX_PER_HOUR codes per rolling hour. This stops
+# attackers from spamming OTPs to a victim's number (which also wastes paid SMS credit).
+OTP_RESEND_COOLDOWN_SECONDS = _get_int("OTP_RESEND_COOLDOWN_SECONDS", 60)
+OTP_MAX_PER_HOUR = _get_int("OTP_MAX_PER_HOUR", 5)
 
 # SMS / Eskiz
 ESKIZ_EMAIL = _get("ESKIZ_EMAIL")
@@ -218,6 +319,33 @@ def validate() -> list[str]:
     return issues
 
 
+def security_warnings() -> list[str]:
+    """Return non-fatal security advisories for the current configuration.
+
+    These don't stop the app, but they're logged at startup so misconfigurations are
+    visible instead of silently insecure.
+    """
+    warnings = []
+    if not os.getenv("JWT_SECRET", "").strip():
+        warnings.append("JWT_SECRET not set — using an auto-generated secret on the "
+                        "data volume (fine, but set JWT_SECRET to control it).")
+    if not os.getenv("API_SECRET_KEY", "").strip():
+        warnings.append("API_SECRET_KEY not set — using an auto-generated secret.")
+    if os.getenv("ADMIN_PASSWORD", "").strip() in INSECURE_VALUES:
+        warnings.append("ADMIN_PASSWORD not set to a strong value — a random one was "
+                        "generated and printed above. Set ADMIN_PASSWORD to your own.")
+    if not TOPUP_CARD_NUMBER:
+        warnings.append("TOPUP_CARD_NUMBER not set — the manual card top-up method is "
+                        "hidden. Set it via env to enable card top-ups.")
+    return warnings
+
+
+def log_security_status() -> None:
+    """Log a summary of security advisories at startup."""
+    for w in security_warnings():
+        logger.warning("🔐 %s", w)
+
+
 
 # Payment providers - Click Uz
 CLICK_MERCHANT_ID = _get("CLICK_MERCHANT_ID", "")
@@ -230,8 +358,9 @@ PAYME_MERCHANT_ID = _get("PAYME_MERCHANT_ID", "")
 PAYME_SECRET_KEY = _get("PAYME_SECRET_KEY", "")
 PAYME_TEST_MODE = _get("PAYME_TEST_MODE", "true").lower() == "true"
 
-# Manual card
-TOPUP_CARD_NUMBER = _get("TOPUP_CARD_NUMBER", "9860130147785443")
+# Manual card top-up. No hardcoded default — the card number is configured via env
+# (never committed to the repo). When unset, the manual-card top-up method is hidden.
+TOPUP_CARD_NUMBER = _get("TOPUP_CARD_NUMBER", "")
 TOPUP_CARD_HOLDER = _get("TOPUP_CARD_HOLDER", "")
 
 
@@ -243,9 +372,20 @@ TWILIO_FROM_NUMBER = _get("TWILIO_FROM_NUMBER", "")
 
 
 
+# Error monitoring (Sentry). Leave SENTRY_DSN blank to disable — it is a no-op then.
+# When set, unhandled API/bot errors are reported to Sentry for real-time visibility.
+SENTRY_DSN = _get("SENTRY_DSN", "")
+SENTRY_ENVIRONMENT = _get("SENTRY_ENVIRONMENT", "production")
+# Fraction of transactions traced for performance monitoring (0.0 = errors only).
+SENTRY_TRACES_SAMPLE_RATE = _get_float("SENTRY_TRACES_SAMPLE_RATE", 0.0)
+
 # Telegram bot username (for deep links, no @)
 BOT_USERNAME = _get("BOT_USERNAME", "termizsariosiyotaxi_bot")
 
-# Admin panel credentials
+# Admin panel credentials. The password has NO weak default: if ADMIN_PASSWORD is not
+# set (or is a known-insecure value), a strong random password is generated once,
+# persisted on the data volume, and printed to the logs so you can retrieve it. Set the
+# ADMIN_PASSWORD env var to choose your own.
 ADMIN_USERNAME = _get("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = _get("ADMIN_PASSWORD", "admin123")
+ADMIN_PASSWORD = _persistent_secret("ADMIN_PASSWORD", filename="admin_password",
+                                    label="admin password", nbytes=9, log_value=True)

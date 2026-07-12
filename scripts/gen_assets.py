@@ -1,4 +1,6 @@
-import time, pngkit as p
+import time
+
+import pngkit as p
 
 SRC = '../assets-src/logo-sarixgo.png'
 t0 = time.time()

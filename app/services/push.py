@@ -11,7 +11,7 @@ from typing import Optional
 import aiohttp
 from sqlalchemy.orm import Session
 
-from app.models import Driver, User, NotificationLog
+from app.models import Driver, NotificationLog, User
 from app.services import notify_i18n as nt
 
 logger = logging.getLogger(__name__)

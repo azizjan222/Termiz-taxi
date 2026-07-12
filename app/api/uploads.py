@@ -2,12 +2,13 @@
 import os
 import uuid
 from pathlib import Path
+
 from aiohttp import web
 
+from app import config
+from app.api.drivers import _get_driver_from_request
 from app.database import get_session
 from app.models import Driver
-from app.api.drivers import _get_driver_from_request
-from app import config
 
 # Resolve onto the persistent volume (see config._resolve_upload_dir) so uploaded
 # files survive redeploys/restarts instead of being wiped from ephemeral storage.
@@ -75,8 +76,8 @@ async def upload_driver_profile_photo(request: web.Request) -> web.Response:
 
 async def upload_passenger_profile_photo(request: web.Request) -> web.Response:
     """POST /api/upload/profile-photo - passenger profile photo (group E)."""
-    from app.utils.auth import get_current_user
     from app.models import User
+    from app.utils.auth import get_current_user
 
     user = get_current_user(request)
     if not user:

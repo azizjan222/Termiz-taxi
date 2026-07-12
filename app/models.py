@@ -1,8 +1,17 @@
 """SQLAlchemy database models for Sarix Go."""
 from datetime import datetime
+
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Float, Boolean,
-    DateTime, ForeignKey, Text, Index
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
 )
 from sqlalchemy.orm import declarative_base, relationship
 

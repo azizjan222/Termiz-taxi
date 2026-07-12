@@ -3,13 +3,14 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 import uuid
-import logging
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
+
 from aiohttp import web
 
 from app import config
@@ -101,16 +102,17 @@ async def list_methods(request: web.Request) -> web.Response:
     """GET /api/payments/methods - list available top-up methods."""
     methods = []
 
-    # Manual card (always available)
-    methods.append({
-        "id": "card",
-        "name": "Karta orqali",
-        "icon": "💳",
-        "description": "Kartaga to'lab, chekni botga yuborasiz",
-        "card_number": config.TOPUP_CARD_NUMBER,
-        "card_holder": config.TOPUP_CARD_HOLDER,
-        "instant": False,
-    })
+    # Manual card — only offered when a top-up card number is configured (via env).
+    if config.TOPUP_CARD_NUMBER:
+        methods.append({
+            "id": "card",
+            "name": "Karta orqali",
+            "icon": "💳",
+            "description": "Kartaga to'lab, chekni botga yuborasiz",
+            "card_number": config.TOPUP_CARD_NUMBER,
+            "card_holder": config.TOPUP_CARD_HOLDER,
+            "instant": False,
+        })
 
     # Click Uz
     if config.CLICK_MERCHANT_ID and config.CLICK_SERVICE_ID:
