@@ -125,6 +125,46 @@ def _grandfather_existing_drivers():
         print(f"  \u26a0\ufe0f  docs backfill skipped: {e}")
 
 
+def _upsert_setting(session, key: str, value: str) -> None:
+    """Insert or overwrite a scalar Setting row."""
+    row = session.query(Setting).filter_by(key=key).first()
+    if row:
+        row.value = value
+    else:
+        session.add(Setting(key=key, value=value))
+
+
+def _merge_id_setting(session, key: str, legacy_ids) -> None:
+    """Union legacy integer ids into a JSON-list Setting WITHOUT dropping existing ones.
+
+    Used for `first_payers`, `bot_banned_ids`, `bot_passenger_ids`. A plain overwrite
+    would erase ids the app/bot added on their own (e.g. the mobile app appends to
+    `first_payers` when it credits a payment), so we merge instead of replace.
+    """
+    existing_raw = None
+    row = session.query(Setting).filter_by(key=key).first()
+    if row and row.value:
+        existing_raw = row.value
+
+    merged: set[int] = set()
+    if existing_raw:
+        try:
+            merged = {int(x) for x in json.loads(existing_raw)}
+        except (ValueError, TypeError):
+            merged = set()
+    for x in legacy_ids or []:
+        try:
+            merged.add(int(x))
+        except (ValueError, TypeError):
+            continue
+
+    payload = json.dumps(sorted(merged))
+    if row:
+        row.value = payload
+    else:
+        session.add(Setting(key=key, value=payload))
+
+
 def parse_legacy_datetime(value) -> "datetime | None":
     if not value:
         return None
@@ -186,11 +226,37 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
         print(f"❌ Failed to read JSON: {e}")
         return counts
 
+    haydovchi_hujjatlar = data.get("haydovchi_hujjatlar", {})
+
     with DbContext() as session:
+        # Guard: the destructive / duplicating steps (history import, balance
+        # reconciliation, collection-setting merges) must run EXACTLY ONCE. Without this,
+        # run_migration() — which runs on every startup — would re-append the same history
+        # rows on every restart (inflating stats) and could clobber values the bot/app
+        # changed after the migration (e.g. re-ban someone an admin unbanned, or reset
+        # `first_payers` the app appended to). Driver CREATION stays idempotent-by-existence
+        # and can safely run every time.
+        first_import = (
+            session.query(Setting).filter_by(key="legacy_json_imported").first() is None
+        )
+
         # 1. Drivers
         haydovchilar = data.get("haydovchilar", {})
         balanslar = data.get("balanslar", {})
-        banned_users = set(data.get("banned_users", []))
+        banned_users = {
+            int(x) for x in data.get("banned_users", [])
+            if str(x).lstrip("-").isdigit()
+        }
+
+        def _json_balance(tg_id: int) -> int:
+            return int(balanslar.get(str(tg_id), balanslar.get(tg_id, 0)) or 0)
+
+        def _details(tg_id: int) -> dict:
+            d = haydovchi_hujjatlar.get(str(tg_id)) or haydovchi_hujjatlar.get(tg_id) or {}
+            return d if isinstance(d, dict) else {}
+
+        detail_fields = ("first_name", "last_name", "pinfl", "car_number",
+                         "car_model", "car_year")
 
         for tg_id_str, phone in haydovchilar.items():
             try:
@@ -198,64 +264,86 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
             except (ValueError, TypeError):
                 continue
 
+            det = _details(tg_id)
             existing = session.query(Driver).filter_by(telegram_id=tg_id).first()
             if existing:
+                # Reconcile ONCE. The bot's JSON balance is what the driver saw in their
+                # Kabinet, so we adopt it as the single DB balance and log any divergence
+                # for the admin to audit (dual storage means the two could differ).
+                if first_import:
+                    json_balance = _json_balance(tg_id)
+                    if json_balance != int(existing.balance or 0):
+                        print(f"  ⚖️  balance reconcile tg={tg_id}: "
+                              f"db={existing.balance} -> json={json_balance}")
+                        existing.balance = json_balance
+                    if tg_id in banned_users:
+                        existing.is_blocked = True
+                    # Backfill missing detail fields only (never overwrite good data).
+                    for field in detail_fields:
+                        if not getattr(existing, field, None) and det.get(field):
+                            setattr(existing, field, det.get(field))
                 continue
 
             driver = Driver(
                 telegram_id=tg_id,
                 phone=str(phone),
-                balance=int(balanslar.get(str(tg_id), balanslar.get(tg_id, 0))),
+                balance=_json_balance(tg_id),
                 is_blocked=tg_id in banned_users,
+                first_name=det.get("first_name"),
+                last_name=det.get("last_name"),
+                pinfl=det.get("pinfl"),
+                car_number=det.get("car_number"),
+                car_model=det.get("car_model"),
+                car_year=det.get("car_year"),
             )
             session.add(driver)
             counts["drivers"] += 1
 
-        # 2. Order history (completed)
-        for h in data.get("zakaslar_tarixi", []):
-            entry = OrderHistory(
-                action="completed",
-                from_city=h.get("qayerdan", ""),
-                to_city=h.get("qayerga", ""),
-                actor=h.get("haydovchi_user", ""),
-                actor_phone=h.get("haydovchi_tel", ""),
-                timestamp=parse_legacy_datetime(h.get("vaqt")) or datetime.utcnow(),
-            )
-            session.add(entry)
-            counts["history"] += 1
+        # 2+3. Order history — first import ONLY (otherwise rows duplicate every restart).
+        if first_import:
+            for h in data.get("zakaslar_tarixi", []):
+                session.add(OrderHistory(
+                    action="completed",
+                    from_city=h.get("qayerdan", ""),
+                    to_city=h.get("qayerga", ""),
+                    actor=h.get("haydovchi_user", ""),
+                    actor_phone=h.get("haydovchi_tel", ""),
+                    timestamp=parse_legacy_datetime(h.get("vaqt")) or datetime.utcnow(),
+                ))
+                counts["history"] += 1
+            for b in data.get("bekor_tarixi", []):
+                session.add(OrderHistory(
+                    action="cancelled",
+                    from_city=b.get("qayerdan", ""),
+                    to_city=b.get("qayerga", ""),
+                    actor=b.get("kim", ""),
+                    actor_phone=b.get("tel", ""),
+                    timestamp=parse_legacy_datetime(b.get("vaqt")) or datetime.utcnow(),
+                ))
+                counts["history"] += 1
 
-        # 3. Cancellation history
-        for b in data.get("bekor_tarixi", []):
-            entry = OrderHistory(
-                action="cancelled",
-                from_city=b.get("qayerdan", ""),
-                to_city=b.get("qayerga", ""),
-                actor=b.get("kim", ""),
-                actor_phone=b.get("tel", ""),
-                timestamp=parse_legacy_datetime(b.get("vaqt")) or datetime.utcnow(),
-            )
-            session.add(entry)
-            counts["history"] += 1
+        # 4+5. Settings — first import ONLY, so we never overwrite live values the
+        # bot/app changed afterwards (maintenance toggled in the bot, first_payers the
+        # app appended to, someone unbanned via the bot, ...). Collection keys are
+        # MERGED (union) with anything already stored, matching the keys the BotStore and
+        # the app payment code read: `first_payers`, `bot_banned_ids`, `bot_passenger_ids`.
+        if first_import:
+            for key, value in {
+                "stat_zakaslar": str(data.get("stat_zakaslar", 0)),
+                "stat_cheklar": str(data.get("stat_cheklar", 0)),
+                "zakas_raqami": str(data.get("zakas_raqami", 0)),
+                "maintenance_mode": str(data.get("maintenance_mode", False)).lower(),
+            }.items():
+                _upsert_setting(session, key, value)
+                counts["settings"] += 1
 
-        # 4. Settings
-        settings_to_save = {
-            "stat_zakaslar": str(data.get("stat_zakaslar", 0)),
-            "stat_cheklar": str(data.get("stat_cheklar", 0)),
-            "zakas_raqami": str(data.get("zakas_raqami", 0)),
-            "maintenance_mode": str(data.get("maintenance_mode", False)).lower(),
-            "first_payers": json.dumps(data.get("birinchi_tolov_qilganlar", [])),
-        }
-        for key, value in settings_to_save.items():
-            existing = session.query(Setting).filter_by(key=key).first()
-            if existing:
-                existing.value = value
-            else:
-                session.add(Setting(key=key, value=value))
-            counts["settings"] += 1
+            _merge_id_setting(session, "first_payers",
+                              data.get("birinchi_tolov_qilganlar", []))
+            _merge_id_setting(session, "bot_banned_ids", data.get("banned_users", []))
+            _merge_id_setting(session, "bot_passenger_ids", data.get("yolovchilar", []))
+            counts["settings"] += 3
 
-        # 5. Seed routes if empty (already seeded above, but safe to call again)
-        # counts["routes"] is already set above
-        pass
+            session.add(Setting(key="legacy_json_imported", value="1"))
 
     return counts
 
