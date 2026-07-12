@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,6 @@ import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useAuthStore } from '../../src/store/auth';
-import { getSupportInfo } from '../../src/api/ai';
 import { uploadProfilePhoto, updateProfile } from '../../src/api/auth';
 import { API_URL } from '../../src/api/client';
 import { useThemeStore } from '../../src/store/theme';
@@ -50,10 +49,7 @@ const ICON_TINTS: Record<string, string> = {
   'profile.promoCodes': '#D1FAE5',       // green
   'ai.title': '#E0E7FF',                 // indigo
   'profile.faq': '#FEE2E2',              // red
-  'profile.helpSupport': '#DBEAFE',      // blue
   'profile.settings': '#EEF1F8',         // gray
-  'profile.feedback': '#FEF3C7',
-  'Foydalanish shartlari va maxfiylik siyosati': '#D1FAE5', // green (terms)
 };
 
 export default function ProfileScreen() {
@@ -67,17 +63,10 @@ export default function ProfileScreen() {
   const headerGradient = (isDark
     ? [colors.surface, colors.background]
     : ['#F2EEFF', '#FFFFFF']) as [string, string];
-  const [supportUrl, setSupportUrl] = useState('https://t.me/SarixGo_support_bot');
   const [uploading, setUploading] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    getSupportInfo()
-      .then((info) => setSupportUrl(info.telegram_url))
-      .catch(() => {});
-  }, []);
 
   const pickAndUploadPhoto = async () => {
     try {
@@ -142,8 +131,6 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const openSupport = () => Linking.openURL(supportUrl);
-
   const openDriverApp = async () => {
     Alert.alert(
       t('profile.becomeDriver'),
@@ -180,10 +167,7 @@ export default function ProfileScreen() {
     { icon: '🏷', labelKey: 'profile.promoCodes', onPress: () => Alert.alert('Soon') },
     { icon: '🤖', labelKey: 'ai.title', onPress: () => router.push('/ai-chat') },
     { icon: '❓', labelKey: 'profile.faq', onPress: () => router.push('/faq') },
-    { icon: '👤', labelKey: 'profile.helpSupport', onPress: openSupport },
     { icon: '⚙️', labelKey: 'profile.settings', onPress: () => router.push('/settings') },
-    { icon: '💡', labelKey: 'profile.feedback', onPress: openSupport },
-    { icon: '📄', labelKey: 'Foydalanish shartlari va maxfiylik siyosati', onPress: () => router.push('/terms') },
   ];
 
   const becomeDriver = menu.find((m) => m.highlight);

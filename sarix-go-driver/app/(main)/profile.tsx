@@ -374,21 +374,6 @@ export default function ProfileScreen() {
               </View>
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push('/terms')}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: colors.success }]}>
-                <Text style={styles.menuIconText}>📄</Text>
-              </View>
-              <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>{t('more.terms')}</Text>
-                <Text style={styles.menuSub}>{t('more.termsSub')}</Text>
-              </View>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
           </View>
 
           {/* Logout */}

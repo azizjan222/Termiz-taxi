@@ -1,11 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { getSupportInfo } from '../src/api/ai';
 import { changeLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from '../src/i18n';
 import { useThemeStore, type ThemeMode } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -26,11 +27,20 @@ export default function SettingsScreen() {
   const [currentLang, setCurrentLang] = useState<SupportedLanguage>(
     (i18n.language as SupportedLanguage) || 'uz'
   );
+  const [supportUrl, setSupportUrl] = useState('https://t.me/SarixGo_support_bot');
+
+  useEffect(() => {
+    getSupportInfo()
+      .then((info) => setSupportUrl(info.telegram_url))
+      .catch(() => {});
+  }, []);
 
   const handleLanguageChange = async (code: SupportedLanguage) => {
     await changeLanguage(code);
     setCurrentLang(code);
   };
+
+  const openSupport = () => Linking.openURL(supportUrl);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -87,8 +97,21 @@ export default function SettingsScreen() {
           })}
         </View>
 
-        {/* Foydalanish shartlari (Terms of Use) */}
+        {/* Nimani yaxshilash kerak (Feedback) */}
         <View style={[styles.card, { marginTop: spacing.lg }]}>
+          <TouchableOpacity
+            style={[styles.option, { borderBottomWidth: 0 }]}
+            onPress={openSupport}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.optionFlag}>💡</Text>
+            <Text style={styles.optionLabel}>{t('profile.feedback')}</Text>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Foydalanish shartlari va maxfiylik siyosati (Terms of Use) */}
+        <View style={[styles.card, { marginTop: spacing.md }]}>
           <TouchableOpacity
             style={[styles.option, { borderBottomWidth: 0 }]}
             onPress={() => router.push('/terms')}
