@@ -96,6 +96,12 @@ def redeem_bonus_for_order(session, order, driver, passenger, now: datetime | No
     now = now or datetime.utcnow()
     if _subscription_active(driver, now):
         return 0  # trial/subscription: no commission to fund a discount
+    # If the deferred scheduler already ran but WAIVED the commission (driver was on the
+    # free trial when the window elapsed: commission_charged=True, collected=False), there
+    # is no commission to fund a discount — even if the subscription has since lapsed. Skip
+    # so a rider's bonus can never leave the driver short.
+    if getattr(order, "commission_charged", False) and not getattr(order, "commission_collected", False):
+        return 0
     commission = order.commission or 0
     if commission <= 0:
         return 0

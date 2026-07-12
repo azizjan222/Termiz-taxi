@@ -226,6 +226,9 @@ async def create_order(request: web.Request) -> web.Response:
             female_only=bool(data.get("female_only", False)),
             male_count=int(data.get("male_count", 0) or 0),
             female_count=int(data.get("female_count", 0) or 0),
+            # Passenger opted to spend bonus on this ride. Defaults False, so the feature
+            # stays dormant until the app starts sending it (no bonus is silently spent).
+            use_bonus=bool(data.get("use_bonus", False)),
             target_driver_id=target_driver_id,
             parcel_recipient_name=data.get("parcel_recipient_name"),
             parcel_recipient_phone=data.get("parcel_recipient_phone"),
