@@ -8,10 +8,10 @@ from sqlalchemy import func
 
 from app.admin.middleware import require_admin_api
 from app.database import get_session
-from app.models import User, Driver, Order, Route, Setting
-from app.services.push import send_push, send_push_bulk
+from app.models import Driver, Order, Route, Setting, User
 from app.services import notify_i18n as nt
 from app.services.driver_pdf import build_driver_pdf
+from app.services.push import send_push, send_push_bulk
 
 
 def _recipient_language(session, recipient_type: str, recipient_id: int) -> str:

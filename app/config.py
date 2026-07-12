@@ -1,8 +1,9 @@
 """Configuration loader from environment variables."""
-import os
 import logging
+import os
 import secrets as _secrets
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,13 @@ def _get(key: str, default: str = "") -> str:
 def _get_int(key: str, default: int) -> int:
     try:
         return int(os.getenv(key, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _get_float(key: str, default: float) -> float:
+    try:
+        return float(os.getenv(key, str(default)))
     except (TypeError, ValueError):
         return default
 
@@ -340,6 +348,13 @@ TWILIO_AUTH_TOKEN = _get("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM_NUMBER = _get("TWILIO_FROM_NUMBER", "")
 
 
+
+# Error monitoring (Sentry). Leave SENTRY_DSN blank to disable — it is a no-op then.
+# When set, unhandled API/bot errors are reported to Sentry for real-time visibility.
+SENTRY_DSN = _get("SENTRY_DSN", "")
+SENTRY_ENVIRONMENT = _get("SENTRY_ENVIRONMENT", "production")
+# Fraction of transactions traced for performance monitoring (0.0 = errors only).
+SENTRY_TRACES_SAMPLE_RATE = _get_float("SENTRY_TRACES_SAMPLE_RATE", 0.0)
 
 # Telegram bot username (for deep links, no @)
 BOT_USERNAME = _get("BOT_USERNAME", "termizsariosiyotaxi_bot")

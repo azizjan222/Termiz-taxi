@@ -1,10 +1,10 @@
 """Routes (yo'nalishlar) and pricing endpoints."""
 from aiohttp import web
 
+from app import config
 from app.database import get_session
 from app.models import Route
 from app.seed_data import SURXONDARYO_CITIES
-from app import config
 
 
 def _commission_pct(session) -> int:

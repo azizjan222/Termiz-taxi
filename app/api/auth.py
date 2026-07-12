@@ -1,13 +1,14 @@
 """Authentication endpoints: phone OTP login."""
 from datetime import datetime
+
 from aiohttp import web
 
 from app.database import get_session
 from app.models import User
 from app.services.otp import (
     create_and_send_otp,
-    verify_otp,
     normalize_phone,
+    verify_otp,
 )
 from app.utils.auth import create_token, require_auth
 

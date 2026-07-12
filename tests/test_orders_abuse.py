@@ -2,9 +2,9 @@
 from datetime import datetime, timedelta
 
 from app import config
-from app.api.orders import _check_order_abuse
 from app.api.drivers import _subscription_active, _subscription_days_left
-from app.models import User, Order, Driver
+from app.api.orders import _check_order_abuse
+from app.models import Driver, Order, User
 
 
 def _make_user(db, phone="+998901234567"):

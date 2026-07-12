@@ -6,12 +6,11 @@ import pytest
 from app import config
 from app.models import OtpCode
 from app.services.otp import (
-    normalize_phone,
-    generate_code,
-    verify_otp,
     create_and_send_otp,
+    generate_code,
+    normalize_phone,
+    verify_otp,
 )
-
 
 # ------------------------------- normalize_phone ------------------------------
 

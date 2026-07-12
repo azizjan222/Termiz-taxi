@@ -6,9 +6,8 @@ These cover the money-critical logic in app.api.orders:
 A bug here means drivers are over/under-charged, so this is the highest-value suite.
 """
 from app import config
-from app.api.orders import get_commission_percent, _calc_price_and_commission
+from app.api.orders import _calc_price_and_commission, get_commission_percent
 from app.models import Setting
-
 
 # --------------------------- get_commission_percent ---------------------------
 

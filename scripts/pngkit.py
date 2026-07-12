@@ -1,6 +1,8 @@
 """Minimal pure-stdlib PNG codec (RGB, 8-bit, non-interlaced) + resize/recolor.
 Generates app icon/splash assets without PIL/ImageMagick (unavailable in this env)."""
-import struct, zlib
+import struct
+import zlib
+
 
 def read_png(path):
     d = open(path, 'rb').read()

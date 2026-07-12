@@ -8,9 +8,9 @@ Previously only ``commission_percent`` was wired up this way. ``min_balance``,
 ``free_trial_days`` and ``free_trial_limit`` were saved by the Settings page but IGNORED
 (the code kept using the env constants), so editing them in the panel did nothing.
 """
+from app import config
 from app.database import get_session
 from app.models import Setting
-from app import config
 
 
 def get_int_setting(session, key: str, default: int, *, lo=None, hi=None) -> int:
