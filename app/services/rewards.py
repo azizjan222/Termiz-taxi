@@ -73,35 +73,36 @@ def credit_bonus(session, user: User, amount: int, source: str, reason: str,
     return amount
 
 
-def redeem_bonus_for_order(session, order, driver, passenger, now: datetime | None = None) -> int:
-    """Apply the passenger's bonus as a discount on this completed ride. Returns bonus used.
+def reserve_bonus_for_order(session, order, driver, passenger, now: datetime | None = None) -> int:
+    """Reserve the passenger's bonus as a discount the moment a driver ACCEPTS the ride.
 
-    Rules (all must hold, else 0 is returned and nothing changes):
+    In a cash marketplace the rider pays the driver directly, so the discount MUST be
+    fixed up-front — before the driver taps "complete" and before payment changes hands.
+    We therefore compute and lock in the discount at accept time: the wallet is debited
+    now, ``order.bonus_used`` records the amount, and both apps show the reduced fare
+    (``payable = price - bonus_used``). If the ride is cancelled the reservation is
+    returned via ``release_bonus_for_order``.
+
+    Because the deferred scheduler charges ``effective_commission`` (commission minus
+    bonus_used) AFTER acceptance, the discount is funded entirely from forgone commission
+    and the driver's net is unchanged. Doing this at accept — not completion — also removes
+    any race with the scheduler and any free-trial/subscription flip mid-ride.
+
+    Returns the bonus reserved (0 if nothing applied). Guards (any failing -> 0):
       * the passenger opted in (``order.use_bonus``) — dormant until the apps send it;
-      * not already redeemed on this order;
-      * the driver is NOT on a free trial / subscription (there must be real commission
-        to fund the discount);
+      * not already reserved; commission not yet processed;
+      * the driver is NOT on a free trial / subscription (no commission to fund it);
       * ``commission > 0`` and the wallet has a balance.
-
-    The amount used is ``min(wallet, commission, per-ride cap)``. It is deducted from the
-    wallet and stored on the order. If the scheduler already collected the full commission
-    (a long ride finishing after the deferred window), the bonus portion is credited back
-    to the driver so their net is unchanged; otherwise the scheduler will simply charge the
-    reduced ``effective_commission`` later.
     """
     if not passenger or not getattr(order, "use_bonus", False):
         return 0
     if (order.bonus_used or 0) > 0:
-        return 0  # already redeemed
+        return 0  # already reserved
+    if getattr(order, "commission_charged", False):
+        return 0  # too late — commission already processed for this order
     now = now or datetime.utcnow()
     if _subscription_active(driver, now):
         return 0  # trial/subscription: no commission to fund a discount
-    # If the deferred scheduler already ran but WAIVED the commission (driver was on the
-    # free trial when the window elapsed: commission_charged=True, collected=False), there
-    # is no commission to fund a discount — even if the subscription has since lapsed. Skip
-    # so a rider's bonus can never leave the driver short.
-    if getattr(order, "commission_charged", False) and not getattr(order, "commission_collected", False):
-        return 0
     commission = order.commission or 0
     if commission <= 0:
         return 0
@@ -117,15 +118,29 @@ def redeem_bonus_for_order(session, order, driver, passenger, now: datetime | No
     passenger.bonus_balance = balance - used
     order.bonus_used = used
     _log_txn(session, passenger.id, -used, "redeem",
-             f"Buyurtma #{order.id} uchun chegirma", order.id, passenger.bonus_balance)
+             f"Buyurtma #{order.id} chegirmasi", order.id, passenger.bonus_balance)
+    logger.info("Bonus reserved: order=%s passenger=%s used=%s", order.id, passenger.id, used)
+    return used
 
-    # If the deferred scheduler already took the full commission from the driver, hand the
-    # bonus portion back so the driver's net matches a normal ride (they received `used`
-    # less cash). If not yet charged, effective_commission() handles the reduction later.
-    if getattr(order, "commission_collected", False) and driver:
-        driver.balance = (driver.balance or 0) + used
 
-    logger.info("Bonus redeemed: order=%s passenger=%s used=%s", order.id, passenger.id, used)
+def release_bonus_for_order(session, order, passenger) -> int:
+    """Return a reserved bonus to the passenger's wallet when the ride does NOT happen.
+
+    Called on cancellation (by passenger or driver). Idempotent: if nothing was reserved
+    it just ensures ``bonus_used`` is 0. Returns the amount returned to the wallet.
+    """
+    used = (order.bonus_used or 0) if order is not None else 0
+    if used <= 0:
+        if order is not None:
+            order.bonus_used = 0
+        return 0
+    if passenger is not None:
+        passenger.bonus_balance = (passenger.bonus_balance or 0) + used
+        _log_txn(session, passenger.id, used, "redeem_reversal",
+                 f"Buyurtma #{order.id} bekor qilindi — bonus qaytarildi",
+                 order.id, passenger.bonus_balance)
+    order.bonus_used = 0
+    logger.info("Bonus released: order=%s amount=%s", order.id, used)
     return used
 
 
