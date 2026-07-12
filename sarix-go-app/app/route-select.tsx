@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import Constants from 'expo-constants';
 
 import { listCities } from '../src/api/orders';
 import { listAddresses, type SavedAddress } from '../src/api/addresses';
@@ -43,7 +44,7 @@ export default function RouteSelectScreen() {
   const [active, setActive] = useState<Field>(mode === 'from' ? 'from' : 'to');
   const [cities, setCities] = useState<string[]>([]);
   const [search, setSearch] = useState('');
-  const [suggestions, setSuggestions] = useState<Array<{ title: string; subtitle: string; distance?: string }>>([]);
+  const [suggestions, setSuggestions] = useState<{ title: string; subtitle: string; distance?: string }[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -421,9 +422,7 @@ function highlightMatch(text: string, query: string, colors: ThemeColors): React
 }
 
 /** Enhanced suggest that returns structured results with title/subtitle */
-import Constants from 'expo-constants';
-
-async function suggestAddressRich(query: string): Promise<Array<{ title: string; subtitle: string; distance?: string }>> {
+async function suggestAddressRich(query: string): Promise<{ title: string; subtitle: string; distance?: string }[]> {
   if (query.trim().length < 2) return [];
 
   const SUGGEST_KEY =

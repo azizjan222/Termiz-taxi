@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useTranslation } from 'react-i18next';
 
 import { Button } from '../src/components/Button';
 import { ratePassenger } from '../src/api/ratings';
@@ -22,7 +21,6 @@ const STARS_LABELS = [
 ];
 
 export default function RateDriverScreen() {
-  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { orderId, driverName } = useLocalSearchParams<{

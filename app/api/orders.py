@@ -277,8 +277,10 @@ async def create_order(request: web.Request) -> web.Response:
             if d.telegram_id:
                 try:
                     await ws_manager.send_to_driver(d.telegram_id, order_payload)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Best-effort: one driver's dead socket must not block the broadcast
+                    # or fail order creation. Log at debug for diagnostics only.
+                    logger.debug("WS new_order to driver %s failed: %s", d.telegram_id, e)
 
         # Send push notifications only to eligible, online drivers
         try:

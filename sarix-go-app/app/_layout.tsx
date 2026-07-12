@@ -3,12 +3,10 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
 
 import { initI18n } from '../src/i18n';
 import { useAuthStore } from '../src/store/auth';
 import { useThemeStore } from '../src/store/theme';
-import { colors } from '../src/theme';
 import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 import { getAppConfig, compareVersions } from '../src/api/app-config';
@@ -44,6 +42,8 @@ export default function RootLayout() {
 
       setReady(true);
     })();
+    // One-time bootstrap (i18n/theme/user/config); store actions are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Register push token after auth
@@ -108,12 +108,3 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
-
-const styles = StyleSheet.create({
-  loading: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-});

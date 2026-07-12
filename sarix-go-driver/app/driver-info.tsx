@@ -84,6 +84,8 @@ export default function DriverInfoScreen() {
     fill(driver);
     getMe().then((d) => { fill(d); setDriver(d); }).catch(() => {});
     getCarModels().then((r) => setModels(r.models)).catch(() => {});
+    // Prefill from the current driver once on mount, then refresh from the server.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pickImage = async (setter: (uri: string) => void) => {

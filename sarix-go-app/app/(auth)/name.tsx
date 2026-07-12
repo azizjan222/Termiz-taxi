@@ -96,7 +96,7 @@ export default function NameScreen() {
       const res = await updateProfile(payload);
       setUser(res.user);
       router.replace('/(tabs)/home');
-    } catch (e) {
+    } catch {
       Alert.alert(t('common.error'), t('errors.networkError'));
     } finally {
       setLoading(false);

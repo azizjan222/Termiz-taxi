@@ -3,12 +3,11 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ActivityIndicator, View, StyleSheet, AppState } from 'react-native';
+import { AppState } from 'react-native';
 
 import { initI18n } from '../src/i18n';
 import { useDriverStore } from '../src/store/driver';
 import { useThemeStore } from '../src/store/theme';
-import { colors } from '../src/theme';
 import { registerPushToken, addNotificationReceivedListener } from '../src/services/notifications';
 import { addNotification } from '../src/services/notificationHistory';
 import * as realtime from '../src/services/realtime';
@@ -31,6 +30,8 @@ export default function RootLayout() {
       await loadDriver();
       setReady(true);
     })();
+    // One-time bootstrap (i18n/theme/driver); store actions are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Register push token after auth
@@ -122,12 +123,3 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
-
-const styles = StyleSheet.create({
-  loading: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-});

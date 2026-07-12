@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Linking, ActivityIndicator, AppState, Animated, Easing,
+  View, Text, StyleSheet, Linking, ActivityIndicator, Animated, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,7 +12,7 @@ import { Button } from '../../src/components/Button';
 import { telegramStart, telegramCheck } from '../../src/api/auth';
 import { useAuthStore } from '../../src/store/auth';
 import { useThemeStore } from '../../src/store/theme';
-import { typography, spacing, radius } from '../../src/theme';
+import { typography, spacing } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
 // Passenger entry palette — DARK BLUE / navy ("to'q ko'k").
@@ -38,6 +38,8 @@ export default function TelegramLoginScreen() {
       Animated.timing(fade, { toValue: 1, duration: 650, useNativeDriver: true }),
       Animated.timing(slide, { toValue: 0, duration: 650, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
+    // fade/slide are stable Animated.Value refs; run the entrance once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const stopPolling = () => {
@@ -58,7 +60,7 @@ export default function TelegramLoginScreen() {
       await Linking.openURL(res.deep_link);
       setWaiting(true);
       beginPolling(res.token);
-    } catch (e) {
+    } catch {
       setError(t('errors.networkError'));
     } finally {
       setStarting(false);

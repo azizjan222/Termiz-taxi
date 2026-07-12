@@ -29,8 +29,8 @@ export default function HistoryScreen() {
     try {
       const list = await listMyOrders('all');
       setOrders(list);
-    } catch (e) {
-      // ignore
+    } catch {
+      // ignore — pull-to-refresh failures are silent; existing list stays
     } finally {
       setRefreshing(false);
     }

@@ -133,7 +133,7 @@ export async function registerPushToken(): Promise<boolean> {
 
     await api.post('/api/notifications/register-token', { token, language: i18n.language });
     return true;
-  } catch (e) {
+  } catch {
     return false;
   }
 }

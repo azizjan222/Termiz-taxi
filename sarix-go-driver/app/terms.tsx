@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { useThemeStore } from '../src/store/theme';
-import { typography, spacing, radius } from '../src/theme';
+import { typography, spacing } from '../src/theme';
 
 // Full "Foydalanish shartlari va maxfiylik siyosati" (Terms & Privacy) content.
 // Each section is rendered with a bold heading and one or more paragraphs.

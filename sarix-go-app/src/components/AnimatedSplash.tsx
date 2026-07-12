@@ -108,6 +108,8 @@ export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
     }, 2800);
 
     return () => clearTimeout(timer);
+    // All animated values are stable refs; run the intro sequence once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const ringStyle = (val: Animated.Value) => ({
