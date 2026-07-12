@@ -26,7 +26,8 @@ export default function TariffScreen() {
   const [taxiQuote, setTaxiQuote] = useState<PriceQuote | null>(null);
   const [parcelQuote, setParcelQuote] = useState<PriceQuote | null>(null);
   const [fullCarQuote, setFullCarQuote] = useState<PriceQuote | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Only the setter is used (drives the fetch lifecycle); the value isn't rendered.
+  const [, setLoading] = useState(true);
 
   const isParcel = orderStore.serviceType === 'parcel';
 
@@ -44,8 +45,8 @@ export default function TariffScreen() {
         setTaxiQuote(taxi);
         setParcelQuote(parcel);
         setFullCarQuote(full);
-      } catch (e) {
-        // ignore
+      } catch {
+        // ignore — quotes are best-effort; the UI falls back to empty state
       } finally {
         setLoading(false);
       }

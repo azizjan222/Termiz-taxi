@@ -79,7 +79,7 @@ export default function OtpScreen() {
       await requestOtp(phone);
       setResendIn(60);
       Alert.alert(t('common.success'), t('auth.codeSentTo') + ' ' + phone);
-    } catch (e) {
+    } catch {
       Alert.alert(t('common.error'), t('errors.networkError'));
     }
   };

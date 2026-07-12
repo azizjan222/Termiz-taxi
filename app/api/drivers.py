@@ -1037,8 +1037,9 @@ async def accept_order(request: web.Request) -> web.Response:
         try:
             from app.services.push import notify_passenger_order_accepted
             await notify_passenger_order_accepted(session, order, d)
-        except Exception:
-            pass
+        except Exception as e:
+            # Best-effort push; the passenger also gets the WS event above.
+            logger.debug("Push order_accepted to passenger %s failed: %s", order.passenger_id, e)
 
         # Notify the admin via the Telegram bot that a driver accepted the order.
         try:
@@ -1296,8 +1297,14 @@ async def driver_balance_history(request: web.Request) -> web.Response:
             .limit(50)
             .all()
         )
+        # Driver net = fare minus the commission ACTUALLY collected. Trial/subscription
+        # rides collect nothing (commission_collected stays False), and bonus rides
+        # collect only the commission net of the reserved bonus (effective_commission),
+        # so using gross `commission` here over-counted the platform's cut and
+        # under-reported trial-driver earnings.
+        from app.services.rewards import effective_commission
         total_earned = sum(
-            o.price - (o.commission or 0)
+            o.price - (effective_commission(o) if o.commission_collected else 0)
             for o in orders
             if o.price
         )

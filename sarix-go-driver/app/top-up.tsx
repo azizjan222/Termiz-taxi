@@ -10,13 +10,11 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Clipboard,
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Button } from '../src/components/Button';
@@ -28,7 +26,6 @@ import {
   type PaymentMethod,
 } from '../src/api/payments';
 import { useDriverStore } from '../src/store/driver';
-import { BOT_USERNAME } from '../src/api/client';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
@@ -37,7 +34,6 @@ const PRESET_AMOUNTS = [10000, 20000, 50000, 100000];
 const MIN_AMOUNT = 1000;
 
 export default function TopUpScreen() {
-  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const driver = useDriverStore((s) => s.driver);
@@ -75,10 +71,6 @@ export default function TopUpScreen() {
     }
   };
 
-  const openBot = () => {
-    Linking.openURL(`https://t.me/${BOT_USERNAME}?start=topup`);
-  };
-
   const pickScreenshot = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -94,7 +86,7 @@ export default function TopUpScreen() {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setScreenshot(result.assets[0].uri);
       }
-    } catch (e) {
+    } catch {
       Alert.alert('❌', 'Rasm tanlashda xatolik');
     }
   };

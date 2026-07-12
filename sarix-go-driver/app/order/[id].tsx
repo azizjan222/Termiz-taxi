@@ -171,6 +171,9 @@ export default function OrderDetailScreen() {
       subscriptionRef.current?.remove();
       subscriptionRef.current = null;
     };
+    // Re-subscribe only on the fields that matter; the full order object changes on
+    // every poll, which would needlessly tear down/re-create the location watcher.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, order?.status, cancelled]);
 
   // Keep the in-app map in sync with the driver's movement. The target depends on the
@@ -187,6 +190,8 @@ export default function OrderDetailScreen() {
     } else if (target) {
       mapRef.current?.setCenter(target.lat, target.lon);
     }
+    // Redraw only when the coordinate/stage fields change, not on every order poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, driverCoords, cancelled, order?.status, order?.from_lat, order?.from_lon, order?.to_lat, order?.to_lon]);
 
   const openNavigation = async () => {

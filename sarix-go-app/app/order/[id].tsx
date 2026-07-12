@@ -59,6 +59,8 @@ export default function OrderDetailScreen() {
     // Refresh every 10 seconds
     const i = setInterval(load, 10000);
     return () => clearInterval(i);
+    // Re-arm polling only when the order id changes; load() reads latest state via refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   // Live driver location over WebSocket while the trip is active.
@@ -95,6 +97,8 @@ export default function OrderDetailScreen() {
       cancelled = true;
       ws?.close();
     };
+    // Reconnect only on user/order change; load() is stable enough for this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, id]);
 
   // Live-follow: recenter the map on the driver whenever their position updates,
@@ -120,6 +124,8 @@ export default function OrderDetailScreen() {
         }
       } catch {}
     })();
+    // Fire once when the order reaches "completed"; guarded by ratedHandledRef.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.status, id]);
 
   const formatPrice = (p: number) =>
@@ -141,7 +147,7 @@ export default function OrderDetailScreen() {
           try {
             await cancelOrder(parseInt(id));
             router.replace('/(tabs)/home');
-          } catch (e) {
+          } catch {
             Alert.alert(t('common.error'), t('errors.networkError'));
           }
         },

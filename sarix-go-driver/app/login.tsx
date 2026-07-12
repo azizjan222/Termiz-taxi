@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useTranslation } from 'react-i18next';
+
 
 import { Button } from '../src/components/Button';
 import { telegramStart, telegramCheck } from '../src/api/driver';
@@ -20,7 +20,6 @@ import type { ThemeColors } from '../src/theme/colors-themed';
 const BLUE_GRADIENT: [string, string, string] = ['#2E8BFF', '#1565E0', '#0B3FA8'];
 
 export default function LoginScreen() {
-  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const setDriver = useDriverStore((s) => s.setDriver);
@@ -39,6 +38,8 @@ export default function LoginScreen() {
       Animated.timing(fade, { toValue: 1, duration: 650, useNativeDriver: true }),
       Animated.timing(slide, { toValue: 0, duration: 650, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
+    // fade/slide are stable Animated.Value refs; run the entrance once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const stopPolling = () => {
@@ -85,7 +86,7 @@ export default function LoginScreen() {
           }
         } catch {}
       }, 2500);
-    } catch (e) {
+    } catch {
       setError("Xatolik. Qayta urinib ko'ring.");
     } finally {
       setLoading(false);

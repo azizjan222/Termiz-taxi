@@ -119,6 +119,8 @@ export default function SearchingScreen() {
     );
     loop.start();
     return () => loop.stop();
+    // pulseAnim is a stable Animated.Value ref; run this loop once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-rotate banners right -> left every 7s.
@@ -169,6 +171,8 @@ export default function SearchingScreen() {
       cancelled = true;
       ws?.close();
     };
+    // Re-open the socket only when the user/order changes; notifyDriverFound is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, orderId]);
 
   // Polling fallback (in case the WS event is missed).
@@ -197,6 +201,8 @@ export default function SearchingScreen() {
     };
     const interval = setInterval(poll, 5000);
     return () => clearInterval(interval);
+    // Poll keyed on the order id only; notifyDriverFound is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
   // Once a driver is found, auto-open the live order screen after a short pause.
@@ -216,7 +222,7 @@ export default function SearchingScreen() {
           try {
             await cancelOrder(parseInt(orderId));
             router.replace('/(tabs)/home');
-          } catch (e) {
+          } catch {
             Alert.alert(t('common.error'), t('errors.networkError'));
           }
         },
