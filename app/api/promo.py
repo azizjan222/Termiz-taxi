@@ -6,18 +6,18 @@ from datetime import datetime
 from aiohttp import web
 
 from app.database import get_session
-from app.models import PromoCode, User, BonusTransaction
-from app.utils.auth import require_auth
-from app.utils.timefmt import iso_utc
+from app.models import BonusTransaction, PromoCode, User
 from app.services.dynamic_settings import (
     get_loyalty_points_per_ride,
-    get_loyalty_threshold,
     get_loyalty_reward,
-    get_referral_referrer_bonus,
+    get_loyalty_threshold,
+    get_referral_max_rewarded,
     get_referral_new_user_bonus,
     get_referral_new_user_max_rides,
-    get_referral_max_rewarded,
+    get_referral_referrer_bonus,
 )
+from app.utils.auth import require_auth
+from app.utils.timefmt import iso_utc
 
 
 def _generate_referral_code() -> str:

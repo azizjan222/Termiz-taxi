@@ -18,16 +18,16 @@ commit. That keeps them trivially unit-testable and safe on both SQLite and Post
 import logging
 from datetime import datetime
 
-from app.models import User, BonusTransaction
+from app.models import BonusTransaction, User
 from app.services.dynamic_settings import (
+    get_bonus_max_per_ride,
     get_loyalty_points_per_ride,
-    get_loyalty_threshold,
     get_loyalty_reward,
-    get_referral_referrer_bonus,
+    get_loyalty_threshold,
+    get_referral_max_rewarded,
     get_referral_new_user_bonus,
     get_referral_new_user_max_rides,
-    get_bonus_max_per_ride,
-    get_referral_max_rewarded,
+    get_referral_referrer_bonus,
 )
 
 logger = logging.getLogger("sarixgo.rewards")
