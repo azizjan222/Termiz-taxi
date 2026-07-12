@@ -157,6 +157,10 @@ LOYALTY_REWARD_BONUS = _get_int("LOYALTY_REWARD_BONUS", 5000)
 REFERRAL_REFERRER_BONUS = _get_int("REFERRAL_REFERRER_BONUS", 5000)
 REFERRAL_NEW_USER_BONUS = _get_int("REFERRAL_NEW_USER_BONUS", 5000)
 REFERRAL_NEW_USER_MAX_RIDES = _get_int("REFERRAL_NEW_USER_MAX_RIDES", 3)
+# Fraud guard: the most referrals ONE user can ever be REWARDED for. Stops a single
+# person farming bonuses by mass-inviting fake accounts. 0 = unlimited. Admin-editable
+# via the "referral_max_rewarded" setting.
+REFERRAL_MAX_REWARDED = _get_int("REFERRAL_MAX_REWARDED", 20)
 # Redemption: the most bonus that may be applied to ONE ride. The effective discount is
 # min(this, that ride's commission, wallet balance) so the platform funds it purely from
 # forgone commission (driver net unchanged) and never pays cash out of pocket. Bonus is

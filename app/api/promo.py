@@ -15,6 +15,7 @@ from app.services.dynamic_settings import (
     get_referral_referrer_bonus,
     get_referral_new_user_bonus,
     get_referral_new_user_max_rides,
+    get_referral_max_rewarded,
 )
 
 
@@ -94,6 +95,12 @@ async def get_referral_info(request: web.Request) -> web.Response:
             "referrer_bonus": get_referral_referrer_bonus(session),
             "new_user_bonus": get_referral_new_user_bonus(session),
             "new_user_max_rides": get_referral_new_user_max_rides(session),
+            # Fraud-guard cap on rewarded referrals (0 = unlimited) and how many remain.
+            "max_rewarded": get_referral_max_rewarded(session),
+            "rewarded_remaining": (
+                max(0, get_referral_max_rewarded(session) - (u.referral_count or 0))
+                if get_referral_max_rewarded(session) > 0 else None
+            ),
         })
     finally:
         session.close()

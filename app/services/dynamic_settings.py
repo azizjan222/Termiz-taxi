@@ -87,3 +87,9 @@ def get_referral_new_user_max_rides(session) -> int:
 def get_bonus_max_per_ride(session) -> int:
     """Max bonus applied to a single ride (admin key ``bonus_max_per_ride``)."""
     return get_int_setting(session, "bonus_max_per_ride", config.BONUS_MAX_PER_RIDE, lo=0)
+
+
+def get_referral_max_rewarded(session) -> int:
+    """Max referrals one user can be rewarded for; 0 = unlimited
+    (admin key ``referral_max_rewarded``). Fraud guard against mass fake invites."""
+    return get_int_setting(session, "referral_max_rewarded", config.REFERRAL_MAX_REWARDED, lo=0)

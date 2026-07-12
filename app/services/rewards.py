@@ -27,6 +27,7 @@ from app.services.dynamic_settings import (
     get_referral_new_user_bonus,
     get_referral_new_user_max_rides,
     get_bonus_max_per_ride,
+    get_referral_max_rewarded,
 )
 
 logger = logging.getLogger("sarixgo.rewards")
@@ -187,13 +188,17 @@ def apply_ride_rewards(session, order, passenger: User, now: datetime | None = N
                 .first()
             )
             if referrer and referrer.id != passenger.id:
-                amt = get_referral_referrer_bonus(session)
-                credit_bonus(session, referrer, amt, "referral",
-                             f"Do'st taklifi mukofoti (foydalanuvchi #{passenger.id})", order.id)
-                referrer.referral_count = (referrer.referral_count or 0) + 1
-                referrer.referral_bonus_earned = (referrer.referral_bonus_earned or 0) + amt
-                result["referrer_bonus"] = amt
-            # Set the guard even if the referrer row is gone, so we never retry.
+                # Fraud guard: stop rewarding a referrer past the cap (0 = unlimited), so
+                # one person can't farm bonuses by mass-inviting fake accounts.
+                cap = get_referral_max_rewarded(session)
+                if cap <= 0 or (referrer.referral_count or 0) < cap:
+                    amt = get_referral_referrer_bonus(session)
+                    credit_bonus(session, referrer, amt, "referral",
+                                 f"Do'st taklifi mukofoti (foydalanuvchi #{passenger.id})", order.id)
+                    referrer.referral_count = (referrer.referral_count or 0) + 1
+                    referrer.referral_bonus_earned = (referrer.referral_bonus_earned or 0) + amt
+                    result["referrer_bonus"] = amt
+            # Set the guard even if the referrer row is gone / capped, so we never retry.
             passenger.referral_reward_given = True
 
     return result
