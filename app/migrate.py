@@ -34,6 +34,9 @@ def _apply_schema_migrations() -> int:
         ("users", "referred_by_user_id", "INTEGER"),
         ("users", "referral_count", "INTEGER DEFAULT 0"),
         ("users", "referral_bonus_earned", "INTEGER DEFAULT 0"),
+        ("users", "referral_reward_given", BOOL_FALSE),
+        ("users", "loyalty_points", "INTEGER DEFAULT 0"),
+        ("users", "loyalty_lifetime_rides", "INTEGER DEFAULT 0"),
         ("users", "theme", "VARCHAR(20) DEFAULT 'auto'"),
         ("users", "profile_photo_url", "VARCHAR(500)"),
         ("users", "contact_phone", "VARCHAR(20)"),
@@ -70,6 +73,8 @@ def _apply_schema_migrations() -> int:
         ("orders", "commission_charged", BOOL_FALSE),
         ("orders", "commission_collected", BOOL_FALSE),
         ("orders", "commission_warned", BOOL_FALSE),
+        ("orders", "use_bonus", BOOL_FALSE),
+        ("orders", "bonus_used", "INTEGER DEFAULT 0"),
     ]
 
     inspector = inspect(engine)

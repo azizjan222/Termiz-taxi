@@ -8,7 +8,7 @@ from aiohttp import web
 from app import config
 from app.api.websocket import ws_manager
 from app.database import get_session
-from app.models import Driver, Order, OrderHistory, Setting
+from app.models import Driver, Order, OrderHistory, Setting, User
 from app.services.dynamic_settings import (
     get_free_trial_days,
     get_free_trial_limit,
@@ -568,6 +568,10 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "person_count": o.person_count,
         "price": o.price,
         "commission": o.commission,
+        # Bonus wallet: the discount applied and the cash the driver should COLLECT
+        # (price - bonus_used). Both are 0/price while the feature is dormant.
+        "bonus_used": o.bonus_used or 0,
+        "payable": max(0, (o.price or 0) - (o.bonus_used or 0)),
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,
@@ -1004,6 +1008,19 @@ async def accept_order(request: web.Request) -> web.Response:
         session.refresh(order)
         session.refresh(d)
 
+        # Bonus wallet: lock in the rider's discount NOW (at accept), so the reduced fare
+        # is known before payment. Dormant until the app sets order.use_bonus; funded from
+        # commission via effective_commission, so the driver's net is unchanged.
+        if order.passenger_id:
+            passenger = session.query(User).filter_by(id=order.passenger_id).first()
+            try:
+                from app.services import rewards
+                if rewards.reserve_bonus_for_order(session, order, d, passenger):
+                    session.commit()
+                    session.refresh(order)
+            except Exception as e:
+                logger.error(f"Bonus reserve failed for order {order.id}: {e}")
+
         # Notify passenger via WebSocket
         if order.passenger_id:
             driver_payload = _serialize_driver(d)
@@ -1139,6 +1156,21 @@ async def complete_order(request: web.Request) -> web.Response:
         if d:
             d.total_orders = (d.total_orders or 0) + 1
 
+        # ===== Bonus wallet: grant loyalty + referral EARNINGS for the completed ride =====
+        # (Any bonus SPENT on this ride was already reserved at accept time and is charged
+        # net of commission by the scheduler — nothing to spend here.) Load the passenger;
+        # bot orders have no passenger_id.
+        passenger = (
+            session.query(User).filter_by(id=order.passenger_id).first()
+            if order.passenger_id else None
+        )
+        if passenger:
+            try:
+                from app.services import rewards
+                rewards.apply_ride_rewards(session, order, passenger)
+            except Exception as e:  # never let rewards break ride completion
+                logger.error(f"Reward processing failed for order {order.id}: {e}")
+
         session.add(OrderHistory(
             order_id=order.id,
             action="completed",
@@ -1187,6 +1219,12 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
             return web.json_response({"error": "Buyurtma topilmadi"}, status=404)
         if order.status not in ("accepted", "in_progress"):
             return web.json_response({"error": "Bekor qilib bo'lmaydi"}, status=400)
+
+        # The ride never happened -> return any bonus reserved at accept to the rider.
+        if order.passenger_id:
+            _passenger = session.query(User).filter_by(id=order.passenger_id).first()
+            from app.services.rewards import release_bonus_for_order
+            release_bonus_for_order(session, order, _passenger)
 
         # Driver cancelled their OWN accepted order -> this is the driver's fault, so
         # the commission is still owed. This closes the "accept to lock the order off

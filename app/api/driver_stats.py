@@ -55,7 +55,9 @@ async def driver_stats(request: web.Request) -> web.Response:
 
         completed_count = len(completed)
         total_revenue = sum(o.price or 0 for o in completed)
-        total_commission = sum(o.commission or 0 for o in completed)
+        # Commission the driver actually paid is net of any bonus discount on the ride
+        # (the bonus portion is waived / refunded, so it never reduces the driver's net).
+        total_commission = sum(max(0, (o.commission or 0) - (o.bonus_used or 0)) for o in completed)
         net_earnings = total_revenue - total_commission
 
         # Top routes

@@ -50,6 +50,10 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "person_count": o.person_count,
         "price": o.price,
         "commission": o.commission,
+        # Bonus wallet: how much bonus was applied and the cash the passenger actually
+        # pays (price - bonus_used). Both are 0/price while the feature is dormant.
+        "bonus_used": o.bonus_used or 0,
+        "payable": max(0, (o.price or 0) - (o.bonus_used or 0)),
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,
@@ -227,6 +231,9 @@ async def create_order(request: web.Request) -> web.Response:
             female_only=bool(data.get("female_only", False)),
             male_count=int(data.get("male_count", 0) or 0),
             female_count=int(data.get("female_count", 0) or 0),
+            # Passenger opted to spend bonus on this ride. Defaults False, so the feature
+            # stays dormant until the app starts sending it (no bonus is silently spent).
+            use_bonus=bool(data.get("use_bonus", False)),
             target_driver_id=target_driver_id,
             parcel_recipient_name=data.get("parcel_recipient_name"),
             parcel_recipient_phone=data.get("parcel_recipient_phone"),
@@ -406,13 +413,20 @@ async def cancel_order(request: web.Request) -> web.Response:
         # WITHOUT taking any money (commission_collected stays False). Refunding on
         # commission_charged therefore (a) wrongly credited trial drivers with free money
         # and (b) sent them a misleading "commission refunded" message.
+        from app.services.rewards import effective_commission, release_bonus_for_order
         refunded = False
         if order.status in ("accepted", "in_progress") and order.driver_id:
             driver = session.query(Driver).filter_by(id=order.driver_id).first()
             if driver and order.commission_collected:
-                driver.balance = (driver.balance or 0) + (order.commission or 0)
+                # Refund exactly what was collected — the commission NET of any bonus
+                # discount (effective_commission), never the gross, or we'd over-credit
+                # the driver by the reserved bonus amount.
+                driver.balance = (driver.balance or 0) + effective_commission(order)
                 order.commission_collected = False  # given back
                 refunded = True
+        # The ride never happened -> return any reserved bonus to the passenger.
+        passenger = session.query(User).filter_by(id=user.id).first()
+        release_bonus_for_order(session, order, passenger)
         # Stop the scheduler from charging a cancelled order later.
         order.commission_charged = True
 

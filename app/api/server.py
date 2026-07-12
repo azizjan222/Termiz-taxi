@@ -229,10 +229,12 @@ def create_app(bot=None) -> web.Application:
     app.router.add_patch("/api/addresses/{id}", addresses_api.update_address)
     app.router.add_delete("/api/addresses/{id}", addresses_api.delete_address)
 
-    # Promo codes & Referral
+    # Promo codes, Referral & Loyalty (single bonus wallet)
     app.router.add_post("/api/promo/validate", promo_api.validate_promo)
     app.router.add_get("/api/referral", promo_api.get_referral_info)
     app.router.add_post("/api/referral/apply", promo_api.apply_referral_code)
+    app.router.add_get("/api/loyalty", promo_api.get_loyalty_info)
+    app.router.add_get("/api/bonus/transactions", promo_api.get_bonus_transactions)
 
     # Driver statistics
     app.router.add_get("/api/driver/stats", driver_stats_api.driver_stats)

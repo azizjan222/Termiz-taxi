@@ -41,6 +41,16 @@ class User(Base):
     referred_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     referral_count = Column(Integer, default=0)
     referral_bonus_earned = Column(Integer, default=0)
+    # True once the referrer has been rewarded for THIS user's first completed ride, so a
+    # single invited passenger can never pay their referrer more than once (fraud guard).
+    referral_reward_given = Column(Boolean, default=False)
+    # ===== Loyalty program (points -> bonus) =====
+    # loyalty_points accumulates per COMPLETED ride and converts into spendable bonus once
+    # it crosses the threshold, then resets by that threshold. loyalty_lifetime_rides is a
+    # never-reset counter of completed rides (drives the "new user first N rides" referral
+    # bonus and future loyalty tiers).
+    loyalty_points = Column(Integer, default=0)
+    loyalty_lifetime_rides = Column(Integer, default=0)
     theme = Column(String(20), default="auto")  # auto, light, dark
     profile_photo_url = Column(String(500))  # uploaded passenger profile photo
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -174,6 +184,14 @@ class Order(Base):
     driver_telegram_id = Column(BigInteger, nullable=True)
     # Recommendation: passenger tapped a specific recommended driver (direct notify target)
     target_driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=True)
+    # ===== Bonus wallet redemption (single wallet: referral + loyalty) =====
+    # use_bonus is set by the passenger app when the rider opts to spend bonus on this
+    # ride. It defaults False so the feature stays DORMANT until the apps send it (no
+    # bonus is ever silently consumed). bonus_used records how much bonus was actually
+    # applied on completion; it is always <= the ride's commission, so the discount is
+    # funded purely from forgone commission and the driver's net is never reduced.
+    use_bonus = Column(Boolean, default=False)
+    bonus_used = Column(Integer, default=0)
     # Commission is deducted from the driver 15 minutes after acceptance (deferred),
     # whether or not the ride is completed. This flag prevents double-charging and
     # tells cancel_order whether a refund is owed.
@@ -270,6 +288,27 @@ class PromoCode(Base):
     valid_until = Column(DateTime)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ============= BONUS TRANSACTIONS =============
+class BonusTransaction(Base):
+    """Audit ledger for every change to a passenger's bonus wallet.
+
+    One wallet (User.bonus_balance) is shared by both programs; this ledger records WHY
+    each change happened so referral vs loyalty spend can be reported and any fraudulent
+    credit reversed. Positive ``amount`` = credit (earned), negative = debit (spent on a
+    ride). ``balance_after`` snapshots the wallet right after the change.
+    """
+    __tablename__ = "bonus_transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    amount = Column(Integer, nullable=False)  # + earned, - spent
+    source = Column(String(20), index=True)  # referral, loyalty, redeem, promo, admin
+    reason = Column(String(200))
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
+    balance_after = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 # ============= SETTINGS =============

@@ -6,8 +6,18 @@ from datetime import datetime
 from aiohttp import web
 
 from app.database import get_session
-from app.models import PromoCode, User
+from app.models import BonusTransaction, PromoCode, User
+from app.services.dynamic_settings import (
+    get_loyalty_points_per_ride,
+    get_loyalty_reward,
+    get_loyalty_threshold,
+    get_referral_max_rewarded,
+    get_referral_new_user_bonus,
+    get_referral_new_user_max_rides,
+    get_referral_referrer_bonus,
+)
 from app.utils.auth import require_auth
+from app.utils.timefmt import iso_utc
 
 
 def _generate_referral_code() -> str:
@@ -82,6 +92,71 @@ async def get_referral_info(request: web.Request) -> web.Response:
             "referral_count": u.referral_count or 0,
             "bonus_earned": u.referral_bonus_earned or 0,
             "bonus_balance": u.bonus_balance or 0,
+            # Amounts (live from admin settings) so the app can show accurate promises.
+            "referrer_bonus": get_referral_referrer_bonus(session),
+            "new_user_bonus": get_referral_new_user_bonus(session),
+            "new_user_max_rides": get_referral_new_user_max_rides(session),
+            # Fraud-guard cap on rewarded referrals (0 = unlimited) and how many remain.
+            "max_rewarded": get_referral_max_rewarded(session),
+            "rewarded_remaining": (
+                max(0, get_referral_max_rewarded(session) - (u.referral_count or 0))
+                if get_referral_max_rewarded(session) > 0 else None
+            ),
+        })
+    finally:
+        session.close()
+
+
+@require_auth
+async def get_loyalty_info(request: web.Request) -> web.Response:
+    """GET /api/loyalty - loyalty progress + shared bonus wallet balance."""
+    user: User = request["user"]
+    session = get_session()
+    try:
+        u = session.query(User).filter_by(id=user.id).first()
+        threshold = get_loyalty_threshold(session)
+        points = u.loyalty_points or 0
+        points_to_next = max(0, threshold - points) if threshold > 0 else 0
+        return web.json_response({
+            "loyalty_points": points,
+            "reward_threshold": threshold,
+            "points_to_next_reward": points_to_next,
+            "points_per_ride": get_loyalty_points_per_ride(session),
+            "reward_bonus": get_loyalty_reward(session),
+            "lifetime_rides": u.loyalty_lifetime_rides or 0,
+            "bonus_balance": u.bonus_balance or 0,
+        })
+    finally:
+        session.close()
+
+
+@require_auth
+async def get_bonus_transactions(request: web.Request) -> web.Response:
+    """GET /api/bonus/transactions - recent bonus wallet history (both programs)."""
+    user: User = request["user"]
+    session = get_session()
+    try:
+        rows = (
+            session.query(BonusTransaction)
+            .filter_by(user_id=user.id)
+            .order_by(BonusTransaction.created_at.desc())
+            .limit(50)
+            .all()
+        )
+        return web.json_response({
+            "bonus_balance": (session.query(User).filter_by(id=user.id).first().bonus_balance or 0),
+            "transactions": [
+                {
+                    "id": t.id,
+                    "amount": t.amount,
+                    "source": t.source,
+                    "reason": t.reason,
+                    "order_id": t.order_id,
+                    "balance_after": t.balance_after,
+                    "created_at": iso_utc(t.created_at),
+                }
+                for t in rows
+            ],
         })
     finally:
         session.close()
@@ -110,25 +185,30 @@ async def apply_referral_code(request: web.Request) -> web.Response:
             return web.json_response({"error": "Allaqachon kod ishlatgansiz"}, status=400)
         if u.referral_code == code:
             return web.json_response({"error": "O'z kodingizni ishlatib bo'lmaydi"}, status=400)
+        # A referral code links a genuinely NEW passenger. If the user has already
+        # completed rides, the "first ride" reward moment has passed -> reject, so the
+        # code can't be applied retroactively to farm bonuses.
+        if (u.loyalty_lifetime_rides or 0) > 0:
+            return web.json_response(
+                {"error": "Kodni faqat birinchi safardan oldin kiritish mumkin"},
+                status=400,
+            )
 
         referrer = session.query(User).filter_by(referral_code=code).first()
         if not referrer:
             return web.json_response({"error": "Kod topilmadi"}, status=404)
 
+        # IMPORTANT: linking only. NO bonus is granted here. Both the referrer's reward and
+        # the invited passenger's bonus are paid ONLY after the invited passenger COMPLETES
+        # a ride (see app.services.rewards.apply_ride_rewards). This closes the fake-account
+        # farming hole where bonuses were handed out the instant a code was entered.
         u.referred_by_user_id = referrer.id
-        # Give 5000 bonus to new user
-        u.bonus_balance = (u.bonus_balance or 0) + 5000
-
-        # Give 10000 bonus to referrer
-        referrer.referral_count = (referrer.referral_count or 0) + 1
-        referrer.referral_bonus_earned = (referrer.referral_bonus_earned or 0) + 10000
-        referrer.bonus_balance = (referrer.bonus_balance or 0) + 10000
-
         session.commit()
         return web.json_response({
             "success": True,
-            "your_bonus": 5000,
             "referrer_name": referrer.first_name or "Do'stingiz",
+            "new_user_bonus": get_referral_new_user_bonus(session),
+            "message": "Kod qabul qilindi! Bonus birinchi safaringizdan keyin hisobingizga tushadi.",
         })
     finally:
         session.close()
