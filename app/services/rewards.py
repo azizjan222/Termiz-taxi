@@ -48,19 +48,29 @@ def effective_commission(order) -> int:
     return max(0, (order.commission or 0) - (order.bonus_used or 0))
 
 
-def _log_txn(session, user_id, amount, source, reason, order_id, balance_after) -> None:
+def _log_txn(
+    session,
+    user_id,
+    amount,
+    source,
+    reason,
+    order_id,
+    balance_after,
+    idempotency_key: str | None = None,
+) -> None:
     session.add(BonusTransaction(
         user_id=user_id,
         amount=amount,
         source=source,
         reason=reason,
         order_id=order_id,
+        idempotency_key=idempotency_key,
         balance_after=balance_after,
     ))
 
 
 def credit_bonus(session, user: User, amount: int, source: str, reason: str,
-                 order_id: int | None = None) -> int:
+                 order_id: int | None = None, idempotency_key: str | None = None) -> int:
     """Add ``amount`` bonus to a user's wallet and record it. Returns the amount credited.
 
     Crediting the wallet costs the platform nothing on its own — the cost only appears
@@ -69,8 +79,15 @@ def credit_bonus(session, user: User, amount: int, source: str, reason: str,
     """
     if not user or amount <= 0:
         return 0
+    if idempotency_key and session.query(BonusTransaction.id).filter_by(
+        idempotency_key=idempotency_key
+    ).first():
+        return 0
     user.bonus_balance = (user.bonus_balance or 0) + amount
-    _log_txn(session, user.id, amount, source, reason, order_id, user.bonus_balance)
+    _log_txn(
+        session, user.id, amount, source, reason, order_id, user.bonus_balance,
+        idempotency_key,
+    )
     return amount
 
 
@@ -116,10 +133,18 @@ def reserve_bonus_for_order(session, order, driver, passenger, now: datetime | N
     if used <= 0:
         return 0
 
+    idempotency_key = f"order:{order.id}:bonus_reserve"
+    if session.query(BonusTransaction.id).filter_by(
+        idempotency_key=idempotency_key
+    ).first():
+        return 0
     passenger.bonus_balance = balance - used
     order.bonus_used = used
-    _log_txn(session, passenger.id, -used, "redeem",
-             f"Buyurtma #{order.id} chegirmasi", order.id, passenger.bonus_balance)
+    _log_txn(
+        session, passenger.id, -used, "redeem",
+        f"Buyurtma #{order.id} chegirmasi", order.id, passenger.bonus_balance,
+        idempotency_key,
+    )
     logger.info("Bonus reserved: order=%s passenger=%s used=%s", order.id, passenger.id, used)
     return used
 
@@ -136,10 +161,18 @@ def release_bonus_for_order(session, order, passenger) -> int:
             order.bonus_used = 0
         return 0
     if passenger is not None:
+        idempotency_key = f"order:{order.id}:bonus_release"
+        if session.query(BonusTransaction.id).filter_by(
+            idempotency_key=idempotency_key
+        ).first():
+            order.bonus_used = 0
+            return 0
         passenger.bonus_balance = (passenger.bonus_balance or 0) + used
-        _log_txn(session, passenger.id, used, "redeem_reversal",
-                 f"Buyurtma #{order.id} bekor qilindi — bonus qaytarildi",
-                 order.id, passenger.bonus_balance)
+        _log_txn(
+            session, passenger.id, used, "redeem_reversal",
+            f"Buyurtma #{order.id} bekor qilindi — bonus qaytarildi",
+            order.id, passenger.bonus_balance, idempotency_key,
+        )
     order.bonus_used = 0
     logger.info("Bonus released: order=%s amount=%s", order.id, used)
     return used
@@ -154,8 +187,9 @@ def apply_ride_rewards(session, order, passenger: User, now: datetime | None = N
     """
     now = now or datetime.utcnow()
     result = {"loyalty_reward": 0, "new_user_bonus": 0, "referrer_bonus": 0}
-    if not passenger:
+    if not passenger or getattr(order, "rewards_applied", False):
         return result
+    order.rewards_applied = True
 
     passenger.loyalty_lifetime_rides = (passenger.loyalty_lifetime_rides or 0) + 1
     ride_no = passenger.loyalty_lifetime_rides
@@ -168,17 +202,32 @@ def apply_ride_rewards(session, order, passenger: User, now: datetime | None = N
     # while-loop is defensive: handles a threshold smaller than the per-ride points.
     while threshold > 0 and reward > 0 and (passenger.loyalty_points or 0) >= threshold:
         passenger.loyalty_points -= threshold
-        credit_bonus(session, passenger, reward, "loyalty",
-                     f"Sodiqlik mukofoti ({ride_no}-safar)", order.id)
-        result["loyalty_reward"] += reward
+        reward_index = result["loyalty_reward"] // reward + 1
+        credited = credit_bonus(
+            session,
+            passenger,
+            reward,
+            "loyalty",
+            f"Sodiqlik mukofoti ({ride_no}-safar)",
+            order.id,
+            f"order:{order.id}:loyalty:{reward_index}",
+        )
+        result["loyalty_reward"] += credited
 
     # ---- Referral (only invited passengers) ----
     if passenger.referred_by_user_id:
         # a) new-user bonus on each of the invited passenger's first N rides
         if ride_no <= get_referral_new_user_max_rides(session):
             amt = get_referral_new_user_bonus(session)
-            if credit_bonus(session, passenger, amt, "referral",
-                            f"Taklif bonusi ({ride_no}-safar)", order.id):
+            if credit_bonus(
+                session,
+                passenger,
+                amt,
+                "referral",
+                f"Taklif bonusi ({ride_no}-safar)",
+                order.id,
+                f"order:{order.id}:referral_new_user",
+            ):
                 result["new_user_bonus"] = amt
         # b) reward the referrer ONCE, on the invited passenger's first completed ride
         if not passenger.referral_reward_given:
@@ -193,11 +242,21 @@ def apply_ride_rewards(session, order, passenger: User, now: datetime | None = N
                 cap = get_referral_max_rewarded(session)
                 if cap <= 0 or (referrer.referral_count or 0) < cap:
                     amt = get_referral_referrer_bonus(session)
-                    credit_bonus(session, referrer, amt, "referral",
-                                 f"Do'st taklifi mukofoti (foydalanuvchi #{passenger.id})", order.id)
-                    referrer.referral_count = (referrer.referral_count or 0) + 1
-                    referrer.referral_bonus_earned = (referrer.referral_bonus_earned or 0) + amt
-                    result["referrer_bonus"] = amt
+                    credited = credit_bonus(
+                        session,
+                        referrer,
+                        amt,
+                        "referral",
+                        f"Do'st taklifi mukofoti (foydalanuvchi #{passenger.id})",
+                        order.id,
+                        f"order:{order.id}:referral_referrer:{passenger.id}",
+                    )
+                    if credited:
+                        referrer.referral_count = (referrer.referral_count or 0) + 1
+                        referrer.referral_bonus_earned = (
+                            referrer.referral_bonus_earned or 0
+                        ) + credited
+                        result["referrer_bonus"] = credited
             # Set the guard even if the referrer row is gone / capped, so we never retry.
             passenger.referral_reward_given = True
 

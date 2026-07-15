@@ -24,6 +24,25 @@ def _apply_schema_migrations() -> int:
     BOOL_FALSE = "BOOLEAN DEFAULT FALSE" if is_pg else "BOOLEAN DEFAULT 0"
     DT = "TIMESTAMP" if is_pg else "DATETIME"
     FLT = "DOUBLE PRECISION" if is_pg else "FLOAT"
+    migration_version = 2026071501
+    migration_name = "production_integrity_hardening"
+
+    # This is a lightweight, explicit migration ledger for the existing additive
+    # migration system. It is intentionally not presented as an Alembic conversion.
+    # A failed step is never marked applied, so startup retries it instead of silently
+    # claiming that a partially migrated database is current.
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS schema_migrations ("
+            "version INTEGER PRIMARY KEY, name VARCHAR(200) NOT NULL, "
+            "applied_at TIMESTAMP NOT NULL)"
+        ))
+        already_applied = conn.execute(
+            text("SELECT 1 FROM schema_migrations WHERE version = :version"),
+            {"version": migration_version},
+        ).first()
+    if already_applied:
+        return 0
 
     migrations = [
         # User new columns
@@ -61,6 +80,7 @@ def _apply_schema_migrations() -> int:
         ("drivers", "tech_passport_file_id", "VARCHAR(200)"),
         ("drivers", "car_photo_file_id", "VARCHAR(200)"),
         ("drivers", "documents_submitted", BOOL_FALSE),
+        ("drivers", "first_payment_bonus_granted", BOOL_FALSE),
         # Live location + online-time tracking
         ("drivers", "current_lat", FLT),
         ("drivers", "current_lon", FLT),
@@ -75,6 +95,13 @@ def _apply_schema_migrations() -> int:
         ("orders", "commission_warned", BOOL_FALSE),
         ("orders", "use_bonus", BOOL_FALSE),
         ("orders", "bonus_used", "INTEGER DEFAULT 0"),
+        ("orders", "rewards_applied", BOOL_FALSE),
+        # Payment provider isolation / duplicate-receipt protection
+        ("payments", "provider", "VARCHAR(20) DEFAULT 'manual_app'"),
+        ("payments", "provider_transaction_id", "VARCHAR(100)"),
+        ("payments", "receipt_sha256", "VARCHAR(64)"),
+        # Bonus ledger idempotency
+        ("bonus_transactions", "idempotency_key", "VARCHAR(120)"),
     ]
 
     inspector = inspect(engine)
@@ -88,6 +115,7 @@ def _apply_schema_migrations() -> int:
             )
 
     count = 0
+    failed = False
     with engine.connect() as conn:
         for table, column, definition in migrations:
             if not existing_cols.get(table):
@@ -102,27 +130,167 @@ def _apply_schema_migrations() -> int:
                 print(f"  ✓ Added {table}.{column}")
             except Exception as e:
                 conn.rollback()
+                failed = True
                 print(f"  ⚠️  Skipping {table}.{column}: {e}")
+
+    # Constraints added to ORM models only affect fresh databases. Create equivalent
+    # unique indexes for existing SQLite/Postgres deployments after columns exist.
+    index_statements = [
+        (
+            "uq_payment_provider_transaction",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_provider_transaction "
+            "ON payments (provider, provider_transaction_id)",
+        ),
+        (
+            "uq_payment_receipt_sha256",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_receipt_sha256 "
+            "ON payments (receipt_sha256)",
+        ),
+        (
+            "uq_bonus_transactions_idempotency",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_bonus_transactions_idempotency "
+            "ON bonus_transactions (idempotency_key)",
+        ),
+        (
+            "uq_rating_order_rater_type",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_rating_order_rater_type "
+            "ON ratings (order_id, rater_type)",
+        ),
+        (
+            "uq_order_history_action",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_order_history_action "
+            "ON order_history (order_id, action)",
+        ),
+    ]
+    duplicate_queries = {
+        "uq_payment_provider_transaction": (
+            "SELECT COUNT(*) FROM (SELECT provider, provider_transaction_id FROM payments "
+            "WHERE provider_transaction_id IS NOT NULL GROUP BY provider, provider_transaction_id "
+            "HAVING COUNT(*) > 1) AS duplicates"
+        ),
+        "uq_payment_receipt_sha256": (
+            "SELECT COUNT(*) FROM (SELECT receipt_sha256 FROM payments "
+            "WHERE receipt_sha256 IS NOT NULL GROUP BY receipt_sha256 "
+            "HAVING COUNT(*) > 1) AS duplicates"
+        ),
+        "uq_bonus_transactions_idempotency": (
+            "SELECT COUNT(*) FROM (SELECT idempotency_key FROM bonus_transactions "
+            "WHERE idempotency_key IS NOT NULL GROUP BY idempotency_key "
+            "HAVING COUNT(*) > 1) AS duplicates"
+        ),
+        "uq_rating_order_rater_type": (
+            "SELECT COUNT(*) FROM (SELECT order_id, rater_type FROM ratings "
+            "WHERE order_id IS NOT NULL AND rater_type IS NOT NULL "
+            "GROUP BY order_id, rater_type HAVING COUNT(*) > 1) AS duplicates"
+        ),
+        "uq_order_history_action": (
+            "SELECT COUNT(*) FROM (SELECT order_id, action FROM order_history "
+            "WHERE order_id IS NOT NULL AND action IS NOT NULL "
+            "GROUP BY order_id, action HAVING COUNT(*) > 1) AS duplicates"
+        ),
+    }
+    index_tables = {
+        "payments", "bonus_transactions", "ratings", "order_history"
+    }
+    if index_tables.intersection(table_names):
+        with engine.connect() as conn:
+            for name, statement in index_statements:
+                target_table = {
+                    "uq_payment_provider_transaction": "payments",
+                    "uq_payment_receipt_sha256": "payments",
+                    "uq_bonus_transactions_idempotency": "bonus_transactions",
+                    "uq_rating_order_rater_type": "ratings",
+                    "uq_order_history_action": "order_history",
+                }[name]
+                if target_table not in table_names:
+                    continue
+                try:
+                    duplicate_groups = conn.execute(
+                        text(duplicate_queries[name])
+                    ).scalar_one()
+                    if duplicate_groups:
+                        failed = True
+                        print(
+                            f"  ⚠️  Cannot create {name}: {duplicate_groups} duplicate "
+                            "key group(s) require operator remediation"
+                        )
+                        conn.rollback()
+                        continue
+                    conn.execute(text(statement))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    failed = True
+                    print(f"  ⚠️  Skipping index {name}: {e}")
+
+    if not failed:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO schema_migrations (version, name, applied_at) "
+                    "VALUES (:version, :name, :applied_at) ON CONFLICT (version) DO NOTHING"
+                ),
+                {
+                    "version": migration_version,
+                    "name": migration_name,
+                    "applied_at": datetime.utcnow(),
+                },
+            )
 
     return count
 
 
 def _grandfather_existing_drivers():
-    """One-time backfill: mark all pre-existing drivers as documents_submitted=True so the
-    new documents gate does not lock out the current driver base. Guarded by a Setting flag,
-    so it runs only once; drivers created afterwards must go through the new registration."""
+    """Trust the pre-gate fleet once, without approving drivers registered later.
+
+    Older deployments allowed existing drivers to work before document approval became
+    mandatory. Preserve that installed fleet explicitly, then persist independent flags
+    so later registrations must submit documents and receive administrator approval.
+    """
     try:
         with DbContext() as session:
-            flag = session.query(Setting).filter_by(key="docs_backfill_done").first()
-            if flag:
-                return
-            session.query(Driver).update(
-                {Driver.documents_submitted: True}, synchronize_session=False
-            )
-            session.add(Setting(key="docs_backfill_done", value="1"))
-            print("  \u2713 Grandfathered existing drivers (documents_submitted=True)")
+            docs_flag = session.query(Setting).filter_by(key="docs_backfill_done").first()
+            if not docs_flag:
+                session.query(Driver).update(
+                    {Driver.documents_submitted: True}, synchronize_session=False
+                )
+                session.add(Setting(key="docs_backfill_done", value="1"))
+                session.flush()
+                print("  ✓ Grandfathered existing drivers (documents_submitted=True)")
+
+            verification_flag = session.query(Setting).filter_by(
+                key="verification_gate_backfill_done"
+            ).first()
+            if not verification_flag:
+                approved = session.query(Driver).filter(
+                    Driver.documents_submitted == True,  # noqa: E712
+                ).update({Driver.is_verified: True}, synchronize_session=False)
+                session.add(Setting(key="verification_gate_backfill_done", value="1"))
+                print(f"  ✓ Trusted {approved} pre-gate drivers (is_verified=True)")
     except Exception as e:
-        print(f"  \u26a0\ufe0f  docs backfill skipped: {e}")
+        print(f"  ⚠️  driver gate backfill skipped: {e}")
+
+
+def _backfill_first_payment_bonus_flags():
+    """Migrate the legacy first-payers JSON list into an atomic Driver flag."""
+    try:
+        with DbContext() as session:
+            row = session.query(Setting).filter_by(key="first_payers").first()
+            if not row or not row.value:
+                return
+            try:
+                telegram_ids = [int(value) for value in json.loads(row.value)]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return
+            if telegram_ids:
+                session.query(Driver).filter(
+                    Driver.telegram_id.in_(telegram_ids)
+                ).update(
+                    {Driver.first_payment_bonus_granted: True},
+                    synchronize_session=False,
+                )
+    except Exception as e:
+        print(f"  ⚠️  first-payment bonus backfill skipped: {e}")
 
 
 def _upsert_setting(session, key: str, value: str) -> None:
@@ -197,18 +365,16 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
     except Exception as e:
         print(f"❌ Schema migration error: {e}")
 
+    # Existing deployments tracked first bonuses in a JSON Setting. Copy that state
+    # into the new atomic per-driver flag before any new payment can be approved.
+    _backfill_first_payment_bonus_flags()
+
     # Seed routes (isolated so a failure here can't skip later steps).
     try:
         with DbContext() as session:
             counts["routes"] = seed_routes(session)
     except Exception as e:
         print(f"⚠️  seed_routes skipped: {e}")
-
-    # One-time grandfather of existing drivers so the documents gate doesn't lock them out
-    try:
-        _grandfather_existing_drivers()
-    except Exception as e:
-        print(f"⚠️  grandfather skipped: {e}")
 
     if not os.path.exists(json_path):
         # Try local path as fallback
@@ -217,6 +383,7 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
             json_path = local_path
         else:
             print(f"⚠️  Legacy JSON not found at {json_path}, skipping JSON migration")
+            _grandfather_existing_drivers()
             return counts
 
     try:
@@ -224,6 +391,7 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
             data = json.load(f)
     except Exception as e:
         print(f"❌ Failed to read JSON: {e}")
+        _grandfather_existing_drivers()
         return counts
 
     haydovchi_hujjatlar = data.get("haydovchi_hujjatlar", {})
@@ -345,6 +513,10 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
 
             session.add(Setting(key="legacy_json_imported", value="1"))
 
+    # Run only after legacy import so that the pre-gate cohort includes imported
+    # drivers, while the persisted flags prevent future registrations being trusted.
+    _backfill_first_payment_bonus_flags()
+    _grandfather_existing_drivers()
     return counts
 
 

@@ -57,6 +57,8 @@ def test_migration_preserves_all_bot_state(db, tmp_path):
     d1 = db.query(Driver).filter_by(telegram_id=1001).first()
     assert d1.first_name == "Ali"
     assert d1.car_number == "90A123BC"
+    assert d1.documents_submitted is True
+    assert d1.is_verified is True
 
     # Bans preserved (driver 1002 + non-driver 7777), readable via the store.
     assert store.is_banned(1002) is True
@@ -66,6 +68,7 @@ def test_migration_preserves_all_bot_state(db, tmp_path):
     # First-payment flag preserved on the app-shared `first_payers` key.
     assert store.has_first_payment(1001) is True
     assert store.has_first_payment(1002) is False
+    assert db.query(Driver).filter_by(telegram_id=1001).one().first_payment_bonus_granted is True
     fp = db.query(Setting).filter_by(key="first_payers").first()
     assert 1001 in json.loads(fp.value)
 
@@ -125,3 +128,14 @@ def test_migration_no_json_file_is_safe(db, tmp_path):
     migrate_legacy_json(json_path=str(tmp_path / "does_not_exist.json"))
     db.expire_all()
     assert db.query(Driver).count() == 0
+
+    # The one-time empty-fleet marker prevents drivers registered after deployment
+    # from being silently grandfathered on later restarts.
+    new_driver = Driver(telegram_id=3003, phone="+998901113003")
+    db.add(new_driver)
+    db.commit()
+    migrate_legacy_json(json_path=str(tmp_path / "still_missing.json"))
+    db.expire_all()
+    saved = db.query(Driver).filter_by(telegram_id=3003).one()
+    assert saved.documents_submitted is False
+    assert saved.is_verified is False

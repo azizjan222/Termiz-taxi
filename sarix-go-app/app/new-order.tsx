@@ -314,6 +314,13 @@ export default function NewOrderScreen() {
           onPress={() => submit()}
           disabled={submitting !== null || routeUnavailable}
           activeOpacity={0.9}
+          accessibilityRole="button"
+          accessibilityLabel="Buyurtma berish"
+          accessibilityHint="Tanlangan yo‘nalish bo‘yicha haydovchi qidirishni boshlaydi"
+          accessibilityState={{
+            disabled: submitting !== null || routeUnavailable,
+            busy: submitting !== null,
+          }}
         >
           <LinearGradient
             colors={gradients.gold}

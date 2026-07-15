@@ -41,14 +41,49 @@ def _resolve_cors_origin(request: web.Request) -> str:
 
 
 @web.middleware
+async def security_headers_middleware(request: web.Request, handler):
+    """Apply browser security headers, including redirects and error responses."""
+    raised_exception = False
+    try:
+        response = await handler(request)
+    except web.HTTPException as exc:
+        response = exc
+        raised_exception = True
+
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=(), payment=()",
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self'; img-src 'self' data:; connect-src 'self' wss:; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+    )
+    if request.path.startswith("/admin"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    if request.secure or request.headers.get("X-Forwarded-Proto", "").lower() == "https":
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    if raised_exception:
+        raise response
+    return response
+
+
+@web.middleware
 async def cors_middleware(request: web.Request, handler):
     """Add CORS headers to all responses (origin controlled by CORS_ALLOWED_ORIGINS)."""
     allow_origin = _resolve_cors_origin(request)
 
     if request.method == "OPTIONS":
         headers = {
-            "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-CSRF-Token",
             "Access-Control-Max-Age": "3600",
         }
         if allow_origin:
@@ -72,7 +107,9 @@ async def cors_middleware(request: web.Request, handler):
         )
     if allow_origin:
         response.headers["Access-Control-Allow-Origin"] = allow_origin
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.headers["Access-Control-Allow-Headers"] = (
+            "Content-Type, Authorization, X-CSRF-Token"
+        )
     if allow_origin != "*":
         response.headers["Vary"] = "Origin"
     return response
@@ -84,6 +121,30 @@ async def health(request: web.Request) -> web.Response:
         "service": "Sarix Go API",
         "version": "1.0.0",
     })
+
+
+async def readiness(request: web.Request) -> web.Response:
+    """Readiness probe: require DB connectivity, core tables, and latest migration."""
+    from sqlalchemy import inspect, text
+
+    from app.database import engine
+
+    required_tables = {"users", "drivers", "orders", "payments", "schema_migrations"}
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+            tables = set(inspect(connection).get_table_names())
+            if not required_tables.issubset(tables):
+                raise RuntimeError("database schema is incomplete")
+            current = connection.execute(
+                text("SELECT MAX(version) FROM schema_migrations")
+            ).scalar()
+            if not current or int(current) < 2026071501:
+                raise RuntimeError("database migration is not current")
+    except Exception:
+        logger.exception("Readiness database check failed")
+        return web.json_response({"status": "not_ready"}, status=503)
+    return web.json_response({"status": "ready"})
 
 
 async def health_db(request: web.Request) -> web.Response:
@@ -149,7 +210,7 @@ async def legacy_db(request: web.Request) -> web.Response:
 
 def create_app(bot=None) -> web.Application:
     """Create and configure the API application."""
-    app = web.Application(middlewares=[cors_middleware])
+    app = web.Application(middlewares=[security_headers_middleware, cors_middleware])
 
     if bot is not None:
         app["bot"] = bot
@@ -157,6 +218,8 @@ def create_app(bot=None) -> web.Application:
     # Health
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
+    app.router.add_get("/ready", readiness)
+    app.router.add_get("/health/ready", readiness)
     app.router.add_get("/health/db", health_db)
 
     # Auth
@@ -179,7 +242,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/orders/{id}/cancel", orders_api.cancel_order)
 
     # Driver endpoints (haydovchi ilovasi)
-    app.router.add_post("/api/driver/login", drivers_api.driver_login)  # legacy
+    app.router.add_post("/api/driver/login", drivers_api.driver_login)  # always returns 410
     app.router.add_post("/api/driver/request-otp", drivers_api.driver_request_otp)
     app.router.add_post("/api/driver/verify-otp", drivers_api.driver_verify_otp)
     app.router.add_post("/api/driver/telegram/start", drivers_api.driver_telegram_start)
@@ -206,13 +269,11 @@ def create_app(bot=None) -> web.Application:
 
     # Payments (Click Uz, Payme, manual card)
     app.router.add_get("/api/payments/methods", payments_api.list_methods)
-    app.router.add_post("/api/payments/click/create", payments_api.create_click_payment)
-    app.router.add_post("/api/payments/click/prepare", payments_api.click_prepare)
-    app.router.add_post("/api/payments/click/complete", payments_api.click_complete)
-    app.router.add_post("/api/payments/payme/create", payments_api.create_payme_payment)
-    app.router.add_post("/api/payments/payme/webhook", payments_api.payme_webhook)
+    # Automated providers are deliberately not routed until their production protocol
+    # implementations are complete. Manual card transfer remains the only active flow.
     app.router.add_post("/api/driver/payments/topup", payments_api.topup_with_screenshot)
     app.router.add_get("/api/payments/{id}/status", payments_api.get_payment_status)
+    app.router.add_get("/api/payments/{id}/receipt", payments_api.get_payment_receipt)
 
     # Push Notifications
     app.router.add_post("/api/notifications/register-token", notif_api.register_token)
@@ -253,6 +314,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/driver/upload/tech-passport-back", uploads_api.upload_tech_passport_back)
     app.router.add_post("/api/driver/upload/profile-photo", uploads_api.upload_driver_profile_photo)
     app.router.add_post("/api/upload/profile-photo", uploads_api.upload_passenger_profile_photo)
+    app.router.add_get("/api/driver/documents/{kind}", uploads_api.serve_driver_document)
     app.router.add_get("/uploads/{filename}", uploads_api.serve_upload)
 
     # WebSocket

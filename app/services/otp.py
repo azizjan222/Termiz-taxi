@@ -6,7 +6,7 @@ Supports multiple providers:
 - eskiz: sends real SMS via Eskiz.uz (paid)
 """
 import logging
-import random
+import secrets
 import string
 from datetime import datetime, timedelta
 from typing import Optional
@@ -15,7 +15,7 @@ import aiohttp
 from sqlalchemy.orm import Session
 
 from app import config
-from app.models import OtpCode, User
+from app.models import Driver, OtpCode, User
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +36,14 @@ def normalize_phone(phone: str) -> str:
 def generate_code(length: int = None) -> str:
     """Generate random OTP code."""
     n = length or config.OTP_LENGTH
-    return "".join(random.choices(string.digits, k=n))
+    return "".join(secrets.choice(string.digits) for _ in range(n))
 
 
 async def create_and_send_otp(
     session: Session,
     phone: str,
     bot=None,
+    recipient_type: str = "passenger",
 ) -> dict:
     """Create OTP record and send via configured provider.
 
@@ -109,23 +110,36 @@ async def create_and_send_otp(
     provider = config.OTP_PROVIDER
 
     if provider == "mock":
-        logger.warning(f"🔐 [MOCK OTP] {phone} -> code: {code}")
-        return {
+        logger.warning("🔐 [MOCK OTP] %s -> code: %s", phone, code)
+        result = {
             "success": True,
             "message": "OTP yuborildi (mock rejim)",
-            "dev_code": code,
+            "dev_code": None,
         }
+        if config.OTP_EXPOSE_DEV_CODE:
+            result["dev_code"] = code
+        return result
 
     if provider == "telegram":
-        ok, msg = await _send_via_telegram(session, phone, code, bot)
+        ok, msg = await _send_via_telegram(
+            session, phone, code, bot, recipient_type=recipient_type
+        )
+        if not ok:
+            # A code that was never delivered must never remain usable. Keep the row
+            # for cooldown/audit purposes, but consume it immediately.
+            otp.is_used = True
+            session.commit()
         return {
             "success": ok,
             "message": msg,
-            "dev_code": code if not ok else None,
+            "dev_code": None,
         }
 
     if provider == "eskiz":
         ok, msg = await _send_via_eskiz(phone, code)
+        if not ok:
+            otp.is_used = True
+            session.commit()
         return {
             "success": ok,
             "message": msg,
@@ -134,12 +148,17 @@ async def create_and_send_otp(
 
     if provider == "twilio":
         ok, msg = await _send_via_twilio(phone, code)
+        if not ok:
+            otp.is_used = True
+            session.commit()
         return {
             "success": ok,
             "message": msg,
             "dev_code": None,
         }
 
+    otp.is_used = True
+    session.commit()
     return {
         "success": False,
         "message": f"Unknown OTP provider: {provider}",
@@ -186,11 +205,23 @@ async def _send_via_twilio(phone: str, code: str) -> tuple[bool, str]:
 
 
 async def _send_via_telegram(
-    session: Session, phone: str, code: str, bot
+    session: Session,
+    phone: str,
+    code: str,
+    bot,
+    *,
+    recipient_type: str = "passenger",
 ) -> tuple[bool, str]:
-    """Send OTP via Telegram bot (only works if user has chatted with bot)."""
-    user = session.query(User).filter_by(phone=phone).first()
-    if not user or not user.telegram_id:
+    """Send OTP to the Telegram account bound to the requested role."""
+    if recipient_type == "driver":
+        recipient = session.query(Driver).filter_by(phone=phone).first()
+    elif recipient_type == "passenger":
+        recipient = session.query(User).filter_by(phone=phone).first()
+    else:
+        logger.error("Unknown OTP recipient type: %s", recipient_type)
+        return False, "OTP qabul qiluvchi turi noto'g'ri"
+
+    if not recipient or not recipient.telegram_id:
         return (
             False,
             "Telegram orqali yuborish uchun avval botga /start yuboring",
@@ -206,7 +237,7 @@ async def _send_via_telegram(
         f"Hech kimga aytmang!"
     )
     try:
-        await bot.send_message(user.telegram_id, text, parse_mode="HTML")
+        await bot.send_message(recipient.telegram_id, text, parse_mode="HTML")
         return True, "Kod Telegram orqali yuborildi"
     except Exception as e:
         logger.error(f"Failed to send OTP via Telegram: {e}")

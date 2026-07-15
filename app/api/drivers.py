@@ -8,7 +8,7 @@ from aiohttp import web
 from app import config
 from app.api.websocket import ws_manager
 from app.database import get_session
-from app.models import Driver, Order, OrderHistory, Setting, User
+from app.models import BalanceTransaction, Driver, Order, OrderHistory, Setting, User
 from app.services.dynamic_settings import (
     get_free_trial_days,
     get_free_trial_limit,
@@ -38,18 +38,65 @@ def _subscription_days_left(driver: Driver, now: datetime | None = None) -> int:
 def driver_can_accept(
     driver: Driver, now: datetime | None = None, min_balance: int | None = None
 ) -> bool:
-    """A driver may receive/accept orders while on the free trial OR if their balance
-    is at least the minimum. Drivers with no balance get NO orders (must top up).
+    """A verified driver may receive/accept orders while on the free trial or funded.
 
-    ``min_balance`` is the admin-configurable threshold; when not supplied it falls back
-    to the env constant. Callers with a DB session should pass
-    ``get_min_driver_balance(session)`` so the admin Settings value is honored.
+    Document submission alone is not approval: an administrator must set
+    ``is_verified`` before the driver can receive or claim new work.
     """
+    if not driver.is_verified:
+        return False
     if _subscription_active(driver, now):
         return True
     if min_balance is None:
         min_balance = config.MIN_DRIVER_BALANCE
     return (driver.balance or 0) >= min_balance
+
+
+def _driver_verification_issue(driver: Driver) -> tuple[str, str] | None:
+    """Describe why a driver is not yet allowed to receive new work."""
+    if driver.is_verified:
+        return None
+    if driver.documents_submitted:
+        return (
+            "Hujjatlaringiz administrator tekshiruvida. Tasdiqlanishini kuting.",
+            "verification_pending",
+        )
+    return "Avval barcha haydovchi hujjatlarini yuboring.", "documents_required"
+
+
+def _driver_verification_denied(driver: Driver) -> web.Response | None:
+    """Return a fail-closed response until an administrator approves documents."""
+    issue = _driver_verification_issue(driver)
+    if not issue:
+        return None
+    message, code = issue
+    return web.json_response({"error": message, "code": code}, status=403)
+
+
+def missing_driver_approval_requirements(driver: Driver) -> list[str]:
+    """Return evidence missing before an administrator may approve a driver.
+
+    Legacy Telegram registrations may have one file ID per document. Current app
+    registrations must provide both private front/back images.
+    """
+    missing: list[str] = []
+    if not driver.documents_submitted:
+        missing.append("hujjatlar yuborilgani tasdig'i")
+    if not (driver.car_model or "").strip():
+        missing.append("mashina markasi")
+    if not (driver.car_year or "").strip():
+        missing.append("mashina yili")
+    if not (driver.car_number or "").strip():
+        missing.append("mashina davlat raqami")
+    if not (driver.license_file_id or driver.license_photo_url):
+        missing.append("guvohnoma (old tomoni)")
+    if not driver.license_file_id and not driver.license_back_url:
+        missing.append("guvohnoma (orqa tomoni)")
+    if not (driver.tech_passport_file_id or driver.tech_passport_url):
+        missing.append("texpasport (old tomoni)")
+    if not driver.tech_passport_file_id and not driver.tech_passport_back_url:
+        missing.append("texpasport (orqa tomoni)")
+    return missing
 
 
 def _today_str(now: datetime | None = None) -> str:
@@ -266,60 +313,19 @@ async def get_car_models(request: web.Request) -> web.Response:
 
 
 async def driver_login(request: web.Request) -> web.Response:
-    """POST /api/driver/login (DEPRECATED - use request-otp/verify-otp)
-    Legacy endpoint that logs in driver by telegram_id.
-    Kept for backward compatibility.
+    """Reject the removed telegram-id-only login flow.
+
+    Telegram IDs are public identifiers, not authentication credentials. Keeping this
+    endpoint as an explicit 410 gives old app versions a useful upgrade message without
+    ever issuing a token. Current clients use OTP or signed Telegram auth.
     """
-    try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    tg_id = data.get("telegram_id")
-    if not tg_id:
-        return web.json_response(
-            {"error": "Telegram ID kerak"},
-            status=400,
-        )
-
-    session = get_session()
-    try:
-        driver = session.query(Driver).filter_by(telegram_id=int(tg_id)).first()
-        if not driver:
-            return web.json_response(
-                {"error": "Siz haydovchi sifatida ro'yxatdan o'tmagansiz"},
-                status=404,
-            )
-        if driver.is_blocked:
-            return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
-
-        if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
-                and not _is_test_driver(driver.phone)):
-            # Documents are still required. Instead of locking the driver out (and
-            # sending them to the bot), authenticate them anyway — issue a token —
-            # and flag the response so the app opens the in-app document upload
-            # screen. The driver can finish onboarding entirely inside the app.
-            # Grant the free trial even while documents are still pending, so drivers
-            # who pre-registered in the bot receive their 1-month bonus on first app
-            # entry (previously this early-return skipped the grant entirely).
-            _grant_free_trial_if_eligible(session, driver)
-            token = _create_driver_token(driver)
-            return web.json_response({
-                "success": True,
-                "documents_required": True,
-                "token": token,
-                "driver": _serialize_driver(driver),
-            })
-
-        _grant_free_trial_if_eligible(session, driver)
-        token = _create_driver_token(driver)
-        return web.json_response({
-            "success": True,
-            "token": token,
-            "driver": _serialize_driver(driver),
-        })
-    finally:
-        session.close()
+    return web.json_response(
+        {
+            "error": "Bu kirish usuli xavfsizlik sababli o'chirilgan. Ilovani yangilang.",
+            "code": "legacy_login_removed",
+        },
+        status=410,
+    )
 
 
 async def driver_request_otp(request: web.Request) -> web.Response:
@@ -368,7 +374,9 @@ async def driver_request_otp(request: web.Request) -> web.Response:
             return web.json_response({"error": "Akkauntingiz bloklangan"}, status=403)
 
         bot = request.app.get("bot")
-        result = await create_and_send_otp(session, phone, bot=bot)
+        result = await create_and_send_otp(
+            session, phone, bot=bot, recipient_type="driver"
+        )
     finally:
         session.close()
 
@@ -473,10 +481,13 @@ def _serialize_driver(d: Driver) -> dict:
         "car_color": d.car_color,
         "car_year": d.car_year,
         "profile_photo_url": d.profile_photo_url,
-        "license_photo_url": d.license_photo_url,
-        "license_back_url": d.license_back_url,
-        "tech_passport_url": d.tech_passport_url,
-        "tech_passport_back_url": d.tech_passport_back_url,
+        # Identity documents are exposed only through authenticated owner endpoints.
+        "license_photo_url": "/api/driver/documents/license" if d.license_photo_url else None,
+        "license_back_url": "/api/driver/documents/license-back" if d.license_back_url else None,
+        "tech_passport_url": "/api/driver/documents/tech-passport" if d.tech_passport_url else None,
+        "tech_passport_back_url": (
+            "/api/driver/documents/tech-passport-back" if d.tech_passport_back_url else None
+        ),
         "car_photo_url": d.car_photo_url,
         # Whether the registration documents/photos collected by the bot are present.
         "has_license_doc": bool(d.license_file_id or d.license_photo_url),
@@ -516,21 +527,9 @@ async def submit_documents(request: web.Request) -> web.Response:
         if not d:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
         # Require car info + the key document photos (both sides) before unlocking.
-        missing = []
-        if not (d.car_model or "").strip():
-            missing.append("mashina markasi")
-        if not (d.car_year or "").strip():
-            missing.append("mashina yili")
-        if not (d.car_number or "").strip():
-            missing.append("mashina davlat raqami")
-        if not d.license_photo_url:
-            missing.append("guvohnoma (old tomoni)")
-        if not d.license_back_url:
-            missing.append("guvohnoma (orqa tomoni)")
-        if not d.tech_passport_url:
-            missing.append("texpasport (old tomoni)")
-        if not d.tech_passport_back_url:
-            missing.append("texpasport (orqa tomoni)")
+        missing = missing_driver_approval_requirements(d)
+        # Submission itself is what sets this flag, so it cannot be a prerequisite here.
+        missing = [item for item in missing if item != "hujjatlar yuborilgani tasdig'i"]
         if missing:
             return web.json_response(
                 {"error": "Avval quyidagilarni to'ldiring: " + ", ".join(missing)},
@@ -682,6 +681,13 @@ async def driver_set_online(request: web.Request) -> web.Response:
     try:
         d = session.query(Driver).filter_by(id=driver.id).first()
         if d:
+            if online:
+                denied = _driver_verification_denied(d)
+                if denied:
+                    d.is_online = False
+                    d.online_since = None
+                    session.commit()
+                    return denied
             now = datetime.utcnow()
             today = _today_str(now)
 
@@ -848,6 +854,18 @@ async def list_available_orders(request: web.Request) -> web.Response:
     session = get_session()
     try:
         d = session.query(Driver).filter_by(id=driver.id).first() or driver
+        issue = _driver_verification_issue(d)
+        if issue:
+            message, code = issue
+            return web.json_response({
+                "orders": [],
+                "can_receive": False,
+                "is_online": False,
+                "message": message,
+                "code": code,
+                "is_verified": bool(d.is_verified),
+                "documents_submitted": bool(d.documents_submitted),
+            })
         # Offline drivers receive NO new orders — they toggled themselves off. This
         # mirrors the create_order broadcast filter so the polled list can't leak
         # new orders to an offline driver.
@@ -856,6 +874,8 @@ async def list_available_orders(request: web.Request) -> web.Response:
                 "orders": [],
                 "can_receive": True,
                 "is_online": False,
+                "is_verified": True,
+                "documents_submitted": bool(d.documents_submitted),
                 "message": "🔴 Siz oflayn rejimdasiz. Yangi zakaslarni olish uchun onlayn rejimni yoqing.",
             })
         min_balance = get_min_driver_balance(session)
@@ -865,6 +885,9 @@ async def list_available_orders(request: web.Request) -> web.Response:
                 "can_receive": False,
                 "balance": d.balance or 0,
                 "min_required": min_balance,
+                "is_online": bool(d.is_online),
+                "is_verified": True,
+                "documents_submitted": bool(d.documents_submitted),
                 "message": (
                     "⚠️ Balansingizda mablag' yetarli emas. Yangi zakaslarni olish uchun "
                     f"balansni kamida {min_balance:,} so'mga to'ldiring."
@@ -881,6 +904,9 @@ async def list_available_orders(request: web.Request) -> web.Response:
         return web.json_response({
             "orders": [_serialize_order(o) for o in orders],
             "can_receive": True,
+            "is_online": bool(d.is_online),
+            "is_verified": True,
+            "documents_submitted": bool(d.documents_submitted),
         })
     finally:
         session.close()
@@ -922,10 +948,19 @@ async def accept_order(request: web.Request) -> web.Response:
         if order.status != "new":
             return web.json_response({"error": "Buyurtma allaqachon olindi"}, status=400)
 
-        # Check balance
-        d = session.query(Driver).filter_by(id=driver.id).first()
+        # Lock the driver while checking active-order limits and balance so two
+        # concurrent accepts by the same driver are serialized on PostgreSQL.
+        d = (
+            session.query(Driver)
+            .filter_by(id=driver.id)
+            .with_for_update()
+            .first()
+        )
         if not d:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        denied = _driver_verification_denied(d)
+        if denied:
+            return denied
 
         # Active-order limit: a driver may hold up to MAX_ACTIVE_NONPARCEL_ORDERS active
         # taxi/full-car orders at once. Parcel (pochta) orders are UNLIMITED and don't
@@ -1000,26 +1035,25 @@ async def accept_order(request: web.Request) -> web.Response:
                 synchronize_session=False,
             )
         )
-        session.commit()
         if not claimed:
-            # Another driver won the race between our check and this update.
+            session.rollback()
             return web.json_response({"error": "Buyurtma allaqachon olindi"}, status=400)
 
+        # Keep order claim and bonus reservation in one transaction. PostgreSQL row locks
+        # serialize wallet mutations; SQLite serializes the write transaction itself.
+        session.refresh(order)
+        if order.passenger_id:
+            passenger = (
+                session.query(User)
+                .filter_by(id=order.passenger_id)
+                .with_for_update()
+                .first()
+            )
+            from app.services import rewards
+            rewards.reserve_bonus_for_order(session, order, d, passenger)
+        session.commit()
         session.refresh(order)
         session.refresh(d)
-
-        # Bonus wallet: lock in the rider's discount NOW (at accept), so the reduced fare
-        # is known before payment. Dormant until the app sets order.use_bonus; funded from
-        # commission via effective_commission, so the driver's net is unchanged.
-        if order.passenger_id:
-            passenger = session.query(User).filter_by(id=order.passenger_id).first()
-            try:
-                from app.services import rewards
-                if rewards.reserve_bonus_for_order(session, order, d, passenger):
-                    session.commit()
-                    session.refresh(order)
-            except Exception as e:
-                logger.error(f"Bonus reserve failed for order {order.id}: {e}")
 
         # Notify passenger via WebSocket
         if order.passenger_id:
@@ -1113,7 +1147,18 @@ async def start_trip(request: web.Request) -> web.Response:
         if order.status != "accepted":
             return web.json_response({"error": "Safarni boshlab bo'lmaydi"}, status=400)
 
-        order.status = "in_progress"
+        started = (
+            session.query(Order)
+            .filter(
+                Order.id == order_id,
+                Order.driver_id == driver.id,
+                Order.status == "accepted",
+            )
+            .update({"status": "in_progress"}, synchronize_session=False)
+        )
+        if not started:
+            session.rollback()
+            return web.json_response({"error": "Safarni boshlab bo'lmaydi"}, status=409)
         session.commit()
         session.refresh(order)
 
@@ -1150,27 +1195,44 @@ async def complete_order(request: web.Request) -> web.Response:
         if order.status not in ("accepted", "in_progress"):
             return web.json_response({"error": "Yopib bo'lmaydi"}, status=400)
 
-        order.status = "completed"
-        order.completed_at = datetime.utcnow()
+        completed_at = datetime.utcnow()
+        claimed = (
+            session.query(Order)
+            .filter(
+                Order.id == order_id,
+                Order.driver_id == driver.id,
+                Order.status.in_(["accepted", "in_progress"]),
+            )
+            .update(
+                {"status": "completed", "completed_at": completed_at},
+                synchronize_session=False,
+            )
+        )
+        if not claimed:
+            session.rollback()
+            return web.json_response({"error": "Buyurtma holati o'zgargan"}, status=409)
+        session.refresh(order)
 
-        d = session.query(Driver).filter_by(id=driver.id).first()
+        d = (
+            session.query(Driver)
+            .filter_by(id=driver.id)
+            .with_for_update()
+            .first()
+        )
         if d:
             d.total_orders = (d.total_orders or 0) + 1
 
-        # ===== Bonus wallet: grant loyalty + referral EARNINGS for the completed ride =====
-        # (Any bonus SPENT on this ride was already reserved at accept time and is charged
-        # net of commission by the scheduler — nothing to spend here.) Load the passenger;
-        # bot orders have no passenger_id.
+        # Lock the passenger wallet before applying the durable rewards guard and credits.
         passenger = (
-            session.query(User).filter_by(id=order.passenger_id).first()
+            session.query(User)
+            .filter_by(id=order.passenger_id)
+            .with_for_update()
+            .first()
             if order.passenger_id else None
         )
         if passenger:
-            try:
-                from app.services import rewards
-                rewards.apply_ride_rewards(session, order, passenger)
-            except Exception as e:  # never let rewards break ride completion
-                logger.error(f"Reward processing failed for order {order.id}: {e}")
+            from app.services import rewards
+            rewards.apply_ride_rewards(session, order, passenger)
 
         session.add(OrderHistory(
             order_id=order.id,
@@ -1221,36 +1283,66 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
         if order.status not in ("accepted", "in_progress"):
             return web.json_response({"error": "Bekor qilib bo'lmaydi"}, status=400)
 
-        # The ride never happened -> return any bonus reserved at accept to the rider.
-        if order.passenger_id:
-            _passenger = session.query(User).filter_by(id=order.passenger_id).first()
-            from app.services.rewards import release_bonus_for_order
-            release_bonus_for_order(session, order, _passenger)
-
-        # Driver cancelled their OWN accepted order -> this is the driver's fault, so
-        # the commission is still owed. This closes the "accept to lock the order off
-        # the market, then cancel for free" loophole and keeps behaviour consistent
-        # with silently abandoning an order (which the scheduler charges after the
-        # window). Passenger-initiated cancellations are NOT charged (see cancel_order).
-        # Drivers on the free trial / active subscription are never charged.
-        d = session.query(Driver).filter_by(id=driver.id).first()
         now = datetime.utcnow()
+        claimed = (
+            session.query(Order)
+            .filter(
+                Order.id == order_id,
+                Order.driver_id == driver.id,
+                Order.status.in_(["accepted", "in_progress"]),
+            )
+            .update(
+                {
+                    "status": "cancelled",
+                    "cancelled_at": now,
+                    "cancelled_by": "driver",
+                },
+                synchronize_session=False,
+            )
+        )
+        if not claimed:
+            session.rollback()
+            return web.json_response({"error": "Buyurtma holati o'zgargan"}, status=409)
+        session.refresh(order)
+
+        passenger = (
+            session.query(User)
+            .filter_by(id=order.passenger_id)
+            .with_for_update()
+            .first()
+            if order.passenger_id else None
+        )
+        from app.services.rewards import release_bonus_for_order
+        release_bonus_for_order(session, order, passenger)
+
+        # Claiming the cancellation first prevents the background scheduler from racing
+        # this charge. Lock the driver while changing money and write the same immutable
+        # ledger key the scheduler uses, so a commission can be collected only once.
+        d = (
+            session.query(Driver)
+            .filter_by(id=driver.id)
+            .with_for_update()
+            .first()
+        )
         subscription_active = bool(d and d.subscription_until and d.subscription_until > now)
         charged = False
         if d and not subscription_active and not order.commission_charged:
-            # Window may not have elapsed yet; charge now since the driver bailed.
             commission = order.commission or 0
             if commission > 0:
                 d.balance = (d.balance or 0) - commission
+                session.add(BalanceTransaction(
+                    driver_id=d.id,
+                    amount=-commission,
+                    balance_after=d.balance,
+                    source="order_commission",
+                    reference_type="order",
+                    reference_id=order.id,
+                    idempotency_key=f"order:{order.id}:commission",
+                    note="Driver-cancelled order commission",
+                ))
                 order.commission_collected = True
                 charged = True
-        # If commission_charged was already True the deferred scheduler already deducted
-        # it -> no refund (driver's fault). Mark handled either way.
         order.commission_charged = True
-
-        order.status = "cancelled"
-        order.cancelled_at = now
-        order.cancelled_by = "driver"
 
         session.add(OrderHistory(
             order_id=order.id,

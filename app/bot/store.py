@@ -24,12 +24,13 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from app import config
 from app.database import get_session
-from app.models import Driver, Order, OrderHistory, Setting
+from app.models import BalanceTransaction, Driver, Order, OrderHistory, Setting
 
 logger = logging.getLogger("sarixgo.bot.store")
 
@@ -128,15 +129,61 @@ class BotStore:
         finally:
             session.close()
 
-    def add_balance(self, telegram_id: int, amount: int) -> int:
-        """Credit (or debit, if negative) a driver's balance. Returns the new balance."""
+    def add_balance(
+        self,
+        telegram_id: int,
+        amount: int,
+        *,
+        idempotency_key: str | None = None,
+        audit_actor: str | None = None,
+        audit_update_id: int | None = None,
+    ) -> int:
+        """Adjust a balance once and append an immutable ledger entry."""
         session = self._session_factory()
         try:
-            d = session.query(Driver).filter_by(telegram_id=telegram_id).first()
+            d = (
+                session.query(Driver)
+                .filter_by(telegram_id=telegram_id)
+                .with_for_update()
+                .first()
+            )
             if not d:
                 return 0
-            d.balance = int(d.balance or 0) + int(amount)
+            key = idempotency_key or f"bot-admin:{uuid.uuid4().hex}"
+            existing = session.query(BalanceTransaction).filter_by(
+                idempotency_key=key
+            ).first()
+            if existing:
+                return int(d.balance or 0)
+            amount = int(amount)
+            if amount == 0:
+                return int(d.balance or 0)
+            d.balance = int(d.balance or 0) + amount
             new_balance = d.balance
+            session.add(BalanceTransaction(
+                driver_id=d.id,
+                amount=amount,
+                balance_after=new_balance,
+                source="bot_admin_adjustment",
+                reference_type="telegram_update",
+                idempotency_key=key,
+                note="Telegram admin balance adjustment",
+            ))
+            if audit_actor:
+                from app.admin.audit import add_actor_audit
+                add_actor_audit(
+                    session,
+                    actor=audit_actor,
+                    action="driver.balance_adjust",
+                    target_type="driver",
+                    target_id=d.id,
+                    details={
+                        "telegram_update_id": audit_update_id,
+                        "amount": amount,
+                        "balance_after": new_balance,
+                        "idempotency_key": key,
+                    },
+                )
             session.commit()
             return new_balance
         finally:
@@ -400,11 +447,25 @@ class BotStore:
             if not order or order.status != "new":
                 return AssignResult(ok=False, reason="not_found" if not order else "taken")
 
-            driver = session.query(Driver).filter_by(telegram_id=driver_telegram_id).first()
+            driver = (
+                session.query(Driver)
+                .filter_by(telegram_id=driver_telegram_id)
+                .with_for_update()
+                .first()
+            )
             price = int(order.price or self.order_price(order.person_count or 1))
-            if not driver or int(driver.balance or 0) < price:
+            if not driver:
+                return AssignResult(ok=False, reason="not_registered", price=price)
+            if not driver.is_verified:
+                return AssignResult(
+                    ok=False,
+                    reason="verification_pending" if driver.documents_submitted else "documents_required",
+                    price=price,
+                    new_balance=int(driver.balance or 0),
+                )
+            if int(driver.balance or 0) < price:
                 return AssignResult(ok=False, reason="low_balance", price=price,
-                                    new_balance=int(driver.balance or 0) if driver else 0)
+                                    new_balance=int(driver.balance or 0))
 
             # Atomic claim: only succeeds if the order is still "new".
             claimed = (
@@ -416,6 +477,8 @@ class BotStore:
                         "driver_telegram_id": driver_telegram_id,
                         "status": "accepted",
                         "accepted_at": datetime.utcnow(),
+                        "commission_charged": True,
+                        "commission_collected": True,
                     },
                     synchronize_session=False,
                 )
@@ -425,6 +488,16 @@ class BotStore:
 
             driver.balance = int(driver.balance or 0) - price
             new_balance = driver.balance
+            session.add(BalanceTransaction(
+                driver_id=driver.id,
+                amount=-price,
+                balance_after=new_balance,
+                source="bot_order_reserve",
+                reference_type="order",
+                reference_id=order_id,
+                idempotency_key=f"order:{order_id}:commission",
+                note="Bot order fare reserved on acceptance",
+            ))
             session.commit()
             session.refresh(order)
             session.expunge(order)
@@ -452,10 +525,21 @@ class BotStore:
         session = self._session_factory()
         try:
             order = session.query(Order).filter_by(id=order_id).first()
-            if not order or order.status != "accepted":
+            if not order:
                 return None
-            order.status = "completed"
-            order.completed_at = datetime.utcnow()
+            completed_at = datetime.utcnow()
+            claimed = (
+                session.query(Order)
+                .filter(Order.id == order_id, Order.status == "accepted")
+                .update(
+                    {"status": "completed", "completed_at": completed_at},
+                    synchronize_session=False,
+                )
+            )
+            if not claimed:
+                session.rollback()
+                return None
+            session.refresh(order)
             self._record_history(session, order, "completed", actor, actor_phone)
             session.commit()
             session.refresh(order)
@@ -474,21 +558,55 @@ class BotStore:
         session = self._session_factory()
         try:
             order = session.query(Order).filter_by(id=order_id).first()
-            if not order or order.status in ("completed", "cancelled", "expired"):
+            if not order or order.status not in ("new", "accepted"):
                 return None, False
 
+            was_accepted = order.status == "accepted"
+            cancelled_at = datetime.utcnow()
+            claimed = (
+                session.query(Order)
+                .filter(Order.id == order_id, Order.status.in_(["new", "accepted"]))
+                .update(
+                    {
+                        "status": "cancelled",
+                        "cancelled_by": cancelled_by,
+                        "cancelled_at": cancelled_at,
+                        "commission_charged": True,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if not claimed:
+                session.rollback()
+                return None, False
+            session.refresh(order)
+
             refunded = False
-            if order.status == "accepted" and order.driver_telegram_id:
-                driver = session.query(Driver).filter_by(
-                    telegram_id=order.driver_telegram_id).first()
-                if driver:
-                    driver.balance = int(driver.balance or 0) + int(
-                        order.price or self.order_price(order.person_count or 1))
+            if was_accepted and order.driver_telegram_id:
+                driver = (
+                    session.query(Driver)
+                    .filter_by(telegram_id=order.driver_telegram_id)
+                    .with_for_update()
+                    .first()
+                )
+                if driver and order.commission_collected:
+                    refund_amount = int(
+                        order.price or self.order_price(order.person_count or 1)
+                    )
+                    driver.balance = int(driver.balance or 0) + refund_amount
+                    order.commission_collected = False
+                    session.add(BalanceTransaction(
+                        driver_id=driver.id,
+                        amount=refund_amount,
+                        balance_after=driver.balance,
+                        source="bot_order_refund",
+                        reference_type="order",
+                        reference_id=order.id,
+                        idempotency_key=f"order:{order.id}:commission_refund",
+                        note="Bot order cancellation refund",
+                    ))
                     refunded = True
 
-            order.status = "cancelled"
-            order.cancelled_by = cancelled_by
-            order.cancelled_at = datetime.utcnow()
             self._record_history(session, order, "cancelled", actor, actor_phone)
             session.commit()
             session.refresh(order)

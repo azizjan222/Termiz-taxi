@@ -24,7 +24,7 @@ Specially designed app for taxi drivers in Termiz and Surxondaryo region. Get ne
 Get notified instantly when a new order arrives. Sound, vibration, and push - all together!
 
 ⚡ ONE-TAP ACCEPTANCE
-See an order - accept immediately. Commission auto-deducted from balance.
+See an available order and accept it directly in the app. Only approved, online drivers can view and accept orders.
 
 📞 CALL PASSENGER
 Call the passenger directly from the app.
@@ -44,21 +44,17 @@ Uzbek and Russian
 Switch to offline during non-work hours - orders won't come.
 
 💸 COMMISSION SYSTEM
-• 1 passenger: 10,000 UZS
-• 2 passengers: 20,000 UZS
-• 3 passengers: 30,000 UZS
-• Parcel: 5,000 UZS
-• Whole car: 30,000 UZS
+The service uses a configurable percentage commission. Commission is calculated by the backend and settled according to the current service rules; the applicable amount is shown in balance history.
 
-🎁 BONUSES
-50% bonus on first top-up! Send receipt in bot and balance gets credited.
+💳 BALANCE TOP-UP
+Create a manual card-transfer request inside the app, upload the receipt privately, and wait for administrator approval. A first-top-up bonus may apply when enabled by the service.
 
 🚦 GETTING STARTED
-1. Send /start to the bot (if not done before)
-2. Copy your Telegram ID
-3. Login to the app
-4. Switch to online
-5. Accept new orders
+1. Start registration from the app and verify your phone through Telegram by sharing your own contact
+2. Submit all requested driver and vehicle documents
+3. Wait for administrator review and approval
+4. Log in and switch online after approval
+5. Accept available orders
 
 🔒 SAFE
 • Only verified drivers

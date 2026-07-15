@@ -6,8 +6,18 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from app import config
+from app.admin.audit import add_actor_audit
 from app.database import DbContext
-from app.models import Driver, Order, OrderHistory, Payment, Route, Setting, User
+from app.models import (
+    BalanceTransaction,
+    Driver,
+    Order,
+    OrderHistory,
+    Payment,
+    Route,
+    Setting,
+    User,
+)
 from app.services import notify_i18n as nt
 from app.services.push import send_push, send_push_bulk
 
@@ -18,6 +28,18 @@ def is_admin(uid: int) -> bool:
 
 def fmt(n: int) -> str:
     return f"{n:,}".replace(",", " ")
+
+
+def _audit_telegram_admin(session, update: Update, action: str, **kwargs):
+    details = dict(kwargs.pop("details", {}) or {})
+    details["telegram_update_id"] = update.update_id
+    return add_actor_audit(
+        session,
+        actor=f"telegram:{update.effective_user.id}",
+        action=action,
+        details=details,
+        **kwargs,
+    )
 
 
 # ============ /stats - Umumiy statistika ============
@@ -272,9 +294,42 @@ async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        # Re-load with a row lock before changing money. The Telegram update ID is a
+        # stable idempotency key, so webhook retries cannot apply the command twice.
+        driver = (
+            session.query(Driver)
+            .filter_by(id=driver.id)
+            .with_for_update()
+            .one()
+        )
+        key = f"telegram-command:{update.update_id}:balance"
+        existing = session.query(BalanceTransaction).filter_by(
+            idempotency_key=key
+        ).first()
         old_balance = driver.balance or 0
-        driver.balance = old_balance + amount
-        new_balance = driver.balance
+        if existing:
+            new_balance = old_balance
+            amount = 0
+        else:
+            driver.balance = old_balance + amount
+            new_balance = driver.balance
+            session.add(BalanceTransaction(
+                driver_id=driver.id,
+                amount=amount,
+                balance_after=new_balance,
+                source="telegram_admin_adjustment",
+                reference_type="telegram_update",
+                idempotency_key=key,
+                note="/balance admin command",
+            ))
+            _audit_telegram_admin(
+                session,
+                update,
+                "driver.balance_adjust",
+                target_type="driver",
+                target_id=driver.id,
+                details={"amount": amount, "balance_after": new_balance},
+            )
 
     op = "qo'shildi" if amount > 0 else "yechildi"
     sign = "+" if amount > 0 else ""
@@ -832,7 +887,22 @@ async def cmd_verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"\u274c Haydovchi topilmadi: {telegram_id}"
             )
             return
+        from app.api.drivers import missing_driver_approval_requirements
+
+        missing = missing_driver_approval_requirements(driver)
+        if missing:
+            await update.effective_message.reply_text(
+                "❌ Tasdiqlash uchun yetishmaydi: " + ", ".join(missing)
+            )
+            return
         driver.is_verified = True
+        _audit_telegram_admin(
+            session,
+            update,
+            "driver.verify",
+            target_type="driver",
+            target_id=driver.id,
+        )
 
     await update.effective_message.reply_text(
         f"\u2705 Haydovchi tasdiqlandi!\n"
@@ -871,6 +941,15 @@ async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         driver.is_verified = False
         driver.documents_submitted = False
+        driver.is_online = False
+        driver.online_since = None
+        _audit_telegram_admin(
+            session,
+            update,
+            "driver.reject",
+            target_type="driver",
+            target_id=driver.id,
+        )
 
     await update.effective_message.reply_text(
         f"\u274c Haydovchi rad etildi!\n"
@@ -918,6 +997,14 @@ async def cmd_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         old_price = route.price_per_person
         route.price_per_person = new_price
+        _audit_telegram_admin(
+            session,
+            update,
+            "route.update",
+            target_type="route",
+            target_id=route.id,
+            details={"before": old_price, "after": new_price},
+        )
 
     await update.effective_message.reply_text(
         f"\u2705 Narx yangilandi!\n\n"
@@ -955,6 +1042,14 @@ async def cmd_commission(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             setting = Setting(key="commission_percent", value=str(percent))
             session.add(setting)
+        _audit_telegram_admin(
+            session,
+            update,
+            "settings.commission_percent",
+            target_type="setting",
+            target_id="commission_percent",
+            details={"value": percent},
+        )
 
     await update.effective_message.reply_text(
         f"\u2705 Komissiya belgilandi: <b>{percent}%</b>", parse_mode="HTML"
@@ -1160,10 +1255,10 @@ async def cmd_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ /add_driver - Bot orqali haydovchi qo'shish ============
 async def cmd_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Create a driver row from the bot (when app registration is hard).
+    """Create a pending driver row from the bot when app registration is difficult.
 
     Usage: /add_driver <phone> <first_name> [car_number] [car_model...]
-    The driver is created with documents_submitted=True so they can use the app at once.
+    The driver must still upload complete evidence and receive separate approval.
     """
     if not is_admin(update.effective_user.id):
         return
@@ -1205,12 +1300,20 @@ async def cmd_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
             first_name=first_name,
             car_number=car_number,
             car_model=car_model,
-            documents_submitted=True,
-            is_verified=True,
+            documents_submitted=False,
+            is_verified=False,
         )
         session.add(driver)
         session.flush()
         new_id = driver.id
+        _audit_telegram_admin(
+            session,
+            update,
+            "driver.create",
+            target_type="driver",
+            target_id=driver.id,
+            details={"phone": phone, "is_verified": False},
+        )
 
     await update.effective_message.reply_text(
         f"\u2705 <b>Haydovchi qo'shildi</b>\n\n"
@@ -1218,6 +1321,6 @@ async def cmd_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"\U0001f4de {phone}\n"
         f"\U0001f697 {car_model or '-'} \u00b7 {car_number or '-'}\n"
         f"\U0001f194 ID: <code>{new_id}</code>\n\n"
-        f"Haydovchi endi ilovaga kira oladi (OTP orqali login).",
+        f"Haydovchi ilovada hujjatlarni yuklashi va admin tasdig'ini kutishi kerak.",
         parse_mode="HTML",
     )

@@ -6,8 +6,7 @@ import logging
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.bot.access import money
-from app.bot.state import ADMIN_ID, BOT_TOKEN, DRIVERS_GROUP_ID
+from app.bot.state import ADMIN_ID, BOT_TOKEN
 
 logger = logging.getLogger("sarixgo.bot.notifications")
 
@@ -28,43 +27,6 @@ async def notify_admin_new_driver(bot, telegram_id: int, phone: str, data: dict)
         await bot.send_message(ADMIN_ID, caption, parse_mode="HTML", reply_markup=keyboard)
     except Exception as e:
         logger.error("Admin new-driver notify error: %s", e)
-
-
-async def notify_drivers_about_new_app_order(order):
-    """Forward a new app order into the drivers Telegram group with an accept deep link."""
-    try:
-        bot = Bot(token=BOT_TOKEN)
-        emoji = "📦" if order.service_type == "parcel" else (
-            "🚗" if order.service_type == "full_car" else "🚕")
-        service_label = {
-            "taxi": "Taksi", "parcel": "Pochta", "full_car": "Bo'sh mashina",
-        }.get(order.service_type, "Taksi")
-        if order.service_type == "taxi":
-            subject = f"👥 {order.person_count} kishi · {service_label}"
-        else:
-            subject = f"{emoji} {service_label}"
-
-        text = (
-            f"{emoji} <b>YANGI ZAKAS (Ilovadan)</b>\n\n"
-            f"📍 <b>{order.from_city}</b> → <b>{order.to_city}</b>\n"
-            f"{subject}\n"
-            f"⏰ {order.departure_time or 'Hozir'}\n"
-            f"💰 Narxi: <b>{money(order.price)} so'm</b>\n"
-            f"💸 Komissiya: {money(order.commission)} so'm\n"
-            f"📞 {order.passenger_phone}"
-        )
-        if order.note:
-            text += f"\n📝 {order.note}"
-
-        me = await bot.get_me()
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(
-            "✅ Zakasni olish",
-            url=f"https://t.me/{me.username}?start=apporder_{order.id}")]])
-        await bot.send_message(
-            chat_id=DRIVERS_GROUP_ID, text=text, parse_mode="HTML", reply_markup=keyboard)
-        await bot.shutdown()
-    except Exception as e:
-        logger.error("Failed to notify drivers about app order: %s", e)
 
 
 async def notify_admin_order_cancelled(driver_telegram_id, order_id, refunded):

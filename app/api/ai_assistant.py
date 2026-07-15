@@ -41,7 +41,7 @@ BALANS QOIDALARI:
 - Zakas qabul qilish uchun MINIMAL 20,000 so'm balans bo'lishi kerak
 - Birinchi to'lovda 50% bonus
 - Balansni to'ldirish: bot orqali chek yuborib, admin tasdiqlaydi
-- Karta: 9860130147785443
+- Karta: ilovada ko'rsatilgan karta
 
 ZAKAS BAJARILISHI:
 1. Yangi zakas ilovaga keladi (yangi yo'lovchi yoki bot orqali)
@@ -139,7 +139,7 @@ FAQ_PATTERNS = [
             "1. Botda /start bosing → 💳 Kabinet (Balans)\n"
             "2. \"Hisobni to'ldirish\" tugmasi\n"
             "3. Summani tanlang yoki yozing\n"
-            "4. Karta: 9860130147785443\n"
+            "4. Karta: ilovada ko'rsatilgan karta\n"
             "5. To'lab, chekni botga rasm qilib yuboring\n"
             "6. Admin tasdiqlashi bilan balans to'ldiriladi\n\n"
             "🎁 Birinchi to'lovda 50% BONUS!"

@@ -40,18 +40,18 @@ Butun mashinani band qiling - 4 ta o'rin sizning ixtiyoringizda.
 Buyurtma berishingiz bilan haydovchi topiladi. Real-vaqtda kuzatib boring.
 
 📱 OSON ISHLATISH
-• Telefon raqam orqali ro'yxat
+• Telegram orqali o'z kontaktingizni yuborib telefonni tasdiqlash
 • 4 til: O'zbek (lotin/kiril), Rus, Ingliz
 • Yandex Maps bilan ishlash
-• Bir nechta to'lov turi
+• Safar uchun naqd pulda to'lov
 
 🎁 BONUS TIZIM
 Do'stlaringizni taklif qiling va ball yig'ing. Promokodlar bilan chegirma oling!
 
 🔒 XAVFSIZ
-• Telefon raqam tasdiqlash
+• Telefon egasi Telegram orqali o'z kontaktini yuborib tasdiqlanadi
 • Haydovchi ma'lumotlari ko'rinadi
-• Faqat tasdiqlangan haydovchilar
+• Buyurtmalarni faqat admin tasdiqlagan haydovchilar oladi
 • Ayollar uchun maxsus filtr
 
 📞 24/7 ISHLAB TURADI
@@ -64,11 +64,11 @@ Istalgan vaqtda buyurtma bering - kunduzi yoki kechasi.
 • Hujjat yuboruvchilar
 
 📲 QANDAY ISHLAYDI?
-1. Telefon raqamingizni kiriting
-2. Tasdiqlash kodini oling
-3. Qayerdan va qayerga ekanini tanlang
-4. Tarif va odam sonini tanlang
-5. Buyurtma bering - haydovchi keladi!
+1. Ilovada tasdiqlashni boshlang
+2. Telegram'ni ochib, botga o'z telefon kontaktingizni yuboring
+3. Tasdiqlangach ilovaga qayting
+4. Yo'nalish, tarif va odam sonini tanlang
+5. Buyurtma bering va tasdiqlangan haydovchini kuting
 
 📞 Aloqa
 Telegram: @termizsariosiyotaxi_bot

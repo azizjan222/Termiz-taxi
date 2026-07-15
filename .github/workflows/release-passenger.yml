@@ -1,62 +1,71 @@
 name: Release Passenger App (Play Store AAB)
 
-# Production release build for Google Play. Uses the eas.json `production`
-# profile which produces an Android App Bundle (.aab) — the format Play
-# requires — with autoIncrement on versionCode.
-#
-# Two-step flow:
-#   1) Build the AAB on EAS cloud (always).
-#   2) Optionally submit it to Google Play (only when submit=true).
-#
-# Submitting requires a Google Play service account JSON configured in EAS
-# credentials (or eas.json submit.production.android.serviceAccountKeyPath).
-# If that is not set up yet, leave submit=false, download the .aab from
-# https://expo.dev -> project -> Builds and upload it manually in Play Console.
-
 on:
   workflow_dispatch:
     inputs:
       submit:
-        description: "Auto-submit the build to Google Play (needs service account)"
+        description: "Submit this exact build to Google Play"
         type: boolean
         required: false
         default: false
 
+permissions:
+  contents: read
+
+concurrency:
+  group: eas-release-passenger
+  cancel-in-progress: false
+
 jobs:
   release:
-    name: Build & (optionally) submit Passenger AAB
-    runs-on: ubuntu-latest
+    environment: production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     defaults:
       run:
         working-directory: sarix-go-app
-
+    env:
+      EAS_PROJECT_ID: ${{ secrets.EAS_PASSENGER_PROJECT_ID }}
+      EXPO_PUBLIC_YANDEX_JS_API_KEY: ${{ secrets.YANDEX_JS_API_KEY }}
+      EXPO_PUBLIC_YANDEX_GEOCODER_KEY: ${{ secrets.YANDEX_GEOCODER_KEY }}
+      EXPO_PUBLIC_YANDEX_MAPS_KEY: ${{ secrets.YANDEX_MAPS_KEY }}
+      EXPO_PUBLIC_YANDEX_SUGGEST_KEY: ${{ secrets.YANDEX_SUGGEST_KEY }}
+      EXPO_PUBLIC_YANDEX_SDK_API_KEY: ${{ secrets.YANDEX_SDK_API_KEY }}
+      GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_PASSENGER_JSON_B64 }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
+          node-version: '20.19.4'
+          cache: npm
+          cache-dependency-path: sarix-go-app/package-lock.json
+      - uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          eas-version: 21.0.1
           token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Align dependencies to Expo SDK
-        run: npx expo install --fix
-
-      - name: Create/link EAS project under your account
-        run: eas init --non-interactive --force
-
-      - name: Build production AAB (cloud)
-        run: eas build --platform android --profile production --non-interactive --wait
-
-      - name: Submit to Google Play (production track)
+      - run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Restore Firebase client configuration
+        run: |
+          test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_PASSENGER_JSON_B64 is required"; exit 1; }
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
+      - name: Validate and test release source
+        run: |
+          test -n "$EAS_PROJECT_ID" || { echo "::error::EAS_PASSENGER_PROJECT_ID is required"; exit 1; }
+          test -n "$EXPO_PUBLIC_YANDEX_JS_API_KEY" || { echo "::error::YANDEX_JS_API_KEY is required"; exit 1; }
+          npx expo install --check
+          npx expo config --type public >/dev/null
+          npm run typecheck
+          npm run lint
+          npm test -- --ci
+      - name: Build production AAB
+        id: build
+        run: |
+          eas build --platform android --profile production --non-interactive --wait --json | tee /tmp/eas-build.json
+          BUILD_ID=$(jq -r '.[0].id // empty' /tmp/eas-build.json)
+          test -n "$BUILD_ID" || { echo "::error::Could not determine EAS build ID"; exit 1; }
+          echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+      - name: Submit the exact build to Google Play
         if: ${{ inputs.submit }}
-        run: eas submit --platform android --profile production --latest --non-interactive
+        env:
+          BUILD_ID: ${{ steps.build.outputs.build_id }}
+        run: eas submit --platform android --profile production --id "$BUILD_ID" --non-interactive

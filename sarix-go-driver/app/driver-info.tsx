@@ -9,7 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '../src/components/Button';
-import { API_URL } from '../src/api/client';
+import { API_URL, getAuthToken } from '../src/api/client';
 import { useDriverStore } from '../src/store/driver';
 import {
   getMe, updateDriverInfo, uploadTechPassport, uploadLicenseImage, getCarModels,
@@ -57,6 +57,7 @@ export default function DriverInfoScreen() {
 
   const [techUri, setTechUri] = useState<string | null>(null);
   const [licenseUri, setLicenseUri] = useState<string | null>(null);
+  const [documentToken, setDocumentToken] = useState<string | null>(null);
 
   const [models, setModels] = useState<string[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -82,6 +83,7 @@ export default function DriverInfoScreen() {
       }
     };
     fill(driver);
+    getAuthToken().then(setDocumentToken).catch(() => setDocumentToken(null));
     getMe().then((d) => { fill(d); setDriver(d); }).catch(() => {});
     getCarModels().then((r) => setModels(r.models)).catch(() => {});
     // Prefill from the current driver once on mount, then refresh from the server.
@@ -237,11 +239,11 @@ export default function DriverInfoScreen() {
         <TextInput style={styles.input} value={carYear} onChangeText={setCarYear} placeholder="2018" keyboardType="number-pad" maxLength={4} />
 
         <Text style={styles.label}>Texnik pasport surati</Text>
-        {techUri ? <Image source={{ uri: techUri }} style={styles.preview} /> : null}
+        {techUri ? <Image source={{ uri: techUri, headers: documentToken ? { Authorization: `Bearer ${documentToken}` } : undefined }} style={styles.preview} /> : null}
         <Button title="📄 Texpasport surati" onPress={() => pickImage(setTechUri)} variant="outline" />
 
         <Text style={[styles.label, { marginTop: spacing.md }]}>Haydovchilik guvohnomasi surati</Text>
-        {licenseUri ? <Image source={{ uri: licenseUri }} style={styles.preview} /> : null}
+        {licenseUri ? <Image source={{ uri: licenseUri, headers: documentToken ? { Authorization: `Bearer ${documentToken}` } : undefined }} style={styles.preview} /> : null}
         <Button title="🪪 Guvohnoma surati" onPress={() => pickImage(setLicenseUri)} variant="outline" />
 
         <Button title="✅ Saqlash" onPress={save} loading={saving} variant="accent" style={{ marginTop: spacing.lg }} />

@@ -272,13 +272,25 @@ export default function OrderDetailScreen() {
                   {order.driver.first_name || 'Haydovchi'}
                 </Text>
                 {order.driver.phone ? (
-                  <TouchableOpacity onPress={callDriver} activeOpacity={0.7}>
+                  <TouchableOpacity
+                    onPress={callDriver}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Haydovchiga qo‘ng‘iroq qilish"
+                    accessibilityHint="Telefon ilovasida haydovchi raqamini ochadi"
+                  >
                     <Text style={styles.driverPhone}>📱 {order.driver.phone}</Text>
                   </TouchableOpacity>
                 ) : null}
                 {/* Rating hidden from the passenger for now (per request). */}
               </View>
-              <TouchableOpacity style={styles.callBtn} onPress={callDriver}>
+              <TouchableOpacity
+                style={styles.callBtn}
+                onPress={callDriver}
+                accessibilityRole="button"
+                accessibilityLabel="Haydovchiga qo‘ng‘iroq qilish"
+                accessibilityHint="Telefon ilovasida haydovchi raqamini ochadi"
+              >
                 <Text style={styles.callBtnIcon}>📞</Text>
               </TouchableOpacity>
             </View>

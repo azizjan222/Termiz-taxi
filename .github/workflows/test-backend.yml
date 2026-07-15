@@ -5,53 +5,58 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'tests/**'
       - 'main.py'
-      - 'requirements.txt'
+      - 'requirements*.txt'
+      - 'requirements*.lock'
+      - 'pytest.ini'
+      - '.github/workflows/test-backend.yml'
   pull_request:
     paths:
       - 'app/**'
+      - 'tests/**'
       - 'main.py'
-      - 'requirements.txt'
+      - 'requirements*.txt'
+      - 'requirements*.lock'
+      - 'pytest.ini'
+      - '.github/workflows/test-backend.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BOT_TOKEN: dummy_token_for_ci
+      ADMIN_ID: '0'
+      DATABASE_URL: sqlite:///./data/test.db
+      DATA_DIR: ./data
+      OTP_PROVIDER: mock
+      ADMIN_COOKIE_SECURE: 'false'
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.11.15'
           cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
-
-      - name: Lint (ruff)
-        run: ruff check .
-
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.lock
+      - run: ruff check .
       - name: Verify imports and DB init
         run: |
           python -c "from app.config import BOT_TOKEN; print('Config OK')"
           python -c "from app.database import init_db; init_db(); print('DB schema OK')"
           python -c "from app.api.server import create_app; app = create_app(); print(f'API has {len(app.router.resources())} routes')"
-        env:
-          BOT_TOKEN: dummy_token_for_ci
-          ADMIN_ID: 0
-          DATABASE_URL: sqlite:///./data/test.db
-
-      - name: Run unit tests (pytest)
+      - name: Run backend tests
         run: pytest -v
-
-      - name: Test migration
+      - name: Migration smoke test
         run: |
           rm -f data/test.db
           python -c "from app.migrate import run_migration; run_migration()"
-        env:
-          BOT_TOKEN: dummy_token_for_ci
-          ADMIN_ID: 0
-          DATABASE_URL: sqlite:///./data/test.db

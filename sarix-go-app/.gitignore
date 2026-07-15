@@ -10,3 +10,5 @@ web-build/
 *.keystore
 ios/
 android/
+
+google-services.json

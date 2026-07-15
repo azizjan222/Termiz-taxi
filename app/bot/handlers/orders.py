@@ -180,6 +180,15 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
                 "❌ Siz ilovada ro'yxatdan o'tmagansiz. Avval ilovada hujjatlaringizni "
                 "yuboring.")
             return
+        if not driver.is_verified:
+            message = (
+                "❌ Hujjatlaringiz administrator tomonidan hali tasdiqlanmagan. "
+                "Tasdiqlanishini kuting."
+                if driver.documents_submitted
+                else "❌ Avval ilovada barcha haydovchi hujjatlarini yuboring."
+            )
+            await context.bot.send_message(driver_telegram_id, message)
+            return
 
         now = datetime.utcnow()
         on_free_trial = bool(driver.subscription_until and driver.subscription_until > now)

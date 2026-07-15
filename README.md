@@ -1,96 +1,101 @@
-# 🚕 Sarix Go - Termiz Sariosiyo Taxi
+# Sarix Go — Termiz/Sariosiyo taxi platform
 
-Surxondaryo viloyati ichida tumanlar orasida ishlovchi taksi xizmati.
+Sarix Go is an inter-city taxi and parcel platform for Surxondaryo. This repository contains the Python backend and Telegram bots, passenger and driver Expo applications, administrative web UI, CI/CD workflows, and public legal pages.
 
-## 📦 Tarkibi
+## Repository layout
 
-```
-Termiz-taxi/
-├── main.py              # Telegram bot + API server (Python)
-├── app/                 # Backend (Python paketlari)
-│   ├── api/             # REST API + WebSocket
-│   ├── services/        # OTP, SMS
-│   ├── utils/           # JWT auth
-│   ├── models.py        # SQLAlchemy modellar
-│   ├── database.py      # DB ulanish
-│   └── migrate.py       # JSON → SQLite migratsiya
-├── sarix-go-app/        # Yo'lovchi mobil ilovasi (React Native)
-└── data/                # SQLite database
+```text
+app/                    Python backend, bots, services, models and migrations
+sarix-go-app/           Passenger Expo/React Native application
+sarix-go-driver/        Driver Expo/React Native application
+tests/                  Backend security and behavior tests
+docs/                   Static privacy policy and terms pages
+.github/workflows/       Tests, builds, releases, OTA updates, backup and Pages
+main.py                  Backend and bot process entry point
 ```
 
-## 🚀 Qisqacha
+## Architecture and supported flows
 
-- **Bot**: Telegram orqali zakas qabul qilish (avvalgi)
-- **API**: Mobil ilova uchun REST + WebSocket
-- **Yo'lovchi ilovasi**: React Native (Play Market uchun)
-- **Database**: SQLite
+- The backend exposes REST APIs, authenticated private-file endpoints, WebSocket updates, the admin UI, `/health`, `/ready`, and `/health/ready`.
+- Passengers authenticate through a short-lived Telegram deep link and verified contact sharing. The backend still supports configurable phone OTP for a future SMS-provider integration; OTP delivery fails closed and mock codes are exposed only when `OTP_EXPOSE_DEV_CODE=true` is explicitly enabled for development.
+- Drivers authenticate through a short-lived Telegram deep link and contact verification. A public Telegram ID is not accepted as a credential. New drivers remain offline and cannot receive or accept orders until required documents are submitted and an administrator approves them; pre-gate production drivers are trusted once during migration to avoid silently disabling the installed fleet.
+- Driver balance top-up currently uses an in-app manual card-transfer flow: the driver uploads a receipt and an admin approves or rejects the persisted payment. Click and Payme are intentionally disabled until complete merchant integrations are implemented and verified.
+- Identity documents and payment receipts are stored outside public static paths and served only through authenticated, authorization-checked endpoints.
+- Balance changes are recorded in an immutable ledger; order state transitions and payment/reward claims use guarded, idempotent database operations.
 
-## 🌐 Yo'nalishlar va narxlar
+## Database and persistent storage
 
-| Yo'nalish | Narx |
-|-----------|------|
-| Termiz ↔ Sariosiyo | 90,000 |
-| Termiz ↔ Uzun | 90,000 |
-| Termiz ↔ Denov | 80,000 |
-| Termiz ↔ Sho'rchi | 70,000 |
-| Sariosiyo/Uzun ↔ Jarqo'rg'on | 80,000 |
-| Sariosiyo/Uzun ↔ Qumqo'rg'on | 70,000 |
-| Pochta (hujjat) | 30,000 |
-| Bo'sh mashina | 400,000 |
+PostgreSQL is recommended for production and receives row-level locking where the workflow requires it. SQLite remains supported for local development and small existing deployments.
 
-## 💰 Komissiya tizimi
+Set `DATABASE_URL` to a PostgreSQL URL in production. If SQLite is used in a container, mount a persistent volume and keep both the database and `UPLOAD_DIR` on it. Ephemeral container paths lose accounts, orders, secrets and uploaded documents during redeployment.
 
-Haydovchi balansidan olinadi:
-- 1 yo'lovchi → 10,000 so'm
-- 2 yo'lovchi → 20,000 so'm
-- 3 yo'lovchi → 30,000 so'm
-- Pochta → 5,000 so'm
-- Bo'sh mashina → 30,000 so'm
+The project has a lightweight `schema_migrations` version ledger and additive legacy migration path; this is not a full Alembic migration system. Fresh databases receive all ORM `CHECK` and `UNIQUE` constraints. Existing SQLite tables receive safe additive columns and unique indexes, but are not destructively rebuilt solely to retrofit every `CHECK` constraint. If legacy duplicate data prevents a required unique index, migration remains unapplied and readiness stays closed until an operator reviews and resolves the reported duplicate key groups. Back up existing data before every deployment.
 
-## 🔧 Backend o'rnatish
+## Backend setup
+
+Python 3.11 is used in CI.
 
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install --disable-pip-version-check -r requirements-prod.lock
 cp .env.example .env
-# .env ichidagi BOT_TOKEN, ADMIN_ID kabi qiymatlarni to'ldiring
 python main.py
 ```
 
-API server: `http://localhost:8080`
-
-## 📱 Mobil ilovani ishga tushirish
+For development and tests, install the locked CI/tooling environment instead:
 
 ```bash
-cd sarix-go-app
-npm install
+python -m pip install --disable-pip-version-check -r requirements.lock
+python -m pytest -q
+python -m ruff check .
+```
+
+Configure `.env` from `.env.example`. Production values include stable JWT/API secrets, Telegram credentials, database and upload storage, a restricted CORS allowlist for browser clients, admin settings, OTP provider credentials, and the manual top-up card details. Do not commit `.env` or real credentials.
+
+## Mobile applications
+
+Both applications require Node.js `20.19.4` in CI and use committed npm lockfiles.
+
+```bash
+cd sarix-go-app        # or sarix-go-driver
+npm ci --legacy-peer-deps --no-audit --no-fund
 cp .env.example .env
-# .env da EXPO_PUBLIC_API_URL ni to'g'rilang
 npm start
 ```
 
-## 🚂 Railway deploy
+Before submitting a mobile change, run:
 
-`.env` ichidagi qiymatlarni Railway'ning **Variables** bo'limiga qo'shing:
-- `BOT_TOKEN`
-- `ADMIN_ID`
-- `DRIVERS_GROUP_ID`
-- `JWT_SECRET` (tasodifiy uzun matn)
-- `OTP_PROVIDER=telegram` (yoki `eskiz`)
+```bash
+npm run typecheck
+npm run lint
+npm test -- --ci --runInBand
+npx expo install --check
+npx expo config --type public
+```
 
-`/data` papkasini Railway Volume sifatida ulang (database saqlash uchun).
+See [passenger app documentation](./sarix-go-app/README.md), [driver app documentation](./sarix-go-driver/README.md), and [workflow documentation](./.github/README.md).
 
-## 🔐 Xavfsizlik
+## Health, readiness and backup
 
-- Bot tokeni faqat `.env` da
-- `.env` GitHub'ga yuklanmaydi
-- JWT autentifikatsiya
-- API barcha so'rovlar uchun CORS yoqilgan
+- `GET /health` is a process liveness check.
+- `GET /ready` and `GET /health/ready` verify that the service can query its database and should be used for readiness/deployment gating.
+- The PostgreSQL backup workflow refuses to succeed without a valid `DATABASE_URL`, validates gzip and SHA-256 output, restores every dump into disposable PostgreSQL `17.5`, verifies that public tables exist, and only then uploads the artifact.
 
-## 📚 Hujjatlar
+A successful readiness check or backup workflow does not replace monitoring, external restore drills, retention policy review, or alerting.
 
-- [Backend API](./app/api/) - REST endpointlar
-- [Mobile app](./sarix-go-app/README.md) - Yo'lovchi ilovasi
+## Security and operator actions
 
-## 📧 Aloqa
+Repository configuration no longer contains the previously committed Yandex client-key literals or Firebase `google-services.json` files. This does not remove those values from Git history. Operators must rotate the previously published keys, restrict replacements by Android package/signing identity and enabled APIs, apply quotas, and configure the GitHub/EAS secrets listed in [`.github/README.md`](./.github/README.md).
 
-Bot: [@termizsariosiyotaxi_bot](https://t.me/termizsariosiyotaxi_bot)
+`EXPO_PUBLIC_*`, Yandex map keys and Firebase Android client configuration are embedded in compiled apps and are therefore not secrets. Provider-side restrictions are mandatory; moving them out of Git is configuration hygiene, not secrecy.
+
+## Deployment notes
+
+- Prefer managed PostgreSQL and persistent object/volume storage for private uploads.
+- Use HTTPS; admin cookies are secure by default.
+- Set an explicit browser CORS allowlist instead of `*` when browser origins are known.
+- Keep Click and Payme disabled until their callback authentication, reconciliation and end-to-end merchant tests are complete.
+- Run the full test suite and migration smoke test before deployment.
+
+Public privacy and terms pages are deployed from [`docs/`](./docs/) through GitHub Pages.

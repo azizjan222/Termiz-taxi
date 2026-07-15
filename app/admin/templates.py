@@ -17,6 +17,8 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans
 .sidebar a:hover, .sidebar a.active {{ color: #fff; background: #343a40; }}
 .main-content {{ padding: 20px; }}
 .stat-card {{ border-radius: 10px; padding: 20px; color: #fff; }}
+.logout-button {{ color: #adb5bd; background: transparent; border: 0; padding: 10px 20px; width: 100%; text-align: left; }}
+.logout-button:hover {{ color: #fff; background: #343a40; }}
 </style>
 </head>
 <body>
@@ -33,7 +35,10 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans
 <a href="/admin/routes">Yo'nalishlar</a>
 <a href="/admin/settings">Sozlamalar</a>
 <hr class="text-secondary">
-<a href="/admin/logout">Chiqish</a>
+<form method="POST" action="/admin/logout" id="logout-form">
+<input type="hidden" name="csrf_token" value="">
+<button type="submit" class="logout-button">Chiqish</button>
+</form>
 </nav>
 <main class="col-md-10 main-content">
 {content}
@@ -41,7 +46,30 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans
 </div>
 </div>
 <script src="{bootstrap_js}"></script>
-<script>function esc(s){{if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}}</script>
+<script>
+function adminCookie(name){{
+  const prefix=name+'=';
+  const part=document.cookie.split(';').map(v=>v.trim()).find(v=>v.startsWith(prefix));
+  return part?decodeURIComponent(part.slice(prefix.length)):'';
+}}
+const originalFetch=window.fetch.bind(window);
+window.fetch=function(input,init){{
+  const opts=Object.assign({{}},init||{{}});
+  const method=String(opts.method||(input instanceof Request?input.method:'GET')).toUpperCase();
+  const url=new URL(input instanceof Request?input.url:String(input),window.location.href);
+  if(!['GET','HEAD','OPTIONS'].includes(method)&&url.origin===window.location.origin){{
+    const headers=new Headers(opts.headers||(input instanceof Request?input.headers:undefined));
+    headers.set('X-CSRF-Token',adminCookie('admin_csrf'));
+    opts.headers=headers;
+  }}
+  return originalFetch(input,opts);
+}};
+document.addEventListener('DOMContentLoaded',()=>{{
+  const field=document.querySelector('#logout-form input[name="csrf_token"]');
+  if(field)field.value=adminCookie('admin_csrf');
+}});
+function esc(s){{if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}}
+</script>
 {extra_js}
 </body>
 </html>"""
@@ -63,6 +91,7 @@ LOGIN_HTML = """<!DOCTYPE html>
 <h4 class="text-center mb-4">Sarix Go Admin</h4>
 {error}
 <form method="POST" action="/admin/login">
+<input type="hidden" name="csrf_token" value="{csrf_token}">
 <div class="mb-3">
 <label class="form-label">Login</label>
 <input type="text" name="username" class="form-control" required autofocus>
@@ -319,15 +348,11 @@ DRIVERS_HTML = """<h2>Haydovchilar</h2>
 <div class="col-md-3"><input class="form-control" id="nd-tgid" placeholder="Telegram ID (ixtiyoriy)"></div>
 </div>
 <datalist id="car-models-list"></datalist>
-<div class="form-check mt-2">
-<input class="form-check-input" type="checkbox" id="nd-verified">
-<label class="form-check-label" for="nd-verified">Darhol tasdiqlangan (is_verified)</label>
-</div>
 <div class="mt-2">
 <button class="btn btn-success" onclick="createDriver()">Saqlash</button>
 <span class="ms-2" id="nd-result"></span>
 </div>
-<small class="text-muted mt-1">Hujjatlar (documents_submitted) avtomatik True qilinadi — haydovchi darhol ilovaga kira oladi.</small>
+<small class="text-muted mt-1">Haydovchi kutilmoqda holatida yaratiladi. U ilovada to'liq hujjatlarni yuklagach, alohida tasdiqlang.</small>
 </div>
 </div>
 <div class="mb-3">
@@ -442,8 +467,7 @@ pinfl:document.getElementById('nd-pinfl').value.trim(),
 car_number:document.getElementById('nd-carnum').value.trim(),
 car_model:document.getElementById('nd-model').value.trim(),
 car_year:document.getElementById('nd-year').value.trim(),
-telegram_id:document.getElementById('nd-tgid').value.trim(),
-is_verified:document.getElementById('nd-verified').checked
+telegram_id:document.getElementById('nd-tgid').value.trim()
 };
 if(!body.phone){alert('Telefon raqam kerak');return;}
 const res=document.getElementById('nd-result');
@@ -451,7 +475,7 @@ res.textContent='...';
 fetch('/admin/api/drivers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
 .then(r=>r.json().then(d=>({ok:r.ok,d}))).then(({ok,d})=>{
 res.innerHTML='<span class="text-'+(ok?'success':'danger')+'">'+esc(d.detail||d.error||'')+'</span>';
-if(ok){['nd-phone','nd-first','nd-last','nd-pinfl','nd-carnum','nd-model','nd-year','nd-tgid'].forEach(i=>document.getElementById(i).value='');document.getElementById('nd-verified').checked=false;loadDrivers();}
+if(ok){['nd-phone','nd-first','nd-last','nd-pinfl','nd-carnum','nd-model','nd-year','nd-tgid'].forEach(i=>document.getElementById(i).value='');loadDrivers();}
 }).catch(()=>{res.innerHTML='<span class="text-danger">Xato</span>';});
 }
 function verifyDriver(id){fetch('/admin/api/drivers/'+id+'/verify',{method:'POST'}).then(()=>loadDrivers());}
@@ -461,7 +485,8 @@ const raw=prompt("Qancha so'm qo'shilsin? (manfiy = ayirish)");
 if(raw===null)return;
 const amount=parseInt(raw);
 if(isNaN(amount)||amount===0){alert("Noto'g'ri summa");return;}
-fetch('/admin/api/drivers/'+id+'/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount})}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'Bajarildi');loadDrivers();}).catch(()=>alert('Xato'));
+const idempotency_key=(globalThis.crypto&&globalThis.crypto.randomUUID)?globalThis.crypto.randomUUID():`admin-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+fetch('/admin/api/drivers/'+id+'/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,idempotency_key})}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'Bajarildi');loadDrivers();}).catch(()=>alert('Xato'));
 }
 function pushDriver(id){
 const msg=prompt('Xabar matni:');
@@ -692,9 +717,15 @@ def render_page(title, content, extra_js=""):
     )
 
 
-def render_login(error=""):
+def render_login(error="", csrf_token=""):
     """Render the login page."""
+    from html import escape
+
     error_html = ""
     if error:
-        error_html = '<div class="alert alert-danger">{}</div>'.format(error)
-    return LOGIN_HTML.format(bootstrap_css=BOOTSTRAP_CSS, error=error_html)
+        error_html = '<div class="alert alert-danger">{}</div>'.format(escape(error))
+    return LOGIN_HTML.format(
+        bootstrap_css=BOOTSTRAP_CSS,
+        error=error_html,
+        csrf_token=escape(csrf_token, quote=True),
+    )

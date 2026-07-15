@@ -11,9 +11,24 @@ from app.bot.store import BotStore
 from app.models import Driver, OrderHistory
 
 
-def _make_driver(db, telegram_id=1001, phone="+998901112233", balance=100000):
-    d = Driver(telegram_id=telegram_id, phone=phone, balance=balance,
-               first_name="Ali", last_name="Valiyev")
+def _make_driver(
+    db,
+    telegram_id=1001,
+    phone="+998901112233",
+    balance=100000,
+    *,
+    is_verified=True,
+    documents_submitted=True,
+):
+    d = Driver(
+        telegram_id=telegram_id,
+        phone=phone,
+        balance=balance,
+        first_name="Ali",
+        last_name="Valiyev",
+        is_verified=is_verified,
+        documents_submitted=documents_submitted,
+    )
     db.add(d)
     db.commit()
     db.refresh(d)
@@ -119,6 +134,39 @@ def test_assign_rejected_when_balance_too_low(db):
     # Order stays available, balance untouched.
     assert store.get_order(order.id).status == "new"
     assert store.get_balance(1001) == 5000
+
+
+def test_assign_rejected_until_admin_verifies_documents(db):
+    store = BotStore()
+    driver = _make_driver(
+        db,
+        balance=100000,
+        is_verified=False,
+        documents_submitted=True,
+    )
+    order = store.create_order(
+        passenger_telegram_id=7010,
+        passenger_name="P",
+        passenger_phone="+998900000010",
+        from_city="A",
+        to_city="B",
+        person_count=1,
+        departure_time="Hozir",
+    )
+
+    pending = store.assign_order(order.id, driver.telegram_id)
+    assert pending.ok is False
+    assert pending.reason == "verification_pending"
+    assert store.get_order(order.id).status == "new"
+    assert store.get_balance(driver.telegram_id) == 100000
+
+    db.expire_all()
+    saved = db.query(Driver).filter_by(id=driver.id).one()
+    saved.is_verified = True
+    db.commit()
+
+    approved = store.assign_order(order.id, driver.telegram_id)
+    assert approved.ok is True
 
 
 def test_only_one_driver_wins(db):

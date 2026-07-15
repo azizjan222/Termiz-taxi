@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 from app import config
 from app.database import get_session
-from app.models import Driver, Order
+from app.models import BalanceTransaction, Driver, Order
 
 logger = logging.getLogger("sarixgo.commission")
 
@@ -51,27 +51,46 @@ def charge_due_commissions(now: datetime | None = None) -> int:
         )
 
         for order in orders:
-            driver = session.query(Driver).filter_by(id=order.driver_id).first()
-            if not driver:
-                # No driver to charge; mark so we don't keep re-scanning it.
-                order.commission_charged = True
+            # Atomically claim this commission before touching money. Multiple API
+            # workers/schedulers may scan the same candidate, but only one can flip the
+            # guard from false to true.
+            claimed = (
+                session.query(Order)
+                .filter(
+                    Order.id == order.id,
+                    Order.commission_charged == False,  # noqa: E712
+                    Order.status.in_(["accepted", "in_progress", "completed"]),
+                )
+                .update({"commission_charged": True}, synchronize_session=False)
+            )
+            if not claimed:
+                continue
+            session.refresh(order)
+
+            driver = (
+                session.query(Driver)
+                .filter_by(id=order.driver_id)
+                .with_for_update()
+                .first()
+            )
+            if not driver or _subscription_active(driver, now):
                 continue
 
-            # Free trial / active subscription -> no commission, just mark handled.
-            if _subscription_active(driver, now):
-                order.commission_charged = True
-                continue
-
-            # Charge the commission NET of any bonus the passenger spent on this ride
-            # (bonus is funded from commission, so the platform collects the remainder).
-            # For orders with no bonus this equals the gross commission.
             from app.services.rewards import effective_commission
             commission = effective_commission(order)
             if commission > 0:
                 driver.balance = (driver.balance or 0) - commission
-                # Money was actually deducted -> count it in revenue/stats.
+                session.add(BalanceTransaction(
+                    driver_id=driver.id,
+                    amount=-commission,
+                    balance_after=driver.balance,
+                    source="order_commission",
+                    reference_type="order",
+                    reference_id=order.id,
+                    idempotency_key=f"order:{order.id}:commission",
+                    note="Deferred order commission",
+                ))
                 order.commission_collected = True
-            order.commission_charged = True
             charged += 1
 
         session.commit()

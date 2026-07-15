@@ -156,6 +156,9 @@ export default function HomeScreen() {
           style={styles.serviceCard}
           onPress={() => startOrder('taxi')}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Taksi buyurtma qilish"
+          accessibilityHint="Olish va borish manzillarini tanlash oynasini ochadi"
         >
           <View style={[styles.serviceIcon, { backgroundColor: colors.accent }]}>
             <Text style={styles.serviceEmoji}>🚕</Text>
@@ -186,6 +189,9 @@ export default function HomeScreen() {
           style={styles.serviceCard}
           onPress={() => startOrder('parcel')}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Pochta buyurtma qilish"
+          accessibilityHint="Jo‘natmani olish va yetkazish manzillarini tanlash oynasini ochadi"
         >
           <View style={[styles.serviceIcon, { backgroundColor: '#E0E7FF' }]}>
             <Text style={styles.serviceEmoji}>📦</Text>
