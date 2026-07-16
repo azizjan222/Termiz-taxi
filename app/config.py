@@ -69,9 +69,20 @@ DRIVERS_GROUP_ID = _get_int("DRIVERS_GROUP_ID", 0)
 PERSISTENT_DATA_DIR = _get("DATA_DIR", "/data")
 
 
+def persistent_data_dir_available() -> bool:
+    """Return whether DATA_DIR points at an existing absolute volume path.
+
+    Relative paths such as ``./data`` are local working directories, not mounted
+    persistent volumes. Treating one as a volume after another process creates it can
+    incorrectly turn ``sqlite:///./data/test.db`` into ``sqlite:////data/sarixgo.db``.
+    """
+    data_dir = Path(PERSISTENT_DATA_DIR)
+    return data_dir.is_absolute() and data_dir.is_dir()
+
+
 def _resolve_database_url() -> str:
     raw = os.getenv("DATABASE_URL", "").strip()
-    volume_ok = os.path.isdir(PERSISTENT_DATA_DIR)
+    volume_ok = persistent_data_dir_available()
 
     # Railway/Heroku sometimes provide the legacy "postgres://" scheme, but SQLAlchemy 2.x
     # requires "postgresql://". Normalise it so the connection works out of the box.
@@ -120,7 +131,7 @@ def _resolve_upload_dir() -> str:
     mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
     if mount and os.path.isdir(mount):
         return os.path.join(mount, "uploads")
-    if os.path.isdir(PERSISTENT_DATA_DIR):
+    if persistent_data_dir_available():
         return os.path.join(PERSISTENT_DATA_DIR, "uploads")
     return "./data/uploads"
 
@@ -130,7 +141,7 @@ UPLOAD_DIR = _resolve_upload_dir()
 
 def _secrets_dir() -> str:
     """Directory on the persistent volume where auto-generated secrets are stored."""
-    base = PERSISTENT_DATA_DIR if os.path.isdir(PERSISTENT_DATA_DIR) else "./data"
+    base = PERSISTENT_DATA_DIR if persistent_data_dir_available() else "./data"
     d = os.path.join(base, ".secrets")
     try:
         os.makedirs(d, exist_ok=True)
