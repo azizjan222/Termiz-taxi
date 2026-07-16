@@ -32,16 +32,9 @@ def _load_local_image(url):
     if not url:
         return None
     try:
-        from app import config
-        # url is like "/uploads/driver_1_license_ab12cd.jpg" (or an absolute http URL,
-        # which we can't read from disk — skip those).
-        if str(url).startswith("http://") or str(url).startswith("https://"):
-            return None
-        filename = str(url).rsplit("/", 1)[-1]
-        if not filename or ".." in filename or "\\" in filename:
-            return None
-        path = os.path.join(str(config.UPLOAD_DIR), filename)
-        if not os.path.exists(path):
+        from app.api.uploads import resolve_upload_path
+        path = resolve_upload_path(str(url))
+        if not path or not path.exists() or not path.is_file():
             return None
         with open(path, "rb") as f:
             return io.BytesIO(f.read())

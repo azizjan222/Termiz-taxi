@@ -1,66 +1,128 @@
 """Payment endpoints - Click Uz, Payme, and manual card top-up."""
-import base64
+import asyncio
 import hashlib
 import hmac
-import json
 import logging
 import os
-import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
 from aiohttp import web
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from app import config
 from app.api.drivers import require_driver
 from app.database import get_session
-from app.models import Driver, Payment, Setting
+from app.models import BalanceTransaction, Driver, Payment
 
 logger = logging.getLogger(__name__)
 
-# Where uploaded payment screenshots are stored (same persistent volume as other uploads).
-TOPUP_UPLOAD_DIR = Path(config.UPLOAD_DIR)
+# Payment receipts are identity/financial documents and must never be public uploads.
+TOPUP_UPLOAD_DIR = Path(config.UPLOAD_DIR) / "private" / "receipts"
 TOPUP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    TOPUP_UPLOAD_DIR.chmod(0o700)
+except OSError:
+    pass
 TOPUP_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 TOPUP_MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
-def credit_driver_payment(session, payment: Payment):
-    """Credit a pending payment to the driver's DB balance.
+def _delete_pending_payment_artifacts(payment_id: int, file_path: Path) -> bool:
+    """Atomically delete an unreviewable pending payment and its local receipt.
 
-    Applies the 50% first-payment bonus using the same `first_payers` Setting logic
-    as the Click/Payme flows (so a driver never gets the bonus twice). Mutates the
-    payment (status/bonus_amount/processed_at) and the driver's balance, but does NOT
-    commit - the caller is responsible for committing.
-
-    Returns a tuple: (amount, bonus, driver).
+    Approval and cleanup both require ``status='pending'``. Only the transaction that
+    changes/deletes that row may remove the receipt, so an ambiguous Telegram timeout
+    can never destroy evidence for a payment that approval already claimed.
     """
+    session = get_session()
+    try:
+        deleted = session.query(Payment).filter_by(
+            id=payment_id, status="pending"
+        ).delete(synchronize_session=False)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+    if deleted == 1:
+        file_path.unlink(missing_ok=True)
+        return True
+    return False
+
+
+def credit_driver_payment(session, payment: Payment):
+    """Atomically approve one pending payment and credit its driver exactly once.
+
+    The pending -> processing conditional update is the idempotency gate. If another
+    callback already claimed the row this returns ``None`` without changing money.
+    Driver balance, one-time bonus flag, payment status, and immutable ledger row are
+    committed by the caller as one transaction.
+    """
+    payment_id = payment.id
+    if not payment_id:
+        return None
+
+    claimed = (
+        session.query(Payment)
+        .filter(Payment.id == payment_id, Payment.status == "pending")
+        .update({Payment.status: "processing"}, synchronize_session=False)
+    )
+    if claimed != 1:
+        session.rollback()
+        return None
+
+    payment = session.query(Payment).filter_by(id=payment_id).first()
+    if not payment:
+        session.rollback()
+        return None
+
     driver = session.query(Driver).filter_by(id=payment.driver_id).first()
-    bonus = 0
-    if driver:
-        first_payers = session.query(Setting).filter_by(key="first_payers").first()
-        first_payers_list = []
-        if first_payers and first_payers.value:
-            try:
-                first_payers_list = json.loads(first_payers.value)
-            except Exception:
-                first_payers_list = []
+    if not driver:
+        payment.status = "rejected"
+        payment.processed_at = datetime.utcnow()
+        return payment.amount, 0, None
 
-        if driver.telegram_id and driver.telegram_id not in first_payers_list:
-            bonus = int(payment.amount * 0.5)
-            first_payers_list.append(driver.telegram_id)
-            if first_payers:
-                first_payers.value = json.dumps(first_payers_list)
-            else:
-                session.add(Setting(key="first_payers", value=json.dumps(first_payers_list)))
+    # Atomically claim the driver's one-time first-top-up bonus. This is safe even if
+    # two different payment approvals for the same driver arrive concurrently.
+    bonus_claimed = (
+        session.query(Driver)
+        .filter(
+            Driver.id == driver.id,
+            Driver.first_payment_bonus_granted == False,  # noqa: E712
+        )
+        .update(
+            {Driver.first_payment_bonus_granted: True},
+            synchronize_session=False,
+        )
+    )
+    bonus = int(payment.amount * 0.5) if bonus_claimed == 1 else 0
+    total = payment.amount + bonus
 
-        driver.balance = (driver.balance or 0) + payment.amount + bonus
-        payment.bonus_amount = bonus
+    session.query(Driver).filter(Driver.id == driver.id).update(
+        {Driver.balance: func.coalesce(Driver.balance, 0) + total},
+        synchronize_session=False,
+    )
+    session.flush()
+    session.refresh(driver)
 
     payment.status = "approved"
+    payment.bonus_amount = bonus
     payment.processed_at = datetime.utcnow()
+    session.add(BalanceTransaction(
+        driver_id=driver.id,
+        amount=total,
+        balance_after=driver.balance or 0,
+        source="topup",
+        reference_type="payment",
+        reference_id=payment.id,
+        idempotency_key=f"payment:{payment.id}:approved",
+        note=f"{payment.provider} top-up; principal={payment.amount}; bonus={bonus}",
+    ))
     return payment.amount, bonus, driver
 
 
@@ -70,9 +132,8 @@ def _verify_click_signature(data: dict, action: str) -> bool:
     click_trans_id + service_id + SECRET_KEY + merchant_trans_id + amount + action + sign_time
     For complete: + merchant_prepare_id between merchant_trans_id and amount.
     """
-    if not config.CLICK_SECRET_KEY:
-        # If no secret configured, accept all (dev mode)
-        return True
+    if not (config.CLICK_ENABLED and config.CLICK_SECRET_KEY):
+        return False
 
     sign_string = data.get("sign_string", "")
     if not sign_string:
@@ -108,49 +169,33 @@ async def list_methods(request: web.Request) -> web.Response:
             "id": "card",
             "name": "Karta orqali",
             "icon": "💳",
-            "description": "Kartaga to'lab, chekni botga yuborasiz",
+            "description": "Kartaga to'lab, chekni ilovada yuklaysiz",
             "card_number": config.TOPUP_CARD_NUMBER,
             "card_holder": config.TOPUP_CARD_HOLDER,
             "instant": False,
         })
 
-    # Click Uz
-    if config.CLICK_MERCHANT_ID and config.CLICK_SERVICE_ID:
-        methods.append({
-            "id": "click",
-            "name": "Click Uz",
-            "icon": "💙",
-            "description": "Click Uz orqali to'lash",
-            "instant": True,
-        })
-    else:
-        methods.append({
-            "id": "click",
-            "name": "Click Uz",
-            "icon": "💙",
-            "description": "Tez orada qo'shiladi",
-            "instant": True,
-            "disabled": True,
-        })
+    # Automated providers are deliberately disabled until their merchant flows are
+    # completed and certified. Manual card transfer is the only active method.
+    methods.append({
+        "id": "click",
+        "name": "Click Uz",
+        "icon": "💙",
+        "description": "Tez orada qo'shiladi",
+        "instant": True,
+        "disabled": True,
+    })
 
-    # Payme
-    if config.PAYME_MERCHANT_ID:
-        methods.append({
-            "id": "payme",
-            "name": "Payme",
-            "icon": "💚",
-            "description": "Payme orqali to'lash",
-            "instant": True,
-        })
-    else:
-        methods.append({
-            "id": "payme",
-            "name": "Payme",
-            "icon": "💚",
-            "description": "Tez orada qo'shiladi",
-            "instant": True,
-            "disabled": True,
-        })
+    # Payme is intentionally unavailable until its full merchant state machine is
+    # implemented and certified. Never advertise a partial money flow.
+    methods.append({
+        "id": "payme",
+        "name": "Payme",
+        "icon": "💚",
+        "description": "Tez orada qo'shiladi",
+        "instant": True,
+        "disabled": True,
+    })
 
     return web.json_response({"methods": methods})
 
@@ -170,10 +215,23 @@ async def create_click_payment(request: web.Request) -> web.Response:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
     amount = int(data.get("amount", 0))
-    if amount < 1000:
-        return web.json_response({"error": "Minimal summa 1000 so'm"}, status=400)
+    if amount < config.TOPUP_MIN_AMOUNT or amount > config.TOPUP_MAX_AMOUNT:
+        return web.json_response(
+            {
+                "error": (
+                    f"Summa {config.TOPUP_MIN_AMOUNT} dan "
+                    f"{config.TOPUP_MAX_AMOUNT} so'mgacha bo'lishi kerak"
+                )
+            },
+            status=400,
+        )
 
-    if not config.CLICK_MERCHANT_ID:
+    if not (
+        config.CLICK_ENABLED
+        and config.CLICK_MERCHANT_ID
+        and config.CLICK_SERVICE_ID
+        and config.CLICK_SECRET_KEY
+    ):
         return web.json_response({
             "error": "Click Uz hozircha mavjud emas. Karta orqali to'ldiring",
         }, status=503)
@@ -183,6 +241,7 @@ async def create_click_payment(request: web.Request) -> web.Response:
     try:
         payment = Payment(
             driver_id=driver.id,
+            provider="click",
             amount=amount,
             status="pending",
         )
@@ -232,9 +291,17 @@ async def click_prepare(request: web.Request) -> web.Response:
 
     session = get_session()
     try:
-        payment = session.query(Payment).filter_by(id=int(transaction_param)).first()
+        payment = session.query(Payment).filter_by(
+            id=int(transaction_param), provider="click"
+        ).first()
         if not payment:
             return web.json_response({"error": -5, "error_note": "Transaction not found"})
+        try:
+            requested_amount = int(float(data.get("amount", 0)))
+        except (TypeError, ValueError):
+            requested_amount = 0
+        if payment.amount != requested_amount or payment.status not in {"pending", "approved"}:
+            return web.json_response({"error": -2, "error_note": "Invalid payment state"})
 
         return web.json_response({
             "click_trans_id": data.get("click_trans_id"),
@@ -268,7 +335,9 @@ async def click_complete(request: web.Request) -> web.Response:
 
     session = get_session()
     try:
-        payment = session.query(Payment).filter_by(id=int(transaction_param)).first()
+        payment = session.query(Payment).filter_by(
+            id=int(transaction_param), provider="click"
+        ).first()
         if not payment:
             return web.json_response({"error": -5, "error_note": "Transaction not found"})
 
@@ -282,35 +351,25 @@ async def click_complete(request: web.Request) -> web.Response:
             })
 
         if error_code == 0:
-            # Success - credit driver balance
-            driver = session.query(Driver).filter_by(id=payment.driver_id).first()
-            if driver:
-                # Apply 50% bonus on first top-up
-                from app.models import Setting
-                first_payers = session.query(Setting).filter_by(key="first_payers").first()
-                first_payers_list = []
-                if first_payers and first_payers.value:
-                    import json
-                    try:
-                        first_payers_list = json.loads(first_payers.value)
-                    except Exception:
-                        first_payers_list = []
+            try:
+                requested_amount = int(float(data.get("amount", 0)))
+            except (TypeError, ValueError):
+                requested_amount = 0
+            if requested_amount != payment.amount:
+                return web.json_response({"error": -2, "error_note": "Wrong amount"})
 
-                bonus = 0
-                if driver.telegram_id and driver.telegram_id not in first_payers_list:
-                    bonus = int(payment.amount * 0.5)
-                    first_payers_list.append(driver.telegram_id)
-                    if first_payers:
-                        first_payers.value = json.dumps(first_payers_list)
-                    else:
-                        session.add(Setting(key="first_payers", value=json.dumps(first_payers_list)))
-
-                driver.balance = (driver.balance or 0) + payment.amount + bonus
-                payment.bonus_amount = bonus
-
-            payment.status = "approved"
-            from datetime import datetime
-            payment.processed_at = datetime.utcnow()
+            click_transaction_id = str(data.get("click_trans_id", "")).strip()
+            duplicate = session.query(Payment).filter(
+                Payment.provider == "click",
+                Payment.provider_transaction_id == click_transaction_id,
+                Payment.id != payment.id,
+            ).first()
+            if not click_transaction_id or duplicate:
+                return web.json_response({"error": -3, "error_note": "Duplicate transaction"})
+            payment.provider_transaction_id = click_transaction_id
+            credited = credit_driver_payment(session, payment)
+            if not credited:
+                return web.json_response({"error": -4, "error_note": "Already processing"})
             session.commit()
 
             return web.json_response({
@@ -321,8 +380,14 @@ async def click_complete(request: web.Request) -> web.Response:
                 "error_note": "Success",
             })
         else:
-            payment.status = "rejected"
-            session.commit()
+            claimed = session.query(Payment).filter_by(
+                id=payment.id, provider="click", status="pending"
+            ).update(
+                {"status": "rejected", "processed_at": datetime.utcnow()},
+                synchronize_session=False,
+            )
+            if claimed:
+                session.commit()
             return web.json_response({
                 "error": error_code,
                 "error_note": "Cancelled",
@@ -333,152 +398,19 @@ async def click_complete(request: web.Request) -> web.Response:
 
 # ============= PAYME =============
 
-@require_driver
 async def create_payme_payment(request: web.Request) -> web.Response:
-    """POST /api/payments/payme/create
-    Returns Payme checkout URL.
-    """
-    driver: Driver = request["driver"]
-    try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
-
-    amount = int(data.get("amount", 0))
-    if amount < 1000:
-        return web.json_response({"error": "Minimal summa 1000 so'm"}, status=400)
-
-    if not config.PAYME_MERCHANT_ID:
-        return web.json_response({
-            "error": "Payme hozircha mavjud emas. Karta orqali to'ldiring",
-        }, status=503)
-
-    # Create payment record
-    session = get_session()
-    try:
-        payment = Payment(driver_id=driver.id, amount=amount, status="pending")
-        session.add(payment)
-        session.commit()
-        session.refresh(payment)
-        payment_id = payment.id
-    finally:
-        session.close()
-
-    # Payme uses base64-encoded params in URL
-    # Format: m=MERCHANT_ID;ac.account_id=PAYMENT_ID;a=AMOUNT_IN_TIYIN
-    amount_tiyin = amount * 100
-    params_str = f"m={config.PAYME_MERCHANT_ID};ac.account_id={payment_id};a={amount_tiyin}"
-    encoded = base64.b64encode(params_str.encode()).decode()
-    base_url = "https://test.paycom.uz" if config.PAYME_TEST_MODE else "https://checkout.paycom.uz"
-    url = f"{base_url}/{encoded}"
-
-    return web.json_response({
-        "payment_id": payment_id,
-        "url": url,
-        "amount": amount,
-    })
+    """Fail closed: Payme is not part of the active production payment flow."""
+    return web.json_response(
+        {"error": "Payme integratsiyasi hozircha o'chirilgan"}, status=503
+    )
 
 
 async def payme_webhook(request: web.Request) -> web.Response:
-    """POST /api/payments/payme/webhook
-    Payme JSON-RPC webhook (CheckPerformTransaction, CreateTransaction, etc.)
-    https://help.paycom.uz/
-    """
-    # Auth via Basic header (Paycom:SECRET_KEY)
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Basic "):
-        return web.json_response({
-            "error": {"code": -32504, "message": "Unauthorized"},
-        })
-
-    try:
-        decoded = base64.b64decode(auth[6:]).decode()
-        _, secret = decoded.split(":", 1)
-        if config.PAYME_SECRET_KEY and secret != config.PAYME_SECRET_KEY:
-            return web.json_response({
-                "error": {"code": -32504, "message": "Invalid credentials"},
-            })
-    except Exception:
-        return web.json_response({"error": {"code": -32504}})
-
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": {"code": -32700, "message": "Parse error"}})
-
-    method = body.get("method", "")
-    params = body.get("params", {})
-    request_id = body.get("id", 1)
-
-    # Implement minimum methods for Payme
-    # Full spec: https://developer.help.paycom.uz/protokol-merchant-api/
-    if method == "CheckPerformTransaction":
-        account = params.get("account", {})
-        payment_id = account.get("account_id")
-        amount = params.get("amount", 0) // 100  # tiyin to som
-
-        session = get_session()
-        try:
-            payment = session.query(Payment).filter_by(id=int(payment_id)).first()
-            if not payment:
-                return web.json_response({
-                    "id": request_id,
-                    "error": {"code": -31050, "message": "Payment not found"},
-                })
-            if payment.amount != amount:
-                return web.json_response({
-                    "id": request_id,
-                    "error": {"code": -31001, "message": "Wrong amount"},
-                })
-            return web.json_response({
-                "id": request_id,
-                "result": {"allow": True},
-            })
-        finally:
-            session.close()
-
-    elif method == "CreateTransaction":
-        # Implementation simplified - production needs full state machine
-        return web.json_response({
-            "id": request_id,
-            "result": {
-                "create_time": int(time.time() * 1000),
-                "transaction": str(params.get("id", "")),
-                "state": 1,
-            },
-        })
-
-    elif method == "PerformTransaction":
-        # Apply payment to balance
-        account = params.get("account", {})
-        payment_id = account.get("account_id")
-
-        session = get_session()
-        try:
-            payment = session.query(Payment).filter_by(id=int(payment_id)).first()
-            if payment and payment.status == "pending":
-                driver = session.query(Driver).filter_by(id=payment.driver_id).first()
-                if driver:
-                    driver.balance = (driver.balance or 0) + payment.amount
-                payment.status = "approved"
-                from datetime import datetime
-                payment.processed_at = datetime.utcnow()
-                session.commit()
-            return web.json_response({
-                "id": request_id,
-                "result": {
-                    "perform_time": int(time.time() * 1000),
-                    "transaction": str(params.get("id", "")),
-                    "state": 2,
-                },
-            })
-        finally:
-            session.close()
-
-    return web.json_response({
-        "id": request_id,
-        "error": {"code": -32601, "message": "Method not found"},
-    })
+    """Fail closed instead of exposing an incomplete merchant state machine."""
+    return web.json_response(
+        {"error": {"code": -32504, "message": "Payme integration disabled"}},
+        status=503,
+    )
 
 
 # ============= PAYMENT STATUS =============
@@ -510,6 +442,84 @@ async def get_payment_status(request: web.Request) -> web.Response:
     finally:
         session.close()
 
+
+
+@require_driver
+async def get_payment_receipt(request: web.Request) -> web.Response:
+    """Serve a manual-app receipt only to the driver who submitted it."""
+    driver: Driver = request["driver"]
+    try:
+        payment_id = int(request.match_info["id"])
+    except (KeyError, ValueError):
+        return web.json_response({"error": "Noto'g'ri payment ID"}, status=400)
+    session = get_session()
+    try:
+        payment = session.query(Payment).filter_by(
+            id=payment_id, driver_id=driver.id, provider="manual_app"
+        ).first()
+        stored_path = payment.photo_file_id if payment else None
+    finally:
+        session.close()
+    from app.api.uploads import resolve_upload_path
+    path = resolve_upload_path(stored_path)
+    if not path or not path.exists() or not path.is_file():
+        return web.Response(status=404)
+    return web.FileResponse(path, headers={
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    })
+
+
+def cleanup_expired_pending_payments(now: datetime | None = None) -> int:
+    """Cancel stale manual requests and delete locally stored receipt images."""
+    now = now or datetime.utcnow()
+    cutoff = now - timedelta(hours=max(1, config.TOPUP_PENDING_HOURS))
+    session = get_session()
+    # Atomically claim every still-pending stale row. Approval uses the inverse
+    # pending -> processing guard, so exactly one side can win and only cleanup-owned
+    # receipts are deleted after commit.
+    try:
+        claimed = session.query(Payment).filter(
+            Payment.provider.in_(["manual_app", "manual_bot"]),
+            Payment.status == "pending",
+            Payment.created_at <= cutoff,
+        ).update(
+            {Payment.status: "cancelled", Payment.processed_at: now},
+            synchronize_session=False,
+        )
+        claimed_payments = session.query(Payment).filter(
+            Payment.provider == "manual_app",
+            Payment.status == "cancelled",
+            Payment.processed_at == now,
+            Payment.photo_file_id.isnot(None),
+        ).all()
+        local_paths = [payment.photo_file_id for payment in claimed_payments]
+        session.commit()
+        count = int(claimed or 0)
+    except Exception:
+        session.rollback()
+        logger.exception("Could not clean up expired pending payments")
+        return 0
+    finally:
+        session.close()
+
+    from app.api.uploads import resolve_upload_path
+    for stored_path in local_paths:
+        path = resolve_upload_path(stored_path)
+        if path:
+            path.unlink(missing_ok=True)
+    return count
+
+
+async def payment_cleanup_loop() -> None:
+    """Periodically expire unreviewed manual payments."""
+    while True:
+        await asyncio.to_thread(cleanup_expired_pending_payments)
+        await asyncio.sleep(3600)
+
+
+def start_payment_cleanup_scheduler() -> asyncio.Task:
+    return asyncio.create_task(payment_cleanup_loop())
 
 
 # ============= IN-APP MANUAL TOP-UP (card + screenshot + admin approval) =============
@@ -581,34 +591,74 @@ async def topup_with_screenshot(request: web.Request) -> web.Response:
         logger.exception(f"topup multipart parse error: {e}")
         return web.json_response({"error": "Faylni o'qishda xatolik"}, status=400)
 
-    if amount < 1000:
-        return web.json_response({"error": "Minimal summa 1000 so'm"}, status=400)
+    if amount < config.TOPUP_MIN_AMOUNT or amount > config.TOPUP_MAX_AMOUNT:
+        return web.json_response(
+            {
+                "error": (
+                    f"Summa {config.TOPUP_MIN_AMOUNT} dan "
+                    f"{config.TOPUP_MAX_AMOUNT} so'mgacha bo'lishi kerak"
+                )
+            },
+            status=400,
+        )
     if not file_bytes:
         return web.json_response({"error": "To'lov skrinshotini yuklang"}, status=400)
+    from app.api.uploads import detect_image_extension
+    trusted_extension = detect_image_extension(file_bytes)
+    if not trusted_extension:
+        return web.json_response(
+            {"error": "Faqat haqiqiy JPG, PNG yoki WEBP rasm qabul qilinadi"},
+            status=400,
+        )
+    file_ext = trusted_extension
+
+    receipt_sha256 = hashlib.sha256(file_bytes).hexdigest()
+    session = get_session()
+    try:
+        duplicate = session.query(Payment).filter_by(receipt_sha256=receipt_sha256).first()
+        if duplicate:
+            return web.json_response(
+                {"error": "Bu to'lov cheki avval yuborilgan"}, status=409
+            )
+    finally:
+        session.close()
 
     # Save the screenshot to disk.
     new_filename = f"topup_{driver.id}_{uuid.uuid4().hex[:8]}{file_ext}"
     file_path = TOPUP_UPLOAD_DIR / new_filename
     try:
-        with open(file_path, "wb") as f:
+        with open(file_path, "xb") as f:
             f.write(file_bytes)
+        try:
+            file_path.chmod(0o600)
+        except OSError:
+            pass
     except Exception as e:
         logger.exception(f"topup save error: {e}")
         return web.json_response({"error": "Faylni saqlashda xatolik"}, status=500)
 
-    public_url = f"/uploads/{new_filename}"
+    stored_path = f"private/receipts/{new_filename}"
 
     # Create a pending payment row.
     session = get_session()
     try:
         payment = Payment(
             driver_id=driver.id,
+            provider="manual_app",
             amount=amount,
             status="pending",
-            photo_file_id=public_url,  # local path until the bot returns a telegram file_id
+            photo_file_id=stored_path,
+            receipt_sha256=receipt_sha256,
         )
         session.add(payment)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            file_path.unlink(missing_ok=True)
+            return web.json_response(
+                {"error": "Bu to'lov cheki avval yuborilgan"}, status=409
+            )
         session.refresh(payment)
         payment_id = payment.id
         drv_name = driver.first_name or ""
@@ -621,6 +671,14 @@ async def topup_with_screenshot(request: web.Request) -> web.Response:
     bot = request.app.get("bot")
     if bot is None:
         logger.error("topup: bot is not available on app context")
+        cleaned = _delete_pending_payment_artifacts(payment_id, file_path)
+        if not cleaned:
+            return web.json_response({
+                "success": True,
+                "payment_id": payment_id,
+                "status": "processing",
+                "message": "To'lov allaqachon qayta ishlanmoqda.",
+            }, status=202)
         return web.json_response({
             "error": "Hozircha to'lovni yuborib bo'lmadi. Keyinroq urinib ko'ring.",
         }, status=503)
@@ -642,29 +700,23 @@ async def topup_with_screenshot(request: web.Request) -> web.Response:
             f"🧷 Payment #{payment_id}"
         )
         with open(file_path, "rb") as photo:
-            sent = await bot.send_photo(
+            await bot.send_photo(
                 config.ADMIN_ID,
                 photo=photo,
                 caption=caption,
                 reply_markup=keyboard,
                 parse_mode="HTML",
             )
-        # Persist the telegram file_id for parity with the bot flow.
-        try:
-            if sent and sent.photo:
-                tg_file_id = sent.photo[-1].file_id
-                session = get_session()
-                try:
-                    p = session.query(Payment).filter_by(id=payment_id).first()
-                    if p:
-                        p.photo_file_id = tg_file_id
-                        session.commit()
-                finally:
-                    session.close()
-        except Exception:
-            pass
     except Exception as e:
         logger.exception(f"topup send_photo to admin failed: {e}")
+        cleaned = _delete_pending_payment_artifacts(payment_id, file_path)
+        if not cleaned:
+            return web.json_response({
+                "success": True,
+                "payment_id": payment_id,
+                "status": "processing",
+                "message": "To'lov allaqachon qayta ishlanmoqda.",
+            }, status=202)
         return web.json_response({
             "error": "To'lovni adminga yuborishda xatolik. Keyinroq urinib ko'ring.",
         }, status=502)
@@ -674,6 +726,6 @@ async def topup_with_screenshot(request: web.Request) -> web.Response:
         "payment_id": payment_id,
         "amount": amount,
         "status": "pending",
-        "screenshot_url": public_url,
+        "receipt_uploaded": True,
         "message": "To'lov skrinshoti yuborildi. Admin tasdiqlashini kuting.",
     })

@@ -443,10 +443,22 @@ export default function OrderDetailScreen() {
               </Text>
               <Text style={styles.passengerPhone}>{order.passenger_phone || '—'}</Text>
             </View>
-            <TouchableOpacity style={styles.smsBtn} onPress={smsPassenger}>
+            <TouchableOpacity
+              style={styles.smsBtn}
+              onPress={smsPassenger}
+              accessibilityRole="button"
+              accessibilityLabel={`${contactLabel}ga xabar yuborish`}
+              accessibilityHint="SMS ilovasini ochadi"
+            >
               <Text style={styles.smsBtnIcon}>💬</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.callBtn} onPress={callPassenger}>
+            <TouchableOpacity
+              style={styles.callBtn}
+              onPress={callPassenger}
+              accessibilityRole="button"
+              accessibilityLabel={`${contactLabel}ga qo‘ng‘iroq qilish`}
+              accessibilityHint="Telefon ilovasini ochadi"
+            >
               <Text style={styles.callBtnIcon}>📞</Text>
             </TouchableOpacity>
           </View>
@@ -530,7 +542,14 @@ export default function OrderDetailScreen() {
 
       {/* Action button — staged: accepted -> "picked up passenger", in_progress -> finish. */}
       <View style={styles.footer}>
-        <TouchableOpacity onPress={openNavigation} activeOpacity={0.85} style={{ marginBottom: spacing.sm }}>
+        <TouchableOpacity
+          onPress={openNavigation}
+          activeOpacity={0.85}
+          style={{ marginBottom: spacing.sm }}
+          accessibilityRole="button"
+          accessibilityLabel={enRoute ? "Yetkazish manziliga navigatsiya" : "Olish manziliga navigatsiya"}
+          accessibilityHint="Yandex Navigator, Yandex Maps yoki veb xaritani ochadi"
+        >
           <LinearGradient
             colors={['#2E8BFF', '#0B4FC8']}
             start={{ x: 0, y: 0 }}
@@ -546,7 +565,15 @@ export default function OrderDetailScreen() {
           </LinearGradient>
         </TouchableOpacity>
         {enRoute ? (
-          <TouchableOpacity onPress={handleComplete} disabled={loading} activeOpacity={0.85}>
+          <TouchableOpacity
+            onPress={handleComplete}
+            disabled={loading}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Buyurtmani yakunlash"
+            accessibilityHint="Tasdiqlangandan keyin buyurtmani tugallangan deb belgilaydi"
+            accessibilityState={{ disabled: loading, busy: loading }}
+          >
             <LinearGradient
               colors={gradients.gold}
               start={{ x: 0, y: 0 }}
@@ -561,7 +588,15 @@ export default function OrderDetailScreen() {
             </LinearGradient>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity onPress={handleStartTrip} disabled={loading} activeOpacity={0.85}>
+          <TouchableOpacity
+            onPress={handleStartTrip}
+            disabled={loading}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={isParcel ? "Jo‘natma olindi" : "Yo‘lovchi olindi"}
+            accessibilityHint="Tasdiqlangandan keyin safarni boshlaydi"
+            accessibilityState={{ disabled: loading, busy: loading }}
+          >
             <LinearGradient
               colors={gradients.navy}
               start={{ x: 0, y: 0 }}

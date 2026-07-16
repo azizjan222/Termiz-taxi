@@ -1,3 +1,6 @@
+# Pin all transitive production dependencies for reproducible deployments.
+-c requirements-prod.lock
+
 python-telegram-bot[job-queue]>=21.11
 apscheduler==3.10.4
 aiohttp>=3.9.0

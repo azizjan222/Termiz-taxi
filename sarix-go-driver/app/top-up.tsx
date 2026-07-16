@@ -178,6 +178,10 @@ export default function TopUpScreen() {
         onPress={() => !method.disabled && setSelectedMethod(method.id)}
         activeOpacity={0.85}
         disabled={method.disabled}
+        accessibilityRole="button"
+        accessibilityLabel={method.name}
+        accessibilityHint={method.description}
+        accessibilityState={{ selected: isSelected, disabled: Boolean(method.disabled) }}
       >
         <View style={styles.methodIcon}>
           <Text style={styles.methodIconText}>{method.icon}</Text>
@@ -249,6 +253,10 @@ export default function TopUpScreen() {
                   setAmount(a);
                   setCustomAmount('');
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={`${formatPrice(a)} so‘m`}
+                accessibilityHint="Balans to‘ldirish summasini tanlaydi"
+                accessibilityState={{ selected: amount === a && !customAmount }}
               >
                 <Text
                   style={[
@@ -269,6 +277,8 @@ export default function TopUpScreen() {
             keyboardType="number-pad"
             value={customAmount}
             onChangeText={(t) => setCustomAmount(t.replace(/[^\d]/g, ''))}
+            accessibilityLabel="Boshqa summa"
+            accessibilityHint="Balansga qo‘shiladigan summani so‘mda kiriting"
           />
 
           {/* Payment methods */}
@@ -356,6 +366,12 @@ export default function TopUpScreen() {
             variant="accent"
             fullWidth={false}
             style={{ flex: 1, marginLeft: spacing.md }}
+            accessibilityLabel={selectedMethod === 'card' ? "To‘lov tasdig‘ini yuborish" : "To‘lovni boshlash"}
+            accessibilityHint={
+              selectedMethod === 'card'
+                ? "Tanlangan skrinshotni admin tasdig‘i uchun yuboradi"
+                : "Tanlangan to‘lov provayderini ochadi"
+            }
           />
         </View>
       </KeyboardAvoidingView>

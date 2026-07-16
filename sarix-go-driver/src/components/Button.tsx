@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import {
   TouchableOpacity, Text, StyleSheet, ActivityIndicator,
-  ViewStyle, TextStyle, StyleProp,
+  ViewStyle, TextStyle, StyleProp, type AccessibilityProps,
 } from 'react-native';
 import { typography, radius } from '../theme';
 import { useThemeStore } from '../store/theme';
@@ -16,11 +16,17 @@ interface ButtonProps {
   fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
+  accessibilityLabel?: AccessibilityProps['accessibilityLabel'];
+  accessibilityHint?: AccessibilityProps['accessibilityHint'];
+  accessibilityRole?: AccessibilityProps['accessibilityRole'];
+  accessibilityState?: AccessibilityProps['accessibilityState'];
 }
 
 export const Button: React.FC<ButtonProps> = ({
   title, onPress, variant = 'accent',
   loading, disabled, fullWidth = true, style, textStyle,
+  accessibilityLabel = title, accessibilityHint,
+  accessibilityRole = 'button', accessibilityState,
 }) => {
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -53,6 +59,14 @@ export const Button: React.FC<ButtonProps> = ({
       onPress={onPress}
       disabled={isDisabled}
       activeOpacity={0.85}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{
+        ...accessibilityState,
+        disabled: isDisabled,
+        busy: Boolean(loading),
+      }}
     >
       {loading ? (
         <ActivityIndicator

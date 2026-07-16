@@ -1,5 +1,7 @@
 """Ratings API: passenger ↔ driver feedback after order completion."""
 from aiohttp import web
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from app.api.drivers import _get_driver_from_request
 from app.database import get_session
@@ -19,7 +21,10 @@ async def passenger_rate_driver(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    stars = int(data.get("stars", 0))
+    try:
+        stars = int(data.get("stars", 0))
+    except (TypeError, ValueError):
+        stars = 0
     if stars < 1 or stars > 5:
         return web.json_response({"error": "Yulduz 1 dan 5 gacha"}, status=400)
 
@@ -35,15 +40,15 @@ async def passenger_rate_driver(request: web.Request) -> web.Response:
         if not order.driver_id:
             return web.json_response({"error": "Haydovchi yo'q"}, status=400)
 
-        # Check if already rated
-        existing = session.query(Rating).filter_by(
-            order_id=order_id,
-            rater_type="passenger",
-            rater_id=user.id,
-        ).first()
-        if existing:
-            return web.json_response({"error": "Allaqachon baholangansiz"}, status=400)
-
+        # Lock the aggregate row so ratings for different orders cannot lose each
+        # other's count/average update. The DB unique constraint is the final duplicate
+        # guard for concurrent retries of the same order.
+        driver = (
+            session.query(Driver)
+            .filter_by(id=order.driver_id)
+            .with_for_update()
+            .first()
+        )
         rating = Rating(
             order_id=order_id,
             rater_type="passenger",
@@ -54,16 +59,18 @@ async def passenger_rate_driver(request: web.Request) -> web.Response:
             comment=comment if comment else None,
         )
         session.add(rating)
+        try:
+            session.flush()
+        except IntegrityError:
+            session.rollback()
+            return web.json_response({"error": "Allaqachon baholangansiz"}, status=409)
 
-        # Update driver rating average
-        driver = session.query(Driver).filter_by(id=order.driver_id).first()
         if driver:
-            old_count = driver.rating_count or 0
-            old_avg = driver.rating or 5.0
-            new_count = old_count + 1
-            new_avg = (old_avg * old_count + stars) / new_count
-            driver.rating_count = new_count
-            driver.rating = round(new_avg, 2)
+            average, count = session.query(
+                func.avg(Rating.stars), func.count(Rating.id)
+            ).filter_by(rated_type="driver", rated_id=driver.id).one()
+            driver.rating_count = int(count or 0)
+            driver.rating = round(float(average or 5.0), 2)
 
         session.commit()
         return web.json_response({"success": True, "driver_rating": driver.rating if driver else None})
@@ -85,7 +92,10 @@ async def driver_rate_passenger(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    stars = int(data.get("stars", 0))
+    try:
+        stars = int(data.get("stars", 0))
+    except (TypeError, ValueError):
+        stars = 0
     if stars < 1 or stars > 5:
         return web.json_response({"error": "Yulduz 1 dan 5 gacha"}, status=400)
 
@@ -101,14 +111,12 @@ async def driver_rate_passenger(request: web.Request) -> web.Response:
         if not order.passenger_id:
             return web.json_response({"error": "Yo'lovchi yo'q"}, status=400)
 
-        existing = session.query(Rating).filter_by(
-            order_id=order_id,
-            rater_type="driver",
-            rater_id=driver.id,
-        ).first()
-        if existing:
-            return web.json_response({"error": "Allaqachon baholangansiz"}, status=400)
-
+        passenger = (
+            session.query(User)
+            .filter_by(id=order.passenger_id)
+            .with_for_update()
+            .first()
+        )
         rating = Rating(
             order_id=order_id,
             rater_type="driver",
@@ -119,16 +127,18 @@ async def driver_rate_passenger(request: web.Request) -> web.Response:
             comment=comment if comment else None,
         )
         session.add(rating)
+        try:
+            session.flush()
+        except IntegrityError:
+            session.rollback()
+            return web.json_response({"error": "Allaqachon baholangansiz"}, status=409)
 
-        # Update passenger rating
-        passenger = session.query(User).filter_by(id=order.passenger_id).first()
         if passenger:
-            old_count = passenger.rating_count or 0
-            old_avg = passenger.rating or 5.0
-            new_count = old_count + 1
-            new_avg = (old_avg * old_count + stars) / new_count
-            passenger.rating_count = new_count
-            passenger.rating = round(new_avg, 2)
+            average, count = session.query(
+                func.avg(Rating.stars), func.count(Rating.id)
+            ).filter_by(rated_type="passenger", rated_id=passenger.id).one()
+            passenger.rating_count = int(count or 0)
+            passenger.rating = round(float(average or 5.0), 2)
 
         session.commit()
         return web.json_response({"success": True})

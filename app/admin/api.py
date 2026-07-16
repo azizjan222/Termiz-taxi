@@ -1,14 +1,16 @@
 """Admin panel JSON API endpoints."""
 import logging
+import re
 from collections import Counter, OrderedDict
 from datetime import datetime, timedelta
 
 from aiohttp import web
 from sqlalchemy import func
 
+from app.admin.audit import add_admin_audit
 from app.admin.middleware import require_admin_api
 from app.database import get_session
-from app.models import Driver, Order, Route, Setting, User
+from app.models import BalanceTransaction, Driver, Order, Route, Setting, User
 from app.services import notify_i18n as nt
 from app.services.driver_pdf import build_driver_pdf
 from app.services.push import send_push, send_push_bulk
@@ -245,6 +247,15 @@ async def api_push(request: web.Request) -> web.Response:
                     })
             sent_count = await send_push_bulk(session, items)
 
+        add_admin_audit(
+            session,
+            request,
+            "push.send",
+            target_type=target,
+            target_id=recipient_id if target == "specific" else None,
+            details={"recipient_type": recipient_type, "sent_count": sent_count},
+        )
+        session.commit()
         return web.json_response({
             "ok": True,
             "detail": f"{sent_count} ta xabar yuborildi",
@@ -262,7 +273,16 @@ async def api_verify_driver(request: web.Request) -> web.Response:
         driver = session.query(Driver).filter_by(id=driver_id).first()
         if not driver:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        from app.api.drivers import missing_driver_approval_requirements
+
+        missing = missing_driver_approval_requirements(driver)
+        if missing:
+            return web.json_response(
+                {"error": "Tasdiqlash uchun yetishmaydi: " + ", ".join(missing)},
+                status=400,
+            )
         driver.is_verified = True
+        add_admin_audit(session, request, "driver.verify", target_type="driver", target_id=driver.id)
         session.commit()
         return web.json_response({"ok": True, "detail": "Tasdiqlandi"})
     except Exception as e:
@@ -283,6 +303,9 @@ async def api_reject_driver(request: web.Request) -> web.Response:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
         driver.is_verified = False
         driver.documents_submitted = False
+        driver.is_online = False
+        driver.online_since = None
+        add_admin_audit(session, request, "driver.reject", target_type="driver", target_id=driver.id)
         session.commit()
         return web.json_response({"ok": True, "detail": "Rad etildi"})
     except Exception as e:
@@ -304,6 +327,7 @@ async def api_block_driver(request: web.Request) -> web.Response:
         driver.is_blocked = True
         driver.is_online = False  # take them offline immediately when blocked
         driver_db_id = driver.id
+        add_admin_audit(session, request, "driver.block", target_type="driver", target_id=driver.id)
         session.commit()
         # Best-effort push so the driver knows.
         try:
@@ -335,6 +359,7 @@ async def api_unblock_driver(request: web.Request) -> web.Response:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
         driver.is_blocked = False
         driver_db_id = driver.id
+        add_admin_audit(session, request, "driver.unblock", target_type="driver", target_id=driver.id)
         session.commit()
         try:
             await send_push(
@@ -356,10 +381,7 @@ async def api_unblock_driver(request: web.Request) -> web.Response:
 
 @require_admin_api
 async def api_topup_driver_balance(request: web.Request) -> web.Response:
-    """POST /admin/api/drivers/{id}/balance  Body: {"amount": 50000}
-
-    Credit a driver's balance directly from the web admin panel (group F).
-    """
+    """Idempotently adjust a driver balance from the web admin panel."""
     driver_id = int(request.match_info["id"])
     try:
         data = await request.json()
@@ -370,21 +392,94 @@ async def api_topup_driver_balance(request: web.Request) -> web.Response:
         amount = int(data.get("amount", 0))
     except (ValueError, TypeError):
         return web.json_response({"error": "Noto'g'ri summa"}, status=400)
-
     if amount == 0:
         return web.json_response({"error": "Summa 0 bo'lishi mumkin emas"}, status=400)
 
+    request_key = str(data.get("idempotency_key") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{8,100}", request_key):
+        return web.json_response(
+            {"error": "Yaroqli idempotency_key kerak (8-100 belgi)"}, status=400
+        )
+    ledger_key = f"admin:{request_key}"
+
     session = get_session()
     try:
-        driver = session.query(Driver).filter_by(id=driver_id).first()
+        existing = session.query(BalanceTransaction).filter_by(
+            idempotency_key=ledger_key
+        ).first()
+        if existing:
+            if existing.driver_id != driver_id or existing.amount != amount:
+                return web.json_response(
+                    {"error": "Bu idempotency_key boshqa o'zgarish uchun ishlatilgan"},
+                    status=409,
+                )
+            return web.json_response({
+                "ok": True,
+                "detail": "Balans avval yangilangan",
+                "balance": existing.balance_after,
+                "replayed": True,
+            })
+
+        # Serialize adjustments for one driver. The stable unique ledger key makes an
+        # HTTP retry a no-op; a uniqueness race rolls the whole balance transaction back.
+        driver = (
+            session.query(Driver)
+            .filter_by(id=driver_id)
+            .with_for_update()
+            .first()
+        )
         if not driver:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
-        driver.balance = (driver.balance or 0) + amount
-        new_balance = driver.balance
+
+        existing = session.query(BalanceTransaction).filter_by(
+            idempotency_key=ledger_key
+        ).first()
+        if existing:
+            if existing.driver_id != driver_id or existing.amount != amount:
+                return web.json_response(
+                    {"error": "Bu idempotency_key boshqa o'zgarish uchun ishlatilgan"},
+                    status=409,
+                )
+            return web.json_response({
+                "ok": True,
+                "detail": "Balans avval yangilangan",
+                "balance": existing.balance_after,
+                "replayed": True,
+            })
+
+        session.query(Driver).filter(Driver.id == driver.id).update(
+            {Driver.balance: func.coalesce(Driver.balance, 0) + amount},
+            synchronize_session=False,
+        )
+        session.flush()
+        session.refresh(driver)
+        new_balance = driver.balance or 0
         driver_db_id = driver.id
+        audit = add_admin_audit(
+            session,
+            request,
+            "driver.balance_adjust",
+            target_type="driver",
+            target_id=driver.id,
+            details={
+                "amount": amount,
+                "balance_after": new_balance,
+                "idempotency_key": request_key,
+            },
+        )
+        session.flush()
+        session.add(BalanceTransaction(
+            driver_id=driver.id,
+            amount=amount,
+            balance_after=new_balance,
+            source="admin_adjustment",
+            reference_type="admin_audit",
+            reference_id=audit.id,
+            idempotency_key=ledger_key,
+            note="Admin panel balance adjustment",
+        ))
         session.commit()
 
-        # Best-effort push notification to the driver.
         try:
             if amount > 0:
                 from app.services.push import notify_balance_topup
@@ -396,9 +491,31 @@ async def api_topup_driver_balance(request: web.Request) -> web.Response:
             "ok": True,
             "detail": f"Balans yangilandi: {new_balance:,} so'm".replace(",", " "),
             "balance": new_balance,
+            "replayed": False,
         })
     except Exception as e:
         session.rollback()
+        # A concurrent retry may win the unique key race. Report the committed result
+        # instead of turning a successful one-time adjustment into a 500 response.
+        try:
+            existing = session.query(BalanceTransaction).filter_by(
+                idempotency_key=ledger_key
+            ).first()
+        except Exception:
+            existing = None
+        if existing:
+            if existing.driver_id == driver_id and existing.amount == amount:
+                return web.json_response({
+                    "ok": True,
+                    "detail": "Balans avval yangilangan",
+                    "balance": existing.balance_after,
+                    "replayed": True,
+                })
+            return web.json_response(
+                {"error": "Bu idempotency_key boshqa o'zgarish uchun ishlatilgan"},
+                status=409,
+            )
+        logger.exception("Admin balance adjustment failed")
         return web.json_response({"error": str(e)}, status=500)
     finally:
         session.close()
@@ -440,12 +557,27 @@ async def api_update_route(request: web.Request) -> web.Response:
         route = session.query(Route).filter_by(id=route_id).first()
         if not route:
             return web.json_response({"error": "Yo'nalish topilmadi"}, status=404)
-        if "price_per_person" in data:
-            route.price_per_person = int(data["price_per_person"])
-        if "full_car_price" in data:
-            route.full_car_price = int(data["full_car_price"])
-        if "parcel_price" in data:
-            route.parcel_price = int(data["parcel_price"])
+        old_values = {
+            "price_per_person": route.price_per_person,
+            "full_car_price": route.full_car_price,
+            "parcel_price": route.parcel_price,
+        }
+        new_values = dict(old_values)
+        for field in ("price_per_person", "full_car_price", "parcel_price"):
+            if field in data:
+                value = int(data[field])
+                if value < 0:
+                    return web.json_response({"error": "Narx manfiy bo'lishi mumkin emas"}, status=400)
+                setattr(route, field, value)
+                new_values[field] = value
+        add_admin_audit(
+            session,
+            request,
+            "route.update",
+            target_type="route",
+            target_id=route.id,
+            details={"before": old_values, "after": new_values},
+        )
         session.commit()
         return web.json_response({"ok": True, "detail": "Saqlandi"})
     except Exception as e:
@@ -491,14 +623,34 @@ async def api_update_settings(request: web.Request) -> web.Response:
 
     session = get_session()
     try:
-        for key in ("commission_percent", "free_trial_days", "free_trial_limit", "min_balance"):
-            if key in data:
-                existing = session.query(Setting).filter_by(key=key).first()
-                if existing:
-                    existing.value = str(data[key])
-                    existing.updated_at = datetime.utcnow()
-                else:
-                    session.add(Setting(key=key, value=str(data[key])))
+        limits = {
+            "commission_percent": (0, 100),
+            "free_trial_days": (0, 3650),
+            "free_trial_limit": (0, 1_000_000),
+            "min_balance": (0, 1_000_000_000),
+        }
+        changes = {}
+        for key, (minimum, maximum) in limits.items():
+            if key not in data:
+                continue
+            value = int(data[key])
+            if not minimum <= value <= maximum:
+                return web.json_response({"error": f"{key} diapazondan tashqarida"}, status=400)
+            existing = session.query(Setting).filter_by(key=key).first()
+            previous = existing.value if existing else None
+            if existing:
+                existing.value = str(value)
+                existing.updated_at = datetime.utcnow()
+            else:
+                session.add(Setting(key=key, value=str(value)))
+            changes[key] = {"before": previous, "after": value}
+        add_admin_audit(
+            session,
+            request,
+            "settings.update",
+            target_type="settings",
+            details={"changes": changes},
+        )
         session.commit()
         return web.json_response({"ok": True, "detail": "Sozlamalar saqlandi"})
     except Exception as e:
@@ -676,13 +828,15 @@ async def api_driver_photo(request: web.Request) -> web.Response:
     finally:
         session.close()
 
-    # 1) Uploaded image on local disk (served by the public /uploads route).
+    # 1) App-uploaded image on local/private disk.
     if uploaded_url:
-        from app.api.uploads import UPLOAD_DIR
-        fname = uploaded_url.rsplit("/", 1)[-1]
-        fpath = UPLOAD_DIR / fname
-        if fpath.exists():
-            return web.FileResponse(fpath)
+        from app.api.uploads import resolve_upload_path
+        fpath = resolve_upload_path(uploaded_url)
+        if fpath and fpath.exists() and fpath.is_file():
+            return web.FileResponse(fpath, headers={
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            })
 
     # 2) Telegram file stored by the bot at registration.
     if file_id:
@@ -708,9 +862,8 @@ async def api_create_driver(request: web.Request) -> web.Response:
     """POST /admin/api/drivers - create a driver from the web admin panel.
 
     Body: phone (required), first_name, last_name, pinfl, car_number, car_model,
-    car_year, telegram_id (optional), is_verified (bool). The driver is created with
-    documents_submitted=True so they can use the app immediately. Duplicate phone /
-    telegram_id is rejected.
+    car_year, telegram_id (optional). Admin-created drivers remain unverified and must
+    upload the same document evidence as self-registered drivers before approval.
     """
     try:
         data = await request.json()
@@ -753,10 +906,19 @@ async def api_create_driver(request: web.Request) -> web.Response:
             car_number=(str(data.get("car_number") or "")).strip().upper() or None,
             car_model=(str(data.get("car_model") or "")).strip() or None,
             car_year=(str(data.get("car_year") or "")).strip() or None,
-            documents_submitted=True,
-            is_verified=bool(data.get("is_verified", False)),
+            documents_submitted=False,
+            is_verified=False,
         )
         session.add(driver)
+        session.flush()
+        add_admin_audit(
+            session,
+            request,
+            "driver.create",
+            target_type="driver",
+            target_id=driver.id,
+            details={"phone": phone, "is_verified": False},
+        )
         session.commit()
         session.refresh(driver)
         return web.json_response({

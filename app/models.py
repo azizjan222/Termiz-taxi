@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Float,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -59,6 +61,14 @@ class User(Base):
     orders = relationship("Order", back_populates="passenger", foreign_keys="Order.passenger_id")
     addresses = relationship("SavedAddress", back_populates="user", cascade="all, delete-orphan")
 
+    __table_args__ = (
+        CheckConstraint("bonus_balance >= 0", name="ck_user_bonus_nonnegative"),
+        CheckConstraint("loyalty_points >= 0", name="ck_user_loyalty_points_nonnegative"),
+        CheckConstraint("loyalty_lifetime_rides >= 0", name="ck_user_rides_nonnegative"),
+        CheckConstraint("rating >= 1 AND rating <= 5", name="ck_user_rating_range"),
+        CheckConstraint("rating_count >= 0", name="ck_user_rating_count_nonnegative"),
+    )
+
 
 # ============= DRIVERS =============
 class Driver(Base):
@@ -91,6 +101,9 @@ class Driver(Base):
     car_photo_file_id = Column(String(200))
     documents_submitted = Column(Boolean, default=False)
     is_verified = Column(Boolean, default=False)  # admin approved documents
+    # True once the 50% first-top-up bonus has been claimed. A dedicated DB column
+    # makes the one-time grant atomically enforceable; JSON Setting lists cannot.
+    first_payment_bonus_granted = Column(Boolean, default=False, nullable=False)
     balance = Column(Integer, default=0)
     is_blocked = Column(Boolean, default=False)
     is_online = Column(Boolean, default=False)
@@ -120,6 +133,13 @@ class Driver(Base):
 
     orders = relationship("Order", back_populates="driver", foreign_keys="Order.driver_id")
 
+    __table_args__ = (
+        CheckConstraint("seats > 0", name="ck_driver_seats_positive"),
+        CheckConstraint("rating >= 1 AND rating <= 5", name="ck_driver_rating_range"),
+        CheckConstraint("rating_count >= 0", name="ck_driver_rating_count_nonnegative"),
+        CheckConstraint("total_orders >= 0", name="ck_driver_total_orders_nonnegative"),
+    )
+
 
 # ============= ROUTES =============
 class Route(Base):
@@ -139,6 +159,9 @@ class Route(Base):
 
     __table_args__ = (
         Index("idx_route_pair", "from_city", "to_city", unique=True),
+        CheckConstraint("price_per_person >= 0", name="ck_route_person_price_nonnegative"),
+        CheckConstraint("full_car_price >= 0", name="ck_route_full_price_nonnegative"),
+        CheckConstraint("parcel_price >= 0", name="ck_route_parcel_price_nonnegative"),
     )
 
 
@@ -204,6 +227,8 @@ class Order(Base):
     # Set True once the driver has been sent the "commission will be charged in N
     # minutes" heads-up, so the scheduler never warns the same order twice.
     commission_warned = Column(Boolean, default=False)
+    # Durable idempotency guard for loyalty/referral grants on completion.
+    rewards_applied = Column(Boolean, default=False, nullable=False)
 
     # Status
     status = Column(String(30), default="new", index=True)
@@ -228,6 +253,24 @@ class Order(Base):
     passenger = relationship("User", back_populates="orders", foreign_keys=[passenger_id])
     driver = relationship("Driver", back_populates="orders", foreign_keys=[driver_id])
 
+    __table_args__ = (
+        CheckConstraint(
+            "service_type IN ('taxi', 'parcel', 'full_car')",
+            name="ck_order_service_type",
+        ),
+        CheckConstraint(
+            "status IN ('new', 'accepted', 'in_progress', 'completed', 'cancelled', 'expired')",
+            name="ck_order_status",
+        ),
+        CheckConstraint("person_count >= 1", name="ck_order_person_count_positive"),
+        CheckConstraint("price >= 0", name="ck_order_price_nonnegative"),
+        CheckConstraint("commission >= 0", name="ck_order_commission_nonnegative"),
+        CheckConstraint("bonus_used >= 0", name="ck_order_bonus_nonnegative"),
+        CheckConstraint("bonus_used <= commission", name="ck_order_bonus_within_commission"),
+        CheckConstraint("male_count >= 0", name="ck_order_male_count_nonnegative"),
+        CheckConstraint("female_count >= 0", name="ck_order_female_count_nonnegative"),
+    )
+
 
 # ============= OTP =============
 class OtpCode(Base):
@@ -245,17 +288,54 @@ class OtpCode(Base):
 
 # ============= PAYMENTS =============
 class Payment(Base):
-    """Driver balance top-up records."""
+    """Driver balance top-up records with provider-scoped idempotency."""
     __tablename__ = "payments"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    driver_id = Column(Integer, ForeignKey("drivers.id"))
+    driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=False, index=True)
+    provider = Column(String(20), nullable=False, default="manual_app", index=True)
+    provider_transaction_id = Column(String(100), nullable=True)
     amount = Column(Integer, nullable=False)
-    bonus_amount = Column(Integer, default=0)
-    photo_file_id = Column(String(200))  # Telegram file_id
-    status = Column(String(20), default="pending")  # pending, approved, rejected
-    created_at = Column(DateTime, default=datetime.utcnow)
+    bonus_amount = Column(Integer, default=0, nullable=False)
+    photo_file_id = Column(String(500))  # Telegram file_id or private upload path
+    receipt_sha256 = Column(String(64), nullable=True)
+    status = Column(String(20), default="pending", nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     processed_at = Column(DateTime)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "provider", "provider_transaction_id",
+            name="uq_payment_provider_transaction",
+        ),
+        UniqueConstraint("receipt_sha256", name="uq_payment_receipt_sha256"),
+        CheckConstraint("amount > 0", name="ck_payment_amount_positive"),
+        CheckConstraint("bonus_amount >= 0", name="ck_payment_bonus_nonnegative"),
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'approved', 'rejected', 'cancelled')",
+            name="ck_payment_status",
+        ),
+    )
+
+
+class BalanceTransaction(Base):
+    """Immutable audit ledger for every driver balance mutation."""
+    __tablename__ = "balance_transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=False, index=True)
+    amount = Column(Integer, nullable=False)
+    balance_after = Column(Integer, nullable=False)
+    source = Column(String(30), nullable=False, index=True)
+    reference_type = Column(String(30), nullable=True)
+    reference_id = Column(Integer, nullable=True)
+    idempotency_key = Column(String(120), nullable=False, unique=True, index=True)
+    note = Column(String(250), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    __table_args__ = (
+        CheckConstraint("amount != 0", name="ck_balance_transaction_amount_nonzero"),
+    )
 
 
 # ============= SAVED ADDRESSES =============
@@ -307,6 +387,7 @@ class BonusTransaction(Base):
     source = Column(String(20), index=True)  # referral, loyalty, redeem, promo, admin
     reason = Column(String(200))
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
+    idempotency_key = Column(String(120), nullable=True, unique=True, index=True)
     balance_after = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
@@ -319,6 +400,30 @@ class Setting(Base):
     key = Column(String(100), primary_key=True)
     value = Column(Text)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SchemaMigration(Base):
+    """Applied lightweight schema migration versions for existing deployments."""
+    __tablename__ = "schema_migrations"
+
+    version = Column(Integer, primary_key=True)
+    name = Column(String(200), nullable=False)
+    applied_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AdminAuditLog(Base):
+    """Append-only record of security-sensitive admin actions."""
+    __tablename__ = "admin_audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    admin_username = Column(String(100), nullable=False)
+    action = Column(String(100), nullable=False, index=True)
+    target_type = Column(String(50), nullable=True)
+    target_id = Column(String(100), nullable=True)
+    details = Column(Text, nullable=True)
+    remote_ip = Column(String(64), nullable=True)
+    user_agent = Column(String(300), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
 # ============= STATISTICS =============
@@ -337,6 +442,11 @@ class OrderHistory(Base):
     actor_phone = Column(String(20))
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
 
+    __table_args__ = (
+        UniqueConstraint("order_id", "action", name="uq_order_history_action"),
+        CheckConstraint("action IN ('completed', 'cancelled')", name="ck_order_history_action"),
+    )
+
 
 # ============= RATINGS =============
 class Rating(Base):
@@ -345,13 +455,20 @@ class Rating(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
-    rater_type = Column(String(20))  # 'passenger' or 'driver'
-    rater_id = Column(Integer)
-    rated_type = Column(String(20))  # 'passenger' or 'driver'
-    rated_id = Column(Integer)
-    stars = Column(Integer)  # 1-5
+    rater_type = Column(String(20), nullable=False)  # 'passenger' or 'driver'
+    rater_id = Column(Integer, nullable=False)
+    rated_type = Column(String(20), nullable=False)  # 'passenger' or 'driver'
+    rated_id = Column(Integer, nullable=False)
+    stars = Column(Integer, nullable=False)  # 1-5
     comment = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("order_id", "rater_type", name="uq_rating_order_rater_type"),
+        CheckConstraint("stars >= 1 AND stars <= 5", name="ck_rating_stars"),
+        CheckConstraint("rater_type IN ('passenger', 'driver')", name="ck_rating_rater_type"),
+        CheckConstraint("rated_type IN ('passenger', 'driver')", name="ck_rating_rated_type"),
+    )
 
 
 # ============= NOTIFICATIONS LOG =============

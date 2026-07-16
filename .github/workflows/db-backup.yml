@@ -1,54 +1,67 @@
 name: Daily DB Backup (Postgres)
 
-# Creates a daily gzipped pg_dump of the production database and stores it as a
-# downloadable GitHub artifact (kept 30 days).
-#
-# SETUP (one-time):
-#   1. This only works for a POSTGRES database that is reachable from the internet.
-#      On Railway use the PUBLIC connection string (the internal *.railway.internal
-#      host is NOT reachable from GitHub Actions).
-#   2. Add it as a repository secret named DATABASE_URL:
-#         Settings -> Secrets and variables -> Actions -> New repository secret
-#   3. (Optional) trigger a manual run from the Actions tab to test.
-#
-# NOTE: If the app runs on SQLite (a Railway volume), GitHub Actions cannot reach that
-# file. Use `python scripts/backup_db.py` on the server instead (e.g. a scheduled job),
-# or switch to Postgres.
-
 on:
   schedule:
-    - cron: "0 2 * * *"   # every day at 02:00 UTC
-  workflow_dispatch: {}    # allow manual runs
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-db-backup
+  cancel-in-progress: false
 
 jobs:
   backup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - name: Install postgresql-client
+      - name: Validate backup configuration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          test -n "$DATABASE_URL" || { echo "::error::DATABASE_URL secret is required; no backup was created"; exit 1; }
+          case "$DATABASE_URL" in
+            postgres://*|postgresql://*) ;;
+            *) echo "::error::DATABASE_URL must be PostgreSQL for this workflow"; exit 1 ;;
+          esac
 
-      - name: Dump database
+      - name: Dump and verify database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${DATABASE_URL:-}" ]; then
-            echo "::warning::DATABASE_URL secret is not set - skipping backup."
-            exit 0
-          fi
-          # Normalise the legacy postgres:// scheme to postgresql:// for pg_dump.
           URL="${DATABASE_URL/postgres:\/\//postgresql://}"
           ts=$(date -u +%Y%m%d-%H%M%S)
           mkdir -p backups
-          pg_dump --no-owner --no-privileges "$URL" | gzip > "backups/sarixgo-$ts.sql.gz"
-          ls -lh backups
+          docker run --rm postgres:17.5 pg_dump --no-owner --no-privileges "$URL" \
+            | gzip -9 > "backups/sarixgo-$ts.sql.gz"
+          test -s "backups/sarixgo-$ts.sql.gz"
+          gzip -t "backups/sarixgo-$ts.sql.gz"
+          sha256sum "backups/sarixgo-$ts.sql.gz" > "backups/sarixgo-$ts.sql.gz.sha256"
 
-      - name: Upload backup artifact
+      - name: Restore verification in disposable PostgreSQL
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name sarixgo-restore \
+            -e POSTGRES_PASSWORD=restore-test postgres:17.5
+          trap 'docker stop sarixgo-restore >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            docker exec sarixgo-restore pg_isready -U postgres && break
+            sleep 1
+          done
+          docker exec sarixgo-restore pg_isready -U postgres
+          gunzip -c backups/*.sql.gz | docker exec -i sarixgo-restore psql \
+            -v ON_ERROR_STOP=1 -U postgres -d postgres
+          TABLE_COUNT=$(docker exec sarixgo-restore psql -At -U postgres -d postgres \
+            -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';")
+          test "$TABLE_COUNT" -gt 0 || { echo "::error::Restored backup has no public tables"; exit 1; }
+
+      - name: Upload verified backup artifact
         uses: actions/upload-artifact@v4
         with:
           name: db-backup-${{ github.run_id }}
-          path: backups/*.sql.gz
+          path: backups/*
           retention-days: 30
-          if-no-files-found: ignore
+          if-no-files-found: error

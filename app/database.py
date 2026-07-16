@@ -1,12 +1,15 @@
 """Database session management."""
 import logging
-import os
 from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config import DATABASE_URL, PERSISTENT_DATA_DIR
+from app.config import (
+    DATABASE_URL,
+    PERSISTENT_DATA_DIR,
+    persistent_data_dir_available,
+)
 from app.models import Base
 
 logger = logging.getLogger("sarixgo.db")
@@ -21,7 +24,7 @@ if DATABASE_URL.startswith("sqlite"):
     except Exception as e:  # pragma: no cover
         logger.warning("Could not create DB directory %s: %s", db_dir, e)
 
-    persistent = os.path.isdir(PERSISTENT_DATA_DIR) and str(db_dir).startswith(
+    persistent = persistent_data_dir_available() and str(db_dir).startswith(
         PERSISTENT_DATA_DIR.rstrip("/")
     )
     if persistent:

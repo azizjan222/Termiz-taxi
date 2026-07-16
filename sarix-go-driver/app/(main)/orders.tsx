@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
   TouchableOpacity, Alert, Switch,
@@ -24,12 +24,15 @@ export default function OrdersScreen() {
   const driver = useDriverStore((s) => s.driver);
   const isOnline = useDriverStore((s) => s.isOnline);
   const setOnlineLocal = useDriverStore((s) => s.setOnline);
+  const isVerified = driver?.is_verified === true;
+  const onlineEnabled = isVerified && isOnline;
 
   const [orders, setOrders] = useState<DriverOrder[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [accepting, setAccepting] = useState<number | null>(null);
   const [canReceive, setCanReceive] = useState(true);
   const [receiveMsg, setReceiveMsg] = useState('');
+  const [receiveCode, setReceiveCode] = useState('');
   // The newest incoming order shown in the ride-hailing style popup.
   const [incomingOrder, setIncomingOrder] = useState<DriverOrder | null>(null);
   const canReceiveRef = useRef(true);
@@ -49,24 +52,39 @@ export default function OrdersScreen() {
     isOnlineRef.current = isOnline;
   }, [isOnline]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setRefreshing(true);
     try {
       const res = await listAvailableOrders();
       setCanReceive(res.can_receive !== false);
       setReceiveMsg(res.message || '');
+      setReceiveCode(res.code || '');
       setOrders(res.can_receive === false ? [] : res.orders);
+      const currentDriver = useDriverStore.getState().driver;
+      if (currentDriver && res.is_verified !== undefined) {
+        useDriverStore.getState().setDriver({
+          ...currentDriver,
+          is_verified: res.is_verified,
+          documents_submitted:
+            res.documents_submitted ?? currentDriver.documents_submitted,
+          is_online: res.is_online ?? currentDriver.is_online,
+        });
+      }
+      if (res.is_online !== undefined) {
+        setOnlineLocal(res.is_online);
+        isOnlineRef.current = res.is_online;
+      }
     } catch {
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [setOnlineLocal]);
 
   useEffect(() => {
     load();
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [load]);
 
   // Consume real-time events from the app-wide realtime store. The socket itself
   // lives in src/services/realtime.ts and is mounted in app/_layout.tsx, so the
@@ -94,6 +112,16 @@ export default function OrdersScreen() {
   }, [lastEvent]);
 
   const toggleOnline = async (val: boolean) => {
+    if (val && !isVerified) {
+      setOnlineLocal(false);
+      Alert.alert(
+        'Hujjatlar tasdiqlanmagan',
+        driver?.documents_submitted
+          ? 'Hujjatlaringiz administrator tekshiruvida. Tasdiqlanishini kuting.'
+          : 'Avval barcha haydovchi hujjatlarini yuboring.'
+      );
+      return;
+    }
     setOnlineLocal(val);
     isOnlineRef.current = val;
     // Going offline: immediately clear the visible list + any incoming popup so the
@@ -290,6 +318,13 @@ export default function OrdersScreen() {
             onPress={() => handleAccept(item)}
             disabled={insufficientBalance || accepting === item.id}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.from_city}dan ${item.to_city}ga buyurtmani qabul qilish`}
+            accessibilityHint="Buyurtmani sizga biriktiradi va tafsilotlarini ochadi"
+            accessibilityState={{
+              disabled: insufficientBalance || accepting === item.id,
+              busy: accepting === item.id,
+            }}
           >
             <LinearGradient
               colors={insufficientBalance ? ([colors.border, colors.border] as const) : gradients.gold}
@@ -315,21 +350,30 @@ export default function OrdersScreen() {
           <Text style={styles.title}>{t('home.available')}</Text>
           <Text style={styles.headerSub}>Sarix Go Driver</Text>
         </View>
-        <View style={[styles.onlinePill, isOnline && styles.onlinePillActive]}>
+        <View style={[styles.onlinePill, onlineEnabled && styles.onlinePillActive]}>
           <View
             style={[
               styles.statusDot,
-              { backgroundColor: isOnline ? colors.success : colors.textMuted },
+              { backgroundColor: onlineEnabled ? colors.success : colors.textMuted },
             ]}
           />
-          <Text style={[styles.onlineLabel, isOnline && styles.onlineLabelActive]}>
-            {isOnline ? t('home.online') : t('home.offline')}
+          <Text style={[styles.onlineLabel, onlineEnabled && styles.onlineLabelActive]}>
+            {onlineEnabled ? t('home.online') : t('home.offline')}
           </Text>
           <Switch
-            value={isOnline}
+            value={onlineEnabled}
             onValueChange={toggleOnline}
+            disabled={!isVerified}
             trackColor={{ false: colors.border, true: colors.success }}
             thumbColor={colors.white}
+            accessibilityRole="switch"
+            accessibilityLabel="Buyurtmalarni qabul qilish"
+            accessibilityHint={
+              isVerified
+                ? 'Onlayn holatni yoqadi yoki o‘chiradi'
+                : 'Administrator hujjatlarni tasdiqlagandan keyin yoqiladi'
+            }
+            accessibilityState={{ checked: onlineEnabled, disabled: !isVerified }}
           />
         </View>
       </View>
@@ -361,7 +405,26 @@ export default function OrdersScreen() {
         </View>
       )}
 
-      {!canReceive && (
+      {!canReceive && ['verification_pending', 'documents_required'].includes(receiveCode) ? (
+        <TouchableOpacity
+          style={styles.topupBanner}
+          onPress={() => receiveCode === 'documents_required' && router.push('/driver-info')}
+          disabled={receiveCode !== 'documents_required'}
+          activeOpacity={0.85}
+          accessibilityRole={receiveCode === 'documents_required' ? 'button' : undefined}
+          accessibilityLabel="Haydovchi hujjatlari holati"
+          accessibilityHint={
+            receiveCode === 'documents_required'
+              ? 'Hujjatlarni to‘ldirish sahifasini ochadi'
+              : 'Administrator tasdig‘i kutilmoqda'
+          }
+        >
+          <Text style={styles.topupBannerText}>🪪 {receiveMsg}</Text>
+          {receiveCode === 'documents_required' && (
+            <Text style={styles.topupBannerBtn}>Hujjatlarni to‘ldirish</Text>
+          )}
+        </TouchableOpacity>
+      ) : !canReceive ? (
         <TouchableOpacity
           style={styles.topupBanner}
           onPress={() => router.push('/top-up')}
@@ -372,7 +435,7 @@ export default function OrdersScreen() {
           </Text>
           <Text style={styles.topupBannerBtn}>💳 {t('more.topUp')}</Text>
         </TouchableOpacity>
-      )}
+      ) : null}
 
       <FlatList
         data={orders}

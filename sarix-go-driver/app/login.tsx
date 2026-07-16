@@ -136,6 +136,8 @@ export default function LoginScreen() {
                 onPress={startTelegram}
                 loading={loading}
                 variant="accent"
+                accessibilityLabel="Telegram orqali kirish"
+                accessibilityHint="Telegram botda telefon raqamingizni tasdiqlashni boshlaydi"
               />
               <Text style={styles.note}>
                 Telegram orqali kirasiz, hujjatlaringizni ilovada yuklaysiz

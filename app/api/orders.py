@@ -6,9 +6,10 @@ from aiohttp import web
 from sqlalchemy import or_
 
 from app import config
+from app.api.drivers import driver_can_accept
 from app.api.websocket import ws_manager
 from app.database import get_session
-from app.models import Driver, Order, OrderHistory, Route, Setting, User
+from app.models import BalanceTransaction, Driver, Order, OrderHistory, Route, Setting, User
 from app.services.dynamic_settings import get_min_driver_balance
 from app.utils.auth import require_auth
 from app.utils.timefmt import iso_utc
@@ -258,6 +259,7 @@ async def create_order(request: web.Request) -> web.Response:
         # alert/list — that was the bug).
         eligible_drivers = session.query(Driver).filter(
             Driver.is_blocked == False,  # noqa
+            Driver.is_verified == True,  # noqa
             Driver.is_online == True,  # noqa
             or_(
                 Driver.subscription_until > now,
@@ -298,7 +300,13 @@ async def create_order(request: web.Request) -> web.Response:
         if target_driver_id:
             try:
                 target = session.query(Driver).filter_by(id=target_driver_id).first()
-                if target and not target.is_blocked:
+                if (
+                    target
+                    and not target.is_blocked
+                    and target.is_verified
+                    and target.is_online
+                    and driver_can_accept(target, now=now, min_balance=min_balance)
+                ):
                     if target.telegram_id:
                         await ws_manager.send_to_driver(target.telegram_id, {
                             "type": "new_order",
@@ -310,14 +318,10 @@ async def create_order(request: web.Request) -> web.Response:
             except Exception as e:
                 logger.error(f"Direct recommend notify failed: {e}")
 
-        # Also notify the bot driver group via callback
-        bot_callback = request.app.get("notify_drivers_callback")
-        if bot_callback:
-            try:
-                await bot_callback(order)
-            except Exception as e:
-                import logging
-                logging.error(f"Bot notify failed: {e}")
+        # Do not post actionable app orders into a shared Telegram group: group
+        # membership cannot enforce the database approval gate and would expose order
+        # details to unverified accounts. Eligible approved drivers already receive the
+        # filtered WebSocket and push notifications above.
 
         return web.json_response({
             "success": True,
@@ -409,35 +413,64 @@ async def cancel_order(request: web.Request) -> web.Response:
         if order.status in ("completed", "cancelled", "expired"):
             return web.json_response({"error": "Bekor qilib bo'lmaydi"}, status=400)
 
-        # Refund the driver ONLY if the commission was actually COLLECTED (real money
-        # deducted from their balance). `commission_charged` alone is not enough: during
-        # the free trial / active subscription the scheduler marks commission_charged=True
-        # WITHOUT taking any money (commission_collected stays False). Refunding on
-        # commission_charged therefore (a) wrongly credited trial drivers with free money
-        # and (b) sent them a misleading "commission refunded" message.
+        now = datetime.utcnow()
+        claimed = (
+            session.query(Order)
+            .filter(
+                Order.id == order_id,
+                Order.passenger_id == user.id,
+                Order.status.in_(["new", "accepted", "in_progress"]),
+            )
+            .update(
+                {
+                    "status": "cancelled",
+                    "cancelled_at": now,
+                    "cancelled_by": "passenger",
+                    "cancel_reason": "Yo'lovchi bekor qildi",
+                },
+                synchronize_session=False,
+            )
+        )
+        if not claimed:
+            session.rollback()
+            return web.json_response({"error": "Buyurtma holati o'zgargan"}, status=409)
+        session.refresh(order)
+
         from app.services.rewards import effective_commission, release_bonus_for_order
         refunded = False
-        if order.status in ("accepted", "in_progress") and order.driver_id:
-            driver = session.query(Driver).filter_by(id=order.driver_id).first()
-            if driver and order.commission_collected:
-                # Refund exactly what was collected — the commission NET of any bonus
-                # discount (effective_commission), never the gross, or we'd over-credit
-                # the driver by the reserved bonus amount.
-                driver.balance = (driver.balance or 0) + effective_commission(order)
-                order.commission_collected = False  # given back
+        if order.driver_id and order.commission_collected:
+            driver = (
+                session.query(Driver)
+                .filter_by(id=order.driver_id)
+                .with_for_update()
+                .first()
+            )
+            if driver:
+                refund_amount = effective_commission(order)
+                if refund_amount > 0:
+                    driver.balance = (driver.balance or 0) + refund_amount
+                    session.add(BalanceTransaction(
+                        driver_id=driver.id,
+                        amount=refund_amount,
+                        balance_after=driver.balance,
+                        source="commission_refund",
+                        reference_type="order",
+                        reference_id=order.id,
+                        idempotency_key=f"order:{order.id}:commission_refund",
+                        note="Passenger-cancelled order refund",
+                    ))
+                order.commission_collected = False
                 refunded = True
-        # The ride never happened -> return any reserved bonus to the passenger.
-        passenger = session.query(User).filter_by(id=user.id).first()
+
+        passenger = (
+            session.query(User)
+            .filter_by(id=user.id)
+            .with_for_update()
+            .first()
+        )
         release_bonus_for_order(session, order, passenger)
-        # Stop the scheduler from charging a cancelled order later.
         order.commission_charged = True
 
-        order.status = "cancelled"
-        order.cancelled_at = datetime.utcnow()
-        order.cancelled_by = "passenger"
-        order.cancel_reason = "Yo'lovchi bekor qildi"
-
-        # History
         session.add(OrderHistory(
             order_id=order.id,
             action="cancelled",

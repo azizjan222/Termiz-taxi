@@ -7,6 +7,7 @@ import {
   ViewStyle,
   TextStyle,
   StyleProp,
+  type AccessibilityProps,
 } from 'react-native';
 import { typography, radius, spacing } from '../theme';
 import { useThemeStore } from '../store/theme';
@@ -23,6 +24,10 @@ interface ButtonProps {
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   icon?: React.ReactNode;
+  accessibilityLabel?: AccessibilityProps['accessibilityLabel'];
+  accessibilityHint?: AccessibilityProps['accessibilityHint'];
+  accessibilityRole?: AccessibilityProps['accessibilityRole'];
+  accessibilityState?: AccessibilityProps['accessibilityState'];
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -36,6 +41,10 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
   icon,
+  accessibilityLabel = title,
+  accessibilityHint,
+  accessibilityRole = 'button',
+  accessibilityState,
 }) => {
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -54,6 +63,14 @@ export const Button: React.FC<ButtonProps> = ({
       onPress={onPress}
       disabled={isDisabled}
       activeOpacity={0.85}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{
+        ...accessibilityState,
+        disabled: isDisabled,
+        busy: loading,
+      }}
     >
       {loading ? (
         <ActivityIndicator

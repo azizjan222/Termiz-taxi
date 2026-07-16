@@ -1,10 +1,11 @@
 """Tests for OTP: phone normalization, code generation, verification and rate limiting."""
+import json
 from datetime import datetime, timedelta
 
 import pytest
 
 from app import config
-from app.models import OtpCode
+from app.models import Driver, OtpCode
 from app.services.otp import (
     create_and_send_otp,
     generate_code,
@@ -113,3 +114,82 @@ async def test_otp_hourly_cap(db, monkeypatch):
 
     blocked = await create_and_send_otp(db, phone)
     assert blocked["success"] is False
+
+
+
+# ------------------------- OTP production-safety guards -------------------------
+
+async def test_mock_otp_is_not_exposed_without_explicit_opt_in(db, monkeypatch):
+    monkeypatch.setattr(config, "OTP_PROVIDER", "mock")
+    monkeypatch.setattr(config, "OTP_EXPOSE_DEV_CODE", False)
+    monkeypatch.setattr(config, "OTP_RESEND_COOLDOWN_SECONDS", 0)
+
+    result = await create_and_send_otp(db, "+998901234567")
+
+    assert result["success"] is True
+    assert result["dev_code"] is None
+
+
+async def test_mock_otp_can_be_exposed_only_when_explicitly_enabled(db, monkeypatch):
+    monkeypatch.setattr(config, "OTP_PROVIDER", "mock")
+    monkeypatch.setattr(config, "OTP_EXPOSE_DEV_CODE", True)
+    monkeypatch.setattr(config, "OTP_RESEND_COOLDOWN_SECONDS", 0)
+
+    result = await create_and_send_otp(db, "+998901234567")
+
+    assert result["success"] is True
+    assert result["dev_code"].isdigit()
+
+
+async def test_failed_telegram_delivery_consumes_code_and_never_returns_it(db, monkeypatch):
+    monkeypatch.setattr(config, "OTP_PROVIDER", "telegram")
+    monkeypatch.setattr(config, "OTP_EXPOSE_DEV_CODE", True)
+    monkeypatch.setattr(config, "OTP_RESEND_COOLDOWN_SECONDS", 0)
+    driver = Driver(telegram_id=12345, phone="+998901234567")
+    db.add(driver)
+    db.commit()
+
+    result = await create_and_send_otp(
+        db, driver.phone, bot=None, recipient_type="driver"
+    )
+    stored = db.query(OtpCode).filter_by(phone=driver.phone).one()
+
+    assert result["success"] is False
+    assert result["dev_code"] is None
+    assert stored.is_used is True
+    assert verify_otp(db, driver.phone, stored.code)[0] is False
+
+
+async def test_driver_telegram_otp_uses_driver_telegram_account(db, monkeypatch):
+    monkeypatch.setattr(config, "OTP_PROVIDER", "telegram")
+    monkeypatch.setattr(config, "OTP_RESEND_COOLDOWN_SECONDS", 0)
+    driver = Driver(telegram_id=987654, phone="+998901234567")
+    db.add(driver)
+    db.commit()
+
+    class FakeBot:
+        def __init__(self):
+            self.chat_ids = []
+
+        async def send_message(self, chat_id, text, parse_mode=None):
+            self.chat_ids.append(chat_id)
+
+    bot = FakeBot()
+    result = await create_and_send_otp(
+        db, driver.phone, bot=bot, recipient_type="driver"
+    )
+
+    assert result["success"] is True
+    assert result["dev_code"] is None
+    assert bot.chat_ids == [driver.telegram_id]
+
+
+async def test_legacy_driver_login_never_issues_token():
+    from app.api.drivers import driver_login
+
+    response = await driver_login(object())
+    body = json.loads(response.text)
+
+    assert response.status == 410
+    assert body["code"] == "legacy_login_removed"
+    assert "token" not in body

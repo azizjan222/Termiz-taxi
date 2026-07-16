@@ -1,8 +1,5 @@
 name: Frontend Checks
 
-# Type-checks and lints both Expo apps (passenger + driver) on any change to their
-# source. Type errors fail the build; lint warnings are reported but do not fail.
-
 on:
   push:
     branches: [main]
@@ -16,9 +13,17 @@ on:
       - 'sarix-go-driver/**'
       - '.github/workflows/frontend-checks.yml'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-checks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -28,20 +33,15 @@ jobs:
         working-directory: ${{ matrix.app }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: TypeScript typecheck
-        run: npx tsc --noEmit
-
-      - name: Lint (ESLint)
-        run: npm run lint
-
-      - name: Unit tests (Jest)
-        run: npm test -- --ci
+          node-version: '20.19.4'
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Validate Expo dependency compatibility
+        run: npx expo install --check
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test -- --ci

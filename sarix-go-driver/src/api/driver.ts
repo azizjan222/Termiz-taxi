@@ -62,14 +62,6 @@ export interface DriverOrder {
   accepted_at?: string | null;
 }
 
-export async function loginDriver(telegramId: number): Promise<{ driver: Driver; token: string }> {
-  const response = await api.post('/api/driver/login', { telegram_id: telegramId });
-  if (response.data.token) {
-    await setAuthToken(response.data.token);
-  }
-  return response.data;
-}
-
 export async function requestDriverOtp(phone: string): Promise<{ success: boolean; message: string; dev_code?: string }> {
   const response = await api.post('/api/driver/request-otp', { phone });
   return response.data;
@@ -98,6 +90,10 @@ export interface AvailableOrdersResponse {
   message?: string;
   balance?: number;
   min_required?: number;
+  code?: 'verification_pending' | 'documents_required' | string;
+  is_online?: boolean;
+  is_verified?: boolean;
+  documents_submitted?: boolean;
 }
 
 export async function listAvailableOrders(): Promise<AvailableOrdersResponse> {
@@ -108,6 +104,10 @@ export async function listAvailableOrders(): Promise<AvailableOrdersResponse> {
     message: response.data.message,
     balance: response.data.balance,
     min_required: response.data.min_required,
+    code: response.data.code,
+    is_online: response.data.is_online,
+    is_verified: response.data.is_verified,
+    documents_submitted: response.data.documents_submitted,
   };
 }
 

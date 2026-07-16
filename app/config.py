@@ -44,6 +44,14 @@ def _get_float(key: str, default: float) -> float:
         return default
 
 
+def _get_bool(key: str, default: bool = False) -> bool:
+    """Parse a strict boolean environment value."""
+    raw = os.getenv(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 # Telegram
 BOT_TOKEN = _get("BOT_TOKEN")
 ADMIN_ID = _get_int("ADMIN_ID", 0)
@@ -61,9 +69,20 @@ DRIVERS_GROUP_ID = _get_int("DRIVERS_GROUP_ID", 0)
 PERSISTENT_DATA_DIR = _get("DATA_DIR", "/data")
 
 
+def persistent_data_dir_available() -> bool:
+    """Return whether DATA_DIR points at an existing absolute volume path.
+
+    Relative paths such as ``./data`` are local working directories, not mounted
+    persistent volumes. Treating one as a volume after another process creates it can
+    incorrectly turn ``sqlite:///./data/test.db`` into ``sqlite:////data/sarixgo.db``.
+    """
+    data_dir = Path(PERSISTENT_DATA_DIR)
+    return data_dir.is_absolute() and data_dir.is_dir()
+
+
 def _resolve_database_url() -> str:
     raw = os.getenv("DATABASE_URL", "").strip()
-    volume_ok = os.path.isdir(PERSISTENT_DATA_DIR)
+    volume_ok = persistent_data_dir_available()
 
     # Railway/Heroku sometimes provide the legacy "postgres://" scheme, but SQLAlchemy 2.x
     # requires "postgresql://". Normalise it so the connection works out of the box.
@@ -112,7 +131,7 @@ def _resolve_upload_dir() -> str:
     mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
     if mount and os.path.isdir(mount):
         return os.path.join(mount, "uploads")
-    if os.path.isdir(PERSISTENT_DATA_DIR):
+    if persistent_data_dir_available():
         return os.path.join(PERSISTENT_DATA_DIR, "uploads")
     return "./data/uploads"
 
@@ -122,7 +141,7 @@ UPLOAD_DIR = _resolve_upload_dir()
 
 def _secrets_dir() -> str:
     """Directory on the persistent volume where auto-generated secrets are stored."""
-    base = PERSISTENT_DATA_DIR if os.path.isdir(PERSISTENT_DATA_DIR) else "./data"
+    base = PERSISTENT_DATA_DIR if persistent_data_dir_available() else "./data"
     d = os.path.join(base, ".secrets")
     try:
         os.makedirs(d, exist_ok=True)
@@ -204,6 +223,9 @@ CORS_ALLOWED_ORIGINS = [
 OTP_PROVIDER = _get("OTP_PROVIDER", "telegram").lower()
 OTP_LENGTH = _get_int("OTP_LENGTH", 6)
 OTP_EXPIRES_MINUTES = _get_int("OTP_EXPIRES_MINUTES", 5)
+# Never expose an OTP in an API response unless an operator explicitly enables it for
+# local mock-provider development. Production should leave this false.
+OTP_EXPOSE_DEV_CODE = _get_bool("OTP_EXPOSE_DEV_CODE", False)
 # Anti-abuse (SMS/OTP bombing): a phone must wait OTP_RESEND_COOLDOWN_SECONDS between
 # requests, and may request at most OTP_MAX_PER_HOUR codes per rolling hour. This stops
 # attackers from spamming OTPs to a victim's number (which also wastes paid SMS credit).
@@ -347,13 +369,22 @@ def log_security_status() -> None:
 
 
 
+# Manual card top-up limits. Keep server-side bounds even if the mobile UI also validates.
+TOPUP_MIN_AMOUNT = _get_int("TOPUP_MIN_AMOUNT", 1000)
+TOPUP_MAX_AMOUNT = _get_int("TOPUP_MAX_AMOUNT", 5_000_000)
+TOPUP_PENDING_HOURS = _get_int("TOPUP_PENDING_HOURS", 48)
+
 # Payment providers - Click Uz
+# Click/Payme are intentionally disabled by default. Manual card transfer is the active
+# production flow. Enabling a provider requires both this switch and complete credentials.
+CLICK_ENABLED = _get_bool("CLICK_ENABLED", False)
 CLICK_MERCHANT_ID = _get("CLICK_MERCHANT_ID", "")
 CLICK_SERVICE_ID = _get("CLICK_SERVICE_ID", "")
 CLICK_SECRET_KEY = _get("CLICK_SECRET_KEY", "")
 CLICK_MERCHANT_USER_ID = _get("CLICK_MERCHANT_USER_ID", "")
 
-# Payme
+# Payme remains disabled until the full merchant state machine is implemented and certified.
+PAYME_ENABLED = _get_bool("PAYME_ENABLED", False)
 PAYME_MERCHANT_ID = _get("PAYME_MERCHANT_ID", "")
 PAYME_SECRET_KEY = _get("PAYME_SECRET_KEY", "")
 PAYME_TEST_MODE = _get("PAYME_TEST_MODE", "true").lower() == "true"
@@ -389,3 +420,9 @@ BOT_USERNAME = _get("BOT_USERNAME", "termizsariosiyotaxi_bot")
 ADMIN_USERNAME = _get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = _persistent_secret("ADMIN_PASSWORD", filename="admin_password",
                                     label="admin password", nbytes=9, log_value=True)
+# Admin browser security. Keep Secure enabled in production; set false only for a
+# trusted local HTTP development environment.
+ADMIN_COOKIE_SECURE = _get_bool("ADMIN_COOKIE_SECURE", True)
+ADMIN_SESSION_SECONDS = _get_int("ADMIN_SESSION_SECONDS", 86400)
+ADMIN_LOGIN_MAX_ATTEMPTS = _get_int("ADMIN_LOGIN_MAX_ATTEMPTS", 5)
+ADMIN_LOGIN_WINDOW_SECONDS = _get_int("ADMIN_LOGIN_WINDOW_SECONDS", 900)

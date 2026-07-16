@@ -1,13 +1,6 @@
 name: OTA Update Driver App
 
-# Over-the-air (OTA) JS update via EAS Update. Publishes the new JavaScript
-# bundle to the "preview" channel WITHOUT a full native rebuild. Existing
-# installed apps pick up the change on next launch.
-#
-# IMPORTANT: OTA can only ship JS/asset changes. Native changes (new native
-# dependency, app.json plugins/permissions, SDK upgrade, version bump) still
-# require a full build via the "Build Driver App" workflow.
-
+# Manual-only: OTA must be reviewed as JS/assets-only and must pass all checks.
 on:
   workflow_dispatch:
     inputs:
@@ -15,45 +8,46 @@ on:
         description: "Update message"
         required: false
         default: "Manual OTA update"
-  push:
-    branches: [main]
-    paths:
-      - 'sarix-go-driver/**'
-      - '.github/workflows/update-driver.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eas-update-driver-preview
+  cancel-in-progress: true
 
 jobs:
   update:
-    name: Publish OTA Update (Driver)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: sarix-go-driver
-
+    env:
+      EAS_PROJECT_ID: ${{ secrets.EAS_DRIVER_PROJECT_ID }}
+      EXPO_PUBLIC_YANDEX_JS_API_KEY: ${{ secrets.YANDEX_JS_API_KEY }}
+      EXPO_PUBLIC_YANDEX_SDK_API_KEY: ${{ secrets.YANDEX_SDK_API_KEY }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
+          node-version: '20.19.4'
+          cache: npm
+          cache-dependency-path: sarix-go-driver/package-lock.json
+      - uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          eas-version: 21.0.1
           token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Align dependencies to Expo SDK
-        run: npx expo install --fix
-
-      - name: Link EAS project under your account
-        run: eas init --non-interactive --force
-
-      - name: Publish OTA update to the preview channel
+      - run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Validate JS-only update
         run: |
-          eas update --branch preview --non-interactive \
-            --message "${{ github.event.inputs.message || github.event.head_commit.message || github.sha }}"
+          test -n "$EAS_PROJECT_ID" || { echo "::error::EAS_DRIVER_PROJECT_ID is required"; exit 1; }
+          npx expo install --check
+          npx expo config --type public >/dev/null
+          npm run typecheck
+          npm run lint
+          npm test -- --ci
+      - name: Publish preview update
+        env:
+          UPDATE_MESSAGE: ${{ inputs.message }}
+        run: eas update --branch preview --non-interactive --message "$UPDATE_MESSAGE"

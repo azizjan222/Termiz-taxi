@@ -40,18 +40,18 @@ Book the entire car - 4 seats at your disposal.
 As soon as you place an order - a driver will be found. Track in real-time.
 
 📱 EASY TO USE
-• Phone number registration
+• Telegram-assisted phone verification by sharing your own contact
 • 4 languages: Uzbek (Latin/Cyrillic), Russian, English
 • Yandex Maps integration
-• Multiple payment methods
+• Cash payment for trips
 
 🎁 BONUS SYSTEM
 Invite friends and earn points. Get discounts with promo codes!
 
 🔒 SAFE
-• Phone number verification
+• Phone ownership verified through Telegram contact sharing
 • Driver information visible
-• Only verified drivers
+• Only approved drivers can receive orders
 • Female-only filter available
 
 📞 AVAILABLE 24/7
@@ -64,11 +64,11 @@ Order anytime - day or night.
 • Document senders
 
 📲 HOW IT WORKS?
-1. Enter your phone number
-2. Receive verification code
-3. Choose your departure and destination
-4. Select tariff and number of people
-5. Place order - driver will come!
+1. Start verification from the app
+2. Open Telegram and share your own phone contact with the bot
+3. Return to the app after verification
+4. Choose your departure, destination, tariff, and passenger count
+5. Place the order and wait for an approved driver
 
 📞 Contact
 Telegram: @termizsariosiyotaxi_bot

@@ -24,7 +24,7 @@ Termiz va Surxondaryo viloyatidagi taksi haydovchilari uchun maxsus tuzilgan ilo
 Yangi zakas kelgan zahoti darhol xabar olasiz. Ovoz, vibratsiya va push - barcha bilan!
 
 ⚡ BIR TUGMA BILAN QABUL QILISH
-Zakasni ko'rib darhol qabul qiling. Komissiya avtomatik balansdan yechiladi.
+Mavjud buyurtmani ilovada ko'rib, qabul qiling. Buyurtmalar faqat admin tasdiqlagan va onlayn haydovchilarga ko'rinadi.
 
 📞 YO'LOVCHIGA QO'NG'IROQ
 Ilova ichidan to'g'ridan-to'g'ri yo'lovchiga qo'ng'iroq qiling.
@@ -44,21 +44,17 @@ O'zbek va rus
 Ishlash vaqti yo'qligida offline'ga o'ting - zakaslar kelmaydi.
 
 💸 KOMISSIYA TIZIMI
-• 1 yo'lovchi: 10 000 so'm
-• 2 yo'lovchi: 20 000 so'm
-• 3 yo'lovchi: 30 000 so'm
-• Pochta: 5 000 so'm
-• Bo'sh mashina: 30 000 so'm
+Xizmat sozlanadigan foizli komissiyadan foydalanadi. Komissiya serverda hisoblanadi va amaldagi xizmat qoidalariga muvofiq keyin undiriladi; summa balans tarixida ko'rinadi.
 
-🎁 BONUSLAR
-Birinchi to'lovda 50% bonus! Botda chek yuboring va balansingiz to'ldiriladi.
+💳 BALANSNI TO'LDIRISH
+Ilovaning o'zida kartaga qo'lda o'tkazma uchun so'rov yarating, chekni yopiq saqlash joyiga yuklang va admin tasdiqlashini kuting. Xizmatda yoqilgan bo'lsa, birinchi to'lov bonusi berilishi mumkin.
 
 🚦 ISHLASH TARTIBI
-1. Botga /start yuboring (agar oldin qilmagan bo'lsangiz)
-2. Telegram ID raqamingizni nusxa oling
-3. Ilovaga kiriting
-4. Online'ga o'ting
-5. Yangi zakaslarni qabul qiling
+1. Ilovada ro'yxatdan o'tishni boshlab, Telegram orqali o'z kontaktingizni yuborib telefonni tasdiqlang
+2. So'ralgan haydovchi va avtomobil hujjatlarining barchasini yuklang
+3. Admin tekshiruvi va tasdiqlashini kuting
+4. Tasdiqlangach ilovaga kirib, onlayn holatga o'ting
+5. Mavjud buyurtmalarni qabul qiling
 
 🔒 XAVFSIZ
 • Faqat tasdiqlangan haydovchilar

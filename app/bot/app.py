@@ -28,10 +28,7 @@ from app.bot.handlers import (
     passenger_order,
     payments,
 )
-from app.bot.notifications import (
-    notify_admin_order_cancelled,
-    notify_drivers_about_new_app_order,
-)
+from app.bot.notifications import notify_admin_order_cancelled
 from app.bot.pdf import cmd_driver_documents, driver_pdf_callback
 from app.bot.state import BOT_TOKEN
 from app.database import init_db
@@ -203,7 +200,6 @@ async def run():
 
     api_runner, api_app = await start_api_server(
         bot=app.bot, host=app_config.API_HOST, port=app_config.API_PORT)
-    api_app["notify_drivers_callback"] = notify_drivers_about_new_app_order
     api_app["bot_notify_order_cancel"] = notify_admin_order_cancelled
 
     try:
@@ -219,6 +215,13 @@ async def run():
         logger.info("✅ Order-expiry scheduler started")
     except Exception as e:
         logger.error("Order-expiry scheduler failed to start: %s", e)
+
+    try:
+        from app.api.payments import start_payment_cleanup_scheduler
+        start_payment_cleanup_scheduler()
+        logger.info("✅ Payment cleanup scheduler started")
+    except Exception as e:
+        logger.error("Payment cleanup scheduler failed to start: %s", e)
 
     await app.initialize()
     await app.start()

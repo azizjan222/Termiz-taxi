@@ -1,49 +1,52 @@
 name: Build Driver App (Android)
 
-# Cloud EAS build. The app is no longer tied to a specific Expo account:
-# `eas init` creates/links the project under whatever account the EXPO_TOKEN
-# belongs to, then a cloud build runs on that account's (fresh) free quota.
-# After it finishes, download the APK from https://expo.dev -> project -> Builds.
-
 on:
-  # Manual only. Full native builds are slow and consume EAS build quota.
-  # Day-to-day JS/asset changes now ship instantly via the "OTA Update Driver
-  # App" workflow. Run THIS workflow only when native code/config changes:
-  # new native dependency, app.json plugins/permissions, SDK upgrade, or a
-  # version bump (which also requires a fresh build for OTA runtimeVersion).
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eas-build-driver
+  cancel-in-progress: false
 
 jobs:
   build:
     name: Build Sarix Go Driver
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: sarix-go-driver
-
+    env:
+      EAS_PROJECT_ID: ${{ secrets.EAS_DRIVER_PROJECT_ID }}
+      EXPO_PUBLIC_YANDEX_JS_API_KEY: ${{ secrets.YANDEX_JS_API_KEY }}
+      EXPO_PUBLIC_YANDEX_SDK_API_KEY: ${{ secrets.YANDEX_SDK_API_KEY }}
+      GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_DRIVER_JSON_B64 }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
+          node-version: '20.19.4'
+          cache: npm
+          cache-dependency-path: sarix-go-driver/package-lock.json
+      - uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          eas-version: 21.0.1
           token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Align dependencies to Expo SDK
-        run: npx expo install --fix
-
-      - name: Create/link EAS project under your account
-        run: eas init --non-interactive --force
-
-      - name: Build APK (cloud, fresh free quota)
-        run: eas build --platform android --profile preview --non-interactive
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Restore Firebase client configuration
+        run: |
+          test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_DRIVER_JSON_B64 is required"; exit 1; }
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
+      - name: Validate Expo dependencies and project configuration
+        run: |
+          test -n "$EAS_PROJECT_ID" || { echo "::error::EAS_DRIVER_PROJECT_ID is required"; exit 1; }
+          test -n "$EXPO_PUBLIC_YANDEX_JS_API_KEY" || { echo "::error::YANDEX_JS_API_KEY is required"; exit 1; }
+          npx expo install --check
+          npx expo config --type public >/dev/null
+      - name: Verify source
+        run: npm run typecheck && npm run lint && npm test -- --ci
+      - name: Build preview APK
+        run: eas build --platform android --profile preview --non-interactive --wait

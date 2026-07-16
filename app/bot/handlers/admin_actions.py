@@ -174,7 +174,13 @@ async def add_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not driver_tg_id:
             await update.message.reply_text("❌ Haydovchi topilmadi!")
             return
-        new_balance = store.add_balance(driver_tg_id, amount)
+        new_balance = store.add_balance(
+            driver_tg_id,
+            amount,
+            idempotency_key=f"telegram-update:{update.update_id}:balance",
+            audit_actor=f"telegram:{update.effective_user.id}",
+            audit_update_id=update.update_id,
+        )
         await update.message.reply_text(
             f"✅ Qo'shildi!\nID: {driver_tg_id}\n+{money(amount)} so'm\n"
             f"Jami: {money(new_balance)} so'm")

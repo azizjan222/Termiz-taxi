@@ -1,11 +1,19 @@
 """Admin panel page route handlers (HTML responses)."""
+import hmac
+
 from aiohttp import web
 
 from app import config as app_config
+from app.admin.audit import add_admin_audit
 from app.admin.middleware import (
+    check_csrf,
     check_session,
+    clear_login_failures,
     clear_session_cookie,
+    create_csrf_cookie,
     create_session_cookie,
+    login_retry_after,
+    record_login_failure,
     require_admin,
 )
 from app.admin.templates import (
@@ -28,35 +36,82 @@ from app.admin.templates import (
     render_login,
     render_page,
 )
+from app.database import get_session
+
+
+def _record_auth_audit(request: web.Request, action: str, details=None) -> None:
+    """Best-effort authentication audit without affecting login availability."""
+    session = get_session()
+    try:
+        add_admin_audit(session, request, action, target_type="admin", details=details)
+        session.commit()
+    except Exception:
+        session.rollback()
+    finally:
+        session.close()
 
 
 async def login_page(request: web.Request) -> web.Response:
-    """GET /admin/login - show login form."""
+    """GET /admin/login - show login form with a fresh CSRF token."""
     if check_session(request):
         raise web.HTTPFound("/admin/")
-    return web.Response(text=render_login(), content_type="text/html")
+    response = web.Response(content_type="text/html")
+    csrf_token = create_csrf_cookie(response)
+    response.text = render_login(csrf_token=csrf_token)
+    return response
 
 
 async def login_post(request: web.Request) -> web.Response:
-    """POST /admin/login - validate credentials."""
+    """POST /admin/login - validate CSRF, rate limit, and credentials."""
+    if not await check_csrf(request):
+        return web.Response(text="CSRF validation failed", status=403)
+
     data = await request.post()
-    username = data.get("username", "")
-    password = data.get("password", "")
-    if username == app_config.ADMIN_USERNAME and password == app_config.ADMIN_PASSWORD:
-        resp = web.HTTPFound("/admin/")
-        create_session_cookie(resp)
-        raise resp
+    username = str(data.get("username", ""))
+    password = str(data.get("password", ""))
+    retry_after = login_retry_after(request, username)
+    if retry_after:
+        _record_auth_audit(request, "auth.rate_limited", {"username": username[:128]})
+        return web.Response(
+            text=render_login(
+                error="Juda ko'p urinish. Keyinroq qayta urinib ko'ring.",
+                csrf_token=request.cookies.get("admin_csrf", ""),
+            ),
+            content_type="text/html",
+            status=429,
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    username_ok = hmac.compare_digest(username, app_config.ADMIN_USERNAME)
+    password_ok = hmac.compare_digest(password, app_config.ADMIN_PASSWORD)
+    if username_ok and password_ok:
+        clear_login_failures(request, username)
+        _record_auth_audit(request, "auth.login_success")
+        response = web.HTTPFound("/admin/")
+        create_session_cookie(response)
+        raise response
+
+    record_login_failure(request, username)
+    _record_auth_audit(request, "auth.login_failure", {"username": username[:128]})
     return web.Response(
-        text=render_login(error="Login yoki parol noto'g'ri"),
+        text=render_login(
+            error="Login yoki parol noto'g'ri",
+            csrf_token=request.cookies.get("admin_csrf", ""),
+        ),
         content_type="text/html",
+        status=401,
     )
 
 
+@require_admin
 async def logout(request: web.Request) -> web.Response:
-    """GET /admin/logout - clear session and redirect to login."""
-    resp = web.HTTPFound("/admin/login")
-    clear_session_cookie(resp)
-    raise resp
+    """POST /admin/logout - require CSRF, then clear the session."""
+    if not await check_csrf(request):
+        return web.Response(text="CSRF validation failed", status=403)
+    _record_auth_audit(request, "auth.logout")
+    response = web.HTTPFound("/admin/login")
+    clear_session_cookie(response)
+    raise response
 
 
 @require_admin
@@ -134,7 +189,7 @@ def setup_page_routes(app: web.Application):
     """Register all admin page routes."""
     app.router.add_get("/admin/login", login_page)
     app.router.add_post("/admin/login", login_post)
-    app.router.add_get("/admin/logout", logout)
+    app.router.add_post("/admin/logout", logout)
     app.router.add_get("/admin/", dashboard)
     app.router.add_get("/admin/statistics", statistics_page)
     app.router.add_get("/admin/drivers", drivers_page)
