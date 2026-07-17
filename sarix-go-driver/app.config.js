@@ -4,8 +4,12 @@ const path = require('path');
 const staticConfig = require('./app.json');
 
 module.exports = () => {
-  const projectId = process.env.EAS_PROJECT_ID;
   const expo = staticConfig.expo;
+  // The EAS project id is NOT secret (Expo commits it to app.json by design). Prefer the
+  // committed value so builds work without any GitHub secret; still allow an env override.
+  const projectId =
+    process.env.EAS_PROJECT_ID ||
+    (expo.extra && expo.extra.eas && expo.extra.eas.projectId);
   const extra = {
     ...expo.extra,
     yandexJsApiKey: process.env.EXPO_PUBLIC_YANDEX_JS_API_KEY,
