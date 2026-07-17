@@ -2,7 +2,7 @@
 
 ## App name (до 50 символов)
 ```
-Sarix Go - Termiz Sariosiyo Такси
+Sarix Go
 ```
 
 ## Short description (до 80 символов)

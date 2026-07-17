@@ -2,7 +2,7 @@
 
 ## App name (до 50 символов)
 ```
-Sarix Go Driver - Для водителей
+Sarix Driver
 ```
 
 ## Short description (до 80 символов)

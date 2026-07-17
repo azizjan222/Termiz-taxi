@@ -2,7 +2,7 @@
 
 ## App name (50 belgigacha)
 ```
-Sarix Go Termiz Sariosiyo Taxi
+Sarix Go
 ```
 
 ## Short description (80 belgigacha)
