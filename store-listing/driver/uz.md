@@ -2,7 +2,7 @@
 
 ## App name (50 belgigacha)
 ```
-Sarix Go Haydovchi uchun
+Sarix Driver
 ```
 
 ## Short description (80 belgigacha)

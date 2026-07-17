@@ -2,7 +2,7 @@
 
 ## App name (50 chars max)
 ```
-Sarix Go - Termiz Sariosiyo Taxi
+Sarix Go
 ```
 
 ## Short description (80 chars max)
