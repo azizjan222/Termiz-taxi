@@ -33,7 +33,7 @@ Configure these under **Settings → Secrets and variables → Actions**:
 | `YANDEX_MAPS_KEY` | Passenger maps fallback/configuration |
 | `YANDEX_SUGGEST_KEY` | Passenger address suggestions |
 | `YANDEX_SDK_API_KEY` | Both apps' SDK fallback/configuration |
-| `GOOGLE_SERVICES_DRIVER_JSON_B64` | Driver Android build and release |
+| `GOOGLE_SERVICES_DRIVER_JSON_B64` | Driver Android builds (optional for preview, required for release) |
 | `GOOGLE_SERVICES_PASSENGER_JSON_B64` | Passenger Android build and release |
 | `DATABASE_URL` | PostgreSQL backup workflow |
 
@@ -48,7 +48,7 @@ base64 -w 0 sarix-go-driver/google-services.json
 base64 -w 0 sarix-go-app/google-services.json
 ```
 
-On macOS, use `base64 -i FILE | tr -d '\n'`. The build and release workflows reconstruct the file only inside the ephemeral runner.
+On macOS, use `base64 -i FILE | tr -d '\n'`. The build and release workflows reconstruct the file only inside the ephemeral runner. Driver preview builds may run without `GOOGLE_SERVICES_DRIVER_JSON_B64` to allow installation and UI testing, but the resulting APK has no remote push notifications. Driver production releases continue to require a valid Firebase configuration containing the `uz.sarixgo.driver` Android client.
 
 ## Client-key security
 
