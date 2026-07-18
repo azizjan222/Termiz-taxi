@@ -4,8 +4,8 @@ const path = require('path');
 const staticConfig = require('./app.json');
 
 module.exports = () => {
-  const projectId = process.env.EAS_PROJECT_ID;
   const expo = staticConfig.expo;
+  const projectId = process.env.EAS_PROJECT_ID || expo.extra?.eas?.projectId;
   const extra = {
     ...expo.extra,
     yandexJsApiKey: process.env.EXPO_PUBLIC_YANDEX_JS_API_KEY,

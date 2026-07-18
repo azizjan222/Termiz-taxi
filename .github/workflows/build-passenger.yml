@@ -45,7 +45,6 @@ jobs:
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
       - name: Validate Expo dependencies and project configuration
         run: |
-          test -n "$EAS_PROJECT_ID" || { echo "::error::EAS_PASSENGER_PROJECT_ID is required"; exit 1; }
           test -n "$EXPO_PUBLIC_YANDEX_JS_API_KEY" || { echo "::error::YANDEX_JS_API_KEY is required"; exit 1; }
           npx expo install --check
           npx expo config --type public >/dev/null
