@@ -73,21 +73,22 @@ export default function TopUpScreen() {
 
   const pickScreenshot = async () => {
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert('Ruxsat kerak', 'Skrinshot tanlash uchun galereyaga ruxsat bering.');
-        return;
-      }
+      // Android's system photo picker grants access to the selected image itself;
+      // requesting broad media-library permission first is unnecessary and can throw
+      // when that permission is not present in an already-installed native build.
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         quality: 0.7,
         allowsEditing: false,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setScreenshot(result.assets[0].uri);
       }
-    } catch {
-      Alert.alert('❌', 'Rasm tanlashda xatolik');
+    } catch (e: any) {
+      // Surface the underlying reason instead of a generic message so gallery/native
+      // failures are actually diagnosable in the field.
+      const reason = e?.message || String(e);
+      Alert.alert('❌ Rasm tanlashda xatolik', reason);
     }
   };
 

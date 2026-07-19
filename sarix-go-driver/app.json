@@ -46,6 +46,13 @@
       "expo-router",
       "expo-localization",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ilova to'lov skrinshotini yuklash uchun galereyaga kiradi.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-notifications",
         {
           "sounds": [

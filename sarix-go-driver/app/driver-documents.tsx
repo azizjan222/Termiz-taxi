@@ -111,13 +111,8 @@ export default function DriverDocumentsScreen() {
   const pickAndUpload = async (key: DocKey) => {
     if (uploading) return;
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert('Ruxsat kerak', 'Rasm tanlash uchun galereyaga ruxsat bering.');
-        return;
-      }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         quality: 0.7,
       });
       if (result.canceled || !result.assets?.[0]?.uri) return;
