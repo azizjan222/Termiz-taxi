@@ -39,8 +39,7 @@
         "VIBRATE",
         "WAKE_LOCK",
         "RECEIVE_BOOT_COMPLETED",
-        "POST_NOTIFICATIONS",
-        "READ_MEDIA_IMAGES"
+        "POST_NOTIFICATIONS"
       ]
     },
     "plugins": [
@@ -49,7 +48,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Ilova to'lov skrinshotini yuklash uchun galereyaga kiradi."
+          "photosPermission": "Ilova to'lov skrinshotini yuklash uchun galereyaga kiradi.",
+          "microphonePermission": false
         }
       ],
       [

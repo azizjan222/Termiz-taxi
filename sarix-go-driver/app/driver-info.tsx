@@ -91,11 +91,6 @@ export default function DriverInfoScreen() {
   }, []);
 
   const pickImage = async (setter: (uri: string) => void) => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('❌', 'Galereyaga ruxsat kerak');
-      return;
-    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.7,

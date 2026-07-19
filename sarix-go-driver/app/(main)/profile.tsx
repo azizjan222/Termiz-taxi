@@ -37,11 +37,6 @@ export default function ProfileScreen() {
 
   const pickAndUploadPhoto = async () => {
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert(t('common.error'), t('more.permissionGallery'));
-        return;
-      }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,

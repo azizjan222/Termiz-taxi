@@ -73,14 +73,10 @@ export default function TopUpScreen() {
 
   const pickScreenshot = async () => {
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert('Ruxsat kerak', 'Skrinshot tanlash uchun galereyaga ruxsat bering.');
-        return;
-      }
+      // Android's system photo picker grants access to the selected image itself;
+      // requesting broad media-library permission first is unnecessary and can throw
+      // when that permission is not present in an already-installed native build.
       const result = await ImagePicker.launchImageLibraryAsync({
-        // Non-deprecated API (string array). `MediaTypeOptions` is removed in newer
-        // expo-image-picker versions and can throw on some Android builds.
         mediaTypes: ['images'],
         quality: 0.7,
         allowsEditing: false,
