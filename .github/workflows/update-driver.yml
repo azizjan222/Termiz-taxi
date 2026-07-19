@@ -50,3 +50,5 @@ jobs:
         env:
           UPDATE_MESSAGE: ${{ inputs.message }}
         run: eas update --branch preview --non-interactive --message "$UPDATE_MESSAGE"
+      - name: Link preview channel to update branch
+        run: eas channel:edit preview --branch preview --non-interactive
