@@ -39,12 +39,19 @@
         "VIBRATE",
         "WAKE_LOCK",
         "RECEIVE_BOOT_COMPLETED",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "READ_MEDIA_IMAGES"
       ]
     },
     "plugins": [
       "expo-router",
       "expo-localization",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ilova to'lov skrinshotini yuklash uchun galereyaga kiradi."
+        }
+      ],
       [
         "expo-notifications",
         {

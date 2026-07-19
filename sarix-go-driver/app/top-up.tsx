@@ -79,15 +79,20 @@ export default function TopUpScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        // Non-deprecated API (string array). `MediaTypeOptions` is removed in newer
+        // expo-image-picker versions and can throw on some Android builds.
+        mediaTypes: ['images'],
         quality: 0.7,
         allowsEditing: false,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setScreenshot(result.assets[0].uri);
       }
-    } catch {
-      Alert.alert('❌', 'Rasm tanlashda xatolik');
+    } catch (e: any) {
+      // Surface the underlying reason instead of a generic message so gallery/native
+      // failures are actually diagnosable in the field.
+      const reason = e?.message || String(e);
+      Alert.alert('❌ Rasm tanlashda xatolik', reason);
     }
   };
 
