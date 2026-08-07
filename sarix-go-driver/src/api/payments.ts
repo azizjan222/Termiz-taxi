@@ -68,13 +68,21 @@ export async function submitTopupScreenshot(
   const form = new FormData();
   form.append('amount', String(amount));
 
-  const ext = (imageUri.split('.').pop() || 'jpg').toLowerCase();
+  // Only trust an extension from the final path segment: Android's photo-picker
+  // URIs (content://com.android.providers.media.photopicker/...) contain dots in
+  // the authority, so a naive split('.') yields a filename with slashes in it.
+  const lastSegment = imageUri.split('?')[0].split('/').pop() || '';
+  const rawExt = lastSegment.includes('.')
+    ? lastSegment.split('.').pop()!.toLowerCase()
+    : '';
+  const ext = rawExt === 'jpeg' ? 'jpg' : rawExt;
   const mime =
     ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-  // React Native FormData file shape
+  // React Native FormData file shape. The server re-detects the real type from
+  // the file's magic bytes, so this name/type pair is only a hint.
   form.append('file', {
     uri: imageUri,
-    name: `topup.${ext === 'jpeg' ? 'jpg' : ext}`,
+    name: `topup.${ext || 'jpg'}`,
     type: mime,
   } as any);
 

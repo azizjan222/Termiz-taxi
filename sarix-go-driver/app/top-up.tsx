@@ -33,6 +33,24 @@ import type { ThemeColors } from '../src/theme/colors-themed';
 const PRESET_AMOUNTS = [10000, 20000, 50000, 100000];
 const MIN_AMOUNT = 1000;
 
+/**
+ * Screenshot upload failures used to collapse into a bare "Xatolik yuz berdi",
+ * which hid the two cases drivers actually hit: a rejected upload (the server
+ * answers with a plain-text 413/502, not our JSON error shape) and a timeout on
+ * a slow connection. Name those explicitly and keep the status code visible.
+ */
+function describeUploadError(e: any): string {
+  const status = e?.response?.status;
+  const serverError = e?.response?.data?.error;
+  if (serverError) return serverError;
+  if (status === 413) return 'Rasm juda katta. Kichikroq skrinshot tanlang.';
+  if (status) return `Server xatosi (${status}). Keyinroq urinib ko'ring.`;
+  if (e?.code === 'ECONNABORTED') {
+    return "Internet sekin - yuborish uzoq davom etdi. Qayta urinib ko'ring.";
+  }
+  return `Tarmoq xatosi: ${e?.message || 'noma\'lum'}`;
+}
+
 export default function TopUpScreen() {
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -116,8 +134,7 @@ export default function TopUpScreen() {
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (e: any) {
-      const msg = e?.response?.data?.error || 'Xatolik yuz berdi';
-      Alert.alert('❌', msg);
+      Alert.alert('❌', describeUploadError(e));
     } finally {
       setSubmitting(false);
     }

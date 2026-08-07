@@ -208,9 +208,19 @@ async def legacy_db(request: web.Request) -> web.Response:
         session.close()
 
 
+# aiohttp defaults to a 1 MiB request body, which rejects ordinary phone
+# screenshots before any handler runs — and does so with a plain-text 413 the
+# apps cannot show a useful message for. Keep this above the per-handler 5 MB
+# image limit so those handlers produce their own JSON error instead.
+MAX_REQUEST_BODY_SIZE = 6 * 1024 * 1024
+
+
 def create_app(bot=None) -> web.Application:
     """Create and configure the API application."""
-    app = web.Application(middlewares=[security_headers_middleware, cors_middleware])
+    app = web.Application(
+        middlewares=[security_headers_middleware, cors_middleware],
+        client_max_size=MAX_REQUEST_BODY_SIZE,
+    )
 
     if bot is not None:
         app["bot"] = bot

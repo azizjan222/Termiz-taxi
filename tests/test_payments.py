@@ -123,3 +123,13 @@ def test_automated_payment_routes_are_not_registered():
     assert "/api/payments/click/complete" not in paths
     assert "/api/payments/payme/create" not in paths
     assert "/api/payments/payme/webhook" not in paths
+
+
+def test_request_body_limit_admits_a_full_size_screenshot():
+    """aiohttp's 1 MiB default would reject ordinary screenshots before the
+    handler's own 5 MB check could answer with a readable JSON error."""
+    from app.api.payments import TOPUP_MAX_FILE_SIZE
+
+    app = create_app()
+
+    assert app._client_max_size > TOPUP_MAX_FILE_SIZE
