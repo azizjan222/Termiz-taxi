@@ -24,7 +24,8 @@
       "bundleIdentifier": "uz.sarixgo.passenger",
       "buildNumber": "1.0.0",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Sarix Go ilovasi sizning joylashuvingizni taksi buyurtmasi uchun kerak"
+        "NSLocationWhenInUseUsageDescription": "Sarix Go ilovasi sizning joylashuvingizni taksi buyurtmasi uchun kerak",
+        "LSApplicationQueriesSchemes": ["yandexnavi", "yandexmaps"]
       }
     },
     "android": {
