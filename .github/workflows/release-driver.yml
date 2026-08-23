@@ -42,9 +42,13 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci --legacy-peer-deps --no-audit --no-fund
       - name: Restore Firebase client configuration
+        shell: bash
         run: |
-          test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_DRIVER_JSON_B64 is required"; exit 1; }
+          set -euo pipefail
+          test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_DRIVER_JSON_B64 is required for production releases"; exit 1; }
+          umask 077
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
+          node -e 'const fs = require("fs"); const config = JSON.parse(fs.readFileSync("google-services.json", "utf8")); const clients = config.client || []; const valid = clients.some(({ client_info: info }) => info?.android_client_info?.package_name === "uz.sarixgo.driver"); if (!valid) throw new Error("google-services.json does not contain the uz.sarixgo.driver Android client");'
       - name: Validate and test release source
         run: |
           test -n "$EXPO_PUBLIC_YANDEX_JS_API_KEY" || { echo "::error::YANDEX_JS_API_KEY is required"; exit 1; }
