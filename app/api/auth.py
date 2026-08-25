@@ -235,48 +235,112 @@ async def telegram_check(request: web.Request) -> web.Response:
         if claim_status != "ok" or not sess:
             return web.json_response({"status": "expired"})
 
-        # verified -> find or create user
-        phone = _normalize(sess.phone) if sess.phone else None
-        if not phone:
-            return web.json_response({"status": "expired"})
+        return _issue_passenger_login(db, sess)
+    finally:
+        db.close()
 
-        user = db.query(User).filter_by(phone=phone).first()
-        is_new = False
-        if not user:
-            user = User(
-                phone=phone,
-                telegram_id=sess.telegram_id,
-                first_name=sess.first_name or None,
-                last_name=sess.last_name or None,
+
+def _issue_passenger_login(db, sess) -> web.Response:
+    """Create/link the User for a consumed auth session and return its JWT.
+
+    Shared by the polling path (``telegram_check``) and the code path
+    (``telegram_verify_code``) so the two can never drift apart.
+    """
+    phone = _normalize(sess.phone) if sess.phone else None
+    if not phone:
+        return web.json_response({"status": "expired"})
+
+    user = db.query(User).filter_by(phone=phone).first()
+    is_new = False
+    if not user:
+        user = User(
+            phone=phone,
+            telegram_id=sess.telegram_id,
+            first_name=sess.first_name or None,
+            last_name=sess.last_name or None,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        is_new = True
+    else:
+        if sess.telegram_id and not user.telegram_id:
+            user.telegram_id = sess.telegram_id
+        if sess.first_name and not user.first_name:
+            user.first_name = sess.first_name
+        user.last_active = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+
+    jwt_token = create_token(user.id, user.phone)
+    return web.json_response({
+        "status": "verified",
+        "is_new": is_new,
+        "token": jwt_token,
+        "user": {
+            "id": user.id,
+            "phone": user.phone,
+            "contact_phone": user.contact_phone,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "language": user.language,
+            "bonus_balance": user.bonus_balance,
+            "profile_photo_url": user.profile_photo_url,
+        },
+    })
+
+
+async def telegram_verify_code(request: web.Request) -> web.Response:
+    """POST /api/auth/telegram/verify-code
+    Body: {"token": "...", "code": "123456"}
+
+    The user shared their contact with the bot, the bot replied with a one-time code, and
+    the app posts that code here. Both halves are required: the token proves the request
+    comes from the device that started the login, the code proves control of the Telegram
+    account.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    token = (data.get("token") or "").strip()
+    code = (data.get("code") or "").strip()
+    if not token:
+        return web.json_response({"error": "token kerak"}, status=400)
+    if not code:
+        return web.json_response({"error": "Kod kerak"}, status=400)
+
+    db = get_session()
+    try:
+        sess, claim_status = _tg.claim_by_login_code(db, token, code, "passenger")
+        if claim_status == "not_found":
+            return web.json_response({"status": "not_found"}, status=404)
+        if claim_status == "pending":
+            return web.json_response(
+                {"status": "pending", "error": "Avval botda raqamingizni ulashing"},
+                status=400,
             )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-            is_new = True
-        else:
-            if sess.telegram_id and not user.telegram_id:
-                user.telegram_id = sess.telegram_id
-            if sess.first_name and not user.first_name:
-                user.first_name = sess.first_name
-            user.last_active = datetime.utcnow()
-            db.commit()
-            db.refresh(user)
+        if claim_status == "role_mismatch":
+            return web.json_response({"status": "role_mismatch"}, status=403)
+        if claim_status == "bad_code":
+            return web.json_response(
+                {"status": "bad_code", "error": "Kod noto'g'ri"}, status=400
+            )
+        if claim_status == "too_many_attempts":
+            return web.json_response(
+                {
+                    "status": "too_many_attempts",
+                    "error": "Juda ko'p urinish. Qaytadan boshlang.",
+                },
+                status=429,
+            )
+        if claim_status != "ok" or not sess:
+            return web.json_response(
+                {"status": "expired", "error": "Muddat tugagan. Qaytadan boshlang."},
+                status=400,
+            )
 
-        jwt_token = create_token(user.id, user.phone)
-        return web.json_response({
-            "status": "verified",
-            "is_new": is_new,
-            "token": jwt_token,
-            "user": {
-                "id": user.id,
-                "phone": user.phone,
-                "contact_phone": user.contact_phone,
-                "first_name": user.first_name,
-                "last_name": user.last_name,
-                "language": user.language,
-                "bonus_balance": user.bonus_balance,
-                "profile_photo_url": user.profile_photo_url,
-            },
-        })
+        return _issue_passenger_login(db, sess)
     finally:
         db.close()

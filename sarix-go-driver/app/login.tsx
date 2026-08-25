@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Alert, Animated, Easing,
-  KeyboardAvoidingView, Platform, Linking, TouchableOpacity, ActivityIndicator,
+  KeyboardAvoidingView, Platform, Linking, TouchableOpacity, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,7 +9,7 @@ import { router } from 'expo-router';
 
 
 import { Button } from '../src/components/Button';
-import { telegramStart, telegramCheck } from '../src/api/driver';
+import { telegramStart, telegramVerifyCode } from '../src/api/driver';
 import { useDriverStore } from '../src/store/driver';
 import { BOT_USERNAME } from '../src/api/client';
 import { useThemeStore } from '../src/store/theme';
@@ -19,6 +19,9 @@ import type { ThemeColors } from '../src/theme/colors-themed';
 // Driver entry palette — vivid BLUE ("ko'k").
 const BLUE_GRADIENT: [string, string, string] = ['#2E8BFF', '#1565E0', '#0B3FA8'];
 
+// Must match LOGIN_CODE_LENGTH in app/services/telegram_auth.py.
+const CODE_LENGTH = 6;
+
 export default function LoginScreen() {
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -26,9 +29,11 @@ export default function LoginScreen() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // `tgWaiting` now means "deep link opened, waiting for the driver to type the code".
   const [tgWaiting, setTgWaiting] = useState(false);
   const [tgToken, setTgToken] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [code, setCode] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
   // Entrance animation for the content.
   const fade = useRef(new Animated.Value(0)).current;
@@ -42,54 +47,82 @@ export default function LoginScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const stopPolling = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-  };
-  useEffect(() => () => stopPolling(), []);
-
   const openBot = () => Linking.openURL(`https://t.me/${BOT_USERNAME}`);
 
   const startTelegram = async () => {
     setError('');
+    setCode('');
     setLoading(true);
     try {
       const res = await telegramStart();
       setTgToken(res.token);
       await Linking.openURL(res.deep_link);
+      // Move to the code step. The bot sends a one-time code once the driver shares
+      // their contact; we no longer poll /check, because typing the code is what proves
+      // the person finishing the login actually controls that Telegram account.
       setTgWaiting(true);
-      let elapsed = 0;
-      stopPolling();
-      pollRef.current = setInterval(async () => {
-        elapsed += 1;
-        if (elapsed > 120) { stopPolling(); setTgWaiting(false); setError('Vaqt tugadi'); return; }
-        try {
-          const r = await telegramCheck(res.token);
-          if (r.status === 'verified' && r.driver) {
-            stopPolling();
-            setDriver(r.driver);
-            router.replace('/(main)/orders');
-          } else if (r.status === 'not_registered') {
-            stopPolling(); setTgWaiting(false);
-            Alert.alert("⚠️ Ro'yxatdan o'tmagansiz", r.message || "Botda \"Haydovchi bo'lish\"ni bosing", [
-              { text: 'Bekor qilish', style: 'cancel' },
-              { text: "Botga o'tish", onPress: openBot },
-            ]);
-          } else if (r.status === 'documents_required') {
-            stopPolling(); setTgWaiting(false);
-            // Authenticated, but documents still needed -> collect them IN THE APP.
-            if (r.driver) setDriver(r.driver);
-            router.replace('/driver-documents');
-          } else if (r.status === 'blocked') {
-            stopPolling(); setTgWaiting(false); setError(r.message || 'Bloklangan');
-          } else if (r.status === 'expired') {
-            stopPolling(); setTgWaiting(false); setError('Muddati tugadi');
-          }
-        } catch {}
-      }, 2500);
     } catch {
       setError("Xatolik. Qayta urinib ko'ring.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const submitCode = async () => {
+    const c = code.trim();
+    if (c.length < CODE_LENGTH || !tgToken || verifying) return;
+    setVerifying(true);
+    setError('');
+    try {
+      const r = await telegramVerifyCode(tgToken, c);
+      if (r.status === 'verified' && r.driver) {
+        setDriver(r.driver);
+        router.replace('/(main)/orders');
+        return;
+      }
+      if (r.status === 'documents_required') {
+        // Authenticated, but documents still needed -> collect them IN THE APP.
+        if (r.driver) setDriver(r.driver);
+        router.replace('/driver-documents');
+        return;
+      }
+      if (r.status === 'blocked') {
+        setError(r.message || 'Bloklangan');
+        return;
+      }
+      if (r.status === 'not_registered') {
+        setTgWaiting(false);
+        Alert.alert(
+          "⚠️ Ro'yxatdan o'tmagansiz",
+          r.message || "Botda \"Haydovchi bo'lish\"ni bosing",
+          [
+            { text: 'Bekor qilish', style: 'cancel' },
+            { text: "Botga o'tish", onPress: openBot },
+          ]
+        );
+        return;
+      }
+      setError('Muddati tugadi');
+    } catch (e: any) {
+      const status = e?.response?.data?.status;
+      if (status === 'bad_code') {
+        setError("Kod noto'g'ri");
+        setCode('');
+      } else if (status === 'too_many_attempts') {
+        setError("Juda ko'p urinish. Qaytadan boshlang.");
+        setTgWaiting(false);
+        setTgToken(null);
+      } else if (status === 'pending') {
+        setError("Avval Telegram'da raqamingizni ulashing");
+      } else if (status === 'expired' || status === 'not_found') {
+        setError('Muddati tugadi');
+        setTgWaiting(false);
+        setTgToken(null);
+      } else {
+        setError("Xatolik. Qayta urinib ko'ring.");
+      }
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -112,9 +145,28 @@ export default function LoginScreen() {
           <Animated.View style={[styles.body, { opacity: fade, transform: [{ translateY: slide }] }]}>
             {tgWaiting ? (
               <View style={styles.waitingBox}>
-                <ActivityIndicator size="large" color={colors.accent} />
-                <Text style={styles.waitingText}>Telegram tasdiqlanishini kutmoqda...</Text>
-                <Text style={styles.waitingHint}>Telegram'da raqamingizni ulashing</Text>
+                <Text style={styles.waitingText}>Kodni kiriting</Text>
+                <Text style={styles.waitingHint}>
+                  Bot Telegram'ga yuborgan 6 xonali kodni kiriting
+                </Text>
+                <TextInput
+                  style={styles.codeInput}
+                  value={code}
+                  onChangeText={(v) => {
+                    setCode(v.replace(/\D/g, '').slice(0, CODE_LENGTH));
+                    setError('');
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={CODE_LENGTH}
+                  autoFocus
+                  editable={!verifying}
+                  placeholder="——————"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  textAlign="center"
+                  returnKeyType="done"
+                  onSubmitEditing={submitCode}
+                />
+                {error ? <Text style={styles.errorText}>{error}</Text> : null}
                 <TouchableOpacity onPress={() => tgToken && Linking.openURL(`https://t.me/${BOT_USERNAME}?start=auth_${tgToken}`)}>
                   <Text style={styles.linkText}>Telegram'ni qayta ochish</Text>
                 </TouchableOpacity>
@@ -123,27 +175,39 @@ export default function LoginScreen() {
               <View style={styles.steps}>
                 <Step n="1" text="Pastdagi tugmani bosing" />
                 <Step n="2" text='Telegram bot ochiladi — "Boshlash"ni bosing' />
-                <Step n="3" text="Raqamingizni ulashing — avtomatik kirasiz" />
+                <Step n="3" text="Raqamingizni ulashing — bot kod yuboradi" />
+                <Step n="4" text="Kodni ilovaga kiriting" />
                 {error ? <Text style={styles.errorText}>{error}</Text> : null}
               </View>
             )}
           </Animated.View>
 
-          {!tgWaiting && (
-            <Animated.View style={[styles.footer, { opacity: fade }]}>
+          <Animated.View style={[styles.footer, { opacity: fade }]}>
+            {tgWaiting ? (
               <Button
-                title="📲 Telegram orqali kirish"
-                onPress={startTelegram}
-                loading={loading}
+                title="Kirish"
+                onPress={submitCode}
+                loading={verifying}
+                disabled={code.length < CODE_LENGTH}
                 variant="accent"
-                accessibilityLabel="Telegram orqali kirish"
-                accessibilityHint="Telegram botda telefon raqamingizni tasdiqlashni boshlaydi"
+                accessibilityLabel="Kod bilan kirish"
               />
-              <Text style={styles.note}>
-                Telegram orqali kirasiz, hujjatlaringizni ilovada yuklaysiz
-              </Text>
-            </Animated.View>
-          )}
+            ) : (
+              <>
+                <Button
+                  title="📲 Telegram orqali kirish"
+                  onPress={startTelegram}
+                  loading={loading}
+                  variant="accent"
+                  accessibilityLabel="Telegram orqali kirish"
+                  accessibilityHint="Telegram botda telefon raqamingizni tasdiqlashni boshlaydi"
+                />
+                <Text style={styles.note}>
+                  Telegram orqali kirasiz, hujjatlaringizni ilovada yuklaysiz
+                </Text>
+              </>
+            )}
+          </Animated.View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
@@ -182,6 +246,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   stepText: { flex: 1, ...typography.body, color: colors.textOnPrimary },
   errorText: { ...typography.caption, color: '#FCA5A5', textAlign: 'center', marginTop: spacing.md },
   waitingBox: { alignItems: 'center', gap: spacing.md },
+  codeInput: {
+    width: '100%',
+    ...typography.h1,
+    color: colors.textOnPrimary,
+    letterSpacing: 12,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.accent,
+  },
   waitingText: { ...typography.h3, color: colors.textOnPrimary, textAlign: 'center' },
   waitingHint: { ...typography.body, color: colors.accent, textAlign: 'center' },
   linkText: { ...typography.body, color: colors.textOnPrimary, textDecorationLine: 'underline', marginTop: spacing.sm },

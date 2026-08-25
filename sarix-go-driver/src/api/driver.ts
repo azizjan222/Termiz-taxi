@@ -295,7 +295,17 @@ export interface TgStartResponse {
 }
 
 export interface TgCheckResponse {
-  status: 'pending' | 'verified' | 'expired' | 'not_found' | 'not_registered' | 'blocked' | 'documents_required';
+  status:
+    | 'pending'
+    | 'verified'
+    | 'expired'
+    | 'not_found'
+    | 'not_registered'
+    | 'blocked'
+    | 'documents_required'
+    | 'bad_code'
+    | 'too_many_attempts'
+    | 'role_mismatch';
   token?: string;
   driver?: Driver;
   message?: string;
@@ -304,6 +314,28 @@ export interface TgCheckResponse {
 
 export async function telegramStart(): Promise<TgStartResponse> {
   const response = await api.post<TgStartResponse>('/api/driver/telegram/start', {});
+  return response.data;
+}
+
+/**
+ * Finish a Telegram login with the one-time code the bot sent into the driver's chat.
+ * `token` proves the request comes from the device that started the login; `code` proves
+ * control of the Telegram account.
+ */
+export async function telegramVerifyCode(
+  token: string,
+  code: string
+): Promise<TgCheckResponse> {
+  const response = await api.post<TgCheckResponse>(
+    '/api/driver/telegram/verify-code',
+    { token, code }
+  );
+  if (
+    (response.data.status === 'verified' || response.data.status === 'documents_required') &&
+    response.data.token
+  ) {
+    await setAuthToken(response.data.token);
+  }
   return response.data;
 }
 

@@ -566,8 +566,11 @@ class TelegramAuthSession(Base):
     Flow:
     1. App creates a session -> gets token + bot deep link
     2. User opens bot via deep link, shares contact
-    3. Bot links phone <-> telegram_id, marks session verified
-    4. App polls and receives JWT once verified
+    3. Bot links phone <-> telegram_id, marks session verified and sends a one-time code
+    4. App asks the user to type that code -> POST .../telegram/verify-code -> JWT
+
+    The older polling path (GET .../telegram/check) still works so app versions already
+    installed keep logging in; it is superseded by the code path above.
     """
     __tablename__ = "telegram_auth_sessions"
 
@@ -578,6 +581,16 @@ class TelegramAuthSession(Base):
     telegram_id = Column(BigInteger)      # filled when user opens bot
     first_name = Column(String(100))
     last_name = Column(String(100))
-    status = Column(String(20), default="pending", index=True)  # pending | verified | expired
+    status = Column(String(20), default="pending", index=True)
+    # pending | verified | used | expired
+
+    # One-time code the bot sends into the user's Telegram chat once they share their
+    # contact. The app then asks the user to type it. This is what makes the flow safe
+    # against a phished deep link: the token lives on the requesting device, but the code
+    # is delivered only to the real account's chat, so an attacker holding a token they
+    # tricked someone into opening still cannot complete the login.
+    login_code = Column(String(10))
+    code_attempts = Column(Integer, default=0)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False)

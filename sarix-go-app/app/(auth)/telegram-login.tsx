@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Linking, ActivityIndicator, Animated, Easing,
+  View, Text, StyleSheet, Linking, TextInput, Animated, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Logo } from '../../src/components/Logo';
 import { Button } from '../../src/components/Button';
-import { telegramStart, telegramCheck } from '../../src/api/auth';
+import { telegramStart, telegramVerifyCode } from '../../src/api/auth';
 import { useAuthStore } from '../../src/store/auth';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing } from '../../src/theme';
@@ -18,6 +18,9 @@ import type { ThemeColors } from '../../src/theme/colors-themed';
 // Passenger entry palette — DARK BLUE / navy ("to'q ko'k").
 const DARK_BLUE_GRADIENT: [string, string, string] = ['#1A3B7A', '#0E2050', '#070E28'];
 
+// Must match LOGIN_CODE_LENGTH in app/services/telegram_auth.py.
+const CODE_LENGTH = 6;
+
 export default function TelegramLoginScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
@@ -25,10 +28,12 @@ export default function TelegramLoginScreen() {
   const setUser = useAuthStore((s) => s.setUser);
 
   const [token, setToken] = useState<string | null>(null);
+  // `waiting` now means "deep link opened, waiting for the user to type the bot's code".
   const [waiting, setWaiting] = useState(false);
+  const [code, setCode] = useState('');
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Entrance animation for the content.
   const fade = useRef(new Animated.Value(0)).current;
@@ -42,24 +47,18 @@ export default function TelegramLoginScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
-
-  useEffect(() => () => stopPolling(), []);
-
   const startLogin = async () => {
     setStarting(true);
     setError('');
+    setCode('');
     try {
       const res = await telegramStart();
       setToken(res.token);
       await Linking.openURL(res.deep_link);
+      // Switch to the code step. The bot replies with a one-time code once the user
+      // shares their contact; we deliberately do NOT poll /check any more, because the
+      // code is what proves the person completing the login is the account owner.
       setWaiting(true);
-      beginPolling(res.token);
     } catch {
       setError(t('errors.networkError'));
     } finally {
@@ -67,40 +66,43 @@ export default function TelegramLoginScreen() {
     }
   };
 
-  const beginPolling = (tkn: string) => {
-    stopPolling();
-    let elapsed = 0;
-    pollRef.current = setInterval(async () => {
-      elapsed += 1;
-      if (elapsed > 120) { // ~5 min
-        stopPolling();
-        setWaiting(false);
-        setError(t('telegramLogin.timeout'));
+  const submitCode = async () => {
+    const c = code.trim();
+    if (c.length < CODE_LENGTH || !token || verifying) return;
+    setVerifying(true);
+    setError('');
+    try {
+      const res = await telegramVerifyCode(token, c);
+      if (res.status === 'verified' && res.user) {
+        setUser(res.user);
+        const u = res.user;
+        const needsProfile =
+          res.is_new || !u.first_name || !(u.contact_phone || u.phone);
+        router.replace(needsProfile ? '/(auth)/name' : '/(tabs)/home');
         return;
       }
-      try {
-        const res = await telegramCheck(tkn);
-        if (res.status === 'verified' && res.user) {
-          stopPolling();
-          setUser(res.user);
-          // Always collect the profile (Ism majburiy, Familiya ixtiyoriy, Telefon
-          // majburiy) when it is incomplete — new users, or anyone still missing a
-          // name or a phone number. Otherwise go straight home.
-          const u = res.user;
-          const needsProfile =
-            res.is_new || !u.first_name || !(u.contact_phone || u.phone);
-          if (needsProfile) {
-            router.replace('/(auth)/name');
-          } else {
-            router.replace('/(tabs)/home');
-          }
-        } else if (res.status === 'expired') {
-          stopPolling();
-          setWaiting(false);
-          setError(t('telegramLogin.expired'));
-        }
-      } catch {}
-    }, 2500);
+      setError(t('telegramLogin.expired'));
+    } catch (e: any) {
+      const status = e?.response?.data?.status;
+      if (status === 'bad_code') {
+        setError(t('telegramLogin.badCode'));
+        setCode('');
+      } else if (status === 'too_many_attempts') {
+        setError(t('telegramLogin.tooManyAttempts'));
+        setWaiting(false);
+        setToken(null);
+      } else if (status === 'pending') {
+        setError(t('telegramLogin.notSharedYet'));
+      } else if (status === 'expired' || status === 'not_found') {
+        setError(t('telegramLogin.expired'));
+        setWaiting(false);
+        setToken(null);
+      } else {
+        setError(t('errors.networkError'));
+      }
+    } finally {
+      setVerifying(false);
+    }
   };
 
   return (
@@ -120,16 +122,34 @@ export default function TelegramLoginScreen() {
 
         <Animated.View style={[styles.body, { opacity: fade, transform: [{ translateY: slide }] }]}>
           {waiting ? (
-            <View style={styles.waitingBox}>
-              <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={styles.waitingText}>{t('telegramLogin.waiting')}</Text>
-              <Text style={styles.waitingHint}>{t('telegramLogin.waitingHint')}</Text>
+            <View style={styles.codeBox}>
+              <Text style={styles.waitingText}>{t('telegramLogin.codeTitle')}</Text>
+              <Text style={styles.waitingHint}>{t('telegramLogin.codeHint')}</Text>
+              <TextInput
+                style={styles.codeInput}
+                value={code}
+                onChangeText={(v) => {
+                  const digits = v.replace(/\D/g, '').slice(0, CODE_LENGTH);
+                  setCode(digits);
+                  setError('');
+                }}
+                keyboardType="number-pad"
+                maxLength={CODE_LENGTH}
+                autoFocus
+                editable={!verifying}
+                placeholder="——————"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                textAlign="center"
+                returnKeyType="done"
+                onSubmitEditing={submitCode}
+              />
             </View>
           ) : (
             <View style={styles.steps}>
               <Step n="1" text={t('telegramLogin.step1')} />
               <Step n="2" text={t('telegramLogin.step2')} />
               <Step n="3" text={t('telegramLogin.step3')} />
+              <Step n="4" text={t('telegramLogin.step4')} />
             </View>
           )}
 
@@ -145,13 +165,27 @@ export default function TelegramLoginScreen() {
               variant="primary"
             />
           ) : (
-            <Button
-              title={t('telegramLogin.openAgain')}
-              onPress={() => token && Linking.openURL(`https://t.me/termizsariosiyotaxi_bot?start=auth_${token}`)}
-              variant="outline"
-              textStyle={{ color: colors.textOnPrimary }}
-              style={{ borderColor: colors.textOnPrimary }}
-            />
+            <View style={{ gap: spacing.sm }}>
+              <Button
+                title={t('telegramLogin.verify')}
+                onPress={submitCode}
+                loading={verifying}
+                disabled={code.length < CODE_LENGTH}
+                variant="primary"
+              />
+              <Button
+                title={t('telegramLogin.openAgain')}
+                onPress={() =>
+                  token &&
+                  Linking.openURL(
+                    `https://t.me/termizsariosiyotaxi_bot?start=auth_${token}`
+                  )
+                }
+                variant="outline"
+                textStyle={{ color: colors.textOnPrimary }}
+                style={{ borderColor: colors.textOnPrimary }}
+              />
+            </View>
           )}
         </View>
       </SafeAreaView>
@@ -185,6 +219,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   stepNumText: { ...typography.bodyBold, color: colors.primary, fontWeight: '800' },
   stepText: { flex: 1, ...typography.body, color: colors.textOnPrimary },
   waitingBox: { alignItems: 'center', gap: spacing.md },
+  codeBox: { alignItems: 'center', gap: spacing.md },
+  codeInput: {
+    width: '100%',
+    ...typography.h1,
+    color: colors.textOnPrimary,
+    letterSpacing: 12,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.accent,
+  },
   waitingText: { ...typography.h3, color: colors.textOnPrimary, textAlign: 'center' },
   waitingHint: { ...typography.body, color: colors.accent, opacity: 0.9, textAlign: 'center' },
   error: { ...typography.caption, color: '#FCA5A5', textAlign: 'center', marginTop: spacing.lg },

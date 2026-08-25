@@ -47,23 +47,35 @@ async def save_shared_contact(update: Update, context: ContextTypes.DEFAULT_TYPE
     if update.message.contact and context.user_data.get("tg_auth_token"):
         token = context.user_data.pop("tg_auth_token")
         phone = update.message.contact.phone_number
-        session_ok = False
+        login_code = None
+        ttl_minutes = None
         try:
             from app.database import get_session
-            from app.services.telegram_auth import mark_verified
+            from app.services.telegram_auth import SESSION_TTL_MINUTES, mark_verified
             db = get_session()
             try:
-                session_ok = bool(mark_verified(
+                auth_session = mark_verified(
                     db, token, telegram_id=uid, phone=phone,
                     first_name=update.effective_user.first_name or "",
-                    last_name=update.effective_user.last_name or ""))
+                    last_name=update.effective_user.last_name or "")
+                if auth_session:
+                    login_code = auth_session.login_code
+                    ttl_minutes = SESSION_TTL_MINUTES
             finally:
                 db.close()
         except Exception as e:
             logger.error("Telegram auth verify error: %s", e)
-        if session_ok:
+        if login_code:
+            # The code is deliberately delivered ONLY here, into the real account's chat.
+            # The app holds the session token but never sees the code, so a deep link a
+            # stranger tricked someone into opening cannot be turned into a login.
             await update.message.reply_text(
-                "✅ <b>Tasdiqlandi!</b>\n\nIlovaga qayting — avtomatik kirasiz. 📱",
+                "✅ <b>Tasdiqlandi!</b>\n\n"
+                "Ilovaga kirish kodi:\n\n"
+                f"<code>{login_code}</code>\n\n"
+                f"Kod {ttl_minutes} daqiqa amal qiladi.\n"
+                "Ilovaga qaytib shu kodni kiriting. 📱\n\n"
+                "⚠️ Kodni hech kimga aytmang!",
                 parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
         else:
             await update.message.reply_text(

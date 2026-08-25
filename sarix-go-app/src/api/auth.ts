@@ -84,10 +84,18 @@ export interface TelegramStartResponse {
 }
 
 export interface TelegramCheckResponse {
-  status: 'pending' | 'verified' | 'expired' | 'not_found';
+  status:
+    | 'pending'
+    | 'verified'
+    | 'expired'
+    | 'not_found'
+    | 'bad_code'
+    | 'too_many_attempts'
+    | 'role_mismatch';
   is_new?: boolean;
   token?: string;
   user?: User;
+  error?: string;
 }
 
 export async function telegramStart(): Promise<TelegramStartResponse> {
@@ -99,6 +107,28 @@ export async function telegramCheck(token: string): Promise<TelegramCheckRespons
   const response = await api.get<TelegramCheckResponse>('/api/auth/telegram/check', {
     params: { token },
   });
+  if (response.data.status === 'verified' && response.data.token) {
+    await setAuthToken(response.data.token);
+  }
+  return response.data;
+}
+
+/**
+ * Finish a Telegram login with the one-time code the bot sent into the user's chat.
+ *
+ * Both halves are required: `token` proves the request comes from the device that
+ * started the login, `code` proves control of the Telegram account. That is why a deep
+ * link someone was tricked into opening cannot be turned into a login by whoever
+ * generated it — the code only ever reaches the real account's chat.
+ */
+export async function telegramVerifyCode(
+  token: string,
+  code: string
+): Promise<TelegramCheckResponse> {
+  const response = await api.post<TelegramCheckResponse>(
+    '/api/auth/telegram/verify-code',
+    { token, code }
+  );
   if (response.data.status === 'verified' && response.data.token) {
     await setAuthToken(response.data.token);
   }
