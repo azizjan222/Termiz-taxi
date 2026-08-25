@@ -123,6 +123,9 @@ export default function NewOrderScreen() {
         has_roof_rack: orderStore.hasRoofRack,
         female_only: orderStore.femaleOnly,
         target_driver_id: targetDriverId,
+        // Redeem the code the passenger entered. The store already held promoCode but it
+        // was never sent, so a code could never actually be applied to an order.
+        promo_code: orderStore.promoCode.trim() || undefined,
       });
       orderStore.reset();
       router.replace({

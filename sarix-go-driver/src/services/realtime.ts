@@ -134,6 +134,20 @@ function handleMessage(data: any) {
       data: { order_id: msg.order_id },
     });
     useRealtimeStore.getState().pushCancelled(msg.order_id);
+  } else if (msg.type === 'order_taken') {
+    // Another driver won the order. Deliberately silent: no sound, no vibration, no
+    // notification entry -- losing a race is not an event worth interrupting a driver
+    // for. Consumers just drop the order from the list and dismiss the popup.
+    const myTelegramId = useDriverStore.getState().driver?.telegram_id;
+    if (
+      myTelegramId != null &&
+      msg.driver_telegram_id != null &&
+      String(msg.driver_telegram_id) === String(myTelegramId)
+    ) {
+      return; // our own accept: the screen already navigated
+    }
+    if (msg.order_id == null) return;
+    useRealtimeStore.getState().pushTaken(msg.order_id);
   }
 }
 

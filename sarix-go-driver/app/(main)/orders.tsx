@@ -110,7 +110,10 @@ export default function OrdersScreen() {
       });
       // Surface the ride-hailing style popup for the freshest order.
       setIncomingOrder(order);
-    } else if (lastEvent.kind === 'order_cancelled') {
+    } else if (lastEvent.kind === 'order_cancelled' || lastEvent.kind === 'order_taken') {
+      // 'order_taken' = another driver got there first. Same cleanup as a cancellation
+      // (drop from the list, dismiss the popup) but the realtime service raises no
+      // sound/vibration for it, so losing a race stays silent.
       setOrders((prev) => prev.filter((o) => o.id !== lastEvent.orderId));
       setIncomingOrder((cur) => (cur && cur.id === lastEvent.orderId ? null : cur));
     }

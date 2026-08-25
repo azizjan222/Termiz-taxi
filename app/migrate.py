@@ -24,8 +24,10 @@ def _apply_schema_migrations() -> int:
     BOOL_FALSE = "BOOLEAN DEFAULT FALSE" if is_pg else "BOOLEAN DEFAULT 0"
     DT = "TIMESTAMP" if is_pg else "DATETIME"
     FLT = "DOUBLE PRECISION" if is_pg else "FLOAT"
-    migration_version = 2026071501
-    migration_name = "production_integrity_hardening"
+    # BUMP THIS whenever an entry is added to `migrations` or a new index/table below,
+    # otherwise the ledger short-circuits and existing databases silently skip the change.
+    migration_version = 2026082501
+    migration_name = "promo_redemption_and_order_taken"
 
     # This is a lightweight, explicit migration ledger for the existing additive
     # migration system. It is intentionally not presented as an Alembic conversion.
@@ -96,6 +98,8 @@ def _apply_schema_migrations() -> int:
         ("orders", "use_bonus", BOOL_FALSE),
         ("orders", "bonus_used", "INTEGER DEFAULT 0"),
         ("orders", "rewards_applied", BOOL_FALSE),
+        ("orders", "promo_code", "VARCHAR(30)"),
+        ("orders", "promo_discount", "INTEGER DEFAULT 0"),
         # Payment provider isolation / duplicate-receipt protection
         ("payments", "provider", "VARCHAR(20) DEFAULT 'manual_app'"),
         ("payments", "provider_transaction_id", "VARCHAR(100)"),

@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from app import config
 from app.database import get_session
 from app.models import Order
+from app.services.promo import release_promo_for_order
 
 logger = logging.getLogger("sarixgo.expiry")
 
@@ -82,6 +83,17 @@ def expire_stale_orders(now: datetime | None = None) -> list[dict]:
                 )
             )
             if claimed:
+                # No driver ever took the ride, so give any promo redemption back --
+                # otherwise a single-use code is burnt by an order that never happened.
+                # (Bonus needs no release here: it is only reserved on accept.)
+                session.refresh(order)
+                try:
+                    release_promo_for_order(session, order)
+                except Exception as promo_error:  # pragma: no cover - defensive
+                    logger.error(
+                        "Promo release failed for expired order %s: %s",
+                        order.id, promo_error,
+                    )
                 expired.append({
                     "order_id": order.id,
                     "passenger_id": order.passenger_id,

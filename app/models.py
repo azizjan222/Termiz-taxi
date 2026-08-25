@@ -215,6 +215,12 @@ class Order(Base):
     # funded purely from forgone commission and the driver's net is never reduced.
     use_bonus = Column(Boolean, default=False)
     bonus_used = Column(Integer, default=0)
+
+    # Promo code redeemed on this ride. Like bonus, the discount is funded from forgone
+    # commission, so the driver's net is unchanged and the passenger pays
+    # price - bonus_used - promo_discount.
+    promo_code = Column(String(30))
+    promo_discount = Column(Integer, default=0)
     # Commission is deducted from the driver 15 minutes after acceptance (deferred),
     # whether or not the ride is completed. This flag prevents double-charging and
     # tells cancel_order whether a refund is owed.
@@ -267,6 +273,13 @@ class Order(Base):
         CheckConstraint("commission >= 0", name="ck_order_commission_nonnegative"),
         CheckConstraint("bonus_used >= 0", name="ck_order_bonus_nonnegative"),
         CheckConstraint("bonus_used <= commission", name="ck_order_bonus_within_commission"),
+        CheckConstraint("promo_discount >= 0", name="ck_order_promo_nonnegative"),
+        # Bonus and promo are both funded from commission, so together they can never
+        # exceed it -- otherwise the platform would pay the driver to take the ride.
+        CheckConstraint(
+            "bonus_used + promo_discount <= commission",
+            name="ck_order_discounts_within_commission",
+        ),
         CheckConstraint("male_count >= 0", name="ck_order_male_count_nonnegative"),
         CheckConstraint("female_count >= 0", name="ck_order_female_count_nonnegative"),
     )
@@ -368,6 +381,33 @@ class PromoCode(Base):
     valid_until = Column(DateTime)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        CheckConstraint("max_uses >= 0", name="ck_promo_max_uses_nonnegative"),
+        CheckConstraint("used_count >= 0", name="ck_promo_used_count_nonnegative"),
+    )
+
+
+class PromoUsage(Base):
+    """One row per (promo code, passenger) redemption.
+
+    Enforces the per-user limit at the database level. Without this table nothing tracked
+    who had already redeemed a code, so ``PromoCode.used_count`` was never incremented and
+    the ``max_uses`` check in the validate endpoint guarded a counter that never moved --
+    a single-use code could be reused without limit.
+    """
+    __tablename__ = "promo_usages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    promo_code_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
+    discount_amount = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("promo_code_id", "user_id", name="uq_promo_usage_code_user"),
+    )
 
 
 # ============= BONUS TRANSACTIONS =============
