@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -46,10 +46,10 @@ export const IncomingOrderModal: React.FC<Props> = ({
 }) => {
   const styles = React.useMemo(() => createStyles(colors), [colors]);
 
-  const slide = useRef(new Animated.Value(SCREEN_H)).current;
-  const backdrop = useRef(new Animated.Value(0)).current;
-  const countdown = useRef(new Animated.Value(1)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
+  const [slide] = useState(() => new Animated.Value(SCREEN_H));
+  const [backdrop] = useState(() => new Animated.Value(0));
+  const [countdown] = useState(() => new Animated.Value(1));
+  const [pulse] = useState(() => new Animated.Value(0));
   const [secsLeft, setSecsLeft] = useState(COUNTDOWN_SEC);
 
   useEffect(() => {
@@ -244,7 +244,7 @@ export const IncomingOrderModal: React.FC<Props> = ({
 };
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8,12,28,0.55)' },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(8,12,28,0.55)' },
   wrap: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.background,

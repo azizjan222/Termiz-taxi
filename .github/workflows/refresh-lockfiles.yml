@@ -1,0 +1,120 @@
+name: Refresh Expo lockfiles
+
+# Regenerates package-lock.json for both Expo apps and lets `expo install --fix`
+# correct any dependency that doesn't match the installed Expo SDK.
+#
+# WHY THIS EXISTS
+# ---------------
+# Every other workflow installs with `npm ci`, which hard-fails when
+# package.json and package-lock.json disagree. After an SDK bump the lockfiles
+# must be regenerated against the npm registry, so it cannot be done offline.
+#
+# It runs automatically on any PR that touches an app's package.json and commits
+# the refreshed lockfiles straight back to the PR branch. `workflow_dispatch` is
+# also available, but only once this file has landed on the default branch —
+# GitHub hides the "Run workflow" button for workflows that exist solely on a
+# feature branch.
+#
+# `expo install --fix` is the authority on version ranges: if a hand-edited
+# version in package.json is wrong for the SDK, this job rewrites it.
+on:
+  workflow_dispatch:
+    inputs:
+      run_checks:
+        description: "Run typecheck / lint / tests after installing"
+        type: boolean
+        required: false
+        default: true
+  pull_request:
+    paths:
+      - 'sarix-go-app/package.json'
+      - 'sarix-go-driver/package.json'
+      - '.github/workflows/refresh-lockfiles.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-lockfiles-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    # Forked PRs get a read-only token, so the push at the end would fail.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # On a pull_request event the default checkout is a detached merge commit;
+      # we need the actual PR branch so the refreshed lockfiles can be pushed.
+      TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.4'
+
+      - name: Regenerate lockfiles and align versions with the Expo SDK
+        run: |
+          set -euo pipefail
+          for app in sarix-go-app sarix-go-driver; do
+            echo "::group::$app"
+            cd "$app"
+
+            # Start from a clean slate so npm resolves the new SDK from scratch
+            # instead of trying to reconcile the stale tree.
+            rm -rf node_modules package-lock.json
+
+            npm install --legacy-peer-deps --no-audit --no-fund
+
+            # Let Expo correct any dependency that is wrong for this SDK.
+            npx expo install --fix
+
+            # `expo install --fix` may have rewritten package.json — resync the lock.
+            npm install --legacy-peer-deps --no-audit --no-fund
+
+            # Must be clean now, otherwise `npm ci` would fail in the other workflows.
+            npx expo install --check
+
+            cd ..
+            echo "::endgroup::"
+          done
+
+      - name: Commit refreshed lockfiles
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            sarix-go-app/package.json sarix-go-app/package-lock.json \
+            sarix-go-driver/package.json sarix-go-driver/package-lock.json
+
+          if git diff --cached --quiet; then
+            echo "Lockfiles already up to date — nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: regenerate Expo lockfiles via expo install --fix"
+          git push origin "HEAD:${TARGET_BRANCH}"
+
+      # Runs after the commit so a check failure still leaves the usable
+      # lockfiles behind — otherwise every rerun would start from scratch.
+      - name: Verify source
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_checks }}
+        run: |
+          set -euo pipefail
+          for app in sarix-go-app sarix-go-driver; do
+            echo "::group::checks $app"
+            cd "$app"
+            npm run typecheck
+            npm run lint
+            npm test -- --ci
+            cd ..
+            echo "::endgroup::"
+          done

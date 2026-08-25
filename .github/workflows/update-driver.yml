@@ -1,9 +1,30 @@
 name: OTA Update Driver App
 
 # Manual-only: OTA must be reviewed as JS/assets-only and must pass all checks.
+#
+# WHY THIS JOB MIRRORS THE RELEASE JOB
+# ------------------------------------
+# `runtimeVersion.policy` is `fingerprint`, so an update is only ever delivered to
+# a build whose native fingerprint is identical. The fingerprint hashes the
+# *contents* of google-services.json (see @expo/fingerprint `expoConfigExternalFile`),
+# so this job MUST restore that file exactly like release-driver.yml does.
+# If it doesn't, the update is published under a different runtimeVersion and
+# silently reaches nobody.
+#
+# Native changes (new/updated native deps, config plugins, SDK bumps, app config
+# that affects the native project) CANNOT ship over OTA — they change the
+# fingerprint. Those require a new build via release-driver.yml.
 on:
   workflow_dispatch:
     inputs:
+      channel:
+        description: "Release channel that should receive this update"
+        type: choice
+        required: true
+        default: preview
+        options:
+          - preview
+          - production
       message:
         description: "Update message"
         required: false
@@ -13,7 +34,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: eas-update-driver-preview
+  group: eas-update-driver-${{ inputs.channel }}
   cancel-in-progress: true
 
 jobs:
@@ -27,6 +48,7 @@ jobs:
       EAS_PROJECT_ID: ${{ secrets.EAS_DRIVER_PROJECT_ID }}
       EXPO_PUBLIC_YANDEX_JS_API_KEY: ${{ secrets.YANDEX_JS_API_KEY }}
       EXPO_PUBLIC_YANDEX_SDK_API_KEY: ${{ secrets.YANDEX_SDK_API_KEY }}
+      GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_DRIVER_JSON_B64 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,16 +61,26 @@ jobs:
           eas-version: 21.0.1
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Restore Firebase client configuration
+        # Required for fingerprint parity with the release build — see header.
+        run: |
+          test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_DRIVER_JSON_B64 is required"; exit 1; }
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
       - name: Validate JS-only update
         run: |
+          test -n "$EXPO_PUBLIC_YANDEX_JS_API_KEY" || { echo "::error::YANDEX_JS_API_KEY is required"; exit 1; }
           npx expo install --check
           npx expo config --type public >/dev/null
           npm run typecheck
           npm run lint
           npm test -- --ci
-      - name: Publish preview update
+      - name: Report native fingerprint
+        # Informational: this must match the fingerprint of the installed build,
+        # otherwise the update will not be delivered. Never fail the job on it.
+        continue-on-error: true
+        run: npx expo-updates fingerprint:generate --platform android
+      - name: Publish update
         env:
           UPDATE_MESSAGE: ${{ inputs.message }}
-        run: eas update --branch preview --non-interactive --message "$UPDATE_MESSAGE"
-      - name: Link preview channel to update branch
-        run: eas channel:edit preview --branch preview --non-interactive
+          UPDATE_CHANNEL: ${{ inputs.channel }}
+        run: eas update --channel "$UPDATE_CHANNEL" --non-interactive --message "$UPDATE_MESSAGE"

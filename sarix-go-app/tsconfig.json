@@ -2,8 +2,10 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "baseUrl": ".",
     "module": "esnext",
+    // No `baseUrl`: it is deprecated in TypeScript 6 and stops working in 7.
+    // Since TS 4.1 `paths` entries resolve relative to this file's directory,
+    // so the "./" prefix below is all that's needed.
     "paths": {
       "@/*": ["./src/*"]
     }

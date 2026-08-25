@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   Text,
@@ -34,21 +34,21 @@ interface Props {
  * - Then the screen fades out
  */
 export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
-  const bgOpacity = useRef(new Animated.Value(0)).current;
-  const logoScale = useRef(new Animated.Value(0.4)).current;
-  const logoOpacity = useRef(new Animated.Value(0)).current;
-  const titleOpacity = useRef(new Animated.Value(0)).current;
-  const titleTranslate = useRef(new Animated.Value(24)).current;
-  const ring1 = useRef(new Animated.Value(0)).current;
-  const ring2 = useRef(new Animated.Value(0)).current;
-  const progress = useRef(new Animated.Value(0)).current;
-  const screenOpacity = useRef(new Animated.Value(1)).current;
+  const [bgOpacity] = useState(() => new Animated.Value(0));
+  const [logoScale] = useState(() => new Animated.Value(0.4));
+  const [logoOpacity] = useState(() => new Animated.Value(0));
+  const [titleOpacity] = useState(() => new Animated.Value(0));
+  const [titleTranslate] = useState(() => new Animated.Value(24));
+  const [ring1] = useState(() => new Animated.Value(0));
+  const [ring2] = useState(() => new Animated.Value(0));
+  const [progress] = useState(() => new Animated.Value(0));
+  const [screenOpacity] = useState(() => new Animated.Value(1));
 
   // Loading indicator animations
-  const loadingPulse = useRef(new Animated.Value(0.45)).current;
-  const dot1 = useRef(new Animated.Value(0)).current;
-  const dot2 = useRef(new Animated.Value(0)).current;
-  const dot3 = useRef(new Animated.Value(0)).current;
+  const [loadingPulse] = useState(() => new Animated.Value(0.45));
+  const [dot1] = useState(() => new Animated.Value(0));
+  const [dot2] = useState(() => new Animated.Value(0));
+  const [dot3] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.timing(bgOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -168,7 +168,7 @@ export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 999,

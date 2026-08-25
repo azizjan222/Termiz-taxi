@@ -583,7 +583,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   frameDone: { borderColor: colors.success, borderStyle: 'solid' },
   framePreview: { width: '100%', height: '100%' },
   frameOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(255,255,255,0.6)',
     alignItems: 'center',
     justifyContent: 'center',

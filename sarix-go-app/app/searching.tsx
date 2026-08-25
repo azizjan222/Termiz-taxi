@@ -63,7 +63,7 @@ export default function SearchingScreen() {
   const [status, setStatus] = useState<'new' | 'accepted'>('new');
   const [elapsed, setElapsed] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
-  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const [pulseAnim] = useState(() => new Animated.Value(0));
   // Fire the "driver found" notification exactly once (WS and polling can both
   // observe the acceptance — this guard prevents a duplicate alert).
   const notifiedRef = useRef(false);
