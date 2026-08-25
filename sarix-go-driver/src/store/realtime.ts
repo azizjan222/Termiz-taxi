@@ -4,7 +4,7 @@ import { type DriverOrder } from '../api/driver';
 export type RealtimeStatus = 'connecting' | 'open' | 'closed' | 'reconnecting';
 
 export interface RealtimeEvent {
-  kind: 'new_order' | 'order_cancelled';
+  kind: 'new_order' | 'order_cancelled' | 'order_taken';
   order?: DriverOrder;
   orderId?: number;
   seq: number;
@@ -16,6 +16,8 @@ interface RealtimeState {
 
   pushNewOrder: (order: DriverOrder) => void;
   pushCancelled: (orderId: number) => void;
+  /** Another driver accepted the order: drop it silently, with no alarm. */
+  pushTaken: (orderId: number) => void;
   setStatus: (status: RealtimeStatus) => void;
 }
 
@@ -32,6 +34,9 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
 
   pushCancelled: (orderId) =>
     set({ lastEvent: { kind: 'order_cancelled', orderId, seq: ++seqCounter } }),
+
+  pushTaken: (orderId) =>
+    set({ lastEvent: { kind: 'order_taken', orderId, seq: ++seqCounter } }),
 
   setStatus: (status) => set({ status }),
 }));

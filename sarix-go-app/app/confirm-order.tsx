@@ -81,6 +81,7 @@ export default function ConfirmOrderScreen() {
         note: note || undefined,
         has_roof_rack: orderStore.hasRoofRack,
         female_only: orderStore.femaleOnly,
+        promo_code: orderStore.promoCode.trim() || undefined,
       });
       orderStore.reset();
       router.replace({

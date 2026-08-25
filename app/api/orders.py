@@ -10,6 +10,7 @@ from app.api.drivers import driver_can_accept
 from app.api.websocket import ws_manager
 from app.database import get_session
 from app.models import BalanceTransaction, Driver, Order, OrderHistory, Route, Setting, User
+from app.services import promo as promo_service
 from app.services.dynamic_settings import get_min_driver_balance
 from app.utils.auth import require_auth
 from app.utils.timefmt import iso_utc
@@ -54,7 +55,11 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         # Bonus wallet: how much bonus was applied and the cash the passenger actually
         # pays (price - bonus_used). Both are 0/price while the feature is dormant.
         "bonus_used": o.bonus_used or 0,
-        "payable": max(0, (o.price or 0) - (o.bonus_used or 0)),
+        "promo_code": o.promo_code,
+        "promo_discount": o.promo_discount or 0,
+        "payable": max(
+            0, (o.price or 0) - (o.bonus_used or 0) - (o.promo_discount or 0)
+        ),
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,
@@ -210,6 +215,19 @@ async def create_order(request: web.Request) -> web.Response:
         if err:
             return web.json_response({"error": err}, status=400)
 
+        # Redeem the promo code (if any) inside this transaction, so a code is only ever
+        # consumed by an order that actually gets saved. An invalid/exhausted code is a
+        # hard error rather than a silent no-op: the passenger was shown a discount.
+        promo_discount = 0
+        promo_code_used = None
+        requested_promo = (data.get("promo_code") or "").strip().upper()
+        if requested_promo:
+            promo_discount, promo_code_used, promo_err = promo_service.redeem_promo(
+                session, requested_promo, user.id, price, commission
+            )
+            if promo_err:
+                return web.json_response({"error": promo_err}, status=400)
+
         order = Order(
             passenger_id=user.id,
             passenger_phone=user.contact_phone or user.phone,
@@ -235,6 +253,8 @@ async def create_order(request: web.Request) -> web.Response:
             # Passenger opted to spend bonus on this ride. Defaults False, so the feature
             # stays dormant until the app starts sending it (no bonus is silently spent).
             use_bonus=bool(data.get("use_bonus", False)),
+            promo_code=promo_code_used,
+            promo_discount=promo_discount,
             target_driver_id=target_driver_id,
             parcel_recipient_name=data.get("parcel_recipient_name"),
             parcel_recipient_phone=data.get("parcel_recipient_phone"),
@@ -469,6 +489,9 @@ async def cancel_order(request: web.Request) -> web.Response:
             .first()
         )
         release_bonus_for_order(session, order, passenger)
+        # Return the promo redemption too: the ride never happened, so a single-use code
+        # must not be burnt.
+        promo_service.release_promo_for_order(session, order)
         order.commission_charged = True
 
         session.add(OrderHistory(

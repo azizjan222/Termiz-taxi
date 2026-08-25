@@ -36,6 +36,14 @@ export interface Order {
   person_count: number;
   price: number;
   commission: number;
+  /** Bonus wallet amount applied to this ride (server-authoritative). */
+  bonus_used?: number;
+  /** Promo code redeemed on this ride, if any. */
+  promo_code?: string | null;
+  /** Discount from the promo code (server-authoritative). */
+  promo_discount?: number;
+  /** What the passenger actually hands the driver: price - bonus_used - promo_discount. */
+  payable?: number;
   departure_time: string;
   status: OrderStatus;
   note?: string | null;
@@ -79,6 +87,12 @@ export interface CreateOrderInput {
   has_roof_rack?: boolean;
   female_only?: boolean;
   target_driver_id?: number;
+  /**
+   * Promo code to redeem with this order. The server recomputes the discount from the
+   * fare and returns it as `promo_discount`, so never trust a client-side amount.
+   * Omit (undefined) when no code was entered -- an invalid code rejects the order.
+   */
+  promo_code?: string;
   parcel_recipient_name?: string;
   parcel_recipient_phone?: string;
   parcel_payer?: 'sender' | 'recipient';

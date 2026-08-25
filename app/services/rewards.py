@@ -45,7 +45,12 @@ def effective_commission(order) -> int:
     (floored at 0). For orders with no bonus applied this equals the gross commission, so
     it is always safe to use in place of ``order.commission`` when charging a driver.
     """
-    return max(0, (order.commission or 0) - (order.bonus_used or 0))
+    return max(
+        0,
+        (order.commission or 0)
+        - (order.bonus_used or 0)
+        - (getattr(order, "promo_discount", 0) or 0),
+    )
 
 
 def _log_txn(
@@ -128,8 +133,15 @@ def reserve_bonus_for_order(session, order, driver, passenger, now: datetime | N
     if balance <= 0:
         return 0
 
+    # A promo discount on this ride is funded from the same commission, so bonus may only
+    # use the remaining headroom. Otherwise bonus + promo could exceed commission and the
+    # platform would end up paying the driver to take the ride.
+    headroom = max(0, commission - (getattr(order, "promo_discount", 0) or 0))
+    if headroom <= 0:
+        return 0
+
     cap = get_bonus_max_per_ride(session)
-    used = min(balance, commission, cap)
+    used = min(balance, headroom, cap)
     if used <= 0:
         return 0
 

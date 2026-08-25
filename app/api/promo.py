@@ -1,12 +1,12 @@
 """Promo codes and Referral system."""
 import random
 import string
-from datetime import datetime
 
 from aiohttp import web
 
 from app.database import get_session
-from app.models import BonusTransaction, PromoCode, User
+from app.models import BonusTransaction, User
+from app.services import promo as promo_service
 from app.services.dynamic_settings import (
     get_loyalty_points_per_ride,
     get_loyalty_reward,
@@ -38,27 +38,29 @@ async def validate_promo(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
+    user: User = request["user"]
     code = (data.get("code") or "").strip().upper()
     if not code:
         return web.json_response({"error": "Promo kod kerak"}, status=400)
 
     session = get_session()
     try:
-        promo = session.query(PromoCode).filter_by(code=code, is_active=True).first()
-        if not promo:
-            return web.json_response({"error": "Promo kod topilmadi yoki muddati tugagan"}, status=404)
-
-        if promo.valid_until and promo.valid_until < datetime.utcnow():
-            return web.json_response({"error": "Muddat tugagan"}, status=400)
-
-        max_uses = promo.max_uses or 0  # NULL in legacy/hand-inserted rows == unlimited
-        if max_uses > 0 and (promo.used_count or 0) >= max_uses:
-            return web.json_response({"error": "Limit tugagan"}, status=400)
+        # Shared with order creation, so what is validated here is exactly what will be
+        # redeemed -- including the per-user limit, which previously did not exist.
+        promo, error = promo_service.check_promo(session, code, user.id)
+        if error or not promo:
+            status = 404 if error == "Promo kod topilmadi yoki muddati tugagan" else 400
+            return web.json_response({"error": error}, status=status)
 
         return web.json_response({
             "valid": True,
-            "discount_amount": promo.discount_amount,
-            "discount_percent": promo.discount_percent,
+            "code": promo.code,
+            "discount_amount": promo.discount_amount or 0,
+            "discount_percent": promo.discount_percent or 0,
+            # The real discount also depends on the fare and the commission that funds it,
+            # so the app must send `promo_code` with the order and use the `promo_discount`
+            # the server returns as authoritative.
+            "note": "Chegirma buyurtma narxiga qarab hisoblanadi",
         })
     finally:
         session.close()

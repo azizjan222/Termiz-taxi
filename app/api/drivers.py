@@ -1070,6 +1070,20 @@ async def accept_order(request: web.Request) -> web.Response:
                 "driver": driver_payload,
             })
 
+        # Tell every OTHER driver the order is gone, so their incoming-order popup and
+        # available list drop it immediately. Without this event a competing driver's
+        # modal ran its full countdown on a dead order and the card lingered until the
+        # next poll, ending in "Buyurtma allaqachon olindi" when they tapped accept.
+        try:
+            await ws_manager.broadcast_to_drivers({
+                "type": "order_taken",
+                "order_id": order.id,
+                # So the winning driver's own client can ignore its own event.
+                "driver_telegram_id": d.telegram_id,
+            })
+        except Exception as e:
+            logger.debug("WS order_taken broadcast failed for order %s: %s", order.id, e)
+
         # Push notification
         try:
             from app.services.push import notify_passenger_order_accepted
@@ -1317,6 +1331,9 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
         )
         from app.services.rewards import release_bonus_for_order
         release_bonus_for_order(session, order, passenger)
+        # The driver cancelled, so the passenger keeps their promo code for another ride.
+        from app.services.promo import release_promo_for_order
+        release_promo_for_order(session, order)
 
         # Claiming the cancellation first prevents the background scheduler from racing
         # this charge. Lock the driver while changing money and write the same immutable
