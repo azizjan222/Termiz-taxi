@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Alert, Animated, Easing,
   KeyboardAvoidingView, Platform, Linking, TouchableOpacity, TextInput,
@@ -36,8 +36,8 @@ export default function LoginScreen() {
   const [verifying, setVerifying] = useState(false);
 
   // Entrance animation for the content.
-  const fade = useRef(new Animated.Value(0)).current;
-  const slide = useRef(new Animated.Value(30)).current;
+  const [fade] = useState(() => new Animated.Value(0));
+  const [slide] = useState(() => new Animated.Value(30));
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fade, { toValue: 1, duration: 650, useNativeDriver: true }),
