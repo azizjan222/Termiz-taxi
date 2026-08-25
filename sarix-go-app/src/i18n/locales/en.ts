@@ -14,6 +14,8 @@ export default {
     success: 'Success',
     retry: 'Retry',
     skip: 'Skip',
+    home: 'Home',
+    name: 'Name',
   },
   language: {
     select: 'Select language',

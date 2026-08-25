@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl,
 } from 'react-native';
@@ -27,15 +27,25 @@ export default function StatsScreen() {
     { value: 'month', label: t('stats.month') },
   ];
 
+  // Request identity guard: without it a slower response for an earlier period could
+  // resolve last and leave the Month tab highlighted while showing Week's earnings,
+  // and the stale call's `finally` would hide the spinner for the newer request.
+  const reqIdRef = useRef(0);
+
   const load = useCallback(async (p: StatsPeriod, isRefresh = false) => {
+    const myReq = ++reqIdRef.current;
     if (!isRefresh) setLoading(true);
     try {
       const s = await getDriverStats(p);
+      if (reqIdRef.current !== myReq) return;
       setStats(s);
     } catch {
+      if (reqIdRef.current !== myReq) return;
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (reqIdRef.current === myReq) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 

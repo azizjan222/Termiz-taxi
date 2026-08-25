@@ -1,5 +1,6 @@
 """Admin Telegram commands for managing apps via bot."""
 from datetime import datetime
+from html import escape
 
 from sqlalchemy import func
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -117,9 +118,12 @@ async def cmd_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for d in drivers:
         status = "🟢" if d.is_online else "⚪"
         block = " 🚫" if d.is_blocked else ""
+        # Names/phones are free text the driver typed at registration. Unescaped, a
+        # single driver named "<b" makes Telegram reject the WHOLE message, so this
+        # command (and every other admin listing) silently died for the admin.
         text += (
-            f"{status} <b>{d.first_name or 'Nomalum'}</b>{block}\n"
-            f"   📞 {d.phone}\n"
+            f"{status} <b>{escape(d.first_name or 'Nomalum')}</b>{block}\n"
+            f"   📞 {escape(str(d.phone or '-'))}\n"
             f"   💰 {fmt(d.balance or 0)} so'm\n"
             f"   🚕 {d.total_orders or 0} zakas | ⭐ {d.rating or 5.0:.1f}\n"
             f"   ID: <code>{d.telegram_id}</code>\n\n"
@@ -1072,8 +1076,8 @@ async def cmd_online_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE)
     text = f"\U0001f7e2 <b>ONLAYN HAYDOVCHILAR ({len(drivers)} ta)</b>\n\n"
     for d in drivers:
         text += (
-            f"\U0001f464 <b>{d.first_name or 'Nomalum'}</b>\n"
-            f"   \U0001f4de {d.phone}\n"
+            f"\U0001f464 <b>{escape(d.first_name or 'Nomalum')}</b>\n"
+            f"   \U0001f4de {escape(str(d.phone or '-'))}\n"
             f"   \U0001f4b0 {fmt(d.balance or 0)} so'm\n\n"
         )
 
@@ -1118,17 +1122,29 @@ async def cmd_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        today_revenue = session.query(func.coalesce(func.sum(Order.commission), 0)).filter(
-            Order.status == "completed",
-            Order.commission_collected == True,  # noqa: E712
-            Order.completed_at >= today_start,
-        ).scalar()
+        # Read the immutable ledger rather than Order rows. Summing Order.commission gave
+        # the GROSS figure, but what is actually taken from a driver is
+        # commission - bonus_used, and the `status == "completed"` filter silently dropped
+        # commission that WAS collected on accepted/in_progress orders and on orders the
+        # driver cancelled. This now reconciles with the admin dashboard.
+        def _collected(since):
+            charged = session.query(
+                func.coalesce(func.sum(BalanceTransaction.amount), 0)
+            ).filter(
+                BalanceTransaction.source == "order_commission",
+                BalanceTransaction.created_at >= since,
+            ).scalar() or 0
+            refunded = session.query(
+                func.coalesce(func.sum(BalanceTransaction.amount), 0)
+            ).filter(
+                BalanceTransaction.source.in_(("commission_refund", "bot_order_refund")),
+                BalanceTransaction.created_at >= since,
+            ).scalar() or 0
+            # Commission rows are negative (money leaving the driver), refunds positive.
+            return max(0, int(-charged) - int(refunded))
 
-        month_revenue = session.query(func.coalesce(func.sum(Order.commission), 0)).filter(
-            Order.status == "completed",
-            Order.commission_collected == True,  # noqa: E712
-            Order.completed_at >= month_start,
-        ).scalar()
+        today_revenue = _collected(today_start)
+        month_revenue = _collected(month_start)
 
     await update.effective_message.reply_text(
         f"\U0001f4b0 <b>DAROMAD (Komissiya)</b>\n\n"
@@ -1156,8 +1172,8 @@ async def cmd_top_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "\U0001f3c6 <b>TOP 10 HAYDOVCHILAR</b>\n\n"
     for i, d in enumerate(drivers, 1):
         text += (
-            f"{i}. <b>{d.first_name or 'Nomalum'}</b>\n"
-            f"   \U0001f4de {d.phone}\n"
+            f"{i}. <b>{escape(d.first_name or 'Nomalum')}</b>\n"
+            f"   \U0001f4de {escape(str(d.phone or '-'))}\n"
             f"   \U0001f697 {d.total_orders or 0} zakas | \u2b50 {d.rating or 5.0:.1f}\n\n"
         )
 
@@ -1228,12 +1244,14 @@ async def cmd_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         text = (
             f"\U0001f468\u200d\u2708\ufe0f <b>HAYDOVCHI #{d.id}</b>\n\n"
-            f"\U0001f464 Ism: <b>{d.first_name or '-'} {d.last_name or ''}</b>\n"
-            f"\U0001f194 JSHSHIR: <code>{d.pinfl or '-'}</code>\n"
-            f"\U0001f4de Telefon: {d.phone or '-'}\n"
+            f"\U0001f464 Ism: <b>{escape(d.first_name or '-')} "
+            f"{escape(d.last_name or '')}</b>\n"
+            f"\U0001f194 JSHSHIR: <code>{escape(str(d.pinfl or '-'))}</code>\n"
+            f"\U0001f4de Telefon: {escape(str(d.phone or '-'))}\n"
             f"\U0001f4f1 Telegram ID: <code>{d.telegram_id}</code>\n\n"
-            f"\U0001f697 Mashina: {d.car_model or '-'} \u00b7 {d.car_number or '-'}\n"
-            f"\U0001f4c5 Yili: {d.car_year or '-'}\n"
+            f"\U0001f697 Mashina: {escape(str(d.car_model or '-'))} \u00b7 "
+            f"{escape(str(d.car_number or '-'))}\n"
+            f"\U0001f4c5 Yili: {escape(str(d.car_year or '-'))}\n"
             f"\U0001fa91 O'rindiqlar: {d.seats or 4}\n\n"
             f"\U0001f4b0 Balans: <b>{fmt(d.balance or 0)} so'm</b>\n"
             f"\u2b50 Reyting: {d.rating or 5.0:.1f} ({d.rating_count or 0})\n"

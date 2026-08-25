@@ -3,6 +3,7 @@
 These let the mobile app tell the bot to post into the drivers group or notify the admin.
 """
 import logging
+from html import escape
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -12,13 +13,18 @@ logger = logging.getLogger("sarixgo.bot.notifications")
 
 
 async def notify_admin_new_driver(bot, telegram_id: int, phone: str, data: dict):
+    # Escape the driver-supplied fields: unescaped "<" or "&" makes Telegram reject the
+    # message, and the send below only logs the failure -- so the admin would never learn
+    # a new driver had registered while the driver was told registration succeeded.
     caption = (
         "🆕 <b>Yangi haydovchi ro'yxatdan o'tdi</b>\n\n"
-        f"👤 {data.get('first_name', '')} {data.get('last_name', '')}\n"
-        f"🆔 JSHSHIR: <code>{data.get('pinfl', '')}</code>\n"
-        f"📞 {phone}\n"
-        f"🚗 {data.get('car_model', '')} · {data.get('car_number', '')} · "
-        f"{data.get('car_year', '')}\n"
+        f"👤 {escape(str(data.get('first_name', '') or ''))} "
+        f"{escape(str(data.get('last_name', '') or ''))}\n"
+        f"🆔 JSHSHIR: <code>{escape(str(data.get('pinfl', '') or ''))}</code>\n"
+        f"📞 {escape(str(phone or ''))}\n"
+        f"🚗 {escape(str(data.get('car_model', '') or ''))} · "
+        f"{escape(str(data.get('car_number', '') or ''))} · "
+        f"{escape(str(data.get('car_year', '') or ''))}\n"
         f"TG ID: <code>{telegram_id}</code>"
     )
     keyboard = InlineKeyboardMarkup(

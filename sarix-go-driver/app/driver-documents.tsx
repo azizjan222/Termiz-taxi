@@ -123,6 +123,12 @@ export default function DriverDocumentsScreen() {
       await uploaders[key](uri);
       setUploaded((p) => ({ ...p, [key]: true }));
     } catch (e: any) {
+      // Drop the local preview: keeping it made all four slots look filled while
+      // `uploaded[key]` stayed false, so the driver saw "Avval barcha maydonlarni
+      // to'ldiring" with no way to tell which upload had actually failed. This screen
+      // gates access to the app, so a silent failure strands the driver here.
+      setUris((p) => ({ ...p, [key]: null }));
+      setUploaded((p) => ({ ...p, [key]: false }));
       Alert.alert('Xatolik', e?.response?.data?.error || "Rasm yuklanmadi. Qayta urinib ko'ring.");
     } finally {
       setUploading(null);

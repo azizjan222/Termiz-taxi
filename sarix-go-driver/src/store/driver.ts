@@ -82,6 +82,13 @@ export const useDriverStore = create<DriverState>((set) => ({
   },
 
   logout: async () => {
+    // Unregister the push token BEFORE clearing auth (the call itself needs the token).
+    // Without this a logged-out driver kept receiving that account's new-order alarms,
+    // which use importance MAX and bypassDnd on the orders channel.
+    try {
+      const { unregisterPushToken } = await import('../services/notifications');
+      await unregisterPushToken();
+    } catch {}
     await clearAuthToken();
     await SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
     set({ driver: null, isAuthenticated: false, isOnline: false });

@@ -223,19 +223,22 @@ async def telegram_check(request: web.Request) -> web.Response:
 
     db = get_session()
     try:
-        sess = _tg.get_session(db, token)
-        if not sess:
+        # Re-checks expiry, enforces the session's role, and consumes the row so one
+        # deep link cannot be replayed for further tokens.
+        sess, claim_status = _tg.claim_verified_session(db, token, "passenger")
+        if claim_status == "not_found":
             return web.json_response({"status": "not_found"}, status=404)
-
-        if sess.status == "pending":
+        if claim_status == "pending":
             return web.json_response({"status": "pending"})
-        if sess.status == "expired":
+        if claim_status == "role_mismatch":
+            return web.json_response({"status": "role_mismatch"}, status=403)
+        if claim_status != "ok" or not sess:
             return web.json_response({"status": "expired"})
 
         # verified -> find or create user
         phone = _normalize(sess.phone) if sess.phone else None
         if not phone:
-            return web.json_response({"status": "pending"})
+            return web.json_response({"status": "expired"})
 
         user = db.query(User).filter_by(phone=phone).first()
         is_new = False

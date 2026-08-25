@@ -14,6 +14,8 @@ export default {
     success: 'Muvaffaqiyatli',
     retry: 'Qayta urinish',
     skip: "O'tkazib yuborish",
+    home: 'Bosh sahifa',
+    name: 'Ism',
   },
   language: {
     select: 'Tilni tanlang',

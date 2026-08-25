@@ -51,49 +51,64 @@ def charge_due_commissions(now: datetime | None = None) -> int:
         )
 
         for order in orders:
-            # Atomically claim this commission before touching money. Multiple API
-            # workers/schedulers may scan the same candidate, but only one can flip the
-            # guard from false to true.
-            claimed = (
-                session.query(Order)
-                .filter(
-                    Order.id == order.id,
-                    Order.commission_charged == False,  # noqa: E712
-                    Order.status.in_(["accepted", "in_progress", "completed"]),
+            # Commit PER ORDER. A single commit for the whole batch meant one failing row
+            # (realistically a duplicate `order:<id>:commission` ledger key, which
+            # cancel_by_driver and store.assign_order write too) rolled back EVERY charge
+            # in the cycle, so commission silently stopped being collected. It also held
+            # every driver's FOR UPDATE lock until the end of the scan, blocking accepts,
+            # completions and top-up approvals.
+            try:
+                # Atomically claim this commission before touching money. Multiple API
+                # workers/schedulers may scan the same candidate, but only one can flip
+                # the guard from false to true.
+                claimed = (
+                    session.query(Order)
+                    .filter(
+                        Order.id == order.id,
+                        Order.commission_charged == False,  # noqa: E712
+                        Order.status.in_(["accepted", "in_progress", "completed"]),
+                    )
+                    .update({"commission_charged": True}, synchronize_session=False)
                 )
-                .update({"commission_charged": True}, synchronize_session=False)
-            )
-            if not claimed:
-                continue
-            session.refresh(order)
+                if not claimed:
+                    session.rollback()
+                    continue
+                session.refresh(order)
 
-            driver = (
-                session.query(Driver)
-                .filter_by(id=order.driver_id)
-                .with_for_update()
-                .first()
-            )
-            if not driver or _subscription_active(driver, now):
-                continue
+                driver = (
+                    session.query(Driver)
+                    .filter_by(id=order.driver_id)
+                    .with_for_update()
+                    .first()
+                )
+                if not driver or _subscription_active(driver, now):
+                    # Keep the claim so a subscribed driver isn't rescanned every cycle.
+                    session.commit()
+                    continue
 
-            from app.services.rewards import effective_commission
-            commission = effective_commission(order)
-            if commission > 0:
-                driver.balance = (driver.balance or 0) - commission
-                session.add(BalanceTransaction(
-                    driver_id=driver.id,
-                    amount=-commission,
-                    balance_after=driver.balance,
-                    source="order_commission",
-                    reference_type="order",
-                    reference_id=order.id,
-                    idempotency_key=f"order:{order.id}:commission",
-                    note="Deferred order commission",
-                ))
-                order.commission_collected = True
-            charged += 1
-
-        session.commit()
+                from app.services.rewards import effective_commission
+                commission = effective_commission(order)
+                if commission > 0:
+                    driver.balance = (driver.balance or 0) - commission
+                    session.add(BalanceTransaction(
+                        driver_id=driver.id,
+                        amount=-commission,
+                        balance_after=driver.balance,
+                        source="order_commission",
+                        reference_type="order",
+                        reference_id=order.id,
+                        idempotency_key=f"order:{order.id}:commission",
+                        note="Deferred order commission",
+                    ))
+                    order.commission_collected = True
+                session.commit()
+                charged += 1
+            except Exception as order_error:  # pragma: no cover - defensive
+                # Skip only the poisoned order; the rest of the batch still gets charged.
+                session.rollback()
+                logger.error(
+                    "charge_due_commissions skipped order %s: %s", order.id, order_error
+                )
     except Exception as e:  # pragma: no cover - defensive
         session.rollback()
         logger.error(f"charge_due_commissions failed: {e}")

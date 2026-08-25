@@ -59,8 +59,14 @@ export default function SavedAddressesScreen() {
         text: "O'chirish",
         style: 'destructive',
         onPress: async () => {
-          await deleteAddress(item.id);
-          load();
+          // Without try/catch this rejected inside the Alert callback (unhandled
+          // rejection) and the row silently stayed on screen with no error shown.
+          try {
+            await deleteAddress(item.id);
+            load();
+          } catch {
+            Alert.alert('Xatolik', "Manzilni o'chirib bo'lmadi. Qayta urinib ko'ring.");
+          }
         },
       },
     ]);

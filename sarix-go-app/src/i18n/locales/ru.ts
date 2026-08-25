@@ -14,6 +14,8 @@ export default {
     success: 'Успешно',
     retry: 'Повторить',
     skip: 'Пропустить',
+    home: 'Главная',
+    name: 'Имя',
   },
   language: {
     select: 'Выберите язык',

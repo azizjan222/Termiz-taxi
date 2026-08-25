@@ -37,6 +37,8 @@ export default function NewOrderScreen() {
 
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [routeUnavailable, setRouteUnavailable] = useState(false);
+  // Non-404 quote failure (network etc.): distinct from "route not available".
+  const [quoteFailed, setQuoteFailed] = useState(false);
   const [submitting, setSubmitting] = useState<number | 'find' | null>(null);
 
   // Bottom action-bar sheets
@@ -60,6 +62,7 @@ export default function NewOrderScreen() {
     let active = true;
     if (!from || !to) return;
     setRouteUnavailable(false);
+    setQuoteFailed(false);
     const quoteType = isFullCar ? 'full_car' : 'taxi';
     const quotePersons = isFullCar ? 4 : persons;
     getPriceQuote(from, to, quoteType, quotePersons)
@@ -67,6 +70,7 @@ export default function NewOrderScreen() {
         if (!active) return;
         setQuote(q);
         setRouteUnavailable(false);
+        setQuoteFailed(false);
       })
       .catch((e: any) => {
         if (!active) return;
@@ -74,6 +78,10 @@ export default function NewOrderScreen() {
         // 404 => this from->to pair has no defined route ("Bu yo'nalish hozircha mavjud emas").
         // Other errors (network, etc.) are NOT treated as "unavailable".
         setRouteUnavailable(e?.response?.status === 404);
+        // Track non-404 failures separately so the CTA can be blocked: previously the
+        // price bar sat on "..." forever while the order button stayed enabled, letting
+        // the passenger order without ever having been shown a price.
+        setQuoteFailed(e?.response?.status !== 404);
       });
     return () => {
       active = false;
@@ -277,7 +285,11 @@ export default function NewOrderScreen() {
           >
             <Text style={styles.priceBarLabel}>{t('order.price')}</Text>
             <Text style={styles.priceBarValue}>
-              {quote ? `${formatPrice(quote.price)} so'm` : '...'}
+              {quote
+                ? `${formatPrice(quote.price)} so'm`
+                : quoteFailed
+                ? t('errors.networkError')
+                : '...'}
             </Text>
           </LinearGradient>
         )}
@@ -310,9 +322,9 @@ export default function NewOrderScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.ctaWrap, routeUnavailable && styles.btnDisabled]}
+          style={[styles.ctaWrap, (routeUnavailable || quoteFailed) && styles.btnDisabled]}
           onPress={() => submit()}
-          disabled={submitting !== null || routeUnavailable}
+          disabled={submitting !== null || routeUnavailable || quoteFailed}
           activeOpacity={0.9}
           accessibilityRole="button"
           accessibilityLabel="Buyurtma berish"

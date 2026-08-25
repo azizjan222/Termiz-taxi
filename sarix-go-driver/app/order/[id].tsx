@@ -66,11 +66,34 @@ export default function OrderDetailScreen() {
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const lastSentAtRef = useRef(0);
 
+  // Load the order, retrying on failure. This is the screen the driver lands on right
+  // after accepting a ride, and it has no other refresh path: a single un-caught fetch
+  // error used to leave `order` null forever, wedging the screen on "Yuklanmoqda..."
+  // with no passenger phone, no navigation and no way to complete the trip.
   useEffect(() => {
-    listMyActive().then((orders) => {
-      const o = orders.find((x) => x.id.toString() === id);
-      if (o) setOrder(o);
-    });
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const load = async () => {
+      try {
+        const orders = await listMyActive();
+        if (cancelled) return;
+        const o = orders.find((x) => x.id.toString() === id);
+        if (o) {
+          setOrder(o);
+          return;
+        }
+      } catch {
+        // Network/API failure: fall through and retry below.
+      }
+      if (!cancelled) timer = setTimeout(load, 5000);
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [id]);
 
   // React to a passenger cancelling THIS order in real time: the global realtime

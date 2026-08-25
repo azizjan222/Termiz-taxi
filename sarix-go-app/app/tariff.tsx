@@ -28,30 +28,42 @@ export default function TariffScreen() {
   const [fullCarQuote, setFullCarQuote] = useState<PriceQuote | null>(null);
   // Only the setter is used (drives the fetch lifecycle); the value isn't rendered.
   const [, setLoading] = useState(true);
+  // True when the quote request failed, so the footer must not render a fallback 0.
+  const [quotesFailed, setQuotesFailed] = useState(false);
 
   const isParcel = orderStore.serviceType === 'parcel';
 
   useEffect(() => {
     if (!orderStore.fromCity || !orderStore.toCity) return;
 
+    // `active` guard: without it a slower response for a previous route could resolve
+    // last and overwrite the quotes for the route currently on screen.
+    let active = true;
+
     const loadQuotes = async () => {
       setLoading(true);
+      setQuotesFailed(false);
       try {
         const [taxi, parcel, full] = await Promise.all([
           getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'taxi', 1),
           getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'parcel'),
           getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'full_car'),
         ]);
+        if (!active) return;
         setTaxiQuote(taxi);
         setParcelQuote(parcel);
         setFullCarQuote(full);
       } catch {
-        // ignore — quotes are best-effort; the UI falls back to empty state
+        // Record the failure so the footer does not present a fallback 0 as a real fare.
+        if (active) setQuotesFailed(true);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
     loadQuotes();
+    return () => {
+      active = false;
+    };
   }, [orderStore.fromCity, orderStore.toCity]);
 
   const formatPrice = (p: number) =>
@@ -260,7 +272,11 @@ export default function TariffScreen() {
         <View style={styles.footerInfo}>
           <Text style={styles.footerLabel}>{t('order.price')}</Text>
           <Text style={styles.footerPrice}>
-            {isParcel ? 'Kelishiladi' : `${formatPrice(getCurrentPrice())} so'm`}
+            {isParcel
+              ? 'Kelishiladi'
+              : quotesFailed || getCurrentPrice() <= 0
+              ? '...'
+              : `${formatPrice(getCurrentPrice())} so'm`}
           </Text>
         </View>
         <Button

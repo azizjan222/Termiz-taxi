@@ -324,7 +324,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
 
             {/* Name input */}
-            <Text style={styles.modalLabel}>{t('profile.name', 'Ism')}</Text>
+            <Text style={styles.modalLabel}>{t('common.name')}</Text>
             <TextInput
               style={styles.modalInput}
               value={nameDraft}

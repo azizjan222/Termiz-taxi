@@ -154,7 +154,27 @@ def _register_handlers(app) -> None:
         pattern="^(order_close|driver_cancel|passenger_cancel)_"))
     app.add_handler(CallbackQueryHandler(admin_actions.stats_callback, pattern="^stat_"))
 
+    # Global error handler. Without one, any exception inside a handler was logged by PTB
+    # and the user simply got NO reply -- indistinguishable from a dead bot.
+    app.add_error_handler(_on_error)
+
     app.job_queue.run_repeating(admin_actions.group_reminder, interval=21600, first=10)
+
+
+async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the failure and tell the user something went wrong."""
+    logger.exception("Unhandled error in bot handler", exc_info=context.error)
+    message = getattr(update, "effective_message", None)
+    if message is None:
+        return
+    try:
+        await message.reply_text(
+            "⚠️ Kutilmagan xatolik yuz berdi. Iltimos, qayta urinib ko'ring "
+            "yoki /start bosing."
+        )
+    except Exception:
+        # Never let the error handler raise.
+        logger.debug("Could not deliver the error notice to the user", exc_info=True)
 
 
 def _log_startup_advisories() -> None:
@@ -175,6 +195,10 @@ def _log_startup_advisories() -> None:
         except Exception:
             db_display = dburl.split("://", 1)[0] + "://***"
     logger.info("🗄  Database: %s", db_display)
+
+
+#: Live handles for the background scheduler tasks, so shutdown can cancel them.
+_BACKGROUND_TASKS: list[asyncio.Task] = []
 
 
 async def run():
@@ -202,23 +226,28 @@ async def run():
         bot=app.bot, host=app_config.API_HOST, port=app_config.API_PORT)
     api_app["bot_notify_order_cancel"] = notify_admin_order_cancelled
 
+    # Keep the task handles. Each start_* returns an asyncio.Task that used to be
+    # discarded, so nothing could cancel the loops on shutdown and a task that died
+    # from an exception was garbage-collected without its error ever being retrieved.
+    _BACKGROUND_TASKS.clear()
+
     try:
         from app.services.commission_scheduler import start_commission_scheduler
-        start_commission_scheduler()
+        _BACKGROUND_TASKS.append(start_commission_scheduler())
         logger.info("✅ Commission scheduler started")
     except Exception as e:
         logger.error("Commission scheduler failed to start: %s", e)
 
     try:
         from app.services.order_expiry import start_order_expiry_scheduler
-        start_order_expiry_scheduler()
+        _BACKGROUND_TASKS.append(start_order_expiry_scheduler())
         logger.info("✅ Order-expiry scheduler started")
     except Exception as e:
         logger.error("Order-expiry scheduler failed to start: %s", e)
 
     try:
         from app.api.payments import start_payment_cleanup_scheduler
-        start_payment_cleanup_scheduler()
+        _BACKGROUND_TASKS.append(start_payment_cleanup_scheduler())
         logger.info("✅ Payment cleanup scheduler started")
     except Exception as e:
         logger.error("Payment cleanup scheduler failed to start: %s", e)
@@ -234,4 +263,31 @@ async def run():
     except Exception as e:
         logger.error("Support bot failed to start: %s", e)
 
-    await asyncio.Event().wait()
+    # Orderly shutdown. Previously the coroutine just blocked forever, so on SIGTERM the
+    # aiohttp site, the polling HTTP session and the scheduler tasks were torn down
+    # abruptly -- leaking sockets and causing getUpdates conflicts on the next start.
+    try:
+        await asyncio.Event().wait()
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        logger.info("Shutdown requested, stopping cleanly...")
+        raise
+    finally:
+        for task in _BACKGROUND_TASKS:
+            task.cancel()
+        if _BACKGROUND_TASKS:
+            await asyncio.gather(*_BACKGROUND_TASKS, return_exceptions=True)
+            _BACKGROUND_TASKS.clear()
+        try:
+            if app.updater.running:
+                await app.updater.stop()
+        except Exception:
+            logger.debug("Updater stop failed", exc_info=True)
+        for shutdown_step in (app.stop, app.shutdown):
+            try:
+                await shutdown_step()
+            except Exception:
+                logger.debug("Bot shutdown step failed", exc_info=True)
+        try:
+            await api_runner.cleanup()
+        except Exception:
+            logger.debug("API runner cleanup failed", exc_info=True)

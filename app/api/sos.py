@@ -1,5 +1,6 @@
 """SOS / Emergency alert endpoints."""
 import logging
+from html import escape
 
 from aiohttp import web
 
@@ -32,45 +33,75 @@ async def trigger_sos(request: web.Request) -> web.Response:
     reporter_phone = user.phone if user else driver.phone
     reporter_name = (user.first_name if user else driver.first_name) or "Nomalum"
 
+    # Coerce request values instead of writing raw JSON straight into typed columns.
+    def _opt_float(value):
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _opt_int(value):
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    order_id = _opt_int(data.get("order_id"))
+    lat = _opt_float(data.get("lat"))
+    lon = _opt_float(data.get("lon"))
+
     session = get_session()
     try:
         sos = SosAlert(
-            order_id=data.get("order_id"),
+            order_id=order_id,
             user_id=user.id if user else None,
             driver_id=driver.id if driver else None,
             reporter_type=reporter_type,
             reporter_phone=reporter_phone,
-            latitude=data.get("lat"),
-            longitude=data.get("lon"),
+            latitude=lat,
+            longitude=lon,
             note=(data.get("note") or "").strip()[:500],
         )
         session.add(sos)
         session.commit()
         session.refresh(sos)
 
-        # Build alert message
+        # Build alert message. Only the caller's OWN order may be attached: the id comes
+        # straight from the request body, so without an ownership filter any user could
+        # staple an arbitrary order (and its route) onto their SOS alert and audit row.
         order_info = ""
-        if data.get("order_id"):
-            order = session.query(Order).filter_by(id=data["order_id"]).first()
+        if order_id is not None:
+            order_query = session.query(Order).filter(Order.id == order_id)
+            if driver:
+                order_query = order_query.filter(Order.driver_id == driver.id)
+            else:
+                order_query = order_query.filter(Order.user_id == user.id)
+            order = order_query.first()
             if order:
                 order_info = (
-                    f"\n📍 Yo'nalish: {order.from_city} → {order.to_city}\n"
+                    f"\n📍 Yo'nalish: {escape(str(order.from_city or ''))} → "
+                    f"{escape(str(order.to_city or ''))}\n"
                     f"🚕 Buyurtma: #{order.id}\n"
                 )
 
         location_link = ""
-        if data.get("lat") and data.get("lon"):
-            location_link = f"\n🗺 https://maps.google.com/?q={data['lat']},{data['lon']}"
+        if lat is not None and lon is not None:
+            # `is not None`, not truthiness: a coordinate of exactly 0 is still valid.
+            location_link = f"\n🗺 https://maps.google.com/?q={lat},{lon}"
 
+        # Escape every user-controlled value: an unescaped "<" or "&" in a name or note
+        # makes Telegram reject the whole HTML message, and the failure below is only
+        # logged -- so a real emergency alert would never reach the admin while the app
+        # still told the user help was on the way.
         alert_text = (
             f"🚨 <b>SOS - SHOSHILINCH YORDAM!</b> 🚨\n\n"
-            f"👤 {reporter_type.upper()}: {reporter_name}\n"
-            f"📞 {reporter_phone}\n"
+            f"👤 {escape(reporter_type.upper())}: {escape(str(reporter_name or ''))}\n"
+            f"📞 {escape(str(reporter_phone or ''))}\n"
             f"{order_info}"
             f"{location_link}\n"
         )
         if sos.note:
-            alert_text += f"\n💬 {sos.note}"
+            alert_text += f"\n💬 {escape(sos.note)}"
 
         # Send to admin via bot
         bot = request.app.get("bot")
@@ -83,6 +114,12 @@ async def trigger_sos(request: web.Request) -> web.Response:
                 )
             except Exception as e:
                 logger.error(f"Failed to send SOS to admin: {e}")
+                # Last resort: retry without HTML parsing so a formatting problem can
+                # never silently swallow an emergency alert.
+                try:
+                    await bot.send_message(chat_id=config.ADMIN_ID, text=alert_text)
+                except Exception as plain_error:
+                    logger.error(f"Plain-text SOS fallback also failed: {plain_error}")
         else:
             logger.warning(f"SOS triggered but no bot/admin configured: {alert_text}")
 

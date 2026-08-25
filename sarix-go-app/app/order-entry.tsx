@@ -304,6 +304,10 @@ export default function OrderEntryScreen() {
     savePickup();
     orderStore.setField('toCity', district);
     orderStore.setField('toAddress', '');
+    // Clear any pin left over from an earlier destination pick, otherwise the order
+    // carries this district's name with the previous district's coordinates.
+    orderStore.setField('toLat', null);
+    orderStore.setField('toLon', null);
     router.push(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
   };
 

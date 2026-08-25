@@ -14,6 +14,8 @@ export default {
     success: 'Муваффақиятли',
     retry: 'Қайта уриниш',
     skip: 'Ўтказиб юбориш',
+    home: 'Бош саҳифа',
+    name: 'Исм',
   },
   language: {
     select: 'Тилни танланг',
