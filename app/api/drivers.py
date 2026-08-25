@@ -1553,94 +1553,158 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
         if claim_status != "ok" or not sess:
             return web.json_response({"status": "expired"})
 
-        # verified -> driver must already be registered (via bot)
-        tg_id = sess.telegram_id
-        phone = _normalize(sess.phone) if sess.phone else None
+        return _issue_driver_login(db, sess)
+    finally:
+        db.close()
 
-        driver = None
-        if tg_id:
-            driver = db.query(Driver).filter_by(telegram_id=tg_id).first()
-        if not driver and phone:
-            for d in db.query(Driver).all():
-                dp = (d.phone or "").replace("+", "").replace(" ", "")
-                if dp and dp == phone.replace("+", ""):
-                    driver = d
-                    break
 
-        if not driver and phone and _is_test_driver(phone):
-            driver = _ensure_test_driver(db, phone, telegram_id=tg_id, first_name=sess.first_name or "")
+async def driver_telegram_verify_code(request: web.Request) -> web.Response:
+    """POST /api/driver/telegram/verify-code
+    Body: {"token": "...", "code": "123456"}
 
-        if not driver:
-            # No existing driver record -> register the driver RIGHT HERE, in the app.
-            # Previously this returned "not_registered" and pushed the user back to the
-            # bot's "Haydovchi bo'lish" flow. Drivers now onboard entirely inside the app:
-            # we create their account from the verified Telegram session and let the
-            # logic below route them to the in-app document-upload screen.
-            if not tg_id:
-                # Without a Telegram id we cannot create a unique driver row.
-                return web.json_response({"status": "expired"})
-            new_phone = _norm_phone(phone) if phone else ""
-            driver = Driver(
-                telegram_id=tg_id,
-                phone=new_phone or f"+{tg_id}",
-                first_name=(sess.first_name or "").strip() or None,
-                last_name=(sess.last_name or "").strip() or None,
-                documents_submitted=False,
+    The driver shared their contact with the bot, the bot replied with a one-time code,
+    and the app posts that code here. The token proves the request comes from the device
+    that started the login; the code proves control of the Telegram account.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    token = (data.get("token") or "").strip()
+    code = (data.get("code") or "").strip()
+    if not token:
+        return web.json_response({"error": "token kerak"}, status=400)
+    if not code:
+        return web.json_response({"error": "Kod kerak"}, status=400)
+
+    db = get_session()
+    try:
+        sess, claim_status = _tg.claim_by_login_code(db, token, code, "driver")
+        if claim_status == "not_found":
+            return web.json_response({"status": "not_found"}, status=404)
+        if claim_status == "pending":
+            return web.json_response(
+                {"status": "pending", "error": "Avval botda raqamingizni ulashing"},
+                status=400,
             )
-            db.add(driver)
-            try:
-                db.commit()
-                db.refresh(driver)
-            except Exception:
-                # Race / unique-constraint conflict: another request may have just
-                # created it. Roll back and re-fetch instead of failing the login.
-                db.rollback()
-                driver = db.query(Driver).filter_by(telegram_id=tg_id).first()
-                if not driver and new_phone:
-                    for d in db.query(Driver).all():
-                        dp = (d.phone or "").replace("+", "").replace(" ", "")
-                        if dp and dp == new_phone.replace("+", ""):
-                            driver = d
-                            break
-                if not driver:
-                    return web.json_response({"status": "expired"})
+        if claim_status == "role_mismatch":
+            return web.json_response({"status": "role_mismatch"}, status=403)
+        if claim_status == "bad_code":
+            return web.json_response(
+                {"status": "bad_code", "error": "Kod noto'g'ri"}, status=400
+            )
+        if claim_status == "too_many_attempts":
+            return web.json_response(
+                {
+                    "status": "too_many_attempts",
+                    "error": "Juda ko'p urinish. Qaytadan boshlang.",
+                },
+                status=429,
+            )
+        if claim_status != "ok" or not sess:
+            return web.json_response(
+                {"status": "expired", "error": "Muddat tugagan. Qaytadan boshlang."},
+                status=400,
+            )
 
-        if driver.is_blocked:
-            return web.json_response({"status": "blocked", "message": "Akkauntingiz bloklangan"})
+        return _issue_driver_login(db, sess)
+    finally:
+        db.close()
 
-        if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
-                and not _is_test_driver(driver.phone)):
-            # Issue a token so the driver can upload documents inside the app
-            # (instead of being redirected to the bot).
-            if tg_id and not driver.telegram_id:
-                driver.telegram_id = tg_id
-            driver.last_active = datetime.utcnow()
+
+def _issue_driver_login(db, sess) -> web.Response:
+    """Create/link the Driver for a consumed auth session and return its JWT.
+
+    Shared by the polling path (``driver_telegram_check``) and the code path
+    (``driver_telegram_verify_code``) so the two can never drift apart.
+    """
+    # verified -> driver must already be registered (via bot)
+    tg_id = sess.telegram_id
+    phone = _normalize(sess.phone) if sess.phone else None
+
+    driver = None
+    if tg_id:
+        driver = db.query(Driver).filter_by(telegram_id=tg_id).first()
+    if not driver and phone:
+        for d in db.query(Driver).all():
+            dp = (d.phone or "").replace("+", "").replace(" ", "")
+            if dp and dp == phone.replace("+", ""):
+                driver = d
+                break
+
+    if not driver and phone and _is_test_driver(phone):
+        driver = _ensure_test_driver(db, phone, telegram_id=tg_id, first_name=sess.first_name or "")
+
+    if not driver:
+        # No existing driver record -> register the driver RIGHT HERE, in the app.
+        # Previously this returned "not_registered" and pushed the user back to the
+        # bot's "Haydovchi bo'lish" flow. Drivers now onboard entirely inside the app:
+        # we create their account from the verified Telegram session and let the
+        # logic below route them to the in-app document-upload screen.
+        if not tg_id:
+            # Without a Telegram id we cannot create a unique driver row.
+            return web.json_response({"status": "expired"})
+        new_phone = _norm_phone(phone) if phone else ""
+        driver = Driver(
+            telegram_id=tg_id,
+            phone=new_phone or f"+{tg_id}",
+            first_name=(sess.first_name or "").strip() or None,
+            last_name=(sess.last_name or "").strip() or None,
+            documents_submitted=False,
+        )
+        db.add(driver)
+        try:
             db.commit()
             db.refresh(driver)
-            # Grant the free trial even while documents are pending (bot-registered
-            # drivers must still get their 1-month bonus on first app entry).
-            _grant_free_trial_if_eligible(db, driver)
-            jwt_token = _create_driver_token(driver)
-            return web.json_response({
-                "status": "documents_required",
-                "token": jwt_token,
-                "driver": _serialize_driver(driver),
-                "message": "Ilovada hujjatlaringizni yuklang.",
-            })
+        except Exception:
+            # Race / unique-constraint conflict: another request may have just
+            # created it. Roll back and re-fetch instead of failing the login.
+            db.rollback()
+            driver = db.query(Driver).filter_by(telegram_id=tg_id).first()
+            if not driver and new_phone:
+                for d in db.query(Driver).all():
+                    dp = (d.phone or "").replace("+", "").replace(" ", "")
+                    if dp and dp == new_phone.replace("+", ""):
+                        driver = d
+                        break
+            if not driver:
+                return web.json_response({"status": "expired"})
 
-        # Link telegram_id if missing
+    if driver.is_blocked:
+        return web.json_response({"status": "blocked", "message": "Akkauntingiz bloklangan"})
+
+    if (config.REQUIRE_DRIVER_DOCUMENTS and not driver.documents_submitted
+            and not _is_test_driver(driver.phone)):
+        # Issue a token so the driver can upload documents inside the app
+        # (instead of being redirected to the bot).
         if tg_id and not driver.telegram_id:
             driver.telegram_id = tg_id
         driver.last_active = datetime.utcnow()
         db.commit()
-        _grant_free_trial_if_eligible(db, driver)
         db.refresh(driver)
-
+        # Grant the free trial even while documents are pending (bot-registered
+        # drivers must still get their 1-month bonus on first app entry).
+        _grant_free_trial_if_eligible(db, driver)
         jwt_token = _create_driver_token(driver)
         return web.json_response({
-            "status": "verified",
+            "status": "documents_required",
             "token": jwt_token,
             "driver": _serialize_driver(driver),
+            "message": "Ilovada hujjatlaringizni yuklang.",
         })
-    finally:
-        db.close()
+
+    # Link telegram_id if missing
+    if tg_id and not driver.telegram_id:
+        driver.telegram_id = tg_id
+    driver.last_active = datetime.utcnow()
+    db.commit()
+    _grant_free_trial_if_eligible(db, driver)
+    db.refresh(driver)
+
+    jwt_token = _create_driver_token(driver)
+    return web.json_response({
+        "status": "verified",
+        "token": jwt_token,
+        "driver": _serialize_driver(driver),
+    })
