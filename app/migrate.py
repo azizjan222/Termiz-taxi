@@ -16,8 +16,8 @@ from app.seed_data import seed_routes
 #: migration list had moved on, so a database missing the newer columns was reported
 #: ready. Forgetting to bump it can no longer hide a missing COLUMN either -- the
 #: additive column pass below always runs (see the comment there).
-SCHEMA_VERSION = 2026082501
-SCHEMA_NAME = "promo_redemption_and_order_taken"
+SCHEMA_VERSION = 2026082502
+SCHEMA_NAME = "promo_redemption_otp_purpose"
 
 
 def _apply_schema_migrations() -> int:
@@ -119,6 +119,8 @@ def _apply_schema_migrations() -> int:
         ("orders", "rewards_applied", BOOL_FALSE),
         ("orders", "promo_code", "VARCHAR(30)"),
         ("orders", "promo_discount", "INTEGER DEFAULT 0"),
+        # OTP codes are now scoped to the flow that issued them.
+        ("otp_codes", "purpose", "VARCHAR(20) DEFAULT 'passenger'"),
         # Payment provider isolation / duplicate-receipt protection
         ("payments", "provider", "VARCHAR(20) DEFAULT 'manual_app'"),
         ("payments", "provider_transaction_id", "VARCHAR(100)"),

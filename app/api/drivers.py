@@ -423,7 +423,8 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
 
     session = get_session()
     try:
-        ok, msg = verify_otp_fn(session, phone, code)
+        # Only a code issued by the DRIVER flow may mint driver credentials.
+        ok, msg = verify_otp_fn(session, phone, code, purpose="driver")
         if not ok:
             return web.json_response({"error": msg}, status=400)
 

@@ -150,9 +150,9 @@ async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for u in users:
         block = " 🚫" if u.is_blocked else ""
         text += (
-            f"<b>{u.first_name or 'Nomalum'}</b>{block}\n"
-            f"   📞 {u.phone}\n"
-            f"   🌐 {u.language}\n"
+            f"<b>{escape(u.first_name or 'Nomalum')}</b>{block}\n"
+            f"   📞 {escape(str(u.phone or '-'))}\n"
+            f"   🌐 {escape(str(u.language or '-'))}\n"
             f"   📅 {u.created_at.strftime('%Y-%m-%d') if u.created_at else '?'}\n\n"
         )
 
@@ -180,9 +180,9 @@ async def cmd_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         text += (
             f"{status_emoji}{service} <b>#{o.id}</b>\n"
-            f"   📍 {o.from_city} → {o.to_city}\n"
+            f"   📍 {escape(str(o.from_city or '-'))} → {escape(str(o.to_city or '-'))}\n"
             f"   👥 {o.person_count} kishi · {fmt(o.price or 0)} so'm\n"
-            f"   📞 {o.passenger_phone}\n"
+            f"   📞 {escape(str(o.passenger_phone or '-'))}\n"
         )
         if o.driver_id:
             text += f"   👨‍✈️ Haydovchi: {o.driver_telegram_id}\n"
@@ -235,9 +235,9 @@ async def cmd_find(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 block = " 🚫" if u.is_blocked else ""
                 text += (
                     f"👤 <b>YO'LOVCHI</b>{block}\n"
-                    f"   {u.first_name or 'Nomalum'}\n"
-                    f"   📞 {u.phone}\n"
-                    f"   🌐 {u.language}\n"
+                    f"   {escape(u.first_name or 'Nomalum')}\n"
+                    f"   📞 {escape(str(u.phone or '-'))}\n"
+                    f"   🌐 {escape(str(u.language or '-'))}\n"
                     f"   ID: <code>{u.id}</code>\n\n"
                 )
 
@@ -1104,8 +1104,9 @@ async def cmd_active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_emoji = {"new": "\U0001f195", "accepted": "\u2705"}.get(o.status, "\U0001f7e1")
         created = o.created_at.strftime("%H:%M %d.%m") if o.created_at else "?"
         text += (
-            f"{status_emoji} <b>#{o.id}</b> {o.from_city} \u2192 {o.to_city}\n"
-            f"   Status: {o.status} | {fmt(o.price or 0)} so'm\n"
+            f"{status_emoji} <b>#{o.id}</b> {escape(str(o.from_city or '-'))} \u2192 "
+            f"{escape(str(o.to_city or '-'))}\n"
+            f"   Status: {escape(str(o.status or '-'))} | {fmt(o.price or 0)} so'm\n"
             f"   \U0001f4c5 {created}\n\n"
         )
 
