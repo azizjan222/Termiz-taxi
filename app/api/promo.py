@@ -51,7 +51,8 @@ async def validate_promo(request: web.Request) -> web.Response:
         if promo.valid_until and promo.valid_until < datetime.utcnow():
             return web.json_response({"error": "Muddat tugagan"}, status=400)
 
-        if promo.max_uses > 0 and (promo.used_count or 0) >= promo.max_uses:
+        max_uses = promo.max_uses or 0  # NULL in legacy/hand-inserted rows == unlimited
+        if max_uses > 0 and (promo.used_count or 0) >= max_uses:
             return web.json_response({"error": "Limit tugagan"}, status=400)
 
         return web.json_response({

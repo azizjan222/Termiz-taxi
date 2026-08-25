@@ -20,6 +20,21 @@ async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     admin_state = context.user_data.get("admin_state")
 
+    # Pressing any admin menu button abandons a pending input state. Without this, a
+    # "broadcast" state set earlier survived every branch below that returns early, so
+    # the admin's next ordinary message was mass-sent to all drivers and passengers.
+    if text in {
+        kb.BTN_ADMIN_BACK,
+        kb.BTN_ADMIN_STATS,
+        kb.BTN_ADMIN_EXPORT,
+        kb.BTN_ADMIN_MAINTENANCE,
+        kb.BTN_ADMIN_BROADCAST,
+        kb.BTN_ADMIN_BAN,
+        kb.BTN_ADMIN_UNBAN,
+    }:
+        admin_state = None
+        context.user_data.pop("admin_state", None)
+
     if text == kb.BTN_ADMIN_BACK:
         from app.bot.handlers.menu import start
         await start(update, context)

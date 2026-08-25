@@ -41,7 +41,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if param.startswith("olish_"):
             from app.bot.handlers.orders import assign_order_to_driver
-            order_id = int(param.split("_")[1])
+            try:
+                order_id = int(param.split("_")[1])
+            except (ValueError, IndexError):
+                await update.message.reply_text("❌ Noto'g'ri havola.")
+                return
             if store.is_driver(user_id):
                 await assign_order_to_driver(update, context, user_id, order_id)
             else:

@@ -102,7 +102,11 @@ async def check_csrf(request: web.Request) -> bool:
     }:
         form = await request.post()
         submitted = str(form.get("csrf_token", ""))
-    return bool(submitted) and hmac.compare_digest(cookie, submitted)
+    # Compare as bytes: a non-ASCII submitted token would make compare_digest() raise
+    # TypeError (500) instead of cleanly failing CSRF validation with 403.
+    return bool(submitted) and hmac.compare_digest(
+        cookie.encode("utf-8"), submitted.encode("utf-8")
+    )
 
 
 def _login_key(request: web.Request, username: str) -> tuple[str, str]:

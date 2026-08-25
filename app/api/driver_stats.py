@@ -54,10 +54,13 @@ async def driver_stats(request: web.Request) -> web.Response:
         )
 
         completed_count = len(completed)
-        total_revenue = sum(o.price or 0 for o in completed)
+        # Cash the driver actually collected from passengers: the bonus discount is paid
+        # from the passenger's bonus wallet, not in cash, so it is not revenue.
+        total_revenue = sum(max(0, (o.price or 0) - (o.bonus_used or 0)) for o in completed)
         # Commission the driver actually paid is net of any bonus discount on the ride
         # (the bonus portion is waived / refunded, so it never reduces the driver's net).
         total_commission = sum(max(0, (o.commission or 0) - (o.bonus_used or 0)) for o in completed)
+        # Nets out to price - commission, matching the per-day `earnings` figure below.
         net_earnings = total_revenue - total_commission
 
         # Top routes
@@ -75,8 +78,12 @@ async def driver_stats(request: web.Request) -> web.Response:
                 if day not in daily:
                     daily[day] = {"count": 0, "revenue": 0, "earnings": 0}
                 daily[day]["count"] += 1
-                daily[day]["revenue"] += o.price or 0
-                daily[day]["earnings"] += (o.price or 0) - (o.commission or 0)
+                # Same basis as the totals above: cash collected, then net of the
+                # commission actually deducted.
+                daily[day]["revenue"] += max(0, (o.price or 0) - (o.bonus_used or 0))
+                daily[day]["earnings"] += max(0, (o.price or 0) - (o.bonus_used or 0)) - max(
+                    0, (o.commission or 0) - (o.bonus_used or 0)
+                )
 
         daily_list = [
             {"date": k, **v}

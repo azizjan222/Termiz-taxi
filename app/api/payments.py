@@ -83,9 +83,14 @@ def credit_driver_payment(session, payment: Payment):
 
     driver = session.query(Driver).filter_by(id=payment.driver_id).first()
     if not driver:
+        # No driver to credit: reject the payment and persist that terminal state here,
+        # because callers treat a falsy return as "nothing was credited" and do not
+        # commit. Returning a truthy tuple made them log a `payment.approve` audit row
+        # and report success for a top-up that never produced a ledger entry.
         payment.status = "rejected"
         payment.processed_at = datetime.utcnow()
-        return payment.amount, 0, None
+        session.commit()
+        return None
 
     # Atomically claim the driver's one-time first-top-up bonus. This is safe even if
     # two different payment approvals for the same driver arrive concurrently.

@@ -82,8 +82,14 @@ async def login_post(request: web.Request) -> web.Response:
             headers={"Retry-After": str(retry_after)},
         )
 
-    username_ok = hmac.compare_digest(username, app_config.ADMIN_USERNAME)
-    password_ok = hmac.compare_digest(password, app_config.ADMIN_PASSWORD)
+    # Compare as bytes: hmac.compare_digest() raises TypeError on non-ASCII str input,
+    # which would escape the failure audit/rate limiter below and surface as a 500.
+    username_ok = hmac.compare_digest(
+        username.encode("utf-8"), app_config.ADMIN_USERNAME.encode("utf-8")
+    )
+    password_ok = hmac.compare_digest(
+        password.encode("utf-8"), app_config.ADMIN_PASSWORD.encode("utf-8")
+    )
     if username_ok and password_ok:
         clear_login_failures(request, username)
         _record_auth_audit(request, "auth.login_success")
