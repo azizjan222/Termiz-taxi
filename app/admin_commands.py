@@ -1118,17 +1118,29 @@ async def cmd_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        today_revenue = session.query(func.coalesce(func.sum(Order.commission), 0)).filter(
-            Order.status == "completed",
-            Order.commission_collected == True,  # noqa: E712
-            Order.completed_at >= today_start,
-        ).scalar()
+        # Read the immutable ledger rather than Order rows. Summing Order.commission gave
+        # the GROSS figure, but what is actually taken from a driver is
+        # commission - bonus_used, and the `status == "completed"` filter silently dropped
+        # commission that WAS collected on accepted/in_progress orders and on orders the
+        # driver cancelled. This now reconciles with the admin dashboard.
+        def _collected(since):
+            charged = session.query(
+                func.coalesce(func.sum(BalanceTransaction.amount), 0)
+            ).filter(
+                BalanceTransaction.source == "order_commission",
+                BalanceTransaction.created_at >= since,
+            ).scalar() or 0
+            refunded = session.query(
+                func.coalesce(func.sum(BalanceTransaction.amount), 0)
+            ).filter(
+                BalanceTransaction.source.in_(("commission_refund", "bot_order_refund")),
+                BalanceTransaction.created_at >= since,
+            ).scalar() or 0
+            # Commission rows are negative (money leaving the driver), refunds positive.
+            return max(0, int(-charged) - int(refunded))
 
-        month_revenue = session.query(func.coalesce(func.sum(Order.commission), 0)).filter(
-            Order.status == "completed",
-            Order.commission_collected == True,  # noqa: E712
-            Order.completed_at >= month_start,
-        ).scalar()
+        today_revenue = _collected(today_start)
+        month_revenue = _collected(month_start)
 
     await update.effective_message.reply_text(
         f"\U0001f4b0 <b>DAROMAD (Komissiya)</b>\n\n"

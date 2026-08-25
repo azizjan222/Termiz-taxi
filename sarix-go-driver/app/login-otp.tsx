@@ -44,6 +44,10 @@ export default function LoginOtpScreen() {
   const handleVerify = async (verifyCode?: string) => {
     const c = verifyCode || code;
     if (c.length !== CODE_LENGTH) return;
+    // This is auto-fired from onChangeText. Without an in-flight guard, editing a digit
+    // mid-request re-sent the single-use OTP, and the second (now failing) call's
+    // "Kod noto'g'ri" flashed over a login that had actually succeeded.
+    if (loading) return;
 
     setLoading(true);
     setError('');

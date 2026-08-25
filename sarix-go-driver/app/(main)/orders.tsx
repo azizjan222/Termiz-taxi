@@ -30,6 +30,8 @@ export default function OrdersScreen() {
   const [orders, setOrders] = useState<DriverOrder[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [accepting, setAccepting] = useState<number | null>(null);
+  // Synchronous guard so two rapid taps cannot both pass the check before a re-render.
+  const acceptInFlightRef = useRef(false);
   const [canReceive, setCanReceive] = useState(true);
   const [receiveMsg, setReceiveMsg] = useState('');
   const [receiveCode, setReceiveCode] = useState('');
@@ -184,6 +186,12 @@ export default function OrdersScreen() {
       }
     }
 
+    // Global in-flight gate. `accepting` holds a single id and each card was disabled
+    // only for its OWN id, so a second order stayed tappable while the first request was
+    // in flight -> two accepts, two router.push, two deferred commissions.
+    if (acceptInFlightRef.current) return;
+    acceptInFlightRef.current = true;
+
     setAccepting(order.id);
     try {
       await acceptOrder(order.id);
@@ -199,6 +207,7 @@ export default function OrdersScreen() {
       load();
     } finally {
       setAccepting(null);
+      acceptInFlightRef.current = false;
     }
   };
 

@@ -154,7 +154,27 @@ def _register_handlers(app) -> None:
         pattern="^(order_close|driver_cancel|passenger_cancel)_"))
     app.add_handler(CallbackQueryHandler(admin_actions.stats_callback, pattern="^stat_"))
 
+    # Global error handler. Without one, any exception inside a handler was logged by PTB
+    # and the user simply got NO reply -- indistinguishable from a dead bot.
+    app.add_error_handler(_on_error)
+
     app.job_queue.run_repeating(admin_actions.group_reminder, interval=21600, first=10)
+
+
+async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the failure and tell the user something went wrong."""
+    logger.exception("Unhandled error in bot handler", exc_info=context.error)
+    message = getattr(update, "effective_message", None)
+    if message is None:
+        return
+    try:
+        await message.reply_text(
+            "⚠️ Kutilmagan xatolik yuz berdi. Iltimos, qayta urinib ko'ring "
+            "yoki /start bosing."
+        )
+    except Exception:
+        # Never let the error handler raise.
+        logger.debug("Could not deliver the error notice to the user", exc_info=True)
 
 
 def _log_startup_advisories() -> None:
