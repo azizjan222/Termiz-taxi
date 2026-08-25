@@ -8,6 +8,17 @@ from app.database import DbContext, engine, init_db
 from app.models import Driver, OrderHistory, Setting
 from app.seed_data import seed_routes
 
+#: Current schema revision. Bump this together with any change to the `migrations` list
+#: or the index/dedup block in `_apply_schema_migrations()`.
+#:
+#: The readiness probe imports this instead of repeating the number, because the two
+#: constants had already drifted apart once: `/ready` still demanded 2026071501 after the
+#: migration list had moved on, so a database missing the newer columns was reported
+#: ready. Forgetting to bump it can no longer hide a missing COLUMN either -- the
+#: additive column pass below always runs (see the comment there).
+SCHEMA_VERSION = 2026082502
+SCHEMA_NAME = "promo_redemption_otp_purpose"
+
 
 def _apply_schema_migrations() -> int:
     """Add new columns to existing tables if they don't exist.
@@ -24,10 +35,8 @@ def _apply_schema_migrations() -> int:
     BOOL_FALSE = "BOOLEAN DEFAULT FALSE" if is_pg else "BOOLEAN DEFAULT 0"
     DT = "TIMESTAMP" if is_pg else "DATETIME"
     FLT = "DOUBLE PRECISION" if is_pg else "FLOAT"
-    # BUMP THIS whenever an entry is added to `migrations` or a new index/table below,
-    # otherwise the ledger short-circuits and existing databases silently skip the change.
-    migration_version = 2026082501
-    migration_name = "promo_redemption_and_order_taken"
+    migration_version = SCHEMA_VERSION
+    migration_name = SCHEMA_NAME
 
     # This is a lightweight, explicit migration ledger for the existing additive
     # migration system. It is intentionally not presented as an Alembic conversion.
@@ -43,8 +52,18 @@ def _apply_schema_migrations() -> int:
             text("SELECT 1 FROM schema_migrations WHERE version = :version"),
             {"version": migration_version},
         ).first()
-    if already_applied:
-        return 0
+
+    # NOTE: we deliberately do NOT return early here.
+    #
+    # The additive column pass below is fully idempotent (it skips any column that
+    # already exists), and it is the pass that prevents 500s on every Driver/User query.
+    # Previously a recorded version short-circuited the whole function, so appending an
+    # entry to `migrations` without also bumping the version constant was a SILENT no-op
+    # on every existing database. Always scanning costs one inspector round-trip at boot
+    # and removes that entire failure mode.
+    #
+    # `already_applied` is still used to skip the expensive duplicate-detection and index
+    # creation further down, which is where the real cost is.
 
     migrations = [
         # User new columns
@@ -100,6 +119,8 @@ def _apply_schema_migrations() -> int:
         ("orders", "rewards_applied", BOOL_FALSE),
         ("orders", "promo_code", "VARCHAR(30)"),
         ("orders", "promo_discount", "INTEGER DEFAULT 0"),
+        # OTP codes are now scoped to the flow that issued them.
+        ("otp_codes", "purpose", "VARCHAR(20) DEFAULT 'passenger'"),
         # Payment provider isolation / duplicate-receipt protection
         ("payments", "provider", "VARCHAR(20) DEFAULT 'manual_app'"),
         ("payments", "provider_transaction_id", "VARCHAR(100)"),
@@ -196,7 +217,10 @@ def _apply_schema_migrations() -> int:
     index_tables = {
         "payments", "bonus_transactions", "ratings", "order_history"
     }
-    if index_tables.intersection(table_names):
+    # Skip the duplicate scans + index creation once this revision is recorded: those are
+    # the expensive part, and unlike the column pass they cannot silently leave the schema
+    # broken (a failure sets `failed` and the version is simply not recorded).
+    if not already_applied and index_tables.intersection(table_names):
         with engine.connect() as conn:
             for name, statement in index_statements:
                 target_table = {

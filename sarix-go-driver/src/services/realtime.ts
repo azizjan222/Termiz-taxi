@@ -245,6 +245,10 @@ export function disconnect() {
   intentionalClose = true;
   currentId = null;
   backoffIndex = 0;
+  // Drop the cached auth token as well: disconnect() runs on logout, and leaving the
+  // previous driver's token in module state meant a later connect() could open a socket
+  // authenticated as the account that just logged out.
+  authToken = null;
   clearReconnectTimer();
   clearPingTimer();
   if (socket) {

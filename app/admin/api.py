@@ -14,6 +14,7 @@ from app.models import BalanceTransaction, Driver, Order, Route, Setting, User
 from app.services import notify_i18n as nt
 from app.services.driver_pdf import build_driver_pdf
 from app.services.push import send_push, send_push_bulk
+from app.utils.timefmt import local_day_start_utc, local_day_str, local_month_start_utc
 
 
 def _recipient_language(session, recipient_type: str, recipient_id: int) -> str:
@@ -43,7 +44,7 @@ async def api_stats(request: web.Request) -> web.Response:
         # Revenue today — only commission that was ACTUALLY collected (deducted from a
         # driver's balance). Orders taken by drivers on the free trial are never
         # collected, so they count as 0 and don't inflate the money reports.
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = local_day_start_utc()
         rev_today_result = session.query(Order).filter(
             Order.status == "completed",
             Order.commission_collected == True,  # noqa: E712
@@ -54,7 +55,9 @@ async def api_stats(request: web.Request) -> web.Response:
         revenue_today = sum(max(0, (o.commission or 0) - (o.bonus_used or 0)) for o in rev_today_result)
 
         # Revenue this month
-        month_start = today_start.replace(day=1)
+        # NOT today_start.replace(day=1): today_start is the UTC instant of LOCAL
+        # midnight, so its own `day` field can still be the previous calendar day.
+        month_start = local_month_start_utc()
         rev_month_result = session.query(Order).filter(
             Order.status == "completed",
             Order.commission_collected == True,  # noqa: E712
@@ -1067,15 +1070,17 @@ async def api_statistics(request: web.Request) -> web.Response:
         ]
 
         # ---- Daily new users (last 30 days) ----
+        # Buckets keyed on the LOCAL calendar day, so a signup at 01:00 Tashkent is not
+        # charted against the previous day.
         daily = OrderedDict()
         for i in range(29, -1, -1):
-            key = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+            key = local_day_str(now - timedelta(days=i))
             daily[key] = 0
         for (created_at,) in session.query(User.created_at).filter(
             User.created_at >= now - timedelta(days=30)
         ).all():
             if created_at is not None:
-                key = created_at.strftime("%Y-%m-%d")
+                key = local_day_str(created_at)
                 if key in daily:
                     daily[key] += 1
         daily_new_users = [{"date": k, "count": v} for k, v in daily.items()]

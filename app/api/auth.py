@@ -77,7 +77,7 @@ async def verify_otp_endpoint(request: web.Request) -> web.Response:
 
     session = get_session()
     try:
-        ok, msg = verify_otp(session, phone, code)
+        ok, msg = verify_otp(session, phone, code, purpose="passenger")
         if not ok:
             return web.json_response({"error": msg}, status=400)
 

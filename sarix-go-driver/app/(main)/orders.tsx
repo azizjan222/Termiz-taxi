@@ -14,6 +14,7 @@ import { useDriverStore } from '../../src/store/driver';
 import { useRealtimeStore } from '../../src/store/realtime';
 import { useThemeStore } from '../../src/store/theme';
 import { IncomingOrderModal } from '../../src/components/IncomingOrderModal';
+import { stopAlert } from '../../src/services/notifications';
 import { typography, spacing, radius, gradients } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
@@ -37,6 +38,9 @@ export default function OrdersScreen() {
   const [receiveCode, setReceiveCode] = useState('');
   // The newest incoming order shown in the ride-hailing style popup.
   const [incomingOrder, setIncomingOrder] = useState<DriverOrder | null>(null);
+  // Mirror of incomingOrder for the realtime effect, which must not re-subscribe on
+  // every popup change (its dep list is [lastEvent] only).
+  const incomingOrderRef = useRef<DriverOrder | null>(null);
   const canReceiveRef = useRef(true);
   // Mirror the online flag into a ref so the realtime consumer (which runs off a
   // store subscription) always reads the freshest value without re-subscribing.
@@ -45,6 +49,10 @@ export default function OrdersScreen() {
   // re-process the same event on an unrelated re-render.
   const lastSeqRef = useRef(0);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
+
+  useEffect(() => {
+    incomingOrderRef.current = incomingOrder;
+  }, [incomingOrder]);
 
   useEffect(() => {
     canReceiveRef.current = canReceive;
@@ -111,6 +119,8 @@ export default function OrdersScreen() {
       // Surface the ride-hailing style popup for the freshest order.
       setIncomingOrder(order);
     } else if (lastEvent.kind === 'order_cancelled' || lastEvent.kind === 'order_taken') {
+      // The order is gone, so stop any alarm still ringing for it.
+      if (incomingOrderRef.current?.id === lastEvent.orderId) stopAlert();
       // 'order_taken' = another driver got there first. Same cleanup as a cancellation
       // (drop from the list, dismiss the popup) but the realtime service raises no
       // sound/vibration for it, so losing a race stays silent.
@@ -492,8 +502,17 @@ export default function OrdersScreen() {
         colors={colors}
         accepting={accepting === incomingOrder?.id}
         onFreeTrial={!!driver?.has_active_subscription}
-        onAccept={() => incomingOrder && handleAccept(incomingOrder)}
-        onDismiss={() => setIncomingOrder(null)}
+        onAccept={() => {
+          // Silence the loud alarm as soon as the driver acts on the popup. stopAlert()
+          // existed but was never called, so the siren + vibration ran to completion even
+          // after the order had been accepted or dismissed.
+          stopAlert();
+          if (incomingOrder) handleAccept(incomingOrder);
+        }}
+        onDismiss={() => {
+          stopAlert();
+          setIncomingOrder(null);
+        }}
       />
     </SafeAreaView>
   );

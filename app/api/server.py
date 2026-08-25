@@ -115,7 +115,52 @@ async def cors_middleware(request: web.Request, handler):
     return response
 
 
+def _schema_check() -> str | None:
+    """Return a reason string when the live schema is not usable, else None."""
+    from sqlalchemy import inspect, text
+
+    from app.database import engine
+    from app.migrate import SCHEMA_VERSION
+
+    required_tables = {"users", "drivers", "orders", "payments", "schema_migrations"}
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+        tables = set(inspect(connection).get_table_names())
+        if not required_tables.issubset(tables):
+            return "database schema is incomplete"
+        current = connection.execute(
+            text("SELECT MAX(version) FROM schema_migrations")
+        ).scalar()
+        # Imported from app.migrate so this can never drift from the migration that
+        # actually ships. These were two separate hard-coded numbers before, and they
+        # had already fallen out of sync.
+        if not current or int(current) < SCHEMA_VERSION:
+            return "database migration is not current"
+    return None
+
+
 async def health(request: web.Request) -> web.Response:
+    """Liveness + schema sanity.
+
+    This used to return an unconditional 200, so an orchestrator wired to /health would
+    happily keep serving traffic from an instance whose migration had failed (every
+    Driver/User query 500ing). It now reports the schema state and answers 503 when the
+    schema is behind, matching /ready.
+    """
+    try:
+        reason = _schema_check()
+    except Exception:
+        logger.exception("Health database check failed")
+        reason = "database is unreachable"
+
+    if reason:
+        return web.json_response({
+            "status": "degraded",
+            "service": "Sarix Go API",
+            "version": "1.0.0",
+            "reason": reason,
+        }, status=503)
+
     return web.json_response({
         "status": "ok",
         "service": "Sarix Go API",
@@ -125,25 +170,14 @@ async def health(request: web.Request) -> web.Response:
 
 async def readiness(request: web.Request) -> web.Response:
     """Readiness probe: require DB connectivity, core tables, and latest migration."""
-    from sqlalchemy import inspect, text
-
-    from app.database import engine
-
-    required_tables = {"users", "drivers", "orders", "payments", "schema_migrations"}
     try:
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
-            tables = set(inspect(connection).get_table_names())
-            if not required_tables.issubset(tables):
-                raise RuntimeError("database schema is incomplete")
-            current = connection.execute(
-                text("SELECT MAX(version) FROM schema_migrations")
-            ).scalar()
-            if not current or int(current) < 2026071501:
-                raise RuntimeError("database migration is not current")
+        reason = _schema_check()
     except Exception:
         logger.exception("Readiness database check failed")
         return web.json_response({"status": "not_ready"}, status=503)
+    if reason:
+        logger.error("Readiness check failed: %s", reason)
+        return web.json_response({"status": "not_ready", "reason": reason}, status=503)
     return web.json_response({"status": "ready"})
 
 

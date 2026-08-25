@@ -1,5 +1,4 @@
 """Admin Telegram commands for managing apps via bot."""
-from datetime import datetime
 from html import escape
 
 from sqlalchemy import func
@@ -21,6 +20,7 @@ from app.models import (
 )
 from app.services import notify_i18n as nt
 from app.services.push import send_push, send_push_bulk
+from app.utils.timefmt import local_day_start_utc, local_month_start_utc
 
 
 def is_admin(uid: int) -> bool:
@@ -61,8 +61,8 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             Order.status.in_(["new", "accepted", "in_progress"])
         ).count()
 
-        # Today
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Today, on the LOCAL calendar (UTC midnight is 05:00 Tashkent).
+        today_start = local_day_start_utc()
         today_orders = session.query(Order).filter(Order.created_at >= today_start).count()
         today_completed = session.query(Order).filter(
             Order.status == "completed",
@@ -150,9 +150,9 @@ async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for u in users:
         block = " 🚫" if u.is_blocked else ""
         text += (
-            f"<b>{u.first_name or 'Nomalum'}</b>{block}\n"
-            f"   📞 {u.phone}\n"
-            f"   🌐 {u.language}\n"
+            f"<b>{escape(u.first_name or 'Nomalum')}</b>{block}\n"
+            f"   📞 {escape(str(u.phone or '-'))}\n"
+            f"   🌐 {escape(str(u.language or '-'))}\n"
             f"   📅 {u.created_at.strftime('%Y-%m-%d') if u.created_at else '?'}\n\n"
         )
 
@@ -180,9 +180,9 @@ async def cmd_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         text += (
             f"{status_emoji}{service} <b>#{o.id}</b>\n"
-            f"   📍 {o.from_city} → {o.to_city}\n"
+            f"   📍 {escape(str(o.from_city or '-'))} → {escape(str(o.to_city or '-'))}\n"
             f"   👥 {o.person_count} kishi · {fmt(o.price or 0)} so'm\n"
-            f"   📞 {o.passenger_phone}\n"
+            f"   📞 {escape(str(o.passenger_phone or '-'))}\n"
         )
         if o.driver_id:
             text += f"   👨‍✈️ Haydovchi: {o.driver_telegram_id}\n"
@@ -235,9 +235,9 @@ async def cmd_find(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 block = " 🚫" if u.is_blocked else ""
                 text += (
                     f"👤 <b>YO'LOVCHI</b>{block}\n"
-                    f"   {u.first_name or 'Nomalum'}\n"
-                    f"   📞 {u.phone}\n"
-                    f"   🌐 {u.language}\n"
+                    f"   {escape(u.first_name or 'Nomalum')}\n"
+                    f"   📞 {escape(str(u.phone or '-'))}\n"
+                    f"   🌐 {escape(str(u.language or '-'))}\n"
                     f"   ID: <code>{u.id}</code>\n\n"
                 )
 
@@ -311,6 +311,7 @@ async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             idempotency_key=key
         ).first()
         old_balance = driver.balance or 0
+        already_applied = existing is not None
         if existing:
             new_balance = old_balance
             amount = 0
@@ -338,10 +339,24 @@ async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     op = "qo'shildi" if amount > 0 else "yechildi"
     sign = "+" if amount > 0 else ""
 
+    if already_applied:
+        # Idempotent replay: `amount` was forced to 0 above, and the generic wording below
+        # then reported "0 so'm yechildi" (withdrawn) to the admin and DM'd the driver the
+        # same nonsense, even though nothing had changed.
+        await update.effective_message.reply_text(
+            f"ℹ️ <b>Bu buyruq allaqachon bajarilgan</b>\n\n"
+            f"👨‍✈️ {escape(driver.first_name or 'Haydovchi')}\n"
+            f"📞 {escape(str(driver.phone or '-'))}\n"
+            f"🆔 <code>{driver.telegram_id}</code>\n\n"
+            f"💵 <b>Balans o'zgarmadi: {fmt(new_balance)} so'm</b>",
+            parse_mode="HTML",
+        )
+        return
+
     response = (
         f"✅ <b>Balans yangilandi</b>\n\n"
-        f"👨‍✈️ {driver.first_name or 'Haydovchi'}\n"
-        f"📞 {driver.phone}\n"
+        f"👨‍✈️ {escape(driver.first_name or 'Haydovchi')}\n"
+        f"📞 {escape(str(driver.phone or '-'))}\n"
         f"🆔 <code>{driver.telegram_id}</code>\n\n"
         f"💰 Eski balans: {fmt(old_balance)} so'm\n"
         f"💸 {sign}{fmt(abs(amount))} so'm {op}\n"
@@ -1104,8 +1119,9 @@ async def cmd_active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_emoji = {"new": "\U0001f195", "accepted": "\u2705"}.get(o.status, "\U0001f7e1")
         created = o.created_at.strftime("%H:%M %d.%m") if o.created_at else "?"
         text += (
-            f"{status_emoji} <b>#{o.id}</b> {o.from_city} \u2192 {o.to_city}\n"
-            f"   Status: {o.status} | {fmt(o.price or 0)} so'm\n"
+            f"{status_emoji} <b>#{o.id}</b> {escape(str(o.from_city or '-'))} \u2192 "
+            f"{escape(str(o.to_city or '-'))}\n"
+            f"   Status: {escape(str(o.status or '-'))} | {fmt(o.price or 0)} so'm\n"
             f"   \U0001f4c5 {created}\n\n"
         )
 
@@ -1119,8 +1135,10 @@ async def cmd_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     with DbContext() as session:
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # LOCAL day/month boundaries: with UTC ones the month total mis-assigned the
+        # first five hours of the 1st, and "today" was shifted by five hours every day.
+        today_start = local_day_start_utc()
+        month_start = local_month_start_utc()
 
         # Read the immutable ledger rather than Order rows. Summing Order.commission gave
         # the GROSS figure, but what is actually taken from a driver is

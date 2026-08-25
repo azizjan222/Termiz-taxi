@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -55,6 +55,17 @@ export default function AdBanner({
   const [remaining, setRemaining] = useState(durationSec);
   const img = imageUrl ?? AD_IMAGE_URL;
 
+  // Keep the latest onClose in a ref so it is NOT an effect dependency. Callers pass an
+  // inline arrow (`onClose={() => setAdVisible(false)}`), so its identity changed on
+  // every parent render: the effect tore down the interval and reset `remaining`,
+  // restarting the countdown. HomeScreen re-renders every 7s from the promo carousel --
+  // exactly the ad duration -- so the auto-dismiss could be re-armed forever instead of
+  // firing.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!visible) return;
     setRemaining(durationSec);
@@ -63,14 +74,14 @@ export default function AdBanner({
         if (r <= 1) {
           clearInterval(interval);
           // Defer onClose out of the state updater to avoid setState-in-render.
-          setTimeout(onClose, 0);
+          setTimeout(() => onCloseRef.current(), 0);
           return 0;
         }
         return r - 1;
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [visible, durationSec, onClose]);
+  }, [visible, durationSec]);
 
   return (
     <Modal

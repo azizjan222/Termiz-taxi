@@ -2,6 +2,7 @@
 app→bot "accept order via deep link" flow."""
 import logging
 from datetime import datetime
+from html import escape
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -264,9 +265,11 @@ async def _notify_admin_order_accepted(context, order, driver):
             ADMIN_ID,
             ("✅ <b>Zakas qabul qilindi</b>\n\n"
              f"🆔 Zakas #{order.id}\n"
-             f"👨‍✈️ Haydovchi: <b>{name}</b> ({driver.phone or '—'})\n"
-             f"🚗 {car}\n"
-             f"📍 {order.from_city or '—'} → {order.to_city or '—'}\n"
+             f"👨‍✈️ Haydovchi: <b>{escape(name)}</b> "
+             f"({escape(str(driver.phone or '—'))})\n"
+             f"🚗 {escape(car)}\n"
+             f"📍 {escape(str(order.from_city or '—'))} → "
+             f"{escape(str(order.to_city or '—'))}\n"
              f"{service_label} · 💰 {price}"),
             parse_mode="HTML")
     except Exception as e:
@@ -282,12 +285,13 @@ async def _confirm_accept_to_driver(context, driver_telegram_id, order):
         subject = f"👥 {order.person_count} kishi"
     text = (
         "🚕 <b>BUYURTMA QABUL QILINDI!</b>\n\n"
-        f"📍 {order.from_city} → {order.to_city}\n"
+        f"📍 {escape(str(order.from_city or '—'))} → "
+        f"{escape(str(order.to_city or '—'))}\n"
         f"{subject}\n"
         f"💰 Narxi: {money(order.price)} so'm\n"
-        f"📞 Yo'lovchi: {order.passenger_phone}\n"
-        f"👤 {order.passenger_name or 'Nomalum'}"
+        f"📞 Yo'lovchi: {escape(str(order.passenger_phone or '—'))}\n"
+        f"👤 {escape(order.passenger_name or 'Nomalum')}"
     )
     if order.note:
-        text += f"\n📝 {order.note}"
+        text += f"\n📝 {escape(order.note)}"
     await context.bot.send_message(driver_telegram_id, text, parse_mode="HTML")
