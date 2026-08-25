@@ -6,12 +6,15 @@ from aiohttp import web
 from app.api.drivers import _get_driver_from_request, compute_online_seconds_today
 from app.database import get_session
 from app.models import Order
+from app.utils.timefmt import local_day_start_utc, local_day_str
 
 
 def _period_start(period: str) -> datetime:
     now = datetime.utcnow()
     if period == "today":
-        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # LOCAL midnight, not UTC midnight (= 05:00 Tashkent), so a ride at 01:00
+        # local counts towards today rather than yesterday.
+        return local_day_start_utc(now)
     if period == "week":
         return now - timedelta(days=7)
     if period == "month":
@@ -74,7 +77,8 @@ async def driver_stats(request: web.Request) -> web.Response:
         daily = {}
         for o in completed:
             if o.completed_at:
-                day = o.completed_at.strftime("%Y-%m-%d")
+                # Bucket on the LOCAL calendar day.
+                day = local_day_str(o.completed_at)
                 if day not in daily:
                     daily[day] = {"count": 0, "revenue": 0, "earnings": 0}
                 daily[day]["count"] += 1

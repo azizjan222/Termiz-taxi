@@ -14,7 +14,7 @@ from app.services.dynamic_settings import (
     get_free_trial_limit,
     get_min_driver_balance,
 )
-from app.utils.timefmt import iso_utc
+from app.utils.timefmt import iso_utc, local_day_str
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,13 @@ def missing_driver_approval_requirements(driver: Driver) -> list[str]:
 
 
 def _today_str(now: datetime | None = None) -> str:
-    return (now or datetime.utcnow()).strftime("%Y-%m-%d")
+    """LOCAL calendar day of a stored naive-UTC instant.
+
+    Used to decide whether `online_since` belongs to "today". With the previous UTC
+    formatting a driver's online-time counter reset at 05:00 Tashkent instead of
+    midnight.
+    """
+    return local_day_str(now or datetime.utcnow()) or ""
 
 
 def compute_online_seconds_today(driver: Driver, now: datetime | None = None) -> int:

@@ -1,5 +1,4 @@
 """Admin Telegram commands for managing apps via bot."""
-from datetime import datetime
 from html import escape
 
 from sqlalchemy import func
@@ -21,6 +20,7 @@ from app.models import (
 )
 from app.services import notify_i18n as nt
 from app.services.push import send_push, send_push_bulk
+from app.utils.timefmt import local_day_start_utc, local_month_start_utc
 
 
 def is_admin(uid: int) -> bool:
@@ -61,8 +61,8 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             Order.status.in_(["new", "accepted", "in_progress"])
         ).count()
 
-        # Today
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Today, on the LOCAL calendar (UTC midnight is 05:00 Tashkent).
+        today_start = local_day_start_utc()
         today_orders = session.query(Order).filter(Order.created_at >= today_start).count()
         today_completed = session.query(Order).filter(
             Order.status == "completed",
@@ -1119,8 +1119,10 @@ async def cmd_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     with DbContext() as session:
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # LOCAL day/month boundaries: with UTC ones the month total mis-assigned the
+        # first five hours of the 1st, and "today" was shifted by five hours every day.
+        today_start = local_day_start_utc()
+        month_start = local_month_start_utc()
 
         # Read the immutable ledger rather than Order rows. Summing Order.commission gave
         # the GROSS figure, but what is actually taken from a driver is
