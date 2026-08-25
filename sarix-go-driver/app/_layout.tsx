@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -8,7 +8,12 @@ import { AppState } from 'react-native';
 import { initI18n } from '../src/i18n';
 import { useDriverStore } from '../src/store/driver';
 import { useThemeStore } from '../src/store/theme';
-import { registerPushToken, addNotificationReceivedListener } from '../src/services/notifications';
+import {
+  registerPushToken,
+  addNotificationReceivedListener,
+  addNotificationResponseListener,
+  stopAlert,
+} from '../src/services/notifications';
 import { addNotification } from '../src/services/notificationHistory';
 import * as realtime from '../src/services/realtime';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
@@ -82,6 +87,31 @@ export default function RootLayout() {
         type: (content.data as any)?.type,
         data: (content.data as any) || {},
       });
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Tapping a notification must open the thing it is about. `addNotificationResponseListener`
+  // existed but was never wired up, so a driver who tapped a new-order push just landed on
+  // whatever screen was already open. Tapping also silences the loud alarm.
+  useEffect(() => {
+    const sub = addNotificationResponseListener((response) => {
+      stopAlert();
+
+      const data = (response?.notification?.request?.content?.data || {}) as any;
+      // Don't navigate for terminal events: the backend sends order_id on
+      // order_cancelled / order_expired too, and opening a dead order is just confusing.
+      if (data.type === 'order_cancelled' || data.type === 'order_expired') return;
+
+      const orderId = data.order_id ?? data.orderId;
+      if (orderId == null) return;
+      // Only navigate once the driver is actually logged in, otherwise expo-router
+      // would push an authenticated screen over the login flow.
+      if (!useDriverStore.getState().isAuthenticated) return;
+
+      const numericId = Number(orderId);
+      if (!Number.isFinite(numericId)) return;
+      router.push(`/order/${numericId}`);
     });
     return () => sub.remove();
   }, []);

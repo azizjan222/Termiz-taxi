@@ -293,10 +293,22 @@ class OtpCode(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     phone = Column(String(20), nullable=False, index=True)
     code = Column(String(10), nullable=False)
+    # Which login flow issued this code. Both flows used to share one credential, so a
+    # code delivered to a passenger's Telegram account was accepted at the driver
+    # verify endpoint (and vice versa) whenever the User and Driver rows for one phone
+    # pointed at different Telegram accounts.
+    purpose = Column(String(20), default="passenger")
     is_used = Column(Boolean, default=False)
     attempts = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('passenger', 'driver')",
+            name="ck_otp_purpose",
+        ),
+    )
 
 
 # ============= PAYMENTS =============

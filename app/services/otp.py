@@ -5,6 +5,7 @@ Supports multiple providers:
 - telegram: sends via Telegram bot (FREE if user has chat with bot)
 - eskiz: sends real SMS via Eskiz.uz (paid)
 """
+import hmac
 import logging
 import secrets
 import string
@@ -12,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import aiohttp
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import config
@@ -102,6 +104,9 @@ async def create_and_send_otp(
     otp = OtpCode(
         phone=phone,
         code=code,
+        # Bind the code to the flow that requested it, so a passenger code cannot be
+        # redeemed at the driver verify endpoint (or vice versa).
+        purpose="driver" if recipient_type == "driver" else "passenger",
         expires_at=expires_at,
     )
     session.add(otp)
@@ -314,19 +319,34 @@ async def _send_via_eskiz(phone: str, code: str) -> tuple[bool, str]:
             return False, "SMS yuborishda xatolik"
 
 
-def verify_otp(session: Session, phone: str, code: str) -> tuple[bool, str]:
-    """Verify OTP code. Returns (success, message)."""
+def verify_otp(
+    session: Session, phone: str, code: str, purpose: str = "passenger"
+) -> tuple[bool, str]:
+    """Verify an OTP code issued for ``purpose``. Returns (success, message).
+
+    ``purpose`` scopes the lookup to the flow that requested the code. Legacy rows
+    predating the column have NULL/'' and are treated as passenger codes so codes already
+    in flight during a deploy still work.
+    """
     phone = normalize_phone(phone)
 
-    otp = (
-        session.query(OtpCode)
-        .filter(
-            OtpCode.phone == phone,
-            OtpCode.is_used == False,  # noqa: E712
-        )
-        .order_by(OtpCode.created_at.desc())
-        .first()
+    query = session.query(OtpCode).filter(
+        OtpCode.phone == phone,
+        OtpCode.is_used == False,  # noqa: E712
     )
+    if purpose == "driver":
+        query = query.filter(OtpCode.purpose == "driver")
+    else:
+        # Passenger: accept explicit 'passenger' plus legacy rows with no purpose set.
+        query = query.filter(
+            or_(
+                OtpCode.purpose == "passenger",
+                OtpCode.purpose.is_(None),
+                OtpCode.purpose == "",
+            )
+        )
+
+    otp = query.order_by(OtpCode.created_at.desc()).first()
 
     if not otp:
         return False, "Kod topilmadi. Qayta so'rang."
@@ -342,7 +362,9 @@ def verify_otp(session: Session, phone: str, code: str) -> tuple[bool, str]:
         session.commit()
         return False, "Juda ko'p urinish. Qayta so'rang."
 
-    if otp.code != code:
+    # Constant-time compare. Both sides are ASCII digits here, so this cannot raise the
+    # non-ASCII TypeError that compare_digest throws on arbitrary str input.
+    if not hmac.compare_digest(str(otp.code or "").encode(), str(code or "").encode()):
         session.commit()
         return False, "Kod noto'g'ri"
 
