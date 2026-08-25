@@ -82,6 +82,9 @@ export default {
     from: 'Qayerdan',
     to: 'Qayerga',
     persons: 'Yo\'lovchi',
+    // Deliberately NOT i18next pluralization: compatibilityJSON is 'v3' and Russian
+    // needs three forms there. These wordings are grammatically correct for ANY count.
+    personsCount: '{{count}} kishi',
     departureTime: 'Jo\'nash vaqti',
     now: 'Hozir',
     price: 'Narxi',

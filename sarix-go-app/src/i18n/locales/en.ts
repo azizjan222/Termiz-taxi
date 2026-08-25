@@ -82,6 +82,7 @@ export default {
     from: 'From',
     to: 'To',
     persons: 'Passengers',
+    personsCount: '{{count}} pers.',
     departureTime: 'Departure time',
     now: 'Now',
     price: 'Price',

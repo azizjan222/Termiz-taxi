@@ -308,15 +308,22 @@ export default function OrderDetailScreen() {
       {
         text: t('common.yes'),
         onPress: async () => {
+          if (loading) return;
           setLoading(true);
           try {
-            await completeOrder(parseInt(id));
-            Alert.alert(`✅ ${t('more.completedTitle')}`, t('more.completedBody'), [
-              { text: t('more.nextOrder'), onPress: () => router.replace('/(main)/orders') },
-            ]);
+            await completeOrder(parseInt(String(id)));
+            // Navigate on dismiss too, not only from the button's onPress: on Android the
+            // hardware back button closes the alert WITHOUT invoking onPress, which left
+            // the driver on a finished order with `loading` back to false and the button
+            // re-armed -- a second tap then hit a raw backend error.
+            Alert.alert(
+              `✅ ${t('more.completedTitle')}`,
+              t('more.completedBody'),
+              [{ text: t('more.nextOrder'), onPress: () => router.replace('/(main)/orders') }],
+              { onDismiss: () => router.replace('/(main)/orders') },
+            );
           } catch (e: any) {
             Alert.alert(t('common.error'), e?.response?.data?.error || '');
-          } finally {
             setLoading(false);
           }
         },
