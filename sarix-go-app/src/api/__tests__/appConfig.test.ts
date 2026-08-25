@@ -1,3 +1,5 @@
+import { describe, expect, it } from '@jest/globals';
+
 import { compareVersions } from '../app-config';
 
 // compareVersions drives the force-update gate (if current < min_version -> block the

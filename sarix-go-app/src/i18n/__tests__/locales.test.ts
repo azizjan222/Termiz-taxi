@@ -9,6 +9,8 @@
  * The locale modules are plain objects with no React-Native imports, so they load in a
  * pure jest environment without any native mocks.
  */
+import { describe, expect, it } from '@jest/globals';
+
 import en from '../locales/en';
 import ru from '../locales/ru';
 import uzCyrl from '../locales/uz-cyrl';
