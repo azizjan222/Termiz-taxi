@@ -217,7 +217,7 @@ export default function OrderDetailScreen() {
       : '⏳';
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.replace('/(tabs)/home')}
