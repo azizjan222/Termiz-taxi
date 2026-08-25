@@ -58,7 +58,9 @@ export default function TariffScreen() {
     p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
   const handlePersonCount = (n: number) => {
-    if (orderStore.serviceType === 'full_car') return;
+    // No early return on 'full_car': switching back to a per-person count is exactly
+    // what this handler is for. The old guard left the passenger-count rows visible but
+    // dead once "Bo'sh mashina" had been picked, with no way back.
     orderStore.setField('personCount', n);
     orderStore.setField('serviceType', 'taxi');
     orderStore.setField('maleCount', n);
