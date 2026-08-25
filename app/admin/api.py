@@ -210,11 +210,21 @@ async def api_push(request: web.Request) -> web.Response:
         if target == "specific":
             if not recipient_id:
                 return web.json_response({"error": "recipient_id kerak"}, status=400)
-            lang = nt.norm_lang(_recipient_language(session, recipient_type, int(recipient_id)))
+            # Validate instead of letting int()/an unknown label raise a generic 500.
+            # An unrecognised recipient_type used to fall through to "passenger", which
+            # would have pushed to the wrong person.
+            if recipient_type not in ("driver", "user", "passenger"):
+                return web.json_response({"error": "recipient_type noto'g'ri"}, status=400)
+            try:
+                recipient_id_int = int(recipient_id)
+            except (TypeError, ValueError):
+                return web.json_response({"error": "recipient_id raqam bo'lishi kerak"},
+                                         status=400)
+            lang = nt.norm_lang(_recipient_language(session, recipient_type, recipient_id_int))
             ok = await send_push(
                 session,
                 recipient_type=recipient_type,
-                recipient_id=int(recipient_id),
+                recipient_id=recipient_id_int,
                 title=nt.admin_title(lang),
                 body=message,
                 data={"type": "admin"},
