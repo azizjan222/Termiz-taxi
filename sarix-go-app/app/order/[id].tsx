@@ -33,6 +33,7 @@ export default function OrderDetailScreen() {
   const user = useAuthStore((s) => s.user);
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [driverLoc, setDriverLoc] = useState<{ lat: number; lon: number } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const ratedHandledRef = useRef(false);
@@ -44,11 +45,16 @@ export default function OrderDetailScreen() {
     try {
       const data = await getOrder(parseInt(id));
       setOrder(data);
+      setLoadError(false);
       // Seed the driver marker from the last-known location returned by the API.
       if (data.driver?.current_lat != null && data.driver?.current_lon != null) {
         setDriverLoc((prev) => prev || { lat: data.driver!.current_lat!, lon: data.driver!.current_lon! });
       }
     } catch {
+      // Record the failure. This screen is reached with router.replace and renders no
+      // header while `order` is null, so swallowing the error left the passenger stuck
+      // on "Yuklanmoqda..." with no retry and no way back.
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -154,6 +160,32 @@ export default function OrderDetailScreen() {
       },
     ]);
   };
+
+  if (!order && loadError && !loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.center}>
+          <Text style={[typography.body, { textAlign: 'center', marginBottom: spacing.lg }]}>
+            {t('errors.networkError')}
+          </Text>
+          <Button
+            title={t('common.retry')}
+            onPress={() => {
+              setLoading(true);
+              setLoadError(false);
+              load();
+            }}
+          />
+          <TouchableOpacity
+            onPress={() => router.replace('/(tabs)/home')}
+            style={{ marginTop: spacing.lg }}
+          >
+            <Text style={[typography.body, { color: colors.primary }]}>{t('common.home')}</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading || !order) {
     return (

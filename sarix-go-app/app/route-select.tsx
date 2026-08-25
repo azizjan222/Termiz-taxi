@@ -104,16 +104,20 @@ export default function RouteSelectScreen() {
 
   const applySelection = useCallback(
     (field: Field, city: string, address: string, lat?: number, lon?: number) => {
+      // ALWAYS write the coordinate pair, using null when this selection has none.
+      // Previously coordinates were only written when provided, so picking a plain city
+      // row kept the pin from an earlier (possibly abandoned) order and the driver was
+      // sent to a completely different district than the city shown on the order.
       if (field === 'from') {
         orderStore.setField('fromCity', city);
         orderStore.setField('fromAddress', address);
-        if (lat != null) orderStore.setField('fromLat', lat);
-        if (lon != null) orderStore.setField('fromLon', lon);
+        orderStore.setField('fromLat', lat ?? null);
+        orderStore.setField('fromLon', lon ?? null);
       } else {
         orderStore.setField('toCity', city);
         orderStore.setField('toAddress', address);
-        if (lat != null) orderStore.setField('toLat', lat);
-        if (lon != null) orderStore.setField('toLon', lon);
+        orderStore.setField('toLat', lat ?? null);
+        orderStore.setField('toLon', lon ?? null);
       }
       setSearch('');
       setShowSuggestions(false);

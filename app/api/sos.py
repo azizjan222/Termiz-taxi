@@ -33,26 +33,50 @@ async def trigger_sos(request: web.Request) -> web.Response:
     reporter_phone = user.phone if user else driver.phone
     reporter_name = (user.first_name if user else driver.first_name) or "Nomalum"
 
+    # Coerce request values instead of writing raw JSON straight into typed columns.
+    def _opt_float(value):
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _opt_int(value):
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    order_id = _opt_int(data.get("order_id"))
+    lat = _opt_float(data.get("lat"))
+    lon = _opt_float(data.get("lon"))
+
     session = get_session()
     try:
         sos = SosAlert(
-            order_id=data.get("order_id"),
+            order_id=order_id,
             user_id=user.id if user else None,
             driver_id=driver.id if driver else None,
             reporter_type=reporter_type,
             reporter_phone=reporter_phone,
-            latitude=data.get("lat"),
-            longitude=data.get("lon"),
+            latitude=lat,
+            longitude=lon,
             note=(data.get("note") or "").strip()[:500],
         )
         session.add(sos)
         session.commit()
         session.refresh(sos)
 
-        # Build alert message
+        # Build alert message. Only the caller's OWN order may be attached: the id comes
+        # straight from the request body, so without an ownership filter any user could
+        # staple an arbitrary order (and its route) onto their SOS alert and audit row.
         order_info = ""
-        if data.get("order_id"):
-            order = session.query(Order).filter_by(id=data["order_id"]).first()
+        if order_id is not None:
+            order_query = session.query(Order).filter(Order.id == order_id)
+            if driver:
+                order_query = order_query.filter(Order.driver_id == driver.id)
+            else:
+                order_query = order_query.filter(Order.user_id == user.id)
+            order = order_query.first()
             if order:
                 order_info = (
                     f"\n📍 Yo'nalish: {escape(str(order.from_city or ''))} → "
@@ -61,8 +85,9 @@ async def trigger_sos(request: web.Request) -> web.Response:
                 )
 
         location_link = ""
-        if data.get("lat") and data.get("lon"):
-            location_link = f"\n🗺 https://maps.google.com/?q={data['lat']},{data['lon']}"
+        if lat is not None and lon is not None:
+            # `is not None`, not truthiness: a coordinate of exactly 0 is still valid.
+            location_link = f"\n🗺 https://maps.google.com/?q={lat},{lon}"
 
         # Escape every user-controlled value: an unescaped "<" or "&" in a name or note
         # makes Telegram reject the whole HTML message, and the failure below is only

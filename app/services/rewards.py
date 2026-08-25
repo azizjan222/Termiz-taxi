@@ -200,9 +200,13 @@ def apply_ride_rewards(session, order, passenger: User, now: datetime | None = N
     reward = get_loyalty_reward(session)
     passenger.loyalty_points = (passenger.loyalty_points or 0) + per_ride
     # while-loop is defensive: handles a threshold smaller than the per-ride points.
+    # `reward_index` counts loop iterations. Deriving it from the credited amount meant a
+    # replay (where credit_bonus returns 0 for an existing idempotency key) recomputed the
+    # SAME key every pass while still subtracting points -- burning the passenger's
+    # loyalty points without ever crediting a bonus.
+    reward_index = 0
     while threshold > 0 and reward > 0 and (passenger.loyalty_points or 0) >= threshold:
-        passenger.loyalty_points -= threshold
-        reward_index = result["loyalty_reward"] // reward + 1
+        reward_index += 1
         credited = credit_bonus(
             session,
             passenger,
@@ -212,6 +216,10 @@ def apply_ride_rewards(session, order, passenger: User, now: datetime | None = N
             order.id,
             f"order:{order.id}:loyalty:{reward_index}",
         )
+        if not credited:
+            # Already credited for this index (replay): stop instead of consuming points.
+            break
+        passenger.loyalty_points -= threshold
         result["loyalty_reward"] += credited
 
     # ---- Referral (only invited passengers) ----

@@ -85,6 +85,10 @@ export default function HomeScreen() {
   };
 
   const startOrder = (type: 'taxi' | 'parcel') => {
+    // Start from a clean draft. orderStore.reset() only ran after a SUCCESSFUL order, so
+    // an abandoned flow left the previous destination (city, address and coordinates)
+    // in the store and it leaked into the next order.
+    orderStore.reset();
     orderStore.setField('serviceType', type);
     // Both taxi and parcel use the Yandex-style map order entry (auto-detect
     // location + destination). The labels inside adapt to the service type.
