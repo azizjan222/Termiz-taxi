@@ -485,7 +485,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   topAddrMuted: { ...typography.body, color: colors.textSecondary, marginLeft: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center' },
   pinContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

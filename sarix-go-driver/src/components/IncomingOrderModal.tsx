@@ -244,7 +244,7 @@ export const IncomingOrderModal: React.FC<Props> = ({
 };
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8,12,28,0.55)' },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(8,12,28,0.55)' },
   wrap: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.background,
