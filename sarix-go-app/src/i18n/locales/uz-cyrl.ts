@@ -82,6 +82,7 @@ export default {
     from: 'Қаердан',
     to: 'Қаерга',
     persons: 'Йўловчи',
+    personsCount: '{{count}} киши',
     departureTime: 'Жўнаш вақти',
     now: 'Ҳозир',
     price: 'Нархи',

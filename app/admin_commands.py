@@ -311,6 +311,7 @@ async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             idempotency_key=key
         ).first()
         old_balance = driver.balance or 0
+        already_applied = existing is not None
         if existing:
             new_balance = old_balance
             amount = 0
@@ -338,10 +339,24 @@ async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     op = "qo'shildi" if amount > 0 else "yechildi"
     sign = "+" if amount > 0 else ""
 
+    if already_applied:
+        # Idempotent replay: `amount` was forced to 0 above, and the generic wording below
+        # then reported "0 so'm yechildi" (withdrawn) to the admin and DM'd the driver the
+        # same nonsense, even though nothing had changed.
+        await update.effective_message.reply_text(
+            f"ℹ️ <b>Bu buyruq allaqachon bajarilgan</b>\n\n"
+            f"👨‍✈️ {escape(driver.first_name or 'Haydovchi')}\n"
+            f"📞 {escape(str(driver.phone or '-'))}\n"
+            f"🆔 <code>{driver.telegram_id}</code>\n\n"
+            f"💵 <b>Balans o'zgarmadi: {fmt(new_balance)} so'm</b>",
+            parse_mode="HTML",
+        )
+        return
+
     response = (
         f"✅ <b>Balans yangilandi</b>\n\n"
-        f"👨‍✈️ {driver.first_name or 'Haydovchi'}\n"
-        f"📞 {driver.phone}\n"
+        f"👨‍✈️ {escape(driver.first_name or 'Haydovchi')}\n"
+        f"📞 {escape(str(driver.phone or '-'))}\n"
         f"🆔 <code>{driver.telegram_id}</code>\n\n"
         f"💰 Eski balans: {fmt(old_balance)} so'm\n"
         f"💸 {sign}{fmt(abs(amount))} so'm {op}\n"

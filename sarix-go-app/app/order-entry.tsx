@@ -13,7 +13,7 @@ import YandexMap, { YandexMapHandle } from '../src/components/YandexMap';
 import { reverseGeocode } from '../src/services/geocoding';
 import { resolveRouteCity } from '../src/services/cityResolver';
 import { detectLocation } from '../src/services/location';
-import { listCities, listRoutes } from '../src/api/orders';
+import { listCities, listRoutes, type Route } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -107,7 +107,7 @@ export default function OrderEntryScreen() {
   const [resolving, setResolving] = useState(true); // Start as resolving since we detect on mount
   const [detecting, setDetecting] = useState(true); // Start as detecting
   const [cities, setCities] = useState<string[]>([]);
-  const [longHaul, setLongHaul] = useState<string[]>([]);
+
 
   const mapRef = useRef<YandexMapHandle>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,6 +119,12 @@ export default function OrderEntryScreen() {
   // Whether the map WebView has finished loading. Kept in a ref (not state) so
   // resolveAddress always reads the current value without stale closures.
   const mapReadyRef = useRef(false);
+  // Mirror of `center` for memoised callbacks that must read the CURRENT pin rather
+  // than the value captured when they were created.
+  const centerRef = useRef(center);
+  useEffect(() => {
+    centerRef.current = center;
+  }, [center]);
   // Whether the detected location has been centered+zoomed at least once. We only
   // apply the close-up DETECT_ZOOM on the FIRST fix; later refinements just nudge the
   // center so the map doesn't keep re-animating/zooming under the user.
@@ -231,7 +237,13 @@ export default function OrderEntryScreen() {
         // No fix at all (permission denied / services off / hard timeout with zero
         // readings). Resolve an address for the current map center so the card isn't
         // blank, but only if we never managed to detect anything.
-        resolveAddress(center.lat, center.lon);
+        //
+        // Read the center from a ref, not the captured `center` state: this callback is
+        // memoised and is also the recenter button's handler, so after the user panned
+        // the map the stale closure filled the card with the address of the OLD location
+        // while savePickup() stored the CURRENT pin -- an order whose address string and
+        // coordinates pointed at different places.
+        resolveAddress(centerRef.current.lat, centerRef.current.lon);
       }
     } finally {
       setDetecting(false);
@@ -248,21 +260,38 @@ export default function OrderEntryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Compute 2 long-haul (>= 70 km) destination districts from the pickup city.
+  // Routes are static reference data: fetch them ONCE. Previously this effect depended on
+  // `fullAddress`, which changes on every successful reverse-geocode, so panning the map
+  // fired a /api/routes request per address change (the geocode is debounced at only
+  // 200ms). There was also no ordering guard, so a slow earlier response could overwrite
+  // `longHaul` derived from a newer pickup city.
+  const [allRoutes, setAllRoutes] = useState<Route[]>([]);
   useEffect(() => {
-    const pickupCity = fullAddress ? deriveCity(fullAddress) : null;
+    let active = true;
     listRoutes()
       .then(({ routes }) => {
-        const farEnough = routes.filter((r) => (r.distance_km ?? 0) >= LONG_HAUL_MIN_KM);
-        const fromHere = pickupCity
-          ? farEnough.filter((r) => r.from_city.toLowerCase() === pickupCity.toLowerCase())
-          : [];
-        const pickedCities = (fromHere.length ? fromHere : farEnough).map((r) => r.to_city);
-        const unique = Array.from(new Set(pickedCities)).filter((c) => c !== pickupCity);
-        setLongHaul(unique.slice(0, 2));
+        if (active) setAllRoutes(routes || []);
       })
-      .catch(() => setLongHaul([]));
-  }, [fullAddress, deriveCity]);
+      .catch(() => {
+        if (active) setAllRoutes([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Compute 2 long-haul (>= 70 km) destination districts from the pickup city.
+  const longHaul = useMemo(() => {
+    const pickupCity = fullAddress ? deriveCity(fullAddress) : null;
+    const farEnough = allRoutes.filter((r) => (r.distance_km ?? 0) >= LONG_HAUL_MIN_KM);
+    const fromHere = pickupCity
+      ? farEnough.filter((r) => r.from_city.toLowerCase() === pickupCity.toLowerCase())
+      : [];
+    const pickedCities = (fromHere.length ? fromHere : farEnough).map((r) => r.to_city);
+    return Array.from(new Set(pickedCities))
+      .filter((c) => c !== pickupCity)
+      .slice(0, 2);
+  }, [allRoutes, fullAddress, deriveCity]);
 
   const handleCameraMove = (lat: number, lon: number) => {
     setCenter({ lat, lon });

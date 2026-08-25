@@ -149,8 +149,12 @@ export default function ConfirmOrderScreen() {
                 <View style={styles.divider} />
                 <View style={styles.row}>
                   <Text style={styles.label}>{t('order.persons')}</Text>
+                  {/* Dedicated key instead of splitting a translated string: the old
+                      `t('tariff.onePerson').split(' ')[1]` only worked because every
+                      locale happened to be "<digit> <word>", and it produced wrong
+                      grammar in Russian ("3 человек") and English ("3 person"). */}
                   <Text style={styles.value}>
-                    {orderStore.personCount} {t('tariff.onePerson').split(' ')[1]}
+                    {t('order.personsCount', { count: orderStore.personCount })}
                   </Text>
                 </View>
               </>

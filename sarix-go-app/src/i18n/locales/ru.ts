@@ -82,6 +82,7 @@ export default {
     from: 'Откуда',
     to: 'Куда',
     persons: 'Пассажиров',
+    personsCount: '{{count}} чел.',
     departureTime: 'Время выезда',
     now: 'Сейчас',
     price: 'Стоимость',
