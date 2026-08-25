@@ -1,5 +1,6 @@
 """SOS / Emergency alert endpoints."""
 import logging
+from html import escape
 
 from aiohttp import web
 
@@ -54,7 +55,8 @@ async def trigger_sos(request: web.Request) -> web.Response:
             order = session.query(Order).filter_by(id=data["order_id"]).first()
             if order:
                 order_info = (
-                    f"\n📍 Yo'nalish: {order.from_city} → {order.to_city}\n"
+                    f"\n📍 Yo'nalish: {escape(str(order.from_city or ''))} → "
+                    f"{escape(str(order.to_city or ''))}\n"
                     f"🚕 Buyurtma: #{order.id}\n"
                 )
 
@@ -62,15 +64,19 @@ async def trigger_sos(request: web.Request) -> web.Response:
         if data.get("lat") and data.get("lon"):
             location_link = f"\n🗺 https://maps.google.com/?q={data['lat']},{data['lon']}"
 
+        # Escape every user-controlled value: an unescaped "<" or "&" in a name or note
+        # makes Telegram reject the whole HTML message, and the failure below is only
+        # logged -- so a real emergency alert would never reach the admin while the app
+        # still told the user help was on the way.
         alert_text = (
             f"🚨 <b>SOS - SHOSHILINCH YORDAM!</b> 🚨\n\n"
-            f"👤 {reporter_type.upper()}: {reporter_name}\n"
-            f"📞 {reporter_phone}\n"
+            f"👤 {escape(reporter_type.upper())}: {escape(str(reporter_name or ''))}\n"
+            f"📞 {escape(str(reporter_phone or ''))}\n"
             f"{order_info}"
             f"{location_link}\n"
         )
         if sos.note:
-            alert_text += f"\n💬 {sos.note}"
+            alert_text += f"\n💬 {escape(sos.note)}"
 
         # Send to admin via bot
         bot = request.app.get("bot")
@@ -83,6 +89,12 @@ async def trigger_sos(request: web.Request) -> web.Response:
                 )
             except Exception as e:
                 logger.error(f"Failed to send SOS to admin: {e}")
+                # Last resort: retry without HTML parsing so a formatting problem can
+                # never silently swallow an emergency alert.
+                try:
+                    await bot.send_message(chat_id=config.ADMIN_ID, text=alert_text)
+                except Exception as plain_error:
+                    logger.error(f"Plain-text SOS fallback also failed: {plain_error}")
         else:
             logger.warning(f"SOS triggered but no bot/admin configured: {alert_text}")
 

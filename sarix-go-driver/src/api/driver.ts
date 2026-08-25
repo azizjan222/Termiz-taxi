@@ -113,7 +113,9 @@ export async function listAvailableOrders(): Promise<AvailableOrdersResponse> {
 
 export async function listMyActive(): Promise<DriverOrder[]> {
   const response = await api.get<{ orders: DriverOrder[] }>('/api/driver/orders/active');
-  return response.data.orders;
+  // Defend the array like listAvailableOrders does: a missing `orders` field would
+  // otherwise throw inside callers that only `.then()` this promise.
+  return response.data.orders || [];
 }
 
 export async function acceptOrder(id: number): Promise<{ order: DriverOrder; balance: number; commission_window_minutes?: number; accepted_at?: string }> {

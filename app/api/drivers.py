@@ -241,8 +241,11 @@ def _create_driver_token(driver: Driver) -> str:
         "telegram_id": driver.telegram_id,
         "phone": driver.phone,
         "role": "driver",
-        "iat": datetime.utcnow().timestamp(),
-        "exp": datetime.utcnow().timestamp() + 86400 * config.JWT_EXPIRES_DAYS,
+        # Pass datetimes and let PyJWT convert. datetime.utcnow() is naive, so calling
+        # .timestamp() on it read the value as LOCAL time, making the real token
+        # lifetime drift by the host's UTC offset (longer west of UTC, shorter east).
+        "iat": datetime.utcnow(),
+        "exp": datetime.utcnow() + timedelta(days=config.JWT_EXPIRES_DAYS),
     }
     return jwt.encode(payload, config.JWT_SECRET, algorithm=config.JWT_ALGORITHM)
 
@@ -1514,12 +1517,16 @@ async def driver_telegram_check(request: web.Request) -> web.Response:
 
     db = get_session()
     try:
-        sess = _tg.get_session(db, token)
-        if not sess:
+        # Re-checks expiry, enforces role="driver" (a passenger-role session must not
+        # mint driver credentials), and consumes the row to prevent replay.
+        sess, claim_status = _tg.claim_verified_session(db, token, "driver")
+        if claim_status == "not_found":
             return web.json_response({"status": "not_found"}, status=404)
-        if sess.status == "pending":
+        if claim_status == "pending":
             return web.json_response({"status": "pending"})
-        if sess.status == "expired":
+        if claim_status == "role_mismatch":
+            return web.json_response({"status": "role_mismatch"}, status=403)
+        if claim_status != "ok" or not sess:
             return web.json_response({"status": "expired"})
 
         # verified -> driver must already be registered (via bot)

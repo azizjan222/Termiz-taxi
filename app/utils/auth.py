@@ -20,6 +20,10 @@ def create_token(user_id: int, phone: str) -> str:
     payload = {
         "sub": str(user_id),
         "phone": phone,
+        # Explicit audience claim. Driver tokens are signed with the SAME secret and
+        # carry role="driver"; without this claim being issued and checked, a driver
+        # token resolves here as the *unrelated* User whose id equals the driver id.
+        "role": "passenger",
         "iat": datetime.utcnow(),
         "exp": datetime.utcnow() + timedelta(days=config.JWT_EXPIRES_DAYS),
     }
@@ -66,6 +70,12 @@ def get_current_user(request: web.Request) -> Optional[User]:
         return None
     payload = decode_token(token)
     if not payload:
+        return None
+    # Reject tokens minted for a different audience. Driver tokens use the same secret
+    # and set role="driver", while `sub` is a Driver.id -- resolving that against
+    # User.id authenticated a driver as a completely unrelated passenger. Tokens issued
+    # before the "passenger" claim existed have no role at all, so None stays valid.
+    if payload.get("role") not in (None, "passenger"):
         return None
     user_id = payload.get("sub")
     if not user_id:
