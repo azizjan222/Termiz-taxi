@@ -197,6 +197,10 @@ def _log_startup_advisories() -> None:
     logger.info("🗄  Database: %s", db_display)
 
 
+#: Live handles for the background scheduler tasks, so shutdown can cancel them.
+_BACKGROUND_TASKS: list[asyncio.Task] = []
+
+
 async def run():
     init_sentry()
     _log_startup_advisories()
@@ -222,23 +226,28 @@ async def run():
         bot=app.bot, host=app_config.API_HOST, port=app_config.API_PORT)
     api_app["bot_notify_order_cancel"] = notify_admin_order_cancelled
 
+    # Keep the task handles. Each start_* returns an asyncio.Task that used to be
+    # discarded, so nothing could cancel the loops on shutdown and a task that died
+    # from an exception was garbage-collected without its error ever being retrieved.
+    _BACKGROUND_TASKS.clear()
+
     try:
         from app.services.commission_scheduler import start_commission_scheduler
-        start_commission_scheduler()
+        _BACKGROUND_TASKS.append(start_commission_scheduler())
         logger.info("✅ Commission scheduler started")
     except Exception as e:
         logger.error("Commission scheduler failed to start: %s", e)
 
     try:
         from app.services.order_expiry import start_order_expiry_scheduler
-        start_order_expiry_scheduler()
+        _BACKGROUND_TASKS.append(start_order_expiry_scheduler())
         logger.info("✅ Order-expiry scheduler started")
     except Exception as e:
         logger.error("Order-expiry scheduler failed to start: %s", e)
 
     try:
         from app.api.payments import start_payment_cleanup_scheduler
-        start_payment_cleanup_scheduler()
+        _BACKGROUND_TASKS.append(start_payment_cleanup_scheduler())
         logger.info("✅ Payment cleanup scheduler started")
     except Exception as e:
         logger.error("Payment cleanup scheduler failed to start: %s", e)
@@ -254,4 +263,31 @@ async def run():
     except Exception as e:
         logger.error("Support bot failed to start: %s", e)
 
-    await asyncio.Event().wait()
+    # Orderly shutdown. Previously the coroutine just blocked forever, so on SIGTERM the
+    # aiohttp site, the polling HTTP session and the scheduler tasks were torn down
+    # abruptly -- leaking sockets and causing getUpdates conflicts on the next start.
+    try:
+        await asyncio.Event().wait()
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        logger.info("Shutdown requested, stopping cleanly...")
+        raise
+    finally:
+        for task in _BACKGROUND_TASKS:
+            task.cancel()
+        if _BACKGROUND_TASKS:
+            await asyncio.gather(*_BACKGROUND_TASKS, return_exceptions=True)
+            _BACKGROUND_TASKS.clear()
+        try:
+            if app.updater.running:
+                await app.updater.stop()
+        except Exception:
+            logger.debug("Updater stop failed", exc_info=True)
+        for shutdown_step in (app.stop, app.shutdown):
+            try:
+                await shutdown_step()
+            except Exception:
+                logger.debug("Bot shutdown step failed", exc_info=True)
+        try:
+            await api_runner.cleanup()
+        except Exception:
+            logger.debug("API runner cleanup failed", exc_info=True)

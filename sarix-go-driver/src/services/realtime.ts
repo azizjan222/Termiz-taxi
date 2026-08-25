@@ -64,6 +64,9 @@ function startKeepAlive() {
       try {
         socket?.close();
       } catch {}
+      // Stop this timer too: returning without clearing left it ticking against a
+      // socket we just gave up on, so it kept firing until the next startKeepAlive().
+      clearPingTimer();
       return;
     }
     try {

@@ -165,6 +165,9 @@ export default function SearchingScreen() {
           }
         } catch {}
       };
+      // Without onerror, a socket failure raised an unhandled error event; the 5s poll
+      // below is the fallback, so failing quietly here is the intended behaviour.
+      ws.onerror = () => {};
     })();
 
     return () => {
@@ -179,6 +182,10 @@ export default function SearchingScreen() {
   useEffect(() => {
     const id = parseInt(orderId);
     if (!id) return;
+    // `clearInterval` only runs AFTER the await, so a request slower than the 5s tick
+    // let two polls overlap and both reach the terminal branch -> two stacked Alerts,
+    // each navigating home on OK.
+    let alerted = false;
     const poll = async () => {
       try {
         const order = await getOrder(id);
@@ -188,6 +195,8 @@ export default function SearchingScreen() {
         } else if (order.status === 'cancelled' || order.status === 'expired') {
           // The order ended while waiting (passenger/admin cancelled, or the
           // search timed out). Don't leave the passenger stuck on "searching".
+          if (alerted) return;
+          alerted = true;
           clearInterval(interval);
           Alert.alert(
             order.status === 'expired' ? 'Vaqt tugadi' : 'Buyurtma bekor qilindi',
