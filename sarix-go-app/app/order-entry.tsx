@@ -26,6 +26,31 @@ const DETECT_ZOOM = 18; // building-level (very close) zoom for precise pickup p
 const LONG_HAUL_MIN_KM = 70; // "masofasi 70 km kam bo'lmagan tumanlar"
 
 /**
+ * How far the pin may move away from the point an address was resolved for before that
+ * address stops being trustworthy.
+ *
+ * Yandex returns nothing for plenty of precise coordinates at DETECT_ZOOM, and blanking
+ * the card on every one of those looked broken, so a failed lookup keeps the text that
+ * is already on screen. That is only safe while the pin is still essentially at the same
+ * place: beyond this radius the retained text belongs to somewhere else, and confirming
+ * it would put one location's address on another location's coordinates -- the driver
+ * then gets sent to the wrong place.
+ */
+const ADDRESS_KEEP_RADIUS_M = 150;
+
+/** Great-circle distance in metres. */
+function distanceMeters(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLon = toRad(bLon - aLon);
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
  * Build the address shown to the user from a full geocoded address.
  * Order: DISTRICT (tuman / shahar) first, then the VILLAGE / locality
  * (qishloq / shaharcha / mahalla), then the finer street + house parts for
@@ -113,6 +138,10 @@ export default function OrderEntryScreen() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reqIdRef = useRef(0);
   const lastCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
+  // The coordinate the currently displayed address was actually resolved for, so a
+  // failed lookup can tell "same spot, keep the text" from "different place, the text
+  // is now wrong". See ADDRESS_KEEP_RADIUS_M.
+  const addressCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
   // The auto-detected device location. Stored in a ref so that whichever finishes
   // first — GPS detection or the map WebView load — can apply the close-up center.
   const detectedRef = useRef<{ lat: number; lon: number } | null>(null);
@@ -164,8 +193,21 @@ export default function OrderEntryScreen() {
         // address if this lookup came back empty (can happen at very high zoom).
         const full = result || '';
         if (full) {
+          addressCoordsRef.current = { lat, lon };
           setFullAddress(full);
           setAddress(formatDisplayAddress(full));
+        } else {
+          // Nothing came back for this point. Keep the text only while the pin is still
+          // within ADDRESS_KEEP_RADIUS_M of where that text came from; further away it
+          // describes a different place and must not travel onto the order.
+          const origin = addressCoordsRef.current;
+          const stillNearby =
+            origin && distanceMeters(origin.lat, origin.lon, lat, lon) <= ADDRESS_KEEP_RADIUS_M;
+          if (!stillNearby) {
+            addressCoordsRef.current = null;
+            setFullAddress('');
+            setAddress('Xaritada belgilangan nuqta');
+          }
         }
       } finally {
         if (reqId === reqIdRef.current) setResolving(false);
@@ -298,6 +340,26 @@ export default function OrderEntryScreen() {
     resolveAddress(lat, lon);
   };
 
+  /**
+   * A single tap has to MOVE THE PIN to the tapped point.
+   *
+   * The pin is a fixed overlay at the centre of the screen, so the only thing that makes
+   * it point anywhere is the map camera. Yandex's `click` event does not move the camera,
+   * so wiring taps straight into `handleCameraMove` left the pin sitting where it was
+   * while `center` -- the value savePickup()/saveDestination() store -- jumped to the
+   * tapped coordinate. The user saw a pin that had not moved and got an order carrying a
+   * point they never actually saw selected.
+   *
+   * Recentring makes the camera settle on the tap, which fires `boundschange` and runs
+   * handleCameraMove for the real centre. The optimistic call below just avoids waiting
+   * out the 500 ms pan animation before the address starts loading; resolveAddress is
+   * debounced and request-id guarded, so the duplicate is harmless.
+   */
+  const handleMapPress = (lat: number, lon: number) => {
+    mapRef.current?.setCenter(lat, lon);
+    handleCameraMove(lat, lon);
+  };
+
   // Persist the current map center as the pickup point in the order store.
   const savePickup = useCallback(() => {
     const displayAddr = address || '';
@@ -353,7 +415,7 @@ export default function OrderEntryScreen() {
           initialZoom={15}
           onMapReady={handleMapReady}
           onCameraMove={handleCameraMove}
-          onMapPress={handleCameraMove}
+          onMapPress={handleMapPress}
           style={StyleSheet.absoluteFill}
         />
 
@@ -382,7 +444,7 @@ export default function OrderEntryScreen() {
             </View>
           ) : (
             <Text style={styles.topAddr} numberOfLines={1}>
-              Xaritani suring yoki ➤ bosing
+              Xaritani bosing yoki suring
             </Text>
           )}
         </View>
