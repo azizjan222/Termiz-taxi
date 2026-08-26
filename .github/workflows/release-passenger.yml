@@ -59,6 +59,20 @@ jobs:
           npm run typecheck
           npm run lint
           npm test -- --ci
+      - name: Report fingerprint inputs
+        # runtimeVersion.policy is `fingerprint`, and the build fails when the hash computed
+        # here differs from the one the EAS worker computes. Record the inputs that have
+        # actually drifted before, so a mismatch can be diagnosed from the log instead of
+        # guessed at.
+        continue-on-error: true
+        run: |
+          if [ -f google-services.json ]; then
+            echo "google-services.json: present, sha1=$(sha1sum google-services.json | cut -d' ' -f1)"
+          else
+            echo "google-services.json: MISSING"
+          fi
+          npx expo-updates fingerprint:generate --platform android
+
       - name: Build production AAB
         id: build
         run: |
