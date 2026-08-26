@@ -19,7 +19,6 @@ import { useOrderStore } from '../../src/store/order';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
-import AdBanner from '../../src/components/AdBanner';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -46,21 +45,12 @@ const PROMO_BANNERS: PromoBanner[] = [
   },
 ];
 
-// Show the promotional ad only once per app launch (not on every tab switch).
-let adShownThisSession = false;
-
 export default function HomeScreen() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const orderStore = useOrderStore();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
-
-  // 7-second promo ad on the home screen, shown once per session on first mount.
-  const [adVisible, setAdVisible] = React.useState(!adShownThisSession);
-  React.useEffect(() => {
-    if (!adShownThisSession) adShownThisSession = true;
-  }, []);
 
   // Top promo carousel: swipeable + auto-advances right→left every 7 seconds.
   const bannerWidth = SCREEN_W - spacing.lg * 2;
@@ -97,9 +87,6 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* 7-second promotional ad overlay (once per session) */}
-      <AdBanner visible={adVisible} onClose={() => setAdVisible(false)} />
-
       {/* Header */}
       <View style={styles.header}>
         <View>

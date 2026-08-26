@@ -15,7 +15,7 @@ module.exports = {
     //
     // TODO: fix and restore these to "error".
     //   - set-state-in-effect: new-order, notifications, order-entry, order/[id],
-    //     route-select, saved-addresses, (tabs)/history, components/AdBanner
+    //     route-select, saved-addresses, (tabs)/history
     //   - purity: ai-chat (`Date.now()` in a render-reachable code path)
     'react-hooks/set-state-in-effect': 'warn',
     'react-hooks/purity': 'warn',
