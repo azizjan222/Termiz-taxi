@@ -1,7 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform, AppState, Vibration } from 'react-native';
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import Constants from 'expo-constants';
 
 import { api } from '../api/client';
@@ -218,39 +217,32 @@ export function addNotificationResponseListener(
 }
 
 // ---------------------------------------------------------------------------
-// New order alert — LOUD sound + vibration
+// New order alert — sound + vibration
 //
-// Strategy:
-//   1. Fire a local notification with custom sound on the "orders" channel
-//      (this is the PRIMARY and most reliable way to produce sound)
-//   2. Additionally try to play via expo-audio at max volume through speaker
-//      (this provides extra loudness and bypasses some silent mode cases)
-//   3. Strong vibration pattern
+// Exactly ONE sound source, on purpose.
 //
-// If expo-audio fails for any reason, the notification channel sound still works.
+// This used to fire a local notification on the orders_v2 channel AND separately
+// play the same new_order.wav through expo-audio, the intent being "extra
+// loudness". On Android the sound of a notification comes from its CHANNEL, and
+// orders_v2 is created with sound: 'new_order.wav' — so the file was played twice,
+// a few milliseconds apart, and drivers heard a stuttering double alert on every
+// order.
+//
+// The notification is the source that was kept, because it is also the one that
+// produces the sound when the app is closed (the backend pushes to the same
+// orders_v2 channel). Foreground and background now sound identical instead of the
+// foreground being doubled.
+//
+// If loudness needs raising, do it on the channel or ship a louder WAV — do not add
+// a second player.
 // ---------------------------------------------------------------------------
 
 const ALERT_VIBRATION = [0, 700, 300, 700, 300, 700, 300, 700];
 
-let alertSound: AudioPlayer | null = null;
-const NEW_ORDER_SOUND = require('../../assets/sounds/new_order.wav');
-
 /**
- * Release a player without ever throwing. `remove()` frees the native resource;
- * calling it twice (or after the JS object was already released) can throw, so
- * every call site funnels through here.
- */
-function disposePlayer(player: AudioPlayer) {
-  try {
-    player.pause();
-  } catch {}
-  try {
-    player.remove();
-  } catch {}
-}
-
-/**
- * Loud alert for a new order. Fires notification sound + expo-audio audio + vibration.
+ * Alert for a new order: local notification (its channel supplies new_order.wav) plus
+ * a vibration pattern.
+ *
  * Pass `orderId` so the alert de-dupes against the parallel push channel (an
  * online driver receives the same order over both the WebSocket and a push).
  */
@@ -288,66 +280,17 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
   try {
     Vibration.vibrate(ALERT_VIBRATION, false);
   } catch {}
-
-  // 3) EXPO-AUDIO audio — additional loud sound through the main speaker.
-  //    This bypasses silent mode on iOS and provides extra volume boost.
-  //    If this fails, the notification sound above still plays.
-  try {
-    if (alertSound) {
-      disposePlayer(alertSound);
-      alertSound = null;
-    }
-
-    // Configure audio so the alert is loud and plays through the speaker even
-    // on silent mode (iOS). IMPORTANT: keep shouldPlayInBackground = false.
-    // Setting it true requires background-audio entitlements we don't ship, and
-    // makes setAudioModeAsync THROW — which previously aborted the whole block
-    // and left the new-order alert silent. Guard it in its own try/catch so a
-    // failure here never prevents the sound from playing.
-    try {
-      await setAudioModeAsync({
-        allowsRecording: false,
-        shouldPlayInBackground: false,
-        playsInSilentMode: true,
-        // expo-av's `shouldDuckAndroid: true` equivalent — other apps lower
-        // their volume instead of being paused outright.
-        interruptionMode: 'duckOthers',
-        shouldRouteThroughEarpiece: false,
-      });
-    } catch (e) {
-      console.warn('setAudioModeAsync failed (continuing to play anyway):', e);
-    }
-
-    // `createAudioPlayer` is synchronous in expo-audio (unlike expo-av's
-    // `Audio.Sound.createAsync`), so the player is ready to configure at once.
-    const player = createAudioPlayer(NEW_ORDER_SOUND);
-    player.volume = 1.0;
-    player.loop = false;
-    alertSound = player;
-
-    player.addListener('playbackStatusUpdate', (status) => {
-      if (status.isLoaded && status.didJustFinish) {
-        if (alertSound === player) alertSound = null;
-        disposePlayer(player);
-      }
-    });
-
-    player.play();
-  } catch (e) {
-    // expo-audio failure is NOT critical — notification sound is the fallback
-    console.warn('expo-audio alert failed (notification sound still plays):', e);
-  }
 }
 
+/**
+ * Stop the ongoing alert. Only the vibration can still be running: the sound now comes
+ * from the notification channel, which the system plays to completion (it is a short
+ * WAV) and which is not ours to interrupt.
+ */
 export async function stopAlert() {
   try {
     Vibration.cancel();
   } catch {}
-  if (alertSound) {
-    const ref = alertSound;
-    alertSound = null;
-    disposePlayer(ref);
-  }
 }
 
 // ---------------------------------------------------------------------------
