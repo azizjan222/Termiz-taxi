@@ -89,4 +89,12 @@ jobs:
         env:
           UPDATE_MESSAGE: ${{ inputs.message }}
           UPDATE_CHANNEL: ${{ inputs.channel }}
-        run: eas update --channel "$UPDATE_CHANNEL" --non-interactive --message "$UPDATE_MESSAGE"
+        # --environment is required from SDK 55 onwards, but eas-cli skips that check when
+        # it detects CI (environmentFlagNeededForSdk550OrGreater), so omitting it fails
+        # silently rather than loudly: the bundle would be built from this runner's env
+        # only, while the matching native build takes its values from the EAS environment.
+        # Any drift between the two would appear as behaviour that changes after an OTA.
+        # The channel and the environment share names by design, see eas.json.
+        run: |
+          eas update --channel "$UPDATE_CHANNEL" --environment "$UPDATE_CHANNEL" \
+            --non-interactive --message "$UPDATE_MESSAGE"
