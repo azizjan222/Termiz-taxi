@@ -4,6 +4,26 @@ const path = require('path');
 const staticConfig = require('./app.json');
 
 /**
+ * RUNTIME VERSION IS SET BY HAND -- app.json holds `"runtimeVersion": "2"`.
+ *
+ * BUMP IT whenever the native side changes: adding/removing/upgrading a native dependency,
+ * an Expo SDK upgrade, a new config plugin, or an app.json change that affects the native
+ * project. An OTA update is only delivered to a build with the SAME runtimeVersion, so
+ * forgetting to bump it means shipping JS that expects native modules the installed binary
+ * does not have -- an immediate crash.
+ *
+ * The `fingerprint` policy was meant to automate exactly that, but it hashes the resolved
+ * app config and has to produce the identical hash on the CI runner and on the EAS worker.
+ * Those two environments see different things here (GitHub secrets vs EAS environment
+ * variables, and .gitignore'd files such as google-services.json), so the policy failed the
+ * build repeatedly with "Runtime version calculated on local machine not equal to runtime
+ * version calculated during build". An explicit string is predictable instead of clever.
+ *
+ * Old store builds carry runtimeVersion "1.0.0" from the previous `appVersion` policy, so
+ * "2" also guarantees no OTA from this SDK 56 line can ever reach an SDK 52 binary.
+ */
+
+/**
  * Fail a real build rather than ship an app whose map cannot load.
  *
  * The Yandex keys reach the JS bundle only if the EXPO_PUBLIC_* variables are set at the
