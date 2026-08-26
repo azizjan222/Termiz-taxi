@@ -32,6 +32,7 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans
 <a href="/admin/passengers">Yo'lovchilar</a>
 <a href="/admin/orders">Buyurtmalar</a>
 <a href="/admin/push">Push xabar</a>
+<a href="/admin/push-log">🔔 Push diagnostika</a>
 <a href="/admin/routes">Yo'nalishlar</a>
 <a href="/admin/settings">Sozlamalar</a>
 <hr class="text-secondary">
@@ -587,6 +588,91 @@ tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${e
 });
 }
 loadOrders();
+</script>"""
+
+PUSH_LOG_HTML = """<h2>Push diagnostika</h2>
+<p class="text-muted">Nega bildirishnoma yetmayotganini aniqlash uchun. Push faqat
+<b>tasdiqlangan + online + token ro'yxatdan o'tgan</b> haydovchiga boradi.</p>
+<div class="row g-3 mb-3">
+<div class="col-md-3"><div class="card"><div class="card-body">
+<div class="text-muted small">Online haydovchilar</div>
+<div class="fs-3" id="pl-online">-</div></div></div></div>
+<div class="col-md-3"><div class="card"><div class="card-body">
+<div class="text-muted small">Online + token bor</div>
+<div class="fs-3" id="pl-online-token">-</div>
+<div class="small" id="pl-unreachable"></div></div></div></div>
+<div class="col-md-3"><div class="card"><div class="card-body">
+<div class="text-muted small">24 soatda yuborilgan</div>
+<div class="fs-3 text-success" id="pl-sent">-</div></div></div></div>
+<div class="col-md-3"><div class="card"><div class="card-body">
+<div class="text-muted small">24 soatda xato</div>
+<div class="fs-3 text-danger" id="pl-failed">-</div></div></div></div>
+</div>
+<div id="pl-diagnosis"></div>
+<h5 class="mt-4">Eng ko'p uchragan xatolar (7 kun)</h5>
+<div class="table-responsive mb-4">
+<table class="table table-sm" id="pl-errors"><thead><tr><th>Xato</th><th>Soni</th></tr></thead><tbody></tbody></table>
+</div>
+<h5>Oxirgi push'lar</h5>
+<div class="mb-3">
+<select class="form-select w-auto d-inline" id="pl-status" onchange="loadPushLog()">
+<option value="all">Barchasi</option>
+<option value="failed">Faqat xatolar</option>
+<option value="sent">Faqat yuborilganlar</option>
+</select>
+</div>
+<div class="table-responsive">
+<table class="table table-striped table-sm" id="pl-table">
+<thead><tr><th>ID</th><th>Sana</th><th>Kimga</th><th>Turi</th><th>Sarlavha</th><th>Holat</th><th>Xato</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>"""
+
+PUSH_LOG_JS = """<script>
+function loadPushLog(){
+const st=document.getElementById('pl-status').value;
+fetch('/admin/api/push-log?status='+st).then(r=>r.json()).then(d=>{
+const s=d.summary||{};
+document.getElementById('pl-online').textContent=s.drivers_online;
+document.getElementById('pl-online-token').textContent=s.drivers_online_with_token;
+const unreachable=(s.drivers_online-s.drivers_online_with_token);
+document.getElementById('pl-unreachable').innerHTML=unreachable>0
+?'<span class="text-danger">'+unreachable+' ta token yo\\'q</span>':'<span class="text-success">hammasida token bor</span>';
+document.getElementById('pl-sent').textContent=(s.last_24h||{}).sent||0;
+document.getElementById('pl-failed').textContent=(s.last_24h||{}).failed||0;
+
+// Turn the numbers into a plain-language verdict, so the cause does not have to be
+// inferred from four separate counters.
+const sent=(s.last_24h||{}).sent||0, failed=(s.last_24h||{}).failed||0;
+let msg='', cls='info';
+if(unreachable>0 && s.drivers_online_with_token===0){
+msg='Online haydovchilarning HECH BIRIDA push token yo\\'q. Ilova tokenni ro\\'yxatdan o\\'tkaza olmayapti — google-services.json yoki bildirishnoma ruxsati muammosi.';cls='danger';
+}else if(failed>0 && sent===0){
+msg='Barcha push xato bilan qaytdi. Pastdagi xato matnini o\\'qing: MismatchSenderId yoki shunga o\\'xshash bo\\'lsa, Expo dagi FCM V1 kaliti mos emas.';cls='danger';
+}else if(failed>0){
+msg='Bir qismi xato bilan qaytdi — pastdagi jadvalda sababini ko\\'ring.';cls='warning';
+}else if(sent>0){
+msg='Push yuborish ishlayapti. Yetmayotgan bo\\'lsa muammo qurilma tomonida (batareya optimizatsiyasi, bildirishnoma o\\'chirilgan).';cls='success';
+}else{
+msg='24 soat ichida umuman push yuborilmagan. Zakas yaratilganda haydovchi online bo\\'lmagan bo\\'lishi mumkin.';cls='secondary';
+}
+document.getElementById('pl-diagnosis').innerHTML='<div class="alert alert-'+cls+'">'+esc(msg)+'</div>';
+
+const et=document.querySelector('#pl-errors tbody');et.innerHTML='';
+(s.top_errors||[]).forEach(e=>{et.innerHTML+=`<tr><td><code>${esc(e.error)}</code></td><td>${e.count}</td></tr>`;});
+if(!(s.top_errors||[]).length)et.innerHTML='<tr><td colspan="2" class="text-muted">Xato yo\\'q</td></tr>';
+
+const tb=document.querySelector('#pl-table tbody');tb.innerHTML='';
+(d.rows||[]).forEach(r=>{
+const badge=r.status==='sent'?'bg-success':(r.status==='failed'?'bg-danger':'bg-secondary');
+const who=r.recipient_name?esc(r.recipient_name):(esc(r.recipient_type||'')+' #'+r.recipient_id);
+const when=r.created_at?String(r.created_at).replace('T',' ').split('.')[0]:'';
+tb.innerHTML+=`<tr><td>${r.id}</td><td>${esc(when)}</td><td>${who}</td><td>${esc(r.type||'-')}</td><td>${esc(r.title||'')}</td><td><span class="badge ${badge}">${esc(r.status||'?')}</span></td><td class="small text-danger">${esc(r.error||'')}</td></tr>`;
+});
+if(!(d.rows||[]).length)tb.innerHTML='<tr><td colspan="7" class="text-muted">Yozuv yo\\'q</td></tr>';
+});
+}
+loadPushLog();
 </script>"""
 
 PUSH_HTML = """<h2>Push xabar yuborish</h2>
