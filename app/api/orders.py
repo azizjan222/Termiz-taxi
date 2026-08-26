@@ -12,6 +12,7 @@ from app.database import get_session
 from app.models import BalanceTransaction, Driver, Order, OrderHistory, Route, Setting, User
 from app.services import promo as promo_service
 from app.services.dynamic_settings import get_min_driver_balance
+from app.services.rewards import passenger_payable
 from app.utils.auth import require_auth
 from app.utils.timefmt import iso_utc
 
@@ -57,9 +58,7 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "bonus_used": o.bonus_used or 0,
         "promo_code": o.promo_code,
         "promo_discount": o.promo_discount or 0,
-        "payable": max(
-            0, (o.price or 0) - (o.bonus_used or 0) - (o.promo_discount or 0)
-        ),
+        "payable": passenger_payable(o),
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,

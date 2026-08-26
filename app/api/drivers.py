@@ -14,6 +14,7 @@ from app.services.dynamic_settings import (
     get_free_trial_limit,
     get_min_driver_balance,
 )
+from app.services.rewards import passenger_payable
 from app.utils.timefmt import iso_utc, local_day_str
 
 logger = logging.getLogger(__name__)
@@ -577,10 +578,12 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "person_count": o.person_count,
         "price": o.price,
         "commission": o.commission,
-        # Bonus wallet: the discount applied and the cash the driver should COLLECT
-        # (price - bonus_used). Both are 0/price while the feature is dormant.
+        # Discounts applied and the cash the driver should COLLECT. Must match the figure
+        # the passenger app shows, so it comes from the shared helper -- a promo discount
+        # is cash the driver must NOT ask for.
         "bonus_used": o.bonus_used or 0,
-        "payable": max(0, (o.price or 0) - (o.bonus_used or 0)),
+        "promo_discount": o.promo_discount or 0,
+        "payable": passenger_payable(o),
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,
@@ -1416,14 +1419,17 @@ async def driver_balance_history(request: web.Request) -> web.Response:
             .limit(50)
             .all()
         )
-        # Driver net = fare minus the commission ACTUALLY collected. Trial/subscription
-        # rides collect nothing (commission_collected stays False), and bonus rides
-        # collect only the commission net of the reserved bonus (effective_commission),
-        # so using gross `commission` here over-counted the platform's cut and
-        # under-reported trial-driver earnings.
+        # Driver net = cash ACTUALLY collected minus commission ACTUALLY charged.
+        #
+        # The cash side must be `passenger_payable`, not `price`: a bonus/promo discount is
+        # never handed over in cash. Pairing gross `price` with net `effective_commission`
+        # added the discount to the driver's earnings twice over, and disagreed with
+        # /api/driver/stats, which reports payable - effective_commission for the same rides.
+        #
+        # Trial/subscription rides collect no commission (commission_collected stays False).
         from app.services.rewards import effective_commission
         total_earned = sum(
-            o.price - (effective_commission(o) if o.commission_collected else 0)
+            passenger_payable(o) - (effective_commission(o) if o.commission_collected else 0)
             for o in orders
             if o.price
         )

@@ -39,15 +39,37 @@ def _subscription_active(driver, now: datetime) -> bool:
 
 
 def effective_commission(order) -> int:
-    """The commission actually owed after any bonus discount on this ride.
+    """The commission actually owed after any bonus/promo discount on this ride.
 
-    Bonus is funded from commission, so the platform collects ``commission - bonus_used``
-    (floored at 0). For orders with no bonus applied this equals the gross commission, so
-    it is always safe to use in place of ``order.commission`` when charging a driver.
+    Discounts are funded from commission, so the platform collects
+    ``commission - bonus_used - promo_discount`` (floored at 0). For orders with no
+    discount this equals the gross commission, so it is always safe to use in place of
+    ``order.commission`` when charging a driver or reporting platform revenue.
     """
     return max(
         0,
         (order.commission or 0)
+        - (order.bonus_used or 0)
+        - (getattr(order, "promo_discount", 0) or 0),
+    )
+
+
+def passenger_payable(order) -> int:
+    """The cash the passenger actually hands over for this ride.
+
+    The counterpart to :func:`effective_commission`: both discounts come off the fare in
+    cash and are settled against the platform's commission instead, so the passenger owes
+    ``price - bonus_used - promo_discount``.
+
+    This lives next to ``effective_commission`` on purpose. The two numbers must always be
+    derived from the same set of discounts -- the passenger app, the driver app and every
+    revenue report have to agree on them. Duplicating the arithmetic is how the driver app
+    ended up quoting ``price - bonus_used``, i.e. asking the passenger for the promo
+    discount in cash, while the passenger app showed the correct, lower figure.
+    """
+    return max(
+        0,
+        (order.price or 0)
         - (order.bonus_used or 0)
         - (getattr(order, "promo_discount", 0) or 0),
     )

@@ -6,6 +6,7 @@ from aiohttp import web
 from app.api.drivers import _get_driver_from_request, compute_online_seconds_today
 from app.database import get_session
 from app.models import Order
+from app.services.rewards import effective_commission, passenger_payable
 from app.utils.timefmt import local_day_start_utc, local_day_str
 
 
@@ -57,12 +58,12 @@ async def driver_stats(request: web.Request) -> web.Response:
         )
 
         completed_count = len(completed)
-        # Cash the driver actually collected from passengers: the bonus discount is paid
-        # from the passenger's bonus wallet, not in cash, so it is not revenue.
-        total_revenue = sum(max(0, (o.price or 0) - (o.bonus_used or 0)) for o in completed)
-        # Commission the driver actually paid is net of any bonus discount on the ride
-        # (the bonus portion is waived / refunded, so it never reduces the driver's net).
-        total_commission = sum(max(0, (o.commission or 0) - (o.bonus_used or 0)) for o in completed)
+        # Cash the driver actually collected: bonus and promo discounts are settled against
+        # commission, not paid in cash, so neither counts as revenue.
+        total_revenue = sum(passenger_payable(o) for o in completed)
+        # Commission the driver actually paid, net of both discounts -- this is the same
+        # figure the commission scheduler deducts from the balance.
+        total_commission = sum(effective_commission(o) for o in completed)
         # Nets out to price - commission, matching the per-day `earnings` figure below.
         net_earnings = total_revenue - total_commission
 
@@ -84,10 +85,8 @@ async def driver_stats(request: web.Request) -> web.Response:
                 daily[day]["count"] += 1
                 # Same basis as the totals above: cash collected, then net of the
                 # commission actually deducted.
-                daily[day]["revenue"] += max(0, (o.price or 0) - (o.bonus_used or 0))
-                daily[day]["earnings"] += max(0, (o.price or 0) - (o.bonus_used or 0)) - max(
-                    0, (o.commission or 0) - (o.bonus_used or 0)
-                )
+                daily[day]["revenue"] += passenger_payable(o)
+                daily[day]["earnings"] += passenger_payable(o) - effective_commission(o)
 
         daily_list = [
             {"date": k, **v}
