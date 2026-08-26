@@ -14,6 +14,7 @@ from app.models import BalanceTransaction, Driver, Order, Route, Setting, User
 from app.services import notify_i18n as nt
 from app.services.driver_pdf import build_driver_pdf
 from app.services.push import send_push, send_push_bulk
+from app.services.rewards import effective_commission
 from app.utils.timefmt import local_day_start_utc, local_day_str, local_month_start_utc
 
 
@@ -50,9 +51,10 @@ async def api_stats(request: web.Request) -> web.Response:
             Order.commission_collected == True,  # noqa: E712
             Order.completed_at >= today_start,
         ).all()
-        # Net of any bonus the passenger spent (bonus is funded from commission, so real
-        # revenue is commission - bonus_used).
-        revenue_today = sum(max(0, (o.commission or 0) - (o.bonus_used or 0)) for o in rev_today_result)
+        # Net of every discount the passenger spent. Bonus AND promo are both funded from
+        # commission, so real revenue is commission - bonus_used - promo_discount, which is
+        # exactly what the commission scheduler collected.
+        revenue_today = sum(effective_commission(o) for o in rev_today_result)
 
         # Revenue this month
         # NOT today_start.replace(day=1): today_start is the UTC instant of LOCAL
@@ -63,7 +65,7 @@ async def api_stats(request: web.Request) -> web.Response:
             Order.commission_collected == True,  # noqa: E712
             Order.completed_at >= month_start,
         ).all()
-        revenue_month = sum(max(0, (o.commission or 0) - (o.bonus_used or 0)) for o in rev_month_result)
+        revenue_month = sum(effective_commission(o) for o in rev_month_result)
 
         return web.json_response({
             "drivers_count": drivers_count,

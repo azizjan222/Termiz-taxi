@@ -20,6 +20,7 @@ from app.services.rewards import (
     apply_ride_rewards,
     credit_bonus,
     effective_commission,
+    passenger_payable,
     release_bonus_for_order,
     reserve_bonus_for_order,
 )
@@ -86,6 +87,86 @@ def test_effective_commission_floored_at_zero(db):
 def test_effective_commission_handles_none(db):
     o = Order(commission=None, bonus_used=None, passenger_phone="x", from_city="a", to_city="b")
     assert effective_commission(o) == 0
+
+
+def test_effective_commission_subtracts_promo_discount(db):
+    o = Order(
+        commission=10000, bonus_used=0, promo_discount=4000,
+        passenger_phone="x", from_city="a", to_city="b",
+    )
+    assert effective_commission(o) == 6000
+
+
+def test_effective_commission_subtracts_bonus_and_promo_together(db):
+    o = Order(
+        commission=10000, bonus_used=3000, promo_discount=2000,
+        passenger_phone="x", from_city="a", to_city="b",
+    )
+    assert effective_commission(o) == 5000
+
+
+# ------------------------------ passenger_payable ------------------------------
+#
+# The driver app used to compute `price - bonus_used`, omitting promo_discount, so it told
+# the driver to collect more cash than the passenger app said was owed. Both apps now read
+# this one helper; these tests pin the arithmetic so the two can never drift again.
+
+def test_payable_no_discount_equals_price(db):
+    o = Order(price=50000, bonus_used=0, promo_discount=0,
+              passenger_phone="x", from_city="a", to_city="b")
+    assert passenger_payable(o) == 50000
+
+
+def test_payable_subtracts_bonus(db):
+    o = Order(price=50000, bonus_used=5000, promo_discount=0,
+              passenger_phone="x", from_city="a", to_city="b")
+    assert passenger_payable(o) == 45000
+
+
+def test_payable_subtracts_promo_discount(db):
+    """The regression: promo_discount must come off the cash the driver collects."""
+    o = Order(price=50000, bonus_used=0, promo_discount=8000,
+              passenger_phone="x", from_city="a", to_city="b")
+    assert passenger_payable(o) == 42000
+
+
+def test_payable_subtracts_bonus_and_promo_together(db):
+    o = Order(price=50000, bonus_used=5000, promo_discount=8000,
+              passenger_phone="x", from_city="a", to_city="b")
+    assert passenger_payable(o) == 37000
+
+
+def test_payable_floored_at_zero(db):
+    o = Order(price=3000, bonus_used=2000, promo_discount=5000,
+              passenger_phone="x", from_city="a", to_city="b")
+    assert passenger_payable(o) == 0
+
+
+def test_payable_handles_none(db):
+    o = Order(price=None, bonus_used=None, promo_discount=None,
+              passenger_phone="x", from_city="a", to_city="b")
+    assert passenger_payable(o) == 0
+
+
+def test_driver_net_is_unaffected_by_discounts(db):
+    """The core invariant of the whole discount design.
+
+    Bonus and promo are funded from forgone commission, so whatever the mix, the driver's
+    net (cash collected - commission charged) must stay `price - commission`. This is the
+    property that revenue reporting relies on, and pairing gross `price` with net
+    `effective_commission` used to break it.
+    """
+    plain = Order(price=50000, commission=10000, bonus_used=0, promo_discount=0,
+                  passenger_phone="x", from_city="a", to_city="b")
+    discounted = Order(price=50000, commission=10000, bonus_used=4000, promo_discount=3000,
+                       passenger_phone="x", from_city="a", to_city="b")
+
+    def net(o):
+        return passenger_payable(o) - effective_commission(o)
+
+    assert net(plain) == 40000
+    assert net(discounted) == 40000
+    assert net(plain) == net(discounted)
 
 
 # ------------------------------ reserve_bonus_for_order ------------------------------
