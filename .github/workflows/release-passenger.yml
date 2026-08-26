@@ -8,6 +8,19 @@ on:
         type: boolean
         required: false
         default: false
+      track:
+        # Defaults to `internal` on purpose. Submitting straight to `production` sends the
+        # build to every user at once, which is the wrong default for anything that changes
+        # how the binary is compiled -- an R8 keep rule that turns out to be too narrow
+        # surfaces as a crash on launch, and the internal track is where that should be
+        # discovered. Choose `production` deliberately, once a build has been verified.
+        description: "Google Play track (verify on internal before production)"
+        type: choice
+        options:
+          - internal
+          - production
+        required: false
+        default: internal
 
 permissions:
   contents: read
@@ -105,4 +118,7 @@ jobs:
         if: ${{ inputs.submit }}
         env:
           BUILD_ID: ${{ steps.build.outputs.build_id }}
-        run: eas submit --platform android --profile production --id "$BUILD_ID" --non-interactive
+          TRACK: ${{ inputs.track }}
+        run: |
+          echo "Submitting build $BUILD_ID to the '$TRACK' track"
+          eas submit --platform android --profile "$TRACK" --id "$BUILD_ID" --non-interactive
