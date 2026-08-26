@@ -62,9 +62,20 @@ jobs:
       - name: Build production AAB
         id: build
         run: |
+          # pipefail matters: without it the pipeline reports `tee`'s exit code, so a
+          # failed `eas build` looked successful. The explicit status check below is the
+          # authoritative signal -- an ERRORED build still emits a valid build id, which
+          # is how a hard build failure previously passed as a green release.
+          set -o pipefail
           eas build --platform android --profile production --non-interactive --wait --json | tee /tmp/eas-build.json
           BUILD_ID=$(jq -r '.[0].id // empty' /tmp/eas-build.json)
+          BUILD_STATUS=$(jq -r '.[0].status // empty' /tmp/eas-build.json)
           test -n "$BUILD_ID" || { echo "::error::Could not determine EAS build ID"; exit 1; }
+          if [ "$BUILD_STATUS" != "FINISHED" ]; then
+            echo "::error::EAS build $BUILD_ID did not finish (status: $BUILD_STATUS)"
+            jq -r '.[0].error // empty' /tmp/eas-build.json
+            exit 1
+          fi
           echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
       - name: Submit the exact build to Google Play
         if: ${{ inputs.submit }}
