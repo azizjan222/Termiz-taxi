@@ -1,0 +1,115 @@
+name: Sync Yandex keys to EAS
+
+# Copies the EXPO_PUBLIC_YANDEX_* values that already live in GitHub secrets into EAS
+# environment variables, for both apps and both the production and preview environments.
+#
+# WHY THIS IS NEEDED
+# ------------------
+# GitHub secrets only exist on the CI runner. A store build's JS bundle and app config are
+# resolved ON THE EAS WORKER, which sees only eas.json `env` and EAS environment variables.
+# Without this, `app.config.js` finds no map key and fails the build on purpose (see
+# assertMapKeysPresentOnEasBuild) rather than shipping an app whose map renders empty.
+#
+# Visibility is `sensitive`, never `secret`: per Expo's docs a `secret` variable is not
+# readable during build configuration resolution, which is exactly the phase that reads
+# app.config.js -- marking these `secret` would break the build. It also would not protect
+# anything, because EXPO_PUBLIC_* values are embedded in the shipped app in plain text.
+#
+# Safe to re-run: `--force` overwrites an existing variable of the same name.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-eas-env
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Only the keys each app actually reads, so neither project gets variables it has
+          # no use for.
+          - app: sarix-go-app
+            variables: >-
+              EXPO_PUBLIC_YANDEX_JS_API_KEY
+              EXPO_PUBLIC_YANDEX_GEOCODER_KEY
+              EXPO_PUBLIC_YANDEX_MAPS_KEY
+              EXPO_PUBLIC_YANDEX_SUGGEST_KEY
+              EXPO_PUBLIC_YANDEX_SDK_API_KEY
+          - app: sarix-go-driver
+            variables: >-
+              EXPO_PUBLIC_YANDEX_JS_API_KEY
+              EXPO_PUBLIC_YANDEX_SDK_API_KEY
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    env:
+      EXPO_PUBLIC_YANDEX_JS_API_KEY: ${{ secrets.YANDEX_JS_API_KEY }}
+      EXPO_PUBLIC_YANDEX_GEOCODER_KEY: ${{ secrets.YANDEX_GEOCODER_KEY }}
+      EXPO_PUBLIC_YANDEX_MAPS_KEY: ${{ secrets.YANDEX_MAPS_KEY }}
+      EXPO_PUBLIC_YANDEX_SUGGEST_KEY: ${{ secrets.YANDEX_SUGGEST_KEY }}
+      EXPO_PUBLIC_YANDEX_SDK_API_KEY: ${{ secrets.YANDEX_SDK_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: 21.0.1
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Create or update EAS environment variables
+        env:
+          VARIABLES: ${{ matrix.variables }}
+        run: |
+          set -euo pipefail
+          created=0
+          skipped=0
+
+          for name in $VARIABLES; do
+            # Indirect expansion: read the secret that was exported under this exact name.
+            value="${!name-}"
+
+            if [ -z "$value" ]; then
+              # Not every key is configured (the app falls back JS -> MAPS -> SDK), so a
+              # missing one is a warning, not a failure.
+              echo "::warning::$name is empty in GitHub secrets — skipping"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            echo "Setting $name for production + preview"
+            eas env:create \
+              --name "$name" \
+              --value "$value" \
+              --environment production \
+              --environment preview \
+              --visibility sensitive \
+              --scope project \
+              --force \
+              --non-interactive
+            created=$((created + 1))
+          done
+
+          echo "Done: $created set, $skipped skipped."
+          if [ "$created" -eq 0 ]; then
+            echo "::error::No variables were set — check that the YANDEX_* GitHub secrets exist"
+            exit 1
+          fi
+
+      - name: Verify
+        run: |
+          echo "::group::production"
+          eas env:list --environment production
+          echo "::endgroup::"
+          echo "::group::preview"
+          eas env:list --environment preview
+          echo "::endgroup::"
