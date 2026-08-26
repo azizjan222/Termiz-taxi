@@ -59,6 +59,19 @@ jobs:
           npm run typecheck
           npm run lint
           npm test -- --ci
+      - name: Report EAS environment variables
+        # The app config guard runs on the EAS worker, whose log is not reachable from here,
+        # so a missing key used to surface only as an opaque "Read app config" failure.
+        # This lists what the production environment actually holds, and with what
+        # visibility, before a build slot is spent.
+        #
+        # Visibility matters: per Expo's docs, `secret` variables are NOT readable during
+        # build configuration resolution (nor for bundling JS for updates). EXPO_PUBLIC_*
+        # values are embedded in the app in plain text anyway, so `sensitive` is the correct
+        # choice for them -- `secret` silently breaks the build instead of protecting it.
+        continue-on-error: true
+        run: eas env:list --environment production
+
       - name: Report fingerprint inputs
         # runtimeVersion.policy is `fingerprint`, and the build fails when the hash computed
         # here differs from the one the EAS worker computes. Record the inputs that have
