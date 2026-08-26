@@ -61,10 +61,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
       - uses: expo/expo-github-action@v8
         with:
           eas-version: 21.0.1
           token: ${{ secrets.EXPO_TOKEN }}
+
+      # `eas env:create` resolves the project's app config to know which project the
+      # variable belongs to, and that loads the config plugins -- so it needs node_modules.
+      # Without this the command fails with "Failed to resolve plugin for module
+      # expo-router ... Do you have node modules installed?".
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
 
       - name: Create or update EAS environment variables
         env:
