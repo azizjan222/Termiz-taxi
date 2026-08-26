@@ -7,9 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "sarixgo",
     "userInterfaceStyle": "light",
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    },
+    "runtimeVersion": "2",
     "updates": {
       "fallbackToCacheTimeout": 0
     },

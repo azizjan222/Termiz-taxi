@@ -69,11 +69,9 @@ jobs:
         continue-on-error: true
         run: eas env:list --environment production
 
-      - name: Report fingerprint inputs
-        # runtimeVersion.policy is `fingerprint`, and the build fails when the hash computed
-        # here differs from the one the EAS worker computes. Record the inputs that have
-        # actually drifted before, so a mismatch can be diagnosed from the log instead of
-        # guessed at.
+      - name: Report build inputs
+        # google-services.json is .gitignore'd and restored from a secret, so confirm it
+        # reached this checkout -- a missing file silently changes the native project.
         continue-on-error: true
         run: |
           if [ -f google-services.json ]; then
@@ -81,7 +79,6 @@ jobs:
           else
             echo "google-services.json: MISSING"
           fi
-          npx expo-updates fingerprint:generate --platform android
 
       - name: Build production AAB
         id: build
