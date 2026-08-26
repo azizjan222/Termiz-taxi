@@ -27,6 +27,8 @@ from app.admin.templates import (
     PASSENGERS_JS,
     PUSH_HTML,
     PUSH_JS,
+    PUSH_LOG_HTML,
+    PUSH_LOG_JS,
     ROUTES_HTML,
     ROUTES_JS,
     SETTINGS_HTML,
@@ -174,6 +176,15 @@ async def push_page(request: web.Request) -> web.Response:
 
 
 @require_admin
+async def push_log_page(request: web.Request) -> web.Response:
+    """GET /admin/push-log - why push notifications are or are not arriving."""
+    return web.Response(
+        text=render_page("Push diagnostika", PUSH_LOG_HTML, PUSH_LOG_JS),
+        content_type="text/html",
+    )
+
+
+@require_admin
 async def routes_page(request: web.Request) -> web.Response:
     """GET /admin/routes - routes/prices editor."""
     return web.Response(
@@ -202,5 +213,6 @@ def setup_page_routes(app: web.Application):
     app.router.add_get("/admin/passengers", passengers_page)
     app.router.add_get("/admin/orders", orders_page)
     app.router.add_get("/admin/push", push_page)
+    app.router.add_get("/admin/push-log", push_log_page)
     app.router.add_get("/admin/routes", routes_page)
     app.router.add_get("/admin/settings", settings_page)
