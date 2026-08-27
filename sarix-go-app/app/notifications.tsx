@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, type IconName } from '../src/components/Icon';
 import {
   syncAnnouncements, markAllRead, clearNotifications, type StoredNotification,
 } from '../src/services/notificationHistory';
@@ -44,15 +45,26 @@ export default function NotificationsScreen() {
     });
   };
 
-  const iconFor = (type?: string) => {
+  const iconFor = (type?: string): IconName => {
     switch (type) {
-      case 'order_accepted': return '✅';
-      case 'order_started': return '🚕';
-      case 'order_completed': return '🏁';
-      case 'order_cancelled': return '❌';
-      case 'balance_topup': return '💰';
-      case 'admin': return '📢';
-      default: return '🔔';
+      case 'order_accepted': return 'accepted';
+      case 'order_started': return 'taxi';
+      case 'order_completed': return 'completed';
+      case 'order_cancelled': return 'cancelled';
+      case 'balance_topup': return 'money';
+      case 'admin': return 'announcement';
+      default: return 'notification';
+    }
+  };
+
+  // Order state carries meaning, so the icon is tinted rather than left grey.
+  const colorFor = (type?: string) => {
+    switch (type) {
+      case 'order_cancelled': return colors.error;
+      case 'order_accepted':
+      case 'order_completed': return colors.success;
+      case 'balance_topup': return colors.accent;
+      default: return colors.primary;
     }
   };
 
@@ -62,7 +74,12 @@ export default function NotificationsScreen() {
     const unread = item.read === false;
     return (
       <View style={[styles.card, unread && styles.cardUnread]}>
-        <Text style={styles.icon}>{iconFor(item.type)}</Text>
+        <Icon
+          name={iconFor(item.type)}
+          size={24}
+          color={colorFor(item.type)}
+          style={styles.icon}
+        />
         <View style={{ flex: 1 }}>
           <View style={styles.cardTitleRow}>
             <Text style={[styles.cardTitle, unread && styles.cardTitleUnread]}>
@@ -81,9 +98,12 @@ export default function NotificationsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>🔔 {t('notifHistory.title')}</Text>
+        <View style={styles.titleRow}>
+          <Icon name="notification" size={20} color={colors.primary} />
+          <Text style={styles.title}>{t('notifHistory.title')}</Text>
+        </View>
         {items.length > 0 ? (
           <TouchableOpacity onPress={handleClear} style={styles.clearBtn}>
             <Text style={styles.clearText}>{t('notifHistory.clear')}</Text>
@@ -95,7 +115,7 @@ export default function NotificationsScreen() {
 
       {items.length === 0 && !refreshing ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>🔕</Text>
+          <Icon name="notificationOff" size={64} color={colors.textMuted} />
           <Text style={styles.emptyText}>{t('notifHistory.empty')}</Text>
         </View>
       ) : (
@@ -122,8 +142,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.white,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
-  title: { ...typography.h3, color: colors.primary, flex: 1, textAlign: 'center' },
+  titleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  title: { ...typography.h3, color: colors.primary },
   clearBtn: { width: 70, alignItems: 'flex-end' },
   clearText: { ...typography.caption, color: colors.error, fontWeight: '700' },
   list: { padding: spacing.lg },
@@ -137,7 +163,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.divider,
   },
   cardUnread: { borderColor: colors.primary, borderWidth: 2 },
-  icon: { fontSize: 22, marginRight: spacing.md },
+  icon: { marginRight: spacing.md, marginTop: 2 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center' },
   cardTitle: { ...typography.bodyBold, color: colors.text, flex: 1 },
   cardTitleUnread: { color: colors.primary },
@@ -150,7 +176,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   cardBody: { ...typography.caption, color: colors.textSecondary, marginTop: 4 },
   cardDate: { ...typography.small, color: colors.textMuted, marginTop: spacing.sm },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyEmoji: { fontSize: 64, marginBottom: spacing.md },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   emptyText: { ...typography.body, color: colors.textSecondary },
 });

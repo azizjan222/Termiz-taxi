@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon } from '../src/components/Icon';
 import {
   syncAnnouncements, markAllRead, clearNotifications, type StoredNotification,
 } from '../src/services/notificationHistory';
@@ -73,9 +74,14 @@ export default function NotificationsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.surface }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={[styles.backIcon, { color: colors.primary }]}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>🔔 {t('notifications.historyTitle')}</Text>
+        <View style={styles.titleRow}>
+          <Icon name="notification" size={20} color={colors.text} />
+          <Text style={[styles.title, { color: colors.text }]}>
+            {t('notifications.historyTitle')}
+          </Text>
+        </View>
         {items.length > 0 ? (
           <TouchableOpacity onPress={handleClear} style={styles.clearBtn}>
             <Text style={[styles.clearText, { color: colors.error }]}>{t('notifications.clear')}</Text>
@@ -87,7 +93,7 @@ export default function NotificationsScreen() {
 
       {items.length === 0 && !refreshing ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>🔕</Text>
+          <Icon name="notificationOff" size={64} color={colors.textMuted} />
           <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{t('notifications.empty')}</Text>
         </View>
       ) : (
@@ -113,8 +119,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28 },
-  title: { ...typography.h3, flex: 1, textAlign: 'center' },
+  titleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  title: { ...typography.h3 },
   clearBtn: { width: 70, alignItems: 'flex-end' },
   clearText: { ...typography.caption, fontWeight: '700' },
   list: { padding: spacing.lg },
@@ -124,7 +136,6 @@ const styles = StyleSheet.create({
   unreadDot: { width: 9, height: 9, borderRadius: 5, marginLeft: spacing.sm },
   cardBody: { ...typography.caption, marginTop: 4 },
   cardDate: { ...typography.small, marginTop: spacing.sm },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyEmoji: { fontSize: 64, marginBottom: spacing.md },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   emptyText: { ...typography.body },
 });

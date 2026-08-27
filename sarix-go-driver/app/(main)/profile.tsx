@@ -9,6 +9,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 
+import { Icon } from '../../src/components/Icon';
 import { useDriverStore } from '../../src/store/driver';
 import { getSupportInfo, type SupportInfo } from '../../src/api/ai';
 import { uploadDriverProfilePhoto, updateDriverInfo } from '../../src/api/driver';
@@ -16,6 +17,12 @@ import { API_URL } from '../../src/api/client';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius, gradients } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
+
+// Menu/stat tiles are filled with a solid theme colour, so the glyph on top needs a fixed
+// foreground rather than a themed one: white reads on the dark tiles, near-black on the
+// gold and amber ones. Emoji had no colour at all, which is why this pairing is new.
+const TILE_FG = '#FFFFFF';
+const TILE_FG_DARK = '#2A2000';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
@@ -125,7 +132,8 @@ export default function ProfileScreen() {
             onPress={openEditModal}
             activeOpacity={0.85}
           >
-            <Text style={styles.editPillText}>✏️ {t('more.editProfile')}</Text>
+            <Icon name="edit" size={13} color={colors.textOnPrimary} />
+            <Text style={styles.editPillText}>{t('more.editProfile')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.85}>
@@ -146,7 +154,11 @@ export default function ProfileScreen() {
               </View>
             )}
             <View style={styles.avatarEdit}>
-              <Text style={styles.avatarEditText}>{uploading ? '…' : '📷'}</Text>
+              {uploading ? (
+                <Text style={styles.avatarEditText}>…</Text>
+              ) : (
+                <Icon name="camera" size={13} color={colors.text} />
+              )}
             </View>
           </TouchableOpacity>
           <Text style={styles.userName}>
@@ -163,7 +175,7 @@ export default function ProfileScreen() {
             activeOpacity={0.9}
           >
             <View style={styles.balanceIconTile}>
-              <Text style={styles.balanceIconText}>💰</Text>
+              <Icon name="money" size={22} color={TILE_FG} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.balanceLabel}>{t('profile.balance')}</Text>
@@ -171,9 +183,10 @@ export default function ProfileScreen() {
                 {formatPrice(driver?.balance || 0)} {t('more.currency')}
               </Text>
               {lowBalance && (
-                <Text style={styles.balanceWarning}>
-                  ⚠️ {t('more.minBalanceShort')}
-                </Text>
+                <View style={styles.balanceWarningRow}>
+                  <Icon name="warning" size={13} color={colors.textOnPrimary} />
+                  <Text style={styles.balanceWarning}>{t('more.minBalanceShort')}</Text>
+                </View>
               )}
             </View>
             <View style={styles.topUpBtn}>
@@ -189,14 +202,14 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.statIconTile, { backgroundColor: colors.primary }]}>
-                <Text style={styles.statIconText}>🚕</Text>
+                <Icon name="taxi" size={20} color={TILE_FG} />
               </View>
               <Text style={styles.statValue}>{driver?.total_orders || 0}</Text>
               <Text style={styles.statLabel}>{t('profile.totalOrders')}</Text>
             </TouchableOpacity>
             <View style={styles.statBox}>
               <View style={[styles.statIconTile, { backgroundColor: colors.accent }]}>
-                <Text style={styles.statIconText}>⭐</Text>
+                <Icon name="star" size={20} color={TILE_FG_DARK} />
               </View>
               {/* TEMP: ratings are not in use yet — show a fixed 4.0 for every driver.
                   When ratings go live, restore: driver?.rating?.toFixed(1) || '5.0' */}
@@ -209,10 +222,13 @@ export default function ProfileScreen() {
           {driver?.car_model && (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>{t('profile.car')}</Text>
-              <Text style={styles.cardValue}>
-                🚗 {driver.car_model}
-                {driver.car_number ? ` · ${driver.car_number}` : ''}
-              </Text>
+              <View style={styles.cardValueRow}>
+                <Icon name="car" size={16} color={colors.textSecondary} />
+                <Text style={styles.cardValue}>
+                  {driver.car_model}
+                  {driver.car_number ? ` · ${driver.car_number}` : ''}
+                </Text>
+              </View>
             </View>
           )}
 
@@ -224,7 +240,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.success }]}>
-                <Text style={styles.menuIconText}>💰</Text>
+                <Icon name="money" size={20} color={TILE_FG} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.topUp')}</Text>
@@ -239,7 +255,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.primary }]}>
-                <Text style={styles.menuIconText}>📊</Text>
+                <Icon name="chart" size={20} color={TILE_FG} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('stats.title')}</Text>
@@ -254,7 +270,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.warning }]}>
-                <Text style={styles.menuIconText}>📋</Text>
+                <Icon name="history" size={20} color={TILE_FG_DARK} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.orderHistory')}</Text>
@@ -269,7 +285,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.accent }]}>
-                <Text style={styles.menuIconText}>🔔</Text>
+                <Icon name="notification" size={20} color={TILE_FG_DARK} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.notifications')}</Text>
@@ -284,7 +300,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.primary }]}>
-                <Text style={styles.menuIconText}>📝</Text>
+                <Icon name="document" size={20} color={TILE_FG} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('more.myInfo')}</Text>
@@ -299,7 +315,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.error }]}>
-                <Text style={styles.menuIconText}>🚗</Text>
+                <Icon name="car" size={20} color={TILE_FG} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('more.carPhoto')}</Text>
@@ -314,7 +330,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.primaryLight }]}>
-                <Text style={styles.menuIconText}>🤖</Text>
+                <Icon name="robot" size={20} color={TILE_FG} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.aiAssistant')}</Text>
@@ -329,7 +345,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.info }]}>
-                <Text style={styles.menuIconText}>👤</Text>
+                <Icon name="profile" size={20} color={TILE_FG} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.support')}</Text>
@@ -346,7 +362,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.error }]}>
-                <Text style={styles.menuIconText}>❓</Text>
+                <Icon name="help" size={20} color={TILE_FG} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.faq')}</Text>
@@ -361,7 +377,7 @@ export default function ProfileScreen() {
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.textMuted }]}>
-                <Text style={styles.menuIconText}>⚙️</Text>
+                <Icon name="settings" size={20} color={TILE_FG} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.settings')}</Text>
@@ -373,7 +389,8 @@ export default function ProfileScreen() {
 
           {/* Logout */}
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.85}>
-            <Text style={styles.logoutText}>🚪 {t('profile.logout')}</Text>
+            <Icon name="logout" size={16} color={colors.error} />
+            <Text style={styles.logoutText}>{t('profile.logout')}</Text>
           </TouchableOpacity>
 
           <Text style={styles.version}>{t('more.version')} 1.0.0</Text>
@@ -483,6 +500,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     position: 'absolute',
     top: spacing.md,
     right: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: 'rgba(255,255,255,0.18)',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
@@ -541,10 +561,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  balanceIconText: { fontSize: 24 },
   balanceLabel: { ...typography.caption, color: 'rgba(255,255,255,0.8)' },
   balanceValue: { ...typography.h2, color: colors.accent, marginVertical: spacing.xs },
-  balanceWarning: { ...typography.small, color: colors.textOnPrimary, marginTop: 4 },
+  balanceWarningRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  balanceWarning: { ...typography.small, color: colors.textOnPrimary },
   topUpBtn: {
     backgroundColor: colors.accent,
     paddingHorizontal: spacing.md,
@@ -573,7 +593,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
-  statIconText: { fontSize: 20 },
   statValue: { ...typography.h2, color: colors.text },
   statLabel: { ...typography.small, color: colors.textSecondary, marginTop: 4 },
   card: {
@@ -588,6 +607,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     elevation: 2,
   },
   cardTitle: { ...typography.caption, color: colors.textSecondary, marginBottom: 4 },
+  cardValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardValue: { ...typography.bodyBold, color: colors.text },
   menu: {
     gap: spacing.sm,
@@ -614,14 +634,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  menuIconText: { fontSize: 22 },
   menuText: { flex: 1 },
   menuTitle: { ...typography.bodyBold, color: colors.text },
   menuSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
   menuArrow: { fontSize: 24, color: colors.textMuted, fontWeight: '300' },
   logoutBtn: {
     padding: spacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     backgroundColor: colors.errorLight,
     borderRadius: radius.lg,
   },

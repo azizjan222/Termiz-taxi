@@ -1,14 +1,17 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon, type IconName } from '../../src/components/Icon';
 import { useThemeStore } from '../../src/store/theme';
 
-const TabIcon: React.FC<{ emoji: string; focused: boolean }> = ({ emoji, focused }) => (
-  <View style={[styles.iconWrapper, focused && styles.iconWrapperFocused]}>
-    <Text style={styles.icon}>{emoji}</Text>
+// `color` comes from tabBarActiveTintColor / tabBarInactiveTintColor. The emoji this
+// replaces could not be tinted, so the active tab was only distinguishable by its label.
+const TabIcon: React.FC<{ name: IconName; color: string }> = ({ name, color }) => (
+  <View style={styles.iconWrapper}>
+    <Icon name={name} size={24} color={color} />
   </View>
 );
 
@@ -43,21 +46,21 @@ export default function TabsLayout() {
         name="home"
         options={{
           title: t('home.orderTaxi'),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} />,
+          tabBarIcon: ({ color }) => <TabIcon name="home" color={color} />,
         }}
       />
       <Tabs.Screen
         name="history"
         options={{
           title: t('profile.orderHistory'),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} />,
+          tabBarIcon: ({ color }) => <TabIcon name="history" color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: t('profile.title'),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
+          tabBarIcon: ({ color }) => <TabIcon name="profile" color={color} />,
         }}
       />
     </Tabs>
@@ -71,6 +74,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconWrapperFocused: {},
-  icon: { fontSize: 22 },
 });
