@@ -246,6 +246,13 @@ async def run():
         logger.error("Order-expiry scheduler failed to start: %s", e)
 
     try:
+        from app.services.push import start_receipt_scheduler
+        _BACKGROUND_TASKS.append(start_receipt_scheduler())
+        logger.info("✅ Push receipt scheduler started")
+    except Exception as e:
+        logger.error("Push receipt scheduler failed to start: %s", e)
+
+    try:
         from app.api.payments import start_payment_cleanup_scheduler
         _BACKGROUND_TASKS.append(start_payment_cleanup_scheduler())
         logger.info("✅ Payment cleanup scheduler started")
