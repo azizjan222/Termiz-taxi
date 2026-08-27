@@ -61,6 +61,9 @@ jobs:
         run: |
           test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_DRIVER_JSON_B64 is required"; exit 1; }
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
+      - name: Sync Firebase configuration to EAS production
+        # Use an EAS file variable so the remote AAB builder always receives Firebase config.
+        run: eas env:create --name GOOGLE_SERVICES_JSON --value ./google-services.json --environment production --visibility secret --scope project --type file --force --non-interactive
       - name: Validate and test release source
         run: |
           test -n "$EXPO_PUBLIC_YANDEX_JS_API_KEY" || { echo "::error::YANDEX_JS_API_KEY is required"; exit 1; }

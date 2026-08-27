@@ -3,10 +3,10 @@
 # When this file exists EAS uses it INSTEAD of .gitignore, so everything that should
 # stay out of the build archive has to be repeated here.
 #
-# It exists for one reason: google-services.json is .gitignore'd (it is restored from a
-# secret in CI rather than committed). EAS requires an explicit `!` rule below to include
-# a generated, untracked file in the upload archive; merely omitting it from this file is
-# not enough. Without the Firebase file, Android cannot obtain an FCM/Expo push token.
+# It exists as a local/CI fallback for google-services.json, which is restored from a
+# secret rather than committed. Current EAS builds also sync the file through the
+# GOOGLE_SERVICES_JSON file environment variable; that is the authoritative remote-worker
+# path. The explicit `!` rule below still includes the generated local file when supported.
 #
 # google-services.json is a client-side Firebase config that already ships inside the APK,
 # so uploading it to the EAS builder is safe.

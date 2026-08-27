@@ -70,13 +70,24 @@ module.exports = () => {
     ...(projectId ? { eas: { projectId } } : {}),
   };
 
+  const googleServicesFile =
+    process.env.GOOGLE_SERVICES_JSON ||
+    (fs.existsSync(path.join(__dirname, 'google-services.json'))
+      ? './google-services.json'
+      : undefined);
+
+  if (process.env.EAS_BUILD === 'true' && !googleServicesFile) {
+    throw new Error(
+      'GOOGLE_SERVICES_JSON is missing from the EAS environment. Android push notifications ' +
+        'cannot work without the Firebase client configuration.'
+    );
+  }
+
   return {
     ...expo,
     android: {
       ...expo.android,
-      googleServicesFile: fs.existsSync(path.join(__dirname, 'google-services.json'))
-        ? './google-services.json'
-        : undefined,
+      googleServicesFile,
     },
     extra,
     updates: {
