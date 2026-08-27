@@ -1,4 +1,5 @@
 """Admin panel JSON API endpoints."""
+import json
 import logging
 import re
 from collections import Counter, OrderedDict
@@ -10,7 +11,15 @@ from sqlalchemy import func
 from app.admin.audit import add_admin_audit
 from app.admin.middleware import require_admin_api
 from app.database import get_session
-from app.models import BalanceTransaction, Driver, Order, Route, Setting, User
+from app.models import (
+    BalanceTransaction,
+    Driver,
+    NotificationLog,
+    Order,
+    Route,
+    Setting,
+    User,
+)
 from app.services import notify_i18n as nt
 from app.services.driver_pdf import build_driver_pdf
 from app.services.push import send_push, send_push_bulk
@@ -1137,8 +1146,116 @@ async def api_statistics(request: web.Request) -> web.Response:
         session.close()
 
 
+@require_admin_api
+async def api_push_log(request: web.Request) -> web.Response:
+    """GET /admin/api/push-log?status=all|sent|failed - push delivery diagnostics.
+
+    Every push already records its outcome in ``notification_log``, including the error
+    string Expo returned, but nothing ever read that table back. When drivers reported
+    missing new-order notifications there was no way to tell WHY: a driver with no push
+    token, a driver toggled offline, and Expo rejecting the send because the FCM
+    credential is missing all look identical from the outside. This surfaces the three
+    apart.
+    """
+    status_filter = request.query.get("status", "all")
+    session = get_session()
+    try:
+        now = datetime.utcnow()
+        day_ago = now - timedelta(days=1)
+        week_ago = now - timedelta(days=7)
+
+        def counts_since(since):
+            rows = (
+                session.query(NotificationLog.status, func.count(NotificationLog.id))
+                .filter(NotificationLog.created_at >= since)
+                .group_by(NotificationLog.status)
+                .all()
+            )
+            out = {"sent": 0, "failed": 0}
+            for status, n in rows:
+                out[status or "unknown"] = n
+            return out
+
+        # Why each driver bucket matters: a push can only ever arrive if the driver is
+        # verified, toggled online AND has registered a token. `notify_driver_new_order`
+        # filters on exactly push_token + is_online, so "online and tokenless" drivers are
+        # silently unreachable — that is the number to watch.
+        verified = session.query(Driver).filter(Driver.is_verified == True)  # noqa: E712
+        drivers_verified = verified.count()
+        drivers_online = verified.filter(Driver.is_online == True).count()  # noqa: E712
+        drivers_with_token = verified.filter(Driver.push_token.isnot(None)).count()
+        drivers_online_with_token = (
+            verified.filter(Driver.is_online == True)  # noqa: E712
+            .filter(Driver.push_token.isnot(None))
+            .count()
+        )
+
+        top_errors = [
+            {"error": err or "(bo'sh)", "count": n}
+            for err, n in (
+                session.query(NotificationLog.error, func.count(NotificationLog.id))
+                .filter(NotificationLog.status == "failed")
+                .filter(NotificationLog.created_at >= week_ago)
+                .group_by(NotificationLog.error)
+                .order_by(func.count(NotificationLog.id).desc())
+                .limit(10)
+                .all()
+            )
+        ]
+
+        query = session.query(NotificationLog)
+        if status_filter in ("sent", "failed"):
+            query = query.filter(NotificationLog.status == status_filter)
+        logs = query.order_by(NotificationLog.id.desc()).limit(200).all()
+
+        # Resolve driver names in one query instead of per row.
+        driver_ids = {
+            log.recipient_id for log in logs if log.recipient_type == "driver" and log.recipient_id
+        }
+        names = {}
+        if driver_ids:
+            for d in session.query(Driver).filter(Driver.id.in_(driver_ids)).all():
+                names[d.id] = (f"{d.first_name or ''} {d.last_name or ''}").strip() or None
+
+        rows = []
+        for log in logs:
+            push_type = None
+            if log.data:
+                try:
+                    push_type = (json.loads(log.data) or {}).get("type")
+                except (ValueError, TypeError):
+                    push_type = None
+            rows.append({
+                "id": log.id,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "recipient_type": log.recipient_type,
+                "recipient_id": log.recipient_id,
+                "recipient_name": names.get(log.recipient_id),
+                "type": push_type,
+                "title": log.title,
+                "status": log.status,
+                "error": log.error,
+            })
+
+        return web.json_response({
+            "summary": {
+                "drivers_verified": drivers_verified,
+                "drivers_online": drivers_online,
+                "drivers_with_token": drivers_with_token,
+                "drivers_online_with_token": drivers_online_with_token,
+                "last_24h": counts_since(day_ago),
+                "last_7d": counts_since(week_ago),
+                "top_errors": top_errors,
+            },
+            "rows": rows,
+        })
+    finally:
+        session.close()
+
+
 def setup_api_routes(app: web.Application):
     app.router.add_get("/admin/api/stats", api_stats)
+    app.router.add_get("/admin/api/push-log", api_push_log)
     app.router.add_get("/admin/api/statistics", api_statistics)
     app.router.add_get("/admin/api/drivers", api_drivers)
     app.router.add_post("/admin/api/drivers", api_create_driver)
