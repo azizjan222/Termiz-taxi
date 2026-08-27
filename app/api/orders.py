@@ -286,6 +286,22 @@ async def create_order(request: web.Request) -> web.Response:
             ),
         ).all()
 
+        # A recommended driver is notified separately further down, with a message that
+        # names them as the passenger's pick. They satisfy every condition of the query
+        # above as well, so without this exclusion they received the SAME order twice:
+        # two WS frames and two pushes. In the app that was hidden by the client-side
+        # de-dup window, but with the app closed no JS runs to de-dupe and the driver got
+        # two system notifications with two sounds.
+        #
+        # Excluding them here is safe precisely because the conditions match: if the
+        # direct branch below rejects the target, this query would not have returned them
+        # either, so nobody ends up with no notification at all.
+        broadcast_drivers = (
+            [d for d in eligible_drivers if d.id != target_driver_id]
+            if target_driver_id
+            else eligible_drivers
+        )
+
         # Privacy: the broadcast/available list shows the passenger name, route and
         # departure time but NOT the phone number (revealed only after "Qabul qilish").
         order_payload = {
@@ -294,7 +310,7 @@ async def create_order(request: web.Request) -> web.Response:
         }
 
         # Send the real-time event only to eligible drivers (instead of broadcasting to all).
-        for d in eligible_drivers:
+        for d in broadcast_drivers:
             if d.telegram_id:
                 try:
                     await ws_manager.send_to_driver(d.telegram_id, order_payload)
@@ -307,7 +323,7 @@ async def create_order(request: web.Request) -> web.Response:
         try:
             from app.services.push import notify_driver_new_order
             online_drivers = [
-                d for d in eligible_drivers
+                d for d in broadcast_drivers
                 if d.is_online and d.push_token
             ]
             await notify_driver_new_order(session, order, online_drivers)
