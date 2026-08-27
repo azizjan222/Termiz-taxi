@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import { getPriceQuote, type PriceQuote } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
@@ -94,7 +95,7 @@ export default function TariffScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <View style={styles.routeInfo}>
           <Text style={styles.routeText}>
@@ -114,7 +115,7 @@ export default function TariffScreen() {
             ]}
             onPress={() => orderStore.setField('serviceType', 'taxi')}
           >
-            <Text style={styles.serviceTabIcon}>🚕</Text>
+            <Icon name="taxi" size={20} color={colors.primary} style={styles.serviceTabIcon} />
             <Text
               style={[
                 styles.serviceTabText,
@@ -131,7 +132,7 @@ export default function TariffScreen() {
             ]}
             onPress={() => orderStore.setField('serviceType', 'parcel')}
           >
-            <Text style={styles.serviceTabIcon}>📦</Text>
+            <Icon name="parcel" size={20} color={colors.primary} style={styles.serviceTabIcon} />
             <Text
               style={[
                 styles.serviceTabText,
@@ -193,7 +194,7 @@ export default function TariffScreen() {
                           selected && styles.personIconSelected,
                         ]}
                       >
-                        <Text style={styles.personIconText}>👤</Text>
+                        <Icon name="profile" size={16} color={colors.textSecondary} />
                       </View>
                       <Text style={styles.personLabel}>
                         {n === 1
@@ -239,7 +240,7 @@ export default function TariffScreen() {
                           styles.personIconSelected,
                       ]}
                     >
-                      <Text style={styles.personIconText}>🚗</Text>
+                      <Icon name="car" size={16} color={colors.textSecondary} />
                     </View>
                     <Text style={styles.personLabel}>
                       {t('tariff.fullCar')}
@@ -301,7 +302,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   routeInfo: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -388,7 +388,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginRight: spacing.md,
   },
   personIconSelected: { backgroundColor: colors.accent },
-  personIconText: { fontSize: 18 },
   personLabel: { ...typography.bodyBold, color: colors.text },
   personRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   personPrice: { ...typography.bodyBold, color: colors.primary },
