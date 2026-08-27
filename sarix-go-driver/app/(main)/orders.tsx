@@ -525,7 +525,7 @@ export default function OrdersScreen() {
                 color={colors.textMuted}
                 // flex: 0 undoes IconText's default so the pair stays centred
                 // together instead of the label filling the row.
-                textStyle={[styles.pullHint, { flex: 0 }]}
+                textStyle={styles.pullHint}
                 style={styles.pullHintRow}
               >
                 {t('home.pullToRefresh')}

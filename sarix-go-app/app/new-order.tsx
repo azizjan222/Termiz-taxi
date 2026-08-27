@@ -226,7 +226,7 @@ export default function NewOrderScreen() {
                       name="profile"
                       size={13}
                       color={colors.textOnPrimary}
-                      textStyle={[styles.personChipTextSelected, { flex: 0 }]}
+                      textStyle={styles.personChipTextSelected}
                     >
                       {n}
                     </IconText>
@@ -245,7 +245,7 @@ export default function NewOrderScreen() {
                   name="profile"
                   size={13}
                   color={colors.textSecondary}
-                  textStyle={[styles.personChipText, { flex: 0 }]}
+                  textStyle={styles.personChipText}
                 >
                   {n}
                 </IconText>
@@ -273,7 +273,7 @@ export default function NewOrderScreen() {
                 name="car"
                 size={13}
                 color={colors.textOnPrimary}
-                textStyle={[styles.fullCarChipTextSelected, { flex: 0 }]}
+                textStyle={styles.fullCarChipTextSelected}
               >
                 {t('tariff.fullCar')}
               </IconText>
@@ -293,7 +293,7 @@ export default function NewOrderScreen() {
               name="car"
               size={13}
               color={colors.textSecondary}
-              textStyle={[styles.fullCarChipText, { flex: 0 }]}
+              textStyle={styles.fullCarChipText}
             >
               {t('tariff.fullCar')}
             </IconText>

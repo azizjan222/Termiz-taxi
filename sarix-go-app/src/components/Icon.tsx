@@ -158,8 +158,14 @@ export interface IconTextProps {
  * by hand needs a wrapper View with flexDirection/alignItems/gap at every call site, and
  * getting that subtly wrong is what makes a glyph sit a pixel or two off its label.
  *
- * `flex: 1` on the text so long values (a passenger name, a note) truncate instead of
- * pushing the icon out of the row.
+ * The text is `flexShrink: 1`, NOT `flex: 1`.
+ *
+ * `flex: 1` implies `flexGrow: 1`, which made this component expand to every pixel of
+ * available width. Used as the left label of a `justifyContent: 'space-between'` row — the
+ * shape of every detail row on the order screens — that pushed the value on the right clean
+ * off the edge of the screen. Shrink-only keeps the wrapper at its content width while
+ * still letting a long value (a passenger name, a note) ellipsize instead of shoving the
+ * icon out of the row.
  */
 export function IconText({
   name,
@@ -174,7 +180,7 @@ export function IconText({
   return (
     <View style={[{ flexDirection: 'row', alignItems: 'center', gap }, style]}>
       <Icon name={name} size={size} color={color} />
-      <Text style={[{ flex: 1 }, textStyle]} numberOfLines={numberOfLines}>
+      <Text style={[{ flexShrink: 1 }, textStyle]} numberOfLines={numberOfLines}>
         {children}
       </Text>
     </View>

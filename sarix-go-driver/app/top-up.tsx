@@ -352,7 +352,7 @@ export default function TopUpScreen() {
                   name="document"
                   size={13}
                   color={colors.primary}
-                  textStyle={[styles.copyBtn, { flex: 0 }]}
+                  textStyle={styles.copyBtn}
                 >
                   Nusxa
                 </IconText>

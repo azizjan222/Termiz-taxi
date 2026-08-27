@@ -35,7 +35,7 @@ export const ForceUpdateModal: React.FC<Props> = ({ visible, playUrl, message })
               name="install"
               size={16}
               color={colors.textOnPrimary}
-              textStyle={[styles.buttonText, { flex: 0 }]}
+              textStyle={styles.buttonText}
             >
               Play Market'da yangilash
             </IconText>

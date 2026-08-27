@@ -249,7 +249,7 @@ export default function OrderDetailScreen() {
               name={serviceIcon}
               size={12}
               color={colors.textOnPrimary}
-              textStyle={[styles.serviceChipText, { flex: 0 }]}
+              textStyle={styles.serviceChipText}
             >
               {serviceBadge}
             </IconText>

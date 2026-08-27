@@ -222,7 +222,7 @@ export default function DriverDocumentsScreen() {
                 name="camera"
                 size={13}
                 color={colors.primary}
-                textStyle={[styles.frameHint, { flex: 0 }]}
+                textStyle={styles.frameHint}
                 style={styles.frameHintRow}
               >
                 Suratga olish
