@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, type ColorValue } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,7 +9,7 @@ import { useThemeStore } from '../../src/store/theme';
 
 // `color` comes from tabBarActiveTintColor / tabBarInactiveTintColor. The emoji this
 // replaces could not be tinted, so the active tab was only distinguishable by its label.
-const TabIcon: React.FC<{ name: IconName; color: string }> = ({ name, color }) => (
+const TabIcon: React.FC<{ name: IconName; color: ColorValue }> = ({ name, color }) => (
   <View style={styles.iconWrapper}>
     <Icon name={name} size={24} color={color} />
   </View>

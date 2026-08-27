@@ -1,5 +1,5 @@
 import React from 'react';
-import type { StyleProp, TextStyle } from 'react-native';
+import type { ColorValue, StyleProp, TextStyle } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 /**
@@ -66,7 +66,9 @@ export type IconName = keyof typeof GLYPHS;
 export interface IconProps {
   name: IconName;
   size?: number;
-  color?: string;
+  // ColorValue, not string: React Navigation hands `tabBarIcon` a ColorValue, and the
+  // theme store's colours flow through the same styles.
+  color?: ColorValue;
   /** Spacing only — the glyph itself is sized and coloured by the props above. */
   style?: StyleProp<TextStyle>;
 }
