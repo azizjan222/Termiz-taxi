@@ -64,6 +64,10 @@ jobs:
         run: |
           test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_PASSENGER_JSON_B64 is required"; exit 1; }
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
+          node -e 'const c=require("./google-services.json").client||[]; if(!c.some(x=>x.client_info?.android_client_info?.package_name==="uz.sarixgo.passenger")) throw new Error("Firebase config has no uz.sarixgo.passenger Android client")'
+      - name: Sync Firebase configuration to EAS production
+        # Use the same authoritative file-variable path as preview builds.
+        run: eas env:create --name GOOGLE_SERVICES_JSON --value ./google-services.json --environment production --visibility secret --scope project --type file --force --non-interactive
       - name: Validate and test release source
         run: |
           test -n "$EXPO_PUBLIC_YANDEX_JS_API_KEY" || { echo "::error::YANDEX_JS_API_KEY is required"; exit 1; }
