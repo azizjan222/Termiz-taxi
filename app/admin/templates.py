@@ -771,7 +771,8 @@ h+='<div>Qabul qiluvchilar: <b>'+s.recipients+'</b></div>';
 h+='<div>Push token bor: <b>'+s.with_token+'</b> — yuborildi: <b>'+s.push_sent+'</b>'+(s.push_failed?', xato: <b>'+s.push_failed+'</b>':'')+'</div>';
 if(s.telegram_queued)h+='<div>Telegram: <b>'+s.telegram_queued+'</b> ta xabar fonda yuborilmoqda</div>';
 else if(s.telegram_attempted)h+='<div>Telegram: <b>'+s.telegram_sent+'</b> yuborildi'+(s.telegram_failed?', <b>'+s.telegram_failed+'</b> xato':'')+' ('+s.telegram_attempted+' ta urinish)</div>';
-if(s.unreached)h+='<div class="text-danger">Yetib bormadi: <b>'+s.unreached+'</b></div>';
+if(s.unreached)h+='<div class="text-warning">Darhol yetib bormadi: <b>'+s.unreached+'</b></div>';
+if(s.inbox_saved)h+='<div class="text-success">Xabar ilovada saqlandi — hamma ilovani ochganda ko\\'radi</div>';
 if(s.errors&&s.errors.length){
 h+='<div class="mt-2">Sabablari:<ul class="mb-0">';
 s.errors.forEach(function(e){h+='<li>'+esc(e.error)+' — '+e.count+' ta</li>';});

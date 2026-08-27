@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import {
-  listNotifications, clearNotifications, type StoredNotification,
+  syncAnnouncements, markAllRead, clearNotifications, type StoredNotification,
 } from '../src/services/notificationHistory';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -20,8 +20,12 @@ export default function NotificationsScreen() {
 
   const load = useCallback(async () => {
     setRefreshing(true);
-    setItems(await listNotifications());
+    // Pull admin announcements from the server first: a broadcast reaches accounts that
+    // never received a push, so the list must not be limited to what arrived on-device.
+    setItems(await syncAnnouncements());
     setRefreshing(false);
+    // Keep the unread accent visible for this visit; it clears on the next open.
+    markAllRead().catch(() => {});
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -38,13 +42,32 @@ export default function NotificationsScreen() {
     });
   };
 
-  const renderItem = ({ item }: { item: StoredNotification }) => (
-    <View style={[styles.card, { backgroundColor: colors.background, borderColor: colors.divider }]}>
-      <Text style={[styles.cardTitle, { color: colors.text }]}>{item.title}</Text>
-      {!!item.body && <Text style={[styles.cardBody, { color: colors.textSecondary }]}>{item.body}</Text>}
-      <Text style={[styles.cardDate, { color: colors.textMuted }]}>{formatDate(item.createdAt)}</Text>
-    </View>
-  );
+  const renderItem = ({ item }: { item: StoredNotification }) => {
+    // `undefined` means the entry predates read tracking, so only an explicit false is
+    // highlighted — otherwise upgrading would flag the whole existing history as new.
+    const unread = item.read === false;
+    return (
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: colors.background,
+            borderColor: unread ? colors.primary : colors.divider,
+            borderWidth: unread ? 2 : 1,
+          },
+        ]}
+      >
+        <View style={styles.cardTitleRow}>
+          <Text style={[styles.cardTitle, { color: unread ? colors.primary : colors.text }]}>
+            {item.title}
+          </Text>
+          {unread && <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />}
+        </View>
+        {!!item.body && <Text style={[styles.cardBody, { color: colors.textSecondary }]}>{item.body}</Text>}
+        <Text style={[styles.cardDate, { color: colors.textMuted }]}>{formatDate(item.createdAt)}</Text>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.surface }]} edges={['top']}>
@@ -96,7 +119,9 @@ const styles = StyleSheet.create({
   clearText: { ...typography.caption, fontWeight: '700' },
   list: { padding: spacing.lg },
   card: { borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1 },
-  cardTitle: { ...typography.bodyBold },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center' },
+  cardTitle: { ...typography.bodyBold, flex: 1 },
+  unreadDot: { width: 9, height: 9, borderRadius: 5, marginLeft: spacing.sm },
   cardBody: { ...typography.caption, marginTop: 4 },
   cardDate: { ...typography.small, marginTop: spacing.sm },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },

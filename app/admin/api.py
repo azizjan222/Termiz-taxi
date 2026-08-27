@@ -9,10 +9,12 @@ from datetime import datetime, timedelta
 from aiohttp import web
 from sqlalchemy import func
 
+from app import config
 from app.admin.audit import add_admin_audit
 from app.admin.middleware import require_admin_api
 from app.database import get_session
 from app.models import (
+    Announcement,
     BalanceTransaction,
     Driver,
     NotificationLog,
@@ -333,6 +335,20 @@ async def api_push(request: web.Request) -> web.Response:
                 ).all():
                     candidates.append(("user", u.id, u.language, u.push_token, u.telegram_id))
 
+        # Record the broadcast BEFORE sending. Push and Telegram are both fire-and-forget,
+        # so this row is the only thing that lets a recipient who was offline — or who has
+        # no push token and no Telegram chat — still read the message in the app later.
+        # Stored once with an audience filter rather than once per recipient.
+        announcement = Announcement(
+            audience=target if target in ("all", "drivers", "passengers") else "user",
+            recipient_type=candidates[0][0] if target == "specific" else None,
+            recipient_id=candidates[0][1] if target == "specific" else None,
+            body=message,
+            created_by=config.ADMIN_USERNAME,
+        )
+        session.add(announcement)
+        session.flush()  # assign the id so the push payload can carry it
+
         # Build a localized message per recipient and send them in batched Expo requests
         # (instead of one-by-one) so a large broadcast reaches everyone at once instead of
         # the last users getting it minutes late.
@@ -352,7 +368,9 @@ async def api_push(request: web.Request) -> web.Response:
                     "token": token,
                     "title": titles[key],
                     "body": message,
-                    "data": {"type": "admin"},
+                    # The id lets the app recognise the pushed message as the same one it
+                    # syncs from the inbox, instead of listing it twice.
+                    "data": {"type": "admin", "announcement_id": announcement.id},
                 })
             elif not tg_id:
                 no_route += 1
@@ -400,6 +418,7 @@ async def api_push(request: web.Request) -> web.Response:
             use_telegram=use_telegram,
             no_route=no_route,
             push_stats=push,
+            inbox_saved=True,
         )
 
         add_admin_audit(
@@ -416,6 +435,7 @@ async def api_push(request: web.Request) -> web.Response:
                 "telegram_queued": queued,
                 "recipients": len(candidates),
                 "unreached": report["unreached"],
+                "announcement_id": announcement.id,
             },
         )
         session.commit()

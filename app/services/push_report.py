@@ -45,11 +45,16 @@ def summarize_broadcast(
     use_telegram=True,
     no_route=0,
     push_stats=None,
+    inbox_saved=False,
 ) -> dict:
     """Build the ``{level, detail, stats}`` payload the admin panel renders.
 
     `reached` is the set of keys push served; Telegram deliveries are added here by
     matching chat ids back to keys, so one chat shared by two rows counts for both.
+
+    `inbox_saved` means the broadcast was persisted as an in-app announcement. That
+    changes the verdict: a failed push is no longer a lost message, only a late one, so
+    reaching nobody instantly is a warning rather than an outright failure.
     """
     push_stats = push_stats or {}
     all_keys = [tuple(k) for k in all_keys]
@@ -81,8 +86,9 @@ def summarize_broadcast(
     if total == 0:
         level, detail = "warning", "Qabul qiluvchi topilmadi"
     elif total_sent == 0 and queued == 0:
-        level = "danger"
-        detail = f"Hech kimga yuborilmadi ({total} ta qabul qiluvchidan)"
+        # Nothing went out live. With the inbox that is a delay, not a loss.
+        level = "warning" if inbox_saved else "danger"
+        detail = f"Hech kimga darhol yuborilmadi ({total} ta qabul qiluvchidan)"
     else:
         level = "success" if unreached == 0 else "warning"
         breakdown = []
@@ -97,7 +103,10 @@ def summarize_broadcast(
             detail += (f" · {queued} ta Telegram xabari fonda yuborilmoqda "
                        "(natijasi «Push jurnali» sahifasida)")
         if unreached:
-            detail += f" · {unreached} ta yetib bormadi"
+            detail += f" · {unreached} ta darhol yetib bormadi"
+
+    if inbox_saved and total:
+        detail += " · xabar ilovada hammaga ko'rinadi"
 
     return {
         "level": level,
@@ -114,6 +123,7 @@ def summarize_broadcast(
             "telegram_failed": int(telegram_stats.get("failed") or 0),
             "telegram_queued": queued,
             "unreached": unreached,
+            "inbox_saved": bool(inbox_saved),
             "errors": [{"error": e, "count": n} for e, n in errors.most_common(10)],
         },
     }

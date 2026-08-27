@@ -70,10 +70,43 @@ def test_nobody_reached_is_reported_as_a_failure_not_a_success():
         token_count=0, telegram_attempted=0, no_route=5, push_stats=_push(),
     )
     assert r["level"] == "danger"
-    assert "Hech kimga yuborilmadi" in r["detail"]
+    assert "Hech kimga darhol yuborilmadi" in r["detail"]
     assert r["total_sent"] == 0
     assert r["stats"]["unreached"] == 5
     assert {"error": "Push token ham, Telegram ham yo'q", "count": 5} in r["stats"]["errors"]
+
+
+# ---------- the in-app inbox changes the verdict ----------
+
+def test_inbox_downgrades_total_send_failure_to_a_warning():
+    # Nothing went out live, but the announcement is stored, so the message is late —
+    # not lost. Reporting it as a hard failure would be wrong.
+    all_keys = [("driver", i) for i in range(1, 6)]
+    r = summarize_broadcast(
+        all_keys, set(), {}, EMPTY_TG,
+        token_count=0, telegram_attempted=0, no_route=5, push_stats=_push(),
+        inbox_saved=True,
+    )
+    assert r["level"] == "warning"
+    assert "ilovada hammaga ko'rinadi" in r["detail"]
+    assert r["stats"]["inbox_saved"] is True
+
+
+def test_inbox_note_is_omitted_when_there_are_no_recipients():
+    r = summarize_broadcast(
+        [], set(), {}, EMPTY_TG,
+        token_count=0, telegram_attempted=0, inbox_saved=True,
+    )
+    assert r["detail"] == "Qabul qiluvchi topilmadi"
+
+
+def test_inbox_flag_defaults_to_false():
+    r = summarize_broadcast(
+        [("driver", 1)], {("driver", 1)}, {}, EMPTY_TG,
+        token_count=1, telegram_attempted=0, push_stats=_push(sent=1),
+    )
+    assert r["stats"]["inbox_saved"] is False
+    assert "ilovada" not in r["detail"]
 
 
 def test_no_recipients_at_all_is_a_warning():
@@ -139,7 +172,7 @@ def test_partial_delivery_is_a_warning_and_lists_reasons():
     )
     assert r["level"] == "warning"
     assert r["stats"]["unreached"] == 1
-    assert "1 ta yetib bormadi" in r["detail"]
+    assert "1 ta darhol yetib bormadi" in r["detail"]
     assert r["stats"]["errors"] == [
         {"error": "Telegram — Bot bloklangan / start bosilmagan", "count": 1}
     ]
@@ -189,6 +222,6 @@ def test_stats_block_is_complete_for_the_ui():
     )
     for field in ("recipients", "with_token", "push_sent", "push_failed",
                   "telegram_attempted", "telegram_sent", "telegram_failed",
-                  "telegram_queued", "unreached", "errors"):
+                  "telegram_queued", "unreached", "inbox_saved", "errors"):
         assert field in r["stats"], field
     assert r["stats"]["recipients"] == 1
