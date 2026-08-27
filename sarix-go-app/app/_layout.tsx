@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppState } from 'react-native';
 
 import { initI18n } from '../src/i18n';
 import { useAuthStore } from '../src/store/auth';
@@ -10,8 +11,12 @@ import { useThemeStore } from '../src/store/theme';
 import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 import { getAppConfig, compareVersions } from '../src/api/app-config';
-import { registerPushToken } from '../src/services/notifications';
-import { addNotificationReceivedListener } from '../src/services/notifications';
+import {
+  registerPushToken,
+  isPushRegistered,
+  resetPushRegistration,
+  addNotificationReceivedListener,
+} from '../src/services/notifications';
 import { addNotification } from '../src/services/notificationHistory';
 import Constants from 'expo-constants';
 
@@ -46,11 +51,30 @@ export default function RootLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Register push token after auth
+  // Register after auth and retry on every foreground activation until it succeeds.
+  // A temporary network/permission failure must not leave this installation tokenless.
   useEffect(() => {
-    if (isAuth && ready) {
-      registerPushToken().catch(() => {});
+    if (!(isAuth && ready)) {
+      resetPushRegistration();
+      return;
     }
+    let cancelled = false;
+
+    const attempt = () => {
+      if (cancelled || isPushRegistered()) return;
+      registerPushToken().catch(() => {
+        // registerPushToken logs the concrete failure and resets registration state.
+      });
+    };
+
+    attempt();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') attempt();
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   }, [isAuth, ready]);
 
   // Persist every received push notification into the in-app history.

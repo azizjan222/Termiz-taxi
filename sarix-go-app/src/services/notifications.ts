@@ -125,20 +125,57 @@ export async function getExpoPushToken(): Promise<string | null> {
   }
 }
 
-export async function registerPushToken(): Promise<boolean> {
-  try {
-    await setupNotificationChannels();
-    const token = await getExpoPushToken();
-    if (!token) return false;
+let pushRegistered = false;
+let pushRegistrationInFlight: Promise<boolean> | null = null;
+let registrationGeneration = 0;
 
-    await api.post('/api/notifications/register-token', { token, language: i18n.language });
-    return true;
-  } catch {
-    return false;
-  }
+export function isPushRegistered(): boolean {
+  return pushRegistered;
+}
+
+/** Reset local registration state when the authenticated passenger changes. */
+export function resetPushRegistration(): void {
+  registrationGeneration += 1;
+  pushRegistered = false;
+  // The HTTP request cannot be cancelled here, but a stale completion can no longer mark
+  // the new auth session as registered. The next authenticated session will retry.
+  pushRegistrationInFlight = null;
+}
+
+export function registerPushToken(): Promise<boolean> {
+  if (pushRegistrationInFlight) return pushRegistrationInFlight;
+
+  const generation = registrationGeneration;
+  pushRegistrationInFlight = (async () => {
+    try {
+      await setupNotificationChannels();
+      const token = await getExpoPushToken();
+      if (!token) {
+        console.warn(
+          '[push] no token: notification permission denied, or this build has no FCM config'
+        );
+        if (generation === registrationGeneration) pushRegistered = false;
+        return false;
+      }
+
+      await api.post('/api/notifications/register-token', { token, language: i18n.language });
+      if (generation !== registrationGeneration) return false;
+      pushRegistered = true;
+      return true;
+    } catch (e) {
+      console.warn('[push] token registration failed:', e);
+      if (generation === registrationGeneration) pushRegistered = false;
+      return false;
+    } finally {
+      if (generation === registrationGeneration) pushRegistrationInFlight = null;
+    }
+  })();
+
+  return pushRegistrationInFlight;
 }
 
 export async function unregisterPushToken(): Promise<void> {
+  resetPushRegistration();
   try {
     await api.post('/api/notifications/remove-token');
   } catch {}
