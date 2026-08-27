@@ -5,6 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { Icon, IconText } from '../src/components/Icon';
 import { getReferralInfo, type ReferralInfo } from '../src/api/promo';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -56,7 +57,7 @@ export default function ReferralScreen() {
 
       <View style={styles.body}>
         <View style={styles.heroBox}>
-          <Text style={styles.heroEmoji}>🎁</Text>
+          <Icon name="gift" size={56} color={colors.accent} style={styles.heroEmoji} />
           <Text style={styles.heroTitle}>Har do'st = 10,000 so'm</Text>
           <Text style={styles.heroSubtitle}>
             Do'stingiz ham 5,000 so'm bonus oladi
@@ -67,7 +68,7 @@ export default function ReferralScreen() {
           <Text style={styles.codeLabel}>SIZNING KODINGIZ</Text>
           <TouchableOpacity onPress={copyCode} style={styles.codeRow}>
             <Text style={styles.code}>{info.referral_code}</Text>
-            <Text style={styles.copyIcon}>📋</Text>
+            <Icon name="document" size={18} color={colors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -85,11 +86,18 @@ export default function ReferralScreen() {
         </View>
 
         <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.85}>
-          <Text style={styles.shareBtnText}>📤 Ulashish</Text>
+          <IconText
+            name="upload"
+            size={16}
+            color={colors.textOnPrimary}
+            textStyle={[styles.shareBtnText, { flex: 0 }]}
+          >
+            Ulashish
+          </IconText>
         </TouchableOpacity>
 
         <Text style={styles.howItWorks}>
-          📋 <Text style={{ fontWeight: '700' }}>Qanday ishlaydi?</Text>{'\n\n'}
+          <Text style={{ fontWeight: '700' }}>Qanday ishlaydi?</Text>{'\n\n'}
           1. Kodingizni do'stlaringizga yuboring{'\n'}
           2. Do'stingiz ilovaga ro'yxatdan o'tadi{'\n'}
           3. Birinchi safar buyurtma berganda — siz 10,000 so'm{'\n'}
@@ -121,7 +129,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.lg,
   },
-  heroEmoji: { fontSize: 56, marginBottom: spacing.sm },
+  heroEmoji: { marginBottom: spacing.sm },
   heroTitle: { ...typography.h1, color: colors.accent, textAlign: 'center' },
   heroSubtitle: {
     ...typography.body,
@@ -148,7 +156,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 4,
   },
-  copyIcon: { fontSize: 28 },
   statsRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
   statBox: {
     flex: 1,

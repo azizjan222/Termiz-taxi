@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 
 
+import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import { telegramStart, telegramVerifyCode } from '../src/api/driver';
 import { useDriverStore } from '../src/store/driver';
@@ -137,7 +138,7 @@ export default function LoginScreen() {
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Animated.View style={[styles.header, { opacity: fade, transform: [{ translateY: slide }] }]}>
-            <View style={styles.logoBox}><Text style={styles.logoEmoji}>🚕</Text></View>
+            <View style={styles.logoBox}><Icon name="taxi" size={40} color={colors.primary} /></View>
             <Text style={styles.title}>Sarix Go Driver</Text>
             <Text style={styles.subtitle}>Haydovchilar uchun ilova</Text>
           </Animated.View>
@@ -195,7 +196,7 @@ export default function LoginScreen() {
             ) : (
               <>
                 <Button
-                  title="📲 Telegram orqali kirish"
+                  title="Telegram orqali kirish"
                   onPress={startTelegram}
                   loading={loading}
                   variant="accent"
@@ -232,7 +233,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 100, height: 100, borderRadius: radius.lg, backgroundColor: colors.accent,
     alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md,
   },
-  logoEmoji: { fontSize: 56 },
   title: { ...typography.h1, color: colors.textOnPrimary },
   subtitle: { ...typography.body, color: colors.textOnPrimary, opacity: 0.8, marginTop: 4 },
   body: { flex: 1, justifyContent: 'center' },

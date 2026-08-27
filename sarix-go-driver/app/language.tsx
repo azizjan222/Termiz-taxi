@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { Icon } from '../src/components/Icon';
 import { SUPPORTED_LANGUAGES, changeLanguage, type SupportedLanguage } from '../src/i18n';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -37,7 +38,7 @@ export default function DriverLanguageScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <View style={styles.logoBox}>
-          <Text style={styles.logoEmoji}>🚕</Text>
+          <Icon name="taxi" size={48} color={colors.primary} style={styles.logoEmoji} />
         </View>
         <Text style={styles.title}>Tilni tanlang</Text>
         <Text style={styles.subtitle}>Выберите язык · Choose a language</Text>

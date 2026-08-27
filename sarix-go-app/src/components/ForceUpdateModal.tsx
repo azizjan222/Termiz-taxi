@@ -6,6 +6,7 @@ import {
 import { typography, spacing, radius } from '../theme';
 import { useThemeStore } from '../store/theme';
 import type { ThemeColors } from '../theme/colors-themed';
+import { Icon, IconText } from './Icon';
 
 interface Props {
   visible: boolean;
@@ -20,7 +21,7 @@ export const ForceUpdateModal: React.FC<Props> = ({ visible, playUrl, message })
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.container}>
         <View style={styles.content}>
-          <Text style={styles.emoji}>🔄</Text>
+          <Icon name="refresh" size={56} color={colors.primary} style={styles.emoji} />
           <Text style={styles.title}>Yangilanish kerak</Text>
           <Text style={styles.message}>
             {message || "Iltimos, ilovani yangi versiyaga yangilang. Eski versiya ishlamaydi."}
@@ -30,7 +31,14 @@ export const ForceUpdateModal: React.FC<Props> = ({ visible, playUrl, message })
             onPress={() => Linking.openURL(playUrl)}
             activeOpacity={0.85}
           >
-            <Text style={styles.buttonText}>📱 Play Market'da yangilash</Text>
+            <IconText
+              name="install"
+              size={16}
+              color={colors.textOnPrimary}
+              textStyle={[styles.buttonText, { flex: 0 }]}
+            >
+              Play Market'da yangilash
+            </IconText>
           </TouchableOpacity>
         </View>
       </View>
