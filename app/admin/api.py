@@ -1,4 +1,5 @@
 """Admin panel JSON API endpoints."""
+import asyncio
 import json
 import logging
 import re
@@ -22,20 +23,91 @@ from app.models import (
 )
 from app.services import notify_i18n as nt
 from app.services.driver_pdf import build_driver_pdf
-from app.services.push import check_push_receipts, send_push, send_push_bulk
+from app.services.push import (
+    check_push_receipts,
+    send_push,
+    send_push_bulk_stats,
+)
+from app.services.push_report import (
+    pending_telegram_keys,
+    reached_by_push,
+    summarize_broadcast,
+)
 from app.services.rewards import effective_commission
 from app.utils.timefmt import local_day_start_utc, local_day_str, local_month_start_utc
 
 
-def _recipient_language(session, recipient_type: str, recipient_id: int) -> str:
-    """Look up a push recipient's chosen language (uz fallback)."""
-    if recipient_type == "driver":
-        r = session.query(Driver).filter_by(id=recipient_id).first()
-    else:
-        r = session.query(User).filter_by(id=recipient_id).first()
-    return (r.language if r and r.language else "uz")
-
 logger = logging.getLogger(__name__)
+
+
+# Telegram is rate-limited to ~30 messages/second, so a broadcast to a large audience
+# takes longer than a browser (or the proxy in front of it) is willing to wait. Up to this
+# many recipients the admin gets exact counts in the response; beyond it the fan-out
+# finishes in the background and the outcome is readable on the push-log page.
+_TELEGRAM_SYNC_LIMIT = 300
+
+# Hold strong references: a bare asyncio task can be garbage-collected mid-flight.
+_background_tasks = set()
+
+
+async def _telegram_fanout(items: list, *, log: bool = True) -> dict:
+    """Send an admin broadcast over the Telegram bot and record every outcome.
+
+    `items` are dicts with {recipient_type, recipient_id, telegram_id, title, body}.
+    Kept lazily imported and fully guarded so a deployment running the API without the bot
+    dependency still serves the admin panel (and still sends push) instead of erroring.
+
+    Outcomes go to ``notification_log`` so the /admin/push-log page shows Telegram
+    deliveries too — the only way a backgrounded broadcast is observable at all.
+    """
+    result = {"sent": 0, "failed": 0, "errors": {}, "sent_ids": []}
+    if not items:
+        return result
+
+    body = items[0]["body"]
+    try:
+        from app.bot.notifications import broadcast_telegram
+        result = await broadcast_telegram([it["telegram_id"] for it in items], body)
+    except Exception as e:
+        logger.error("Telegram broadcast failed: %s", e)
+        result = {"sent": 0, "failed": len(items), "sent_ids": [],
+                  "errors": {f"Telegram: {str(e)[:120]}": len(items)}}
+
+    if not log:
+        return result
+
+    # Own session: this may be running in the background, after the request's session was
+    # already closed.
+    delivered = set(result.get("sent_ids") or [])
+    reason = next(iter(result.get("errors") or {}), "Telegram yuborilmadi")
+    session = get_session()
+    try:
+        for it in items:
+            ok = it["telegram_id"] in delivered
+            entry = NotificationLog(
+                recipient_type=it["recipient_type"],
+                recipient_id=it["recipient_id"],
+                title=it["title"],
+                body=body,
+                data=json.dumps({"type": "admin", "channel": "telegram"}),
+            )
+            entry.status = "delivered" if ok else "failed"
+            entry.error = None if ok else reason
+            session.add(entry)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error("Could not log Telegram broadcast outcomes: %s", e)
+    finally:
+        session.close()
+    return result
+
+
+def _spawn_background(coro) -> None:
+    """Run `coro` after the response is returned, keeping a reference to it."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 @require_admin_api
@@ -218,9 +290,14 @@ async def api_push(request: web.Request) -> web.Response:
     if not message:
         return web.json_response({"error": "Xabar matni bo'sh"}, status=400)
 
+    # Reach bot-only recipients over Telegram (default on). Without this the broadcast is
+    # limited to people who installed the mobile app, which in practice was almost nobody.
+    use_telegram = data.get("telegram", True) is not False
+
     session = get_session()
-    sent_count = 0
     try:
+        # (recipient_type, id, language, push_token, telegram_id) per candidate.
+        candidates = []
         if target == "specific":
             if not recipient_id:
                 return web.json_response({"error": "recipient_id kerak"}, status=400)
@@ -234,42 +311,96 @@ async def api_push(request: web.Request) -> web.Response:
             except (TypeError, ValueError):
                 return web.json_response({"error": "recipient_id raqam bo'lishi kerak"},
                                          status=400)
-            lang = nt.norm_lang(_recipient_language(session, recipient_type, recipient_id_int))
-            ok = await send_push(
-                session,
-                recipient_type=recipient_type,
-                recipient_id=recipient_id_int,
-                title=nt.admin_title(lang),
-                body=message,
-                data={"type": "admin"},
-            )
-            sent_count = 1 if ok else 0
+            model = Driver if recipient_type == "driver" else User
+            kind = "driver" if recipient_type == "driver" else "user"
+            row = session.query(model).filter_by(id=recipient_id_int).first()
+            if not row:
+                label = "Haydovchi" if kind == "driver" else "Yo'lovchi"
+                return web.json_response(
+                    {"error": f"{label} #{recipient_id_int} topilmadi"}, status=404)
+            candidates.append((kind, row.id, row.language, row.push_token, row.telegram_id))
         else:
-            # Build a localized message per recipient and send them in batched Expo
-            # requests (instead of one-by-one) so a large broadcast reaches everyone at
-            # once instead of the last users getting it minutes late.
-            items = []
+            # Load every candidate, not only the ones holding a push token: a missing token
+            # is the normal case, and those recipients are still reachable over Telegram.
             if target in ("drivers", "all"):
-                for d in session.query(Driver).filter(Driver.push_token.isnot(None)).all():
-                    items.append({
-                        "recipient_type": "driver",
-                        "recipient_id": d.id,
-                        "token": d.push_token,
-                        "title": nt.admin_title(nt.norm_lang(d.language)),
-                        "body": message,
-                        "data": {"type": "admin"},
-                    })
+                for d in session.query(
+                    Driver.id, Driver.language, Driver.push_token, Driver.telegram_id
+                ).all():
+                    candidates.append(("driver", d.id, d.language, d.push_token, d.telegram_id))
             if target in ("passengers", "all"):
-                for u in session.query(User).filter(User.push_token.isnot(None)).all():
-                    items.append({
-                        "recipient_type": "user",
-                        "recipient_id": u.id,
-                        "token": u.push_token,
-                        "title": nt.admin_title(nt.norm_lang(u.language)),
-                        "body": message,
-                        "data": {"type": "admin"},
-                    })
-            sent_count = await send_push_bulk(session, items)
+                for u in session.query(
+                    User.id, User.language, User.push_token, User.telegram_id
+                ).all():
+                    candidates.append(("user", u.id, u.language, u.push_token, u.telegram_id))
+
+        # Build a localized message per recipient and send them in batched Expo requests
+        # (instead of one-by-one) so a large broadcast reaches everyone at once instead of
+        # the last users getting it minutes late.
+        items = []
+        telegram_of = {}      # (kind, id) -> telegram_id, for the fallback
+        titles = {}           # (kind, id) -> localized notification title
+        no_route = 0          # neither a push token nor a Telegram chat
+        for kind, rid, lang, token, tg_id in candidates:
+            key = (kind, rid)
+            titles[key] = nt.admin_title(nt.norm_lang(lang))
+            if tg_id:
+                telegram_of[key] = tg_id
+            if token:
+                items.append({
+                    "recipient_type": kind,
+                    "recipient_id": rid,
+                    "token": token,
+                    "title": titles[key],
+                    "body": message,
+                    "data": {"type": "admin"},
+                })
+            elif not tg_id:
+                no_route += 1
+
+        push = await send_push_bulk_stats(session, items) if items else {
+            "total": 0, "sent": 0, "failed": 0, "errors": {}, "failed_recipients": [],
+        }
+
+        # Telegram gets everyone push could not serve: recipients with no token at all,
+        # plus the ones Expo rejected — otherwise a bad FCM credential still means silence.
+        all_keys = [(kind, rid) for kind, rid, _lang, _tok, _tg in candidates]
+        reached = reached_by_push(
+            [(it["recipient_type"], it["recipient_id"]) for it in items], push
+        )
+
+        tg_items = []
+        if use_telegram:
+            for key in pending_telegram_keys(all_keys, reached, telegram_of):
+                tg_items.append({
+                    "recipient_type": key[0],
+                    "recipient_id": key[1],
+                    "telegram_id": telegram_of[key],
+                    "title": titles[key],
+                    "body": message,
+                })
+
+        queued = 0
+        if len(tg_items) > _TELEGRAM_SYNC_LIMIT:
+            # Too many to finish inside this request; report the push result now and let
+            # the bot work through the rest.
+            queued = len(tg_items)
+            _spawn_background(_telegram_fanout(tg_items))
+            telegram = {"sent": 0, "failed": 0, "errors": {}, "sent_ids": []}
+        else:
+            telegram = await _telegram_fanout(tg_items)
+
+        report = summarize_broadcast(
+            all_keys,
+            reached,
+            telegram_of,
+            telegram,
+            token_count=len(items),
+            telegram_attempted=len(tg_items),
+            queued=queued,
+            use_telegram=use_telegram,
+            no_route=no_route,
+            push_stats=push,
+        )
 
         add_admin_audit(
             session,
@@ -277,12 +408,22 @@ async def api_push(request: web.Request) -> web.Response:
             "push.send",
             target_type=target,
             target_id=recipient_id if target == "specific" else None,
-            details={"recipient_type": recipient_type, "sent_count": sent_count},
+            details={
+                "recipient_type": recipient_type,
+                "sent_count": report["total_sent"],
+                "push_sent": push["sent"],
+                "telegram_sent": telegram["sent"],
+                "telegram_queued": queued,
+                "recipients": len(candidates),
+                "unreached": report["unreached"],
+            },
         )
         session.commit()
         return web.json_response({
             "ok": True,
-            "detail": f"{sent_count} ta xabar yuborildi",
+            "level": report["level"],
+            "detail": report["detail"],
+            "stats": report["stats"],
         })
     finally:
         session.close()

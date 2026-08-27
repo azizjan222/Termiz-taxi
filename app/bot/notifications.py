@@ -2,10 +2,14 @@
 
 These let the mobile app tell the bot to post into the drivers group or notify the admin.
 """
+import asyncio
 import logging
+import time
+from collections import Counter
 from html import escape
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import Forbidden, RetryAfter
 
 from app.bot.state import ADMIN_ID, BOT_TOKEN
 
@@ -77,3 +81,91 @@ async def notify_admin_order_cancelled(driver_telegram_id, order_id, refunded):
         await bot.shutdown()
     except Exception as e:
         logger.error("Failed to notify admin about cancel: %s", e)
+
+
+async def broadcast_telegram(chat_ids, text: str, *, rate: int = 25) -> dict:
+    """Send one plain-text message to many Telegram chats.
+
+    Used as the FALLBACK for the admin broadcast. Push can only reach someone who has
+    opened the mobile app while logged in on a real device, so drivers and passengers who
+    joined through the bot have no push token at all and a push-only broadcast reached
+    literally nobody. Every driver has a ``telegram_id`` (the column is NOT NULL), so the
+    bot can always get the message through.
+
+    ``rate`` caps how many messages are started per second (Telegram's limit is ~30/s).
+
+    Returns ``{"sent", "failed", "errors": {reason: count}, "sent_ids": [...]}``.
+
+    Sent as plain text on purpose: the admin types this message freely, and an unescaped
+    "<" or "&" would make Telegram reject an HTML-parsed message for every recipient.
+    """
+    ids = [int(c) for c in dict.fromkeys(chat_ids) if c]  # de-duplicate, keep order
+    # `sent_ids` lets the caller attribute deliveries back to specific recipients, so a
+    # person who is both a driver and a passenger isn't reported as unreached.
+    result = {"sent": 0, "failed": 0, "errors": {}, "sent_ids": []}
+    if not ids or not text.strip() or not BOT_TOKEN:
+        if ids and not BOT_TOKEN:
+            result["failed"] = len(ids)
+            result["errors"] = {"BOT_TOKEN sozlanmagan": len(ids)}
+        return result
+
+    failures = Counter()
+    bot = Bot(token=BOT_TOKEN)
+
+    async def _send_one(chat_id):
+        """Deliver to one chat. Returns (chat_id_or_None, error_or_None)."""
+        try:
+            await bot.send_message(chat_id=chat_id, text=text)
+            return chat_id, None
+        except Forbidden:
+            # User blocked the bot or never started it — expected, not a bug.
+            return None, "Bot bloklangan / start bosilmagan"
+        except RetryAfter as e:
+            # Respect the exact backoff Telegram asks for, then retry this chat once.
+            await asyncio.sleep(float(getattr(e, "retry_after", 1)) + 0.5)
+            try:
+                await bot.send_message(chat_id=chat_id, text=text)
+                return chat_id, None
+            except Exception as e2:
+                return None, str(e2)[:120] or "Unknown"
+        except Exception as e:
+            return None, str(e)[:120] or "Unknown"
+
+    try:
+        await bot.initialize()
+        # Telegram allows roughly 30 messages/second to distinct chats. Send each block
+        # concurrently but start at most one block per second: sending strictly one at a
+        # time is latency-bound (~10/s), which turns a few thousand recipients into a
+        # multi-minute request the admin's browser gives up on.
+        for start in range(0, len(ids), rate):
+            block = ids[start:start + rate]
+            began = time.monotonic()
+            for chat_id, error in await asyncio.gather(*(_send_one(c) for c in block)):
+                if error is None:
+                    result["sent"] += 1
+                    result["sent_ids"].append(chat_id)
+                else:
+                    result["failed"] += 1
+                    failures[error] += 1
+            if start + rate < len(ids):
+                spent = time.monotonic() - began
+                if spent < 1.0:
+                    await asyncio.sleep(1.0 - spent)
+    except Exception as e:
+        logger.error("Telegram broadcast could not start: %s", e)
+        remaining = len(ids) - result["sent"] - result["failed"]
+        if remaining > 0:
+            result["failed"] += remaining
+            failures[str(e)[:120] or "Unknown"] += remaining
+    finally:
+        try:
+            await bot.shutdown()
+        except Exception:
+            pass
+
+    result["errors"] = dict(failures)
+    logger.info(
+        "Telegram broadcast: %d sent, %d failed (of %d chats)",
+        result["sent"], result["failed"], len(ids),
+    )
+    return result

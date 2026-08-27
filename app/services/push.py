@@ -7,6 +7,7 @@ with an Uzbek fallback.
 import asyncio
 import json
 import logging
+from collections import Counter
 from typing import Optional
 
 import aiohttp
@@ -247,25 +248,30 @@ async def _expo_send_batch(messages: list) -> tuple:
         return [], str(e)
 
 
-async def send_push_bulk(
+async def send_push_bulk_stats(
     session: Session,
     items: list,
     *,
     sound: str = "default",
     channel_id: str = "orders_v2",
-) -> int:
-    """Send many (possibly DIFFERENT) messages in batched Expo requests.
+) -> dict:
+    """Same as :func:`send_push_bulk` but reports WHY sends failed.
 
-    `items` is a list of dicts: {recipient_type, recipient_id, token, title, body, data}.
-    Each item may carry its own already-localized title/body. Logs every send and clears
-    DeviceNotRegistered tokens. Returns how many Expo accepted. Used for the admin
-    broadcast and the new-order fan-out so the last recipient isn't alerted late.
+    Returns ``{"total", "sent", "failed", "errors": {reason: count},
+    "failed_recipients": [(recipient_type, id), ...]}``.
+
+    The plain count alone is not actionable: an admin broadcast that reaches nobody
+    reports "0" whether the recipients had no token, the tokens were malformed, or Expo
+    refused the whole request because the FCM credential is missing. The caller needs the
+    reasons to tell the operator what to actually fix.
     """
     def _clear_token(item):
         model = Driver if item["recipient_type"] == "driver" else User
         dead = session.query(model).filter_by(id=item["recipient_id"]).first()
         if dead:
             dead.push_token = None
+
+    failures = Counter()
 
     def _log(item, *, status, error=None, ticket_id=None):
         entry = NotificationLog(
@@ -279,6 +285,8 @@ async def send_push_bulk(
         entry.error = error
         entry.ticket_id = ticket_id
         session.add(entry)
+        if status == "failed":
+            failures[error or "Unknown"] += 1
 
     def _message(item):
         return {
@@ -291,12 +299,17 @@ async def send_push_bulk(
             "data": item.get("data") or {},
         }
 
+    # Who Expo would not take, so the caller can reach them another way (the admin
+    # broadcast falls back to Telegram) instead of leaving them silently uninformed.
+    failed_recipients = []
+
     def _record(item, ticket, fallback_error):
         """Log one recipient's outcome. Returns True when Expo accepted the message."""
         if isinstance(ticket, dict) and ticket.get("status") == "ok":
             # See check_push_receipts(): acceptance is not delivery.
             _log(item, status="sent", ticket_id=str(ticket["id"]) if ticket.get("id") else None)
             return True
+        failed_recipients.append((item["recipient_type"], item["recipient_id"]))
         if isinstance(ticket, dict):
             detail = (ticket.get("details") or {}).get("error")
             _log(item, status="failed", error=ticket.get("message") or detail or "Unknown")
@@ -317,6 +330,7 @@ async def send_push_bulk(
         else:
             _log(it, status="failed", error="Token Expo push token formatida emas")
             _clear_token(it)
+            failed_recipients.append((it["recipient_type"], it["recipient_id"]))
     if len(usable) != len(items):
         logger.warning(
             "Dropped %d push recipient(s) with a malformed token", len(items) - len(usable)
@@ -344,7 +358,33 @@ async def send_push_bulk(
                 sent += 1
         session.commit()
 
-    return sent
+    return {
+        "total": len(items),
+        "sent": sent,
+        "failed": len(items) - sent,
+        "errors": dict(failures),
+        "failed_recipients": failed_recipients,
+    }
+
+
+async def send_push_bulk(
+    session: Session,
+    items: list,
+    *,
+    sound: str = "default",
+    channel_id: str = "orders_v2",
+) -> int:
+    """Send many (possibly DIFFERENT) messages in batched Expo requests.
+
+    `items` is a list of dicts: {recipient_type, recipient_id, token, title, body, data}.
+    Each item may carry its own already-localized title/body. Logs every send and clears
+    DeviceNotRegistered tokens. Returns how many Expo accepted. Used for the admin
+    broadcast and the new-order fan-out so the last recipient isn't alerted late.
+    """
+    stats = await send_push_bulk_stats(
+        session, items, sound=sound, channel_id=channel_id
+    )
+    return stats["sent"]
 
 
 async def check_push_receipts(session: Session, limit: int = 300) -> dict:
