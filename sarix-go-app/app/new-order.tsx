@@ -20,6 +20,7 @@ import {
   getPriceQuote,
   type PriceQuote,
 } from '../src/api/orders';
+import { Icon, IconText } from '../src/components/Icon';
 import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -144,7 +145,7 @@ export default function NewOrderScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>Buyurtma</Text>
         <View style={{ width: 40 }} />
@@ -174,13 +175,15 @@ export default function NewOrderScreen() {
 
             {/* Swap (visual only — no dedicated swap handler in the store) */}
             <View style={styles.swapBtn}>
-              <Text style={styles.swapIcon}>↕</Text>
+              <Icon name="swap" size={18} color={colors.primary} />
             </View>
           </View>
         </View>
 
         {/* Step 3: Ketadigan vaqti */}
-        <Text style={styles.sectionTitle}>🕒  3. Ketadigan vaqti</Text>
+        <IconText name="clock" size={15} color={colors.text} textStyle={styles.sectionTitle}>
+          3. Ketadigan vaqti
+        </IconText>
         <View style={styles.chipRow}>
           {TIME_OPTIONS.map((opt) => {
             const selected = orderStore.departureTime === opt;
@@ -200,7 +203,9 @@ export default function NewOrderScreen() {
         </View>
 
         {/* Step 4: Yo'lovchi soni / Bo'sh mashina */}
-        <Text style={styles.sectionTitle}>👤  4. Yo'lovchi soni</Text>
+        <IconText name="profile" size={15} color={colors.text} textStyle={styles.sectionTitle}>
+          4. Yo'lovchi soni
+        </IconText>
         <View style={styles.chipRow}>
           {[1, 2, 3, 4].map((n) => {
             const selected = !isFullCar && persons === n;
@@ -217,7 +222,14 @@ export default function NewOrderScreen() {
                     end={{ x: 1, y: 1 }}
                     style={styles.personChipSelected}
                   >
-                    <Text style={styles.personChipTextSelected}>👤 {n}</Text>
+                    <IconText
+                      name="profile"
+                      size={13}
+                      color={colors.textOnPrimary}
+                      textStyle={[styles.personChipTextSelected, { flex: 0 }]}
+                    >
+                      {n}
+                    </IconText>
                   </LinearGradient>
                 </TouchableOpacity>
               );
@@ -229,7 +241,14 @@ export default function NewOrderScreen() {
                 onPress={onPress}
                 activeOpacity={0.85}
               >
-                <Text style={styles.personChipText}>👤 {n}</Text>
+                <IconText
+                  name="profile"
+                  size={13}
+                  color={colors.textSecondary}
+                  textStyle={[styles.personChipText, { flex: 0 }]}
+                >
+                  {n}
+                </IconText>
               </TouchableOpacity>
             );
           })}
@@ -250,7 +269,14 @@ export default function NewOrderScreen() {
               end={{ x: 1, y: 1 }}
               style={styles.fullCarChipSelected}
             >
-              <Text style={styles.fullCarChipTextSelected}>🚗  {t('tariff.fullCar')}</Text>
+              <IconText
+                name="car"
+                size={13}
+                color={colors.textOnPrimary}
+                textStyle={[styles.fullCarChipTextSelected, { flex: 0 }]}
+              >
+                {t('tariff.fullCar')}
+              </IconText>
               <Text style={styles.fullCarHintSelected}>{t('tariff.fullCarHint')}</Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -263,7 +289,14 @@ export default function NewOrderScreen() {
             }}
             activeOpacity={0.85}
           >
-            <Text style={styles.fullCarChipText}>🚗  {t('tariff.fullCar')}</Text>
+            <IconText
+              name="car"
+              size={13}
+              color={colors.textSecondary}
+              textStyle={[styles.fullCarChipText, { flex: 0 }]}
+            >
+              {t('tariff.fullCar')}
+            </IconText>
             <Text style={styles.fullCarHint}>{t('tariff.fullCarHint')}</Text>
           </TouchableOpacity>
         )}
@@ -271,7 +304,7 @@ export default function NewOrderScreen() {
         {/* Price preview (or "route unavailable" banner) */}
         {routeUnavailable ? (
           <View style={styles.unavailableBar}>
-            <Text style={styles.unavailableIcon}>🚫</Text>
+            <Icon name="blocked" size={18} color={colors.error} style={styles.unavailableIcon} />
             <View style={{ flex: 1 }}>
               <Text style={styles.unavailableTitle}>Bu yoʻnalish hozircha mavjud emas</Text>
               <Text style={styles.unavailableSub}>
@@ -304,7 +337,7 @@ export default function NewOrderScreen() {
             onPress={() => setPaymentSheet(true)}
             activeOpacity={0.85}
           >
-            <Text style={styles.secondaryIcon}>💵</Text>
+            <Icon name="cash" size={18} color={colors.textSecondary} style={styles.secondaryIcon} />
             <View style={{ flex: 1 }}>
               <Text style={styles.secondaryLabel}>To'lov</Text>
               <Text style={styles.secondaryValue}>Naqd</Text>
@@ -316,7 +349,7 @@ export default function NewOrderScreen() {
             onPress={() => setOptionsSheet(true)}
             activeOpacity={0.85}
           >
-            <Text style={styles.secondaryIcon}>⚙️</Text>
+            <Icon name="settings" size={18} color={colors.textSecondary} style={styles.secondaryIcon} />
             <View style={{ flex: 1 }}>
               <Text style={styles.secondaryLabel}>Qo'shimcha</Text>
               <Text style={styles.secondaryValue}>Sozlamalar</Text>
@@ -344,7 +377,7 @@ export default function NewOrderScreen() {
             style={styles.ctaBtn}
           >
             <Text style={styles.ctaText}>
-              {submitting === 'find' ? 'Yuborilmoqda...' : '🚖  Buyurtma berish'}
+              {submitting === 'find' ? 'Yuborilmoqda...' : 'Buyurtma berish'}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -374,13 +407,13 @@ export default function NewOrderScreen() {
               }}
               activeOpacity={0.85}
             >
-              <Text style={styles.payOptionIcon}>💵</Text>
+              <Icon name="cash" size={20} color={colors.text} style={styles.payOptionIcon} />
               <Text style={styles.payOptionText}>Naqd</Text>
-              <Text style={styles.payOptionCheck}>✓</Text>
+              <Icon name="check" size={16} color={colors.primary} />
             </TouchableOpacity>
 
             <View style={styles.payOptionDisabled}>
-              <Text style={styles.payOptionIcon}>💳</Text>
+              <Icon name="card" size={20} color={colors.text} style={styles.payOptionIcon} />
               <Text style={styles.payOptionTextDisabled}>Karta</Text>
             </View>
             <Text style={styles.sheetNote}>
@@ -483,7 +516,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   title: { ...typography.h3, color: colors.text },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
 
@@ -531,7 +563,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginLeft: spacing.md,
   },
-  swapIcon: { fontSize: 22, color: colors.primary, fontWeight: '700' },
 
   // Section titles
   sectionTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.md },
@@ -706,7 +737,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   payOptionIcon: { fontSize: 22, marginRight: spacing.md },
   payOptionText: { ...typography.bodyBold, color: colors.text, flex: 1 },
   payOptionTextDisabled: { ...typography.bodyBold, color: colors.textSecondary, flex: 1 },
-  payOptionCheck: { ...typography.h3, color: colors.success },
   optLabel: {
     ...typography.caption,
     color: colors.textSecondary,

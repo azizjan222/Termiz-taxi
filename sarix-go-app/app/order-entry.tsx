@@ -9,6 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
+import { Icon } from '../src/components/Icon';
 import YandexMap, { YandexMapHandle } from '../src/components/YandexMap';
 import { reverseGeocode } from '../src/services/geocoding';
 import { resolveRouteCity } from '../src/services/cityResolver';
@@ -452,20 +453,20 @@ export default function OrderEntryScreen() {
         {/* Center pin */}
         <View pointerEvents="none" style={styles.pinContainer}>
           <View style={[styles.pinIcon, isDest && { backgroundColor: colors.primary }]}>
-            <Text style={styles.pinEmoji}>{isDest ? '🏁' : '🧍'}</Text>
+            <Icon name={isDest ? 'flag' : 'person'} size={30} color={colors.primary} />
           </View>
           <View style={styles.pinStick} />
         </View>
 
         {/* Back + recenter */}
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.recenterBtn} onPress={detect} activeOpacity={0.8}>
           {detecting ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <Text style={styles.recenterIcon}>➤</Text>
+            <Icon name="send" size={18} color={colors.primary} />
           )}
         </TouchableOpacity>
       </View>
@@ -474,7 +475,7 @@ export default function OrderEntryScreen() {
       <View style={styles.sheet}>
         <View style={styles.sheetHandle} />
         <View style={styles.sheetHeader}>
-          <Text style={styles.sheetLogo}>{isParcel ? '📦' : '🚕'}</Text>
+          <Icon name={isParcel ? 'parcel' : 'taxi'} size={22} color={colors.primary} />
           <Text style={styles.sheetTitle}>
             {isDest ? (isParcel ? 'Yetkazish manzili' : 'Qayerga borasiz?') : isParcel ? 'Pochta' : 'Taksi'}
           </Text>
@@ -484,7 +485,7 @@ export default function OrderEntryScreen() {
           <>
             {/* Destination map mode: show the chosen address and a confirm button */}
             <View style={styles.destPreview}>
-              <Text style={styles.destPreviewIcon}>🏁</Text>
+              <Icon name="flag" size={14} color={colors.textSecondary} style={styles.destPreviewIcon} />
               <Text style={styles.destPreviewText} numberOfLines={2}>
                 {address || 'Manzilni belgilash uchun xaritani suring'}
               </Text>
@@ -517,7 +518,7 @@ export default function OrderEntryScreen() {
                 activeOpacity={0.7}
               >
                 <View style={styles.quickIcon}>
-                  <Text>📍</Text>
+                  <Icon name="location" size={16} color={colors.textSecondary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.quickTitle}>{d}</Text>
@@ -561,7 +562,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 3,
     borderColor: colors.textOnPrimary,
   },
-  pinEmoji: { fontSize: 24 },
   pinStick: { width: 3, height: 22, backgroundColor: '#222', marginTop: -2 },
   backBtn: {
     position: 'absolute',
@@ -579,7 +579,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
-  backIcon: { fontSize: 24, color: colors.text },
   recenterBtn: {
     position: 'absolute',
     right: spacing.md,
@@ -619,7 +618,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.md,
   },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
-  sheetLogo: { fontSize: 26, marginRight: spacing.sm },
   sheetTitle: { ...typography.h2, color: colors.text },
   whereToBtn: {
     flexDirection: 'row',

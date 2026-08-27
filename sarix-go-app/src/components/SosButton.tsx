@@ -10,6 +10,7 @@ import { triggerSos } from '../api/sos';
 import { typography, spacing, radius } from '../theme';
 import { useThemeStore } from '../store/theme';
 import type { ThemeColors } from '../theme/colors-themed';
+import { Icon } from './Icon';
 
 interface Props {
   orderId?: number;
@@ -72,7 +73,7 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
         onPress={handlePress}
         activeOpacity={0.85}
       >
-        <Text style={styles.icon}>🚨</Text>
+        <Icon name="sos" size={26} color="#FFFFFF" />
         <Text style={styles.text}>SOS</Text>
       </TouchableOpacity>
 
@@ -82,7 +83,7 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View style={styles.modalContent}>
-            <Text style={styles.modalEmoji}>🚨</Text>
+            <Icon name="sos" size={56} color={colors.error} style={styles.modalEmoji} />
             <Text style={styles.modalTitle}>SOS yuborish</Text>
             <Text style={styles.modalSubtitle}>
               Adminga zudlik bilan xabar yuboriladi.
@@ -109,7 +110,7 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
                 style={{ flex: 1 }}
               />
               <Button
-                title="🚨 YUBORISH"
+                title="YUBORISH"
                 onPress={sendSos}
                 loading={loading}
                 fullWidth={false}
@@ -138,7 +139,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
-  icon: { fontSize: 22 },
   text: { color: colors.textOnPrimary, fontWeight: '900', fontSize: 11, marginTop: 2 },
   modalContainer: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
   modalContent: {
@@ -147,7 +147,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
   },
-  modalEmoji: { fontSize: 56, textAlign: 'center', marginBottom: spacing.sm },
+  modalEmoji: { alignSelf: 'center', marginBottom: spacing.sm },
   modalTitle: { ...typography.h2, color: colors.error, textAlign: 'center' },
   modalSubtitle: {
     ...typography.body,

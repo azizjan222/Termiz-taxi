@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, IconText } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import { Input } from '../src/components/Input';
 import { createOrder, getPriceQuote, type PriceQuote } from '../src/api/orders';
@@ -120,7 +121,7 @@ export default function ConfirmOrderScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>{t('order.summary')}</Text>
         <View style={{ width: 40 }} />
@@ -183,7 +184,9 @@ export default function ConfirmOrderScreen() {
         <View style={[styles.card, { marginTop: spacing.md }]}>
           <Text style={styles.cardTitle}>{t('order.paymentMethod')}</Text>
           <View style={[styles.row, { paddingVertical: spacing.sm }]}>
-            <Text style={styles.label}>💵 {t('order.cash')}</Text>
+            <IconText name="cash" size={12} color={colors.textSecondary} textStyle={styles.label}>
+              {t('order.cash')}
+            </IconText>
             <View style={styles.radio}>
               <View style={styles.radioInner} />
             </View>
@@ -225,7 +228,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   title: { ...typography.h3, color: colors.primary },
   scroll: { padding: spacing.lg },
   card: {

@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import Constants from 'expo-constants';
 
+import { Icon, type IconName } from '../src/components/Icon';
 import { listCities } from '../src/api/orders';
 import { listAddresses, type SavedAddress } from '../src/api/addresses';
 import { suggestAddress, geocodeAddress } from '../src/services/geocoding';
@@ -202,11 +203,11 @@ export default function RouteSelectScreen() {
     }
   }
 
-  const getSuggestIcon = (subtitle: string) => {
+  const getSuggestIcon = (subtitle: string): IconName => {
     const s = subtitle.toLowerCase();
-    if (s.includes('avtovokzal') || s.includes('avtostan') || s.includes('bekat')) return '🚌';
-    if (s.includes('stansiya') || s.includes('temir')) return '🎯';
-    return '📍';
+    if (s.includes('avtovokzal') || s.includes('avtostan') || s.includes('bekat')) return 'bus';
+    if (s.includes('stansiya') || s.includes('temir')) return 'target';
+    return 'location';
   };
 
   const renderHeader = () => (
@@ -220,7 +221,7 @@ export default function RouteSelectScreen() {
           activeOpacity={0.9}
         >
           <View style={[styles.fieldIconTile, { backgroundColor: '#E0E7FF' }]}>
-            <Text style={styles.fieldIconText}>🏃</Text>
+            <Icon name="run" size={16} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.fieldCaption}>{fromCaption}</Text>
@@ -253,7 +254,7 @@ export default function RouteSelectScreen() {
           activeOpacity={0.9}
         >
           <View style={[styles.fieldIconTile, { backgroundColor: '#E0E7FF' }]}>
-            <Text style={styles.fieldIconText}>🏁</Text>
+            <Icon name="flag" size={16} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.fieldCaption}>{toCaption}</Text>
@@ -289,9 +290,11 @@ export default function RouteSelectScreen() {
               activeOpacity={0.7}
             >
               <View style={styles.savedIconTile}>
-                <Text style={styles.savedIconText}>
-                  {(a.label || '').toLowerCase().includes('uy') ? '🏠' : '📌'}
-                </Text>
+                <Icon
+                  name={(a.label || '').toLowerCase().includes('uy') ? 'home' : 'pin'}
+                  size={16}
+                  color={colors.primary}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.savedLabel} numberOfLines={1}>
@@ -341,7 +344,7 @@ export default function RouteSelectScreen() {
                 activeOpacity={0.7}
               >
                 <View style={styles.resultIconWrap}>
-                  <Text style={styles.resultIcon}>📍</Text>
+                  <Icon name="location" size={18} color={colors.textSecondary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.resultTitle}>{item.name}</Text>
@@ -359,9 +362,17 @@ export default function RouteSelectScreen() {
                 activeOpacity={0.7}
               >
                 <View style={styles.resultIconWrap}>
-                  <Text style={styles.resultIcon}>
-                    {item.place.group === 'place' ? '🎯' : item.place.group === 'town' ? '🏙' : '🏘'}
-                  </Text>
+                  <Icon
+                    name={
+                      item.place.group === 'place'
+                        ? 'target'
+                        : item.place.group === 'town'
+                        ? 'city'
+                        : 'district'
+                    }
+                    size={18}
+                    color={colors.textSecondary}
+                  />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.resultTitle}>{item.place.name}</Text>
@@ -383,7 +394,11 @@ export default function RouteSelectScreen() {
               activeOpacity={0.7}
             >
               <View style={styles.resultIconWrap}>
-                <Text style={styles.resultIcon}>{getSuggestIcon(item.item.subtitle)}</Text>
+                <Icon
+                  name={getSuggestIcon(item.item.subtitle)}
+                  size={18}
+                  color={colors.textSecondary}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.resultTitle}>
@@ -514,7 +529,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  fieldIconText: { fontSize: 22 },
   fieldCaption: { ...typography.caption, color: colors.textSecondary, marginBottom: 2 },
   fieldValue: { ...typography.bodyBold, color: colors.text, fontSize: 16 },
   fieldPlaceholder: { color: colors.textMuted, fontWeight: '400' },
@@ -557,7 +571,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  savedIconText: { fontSize: 16 },
   savedLabel: { ...typography.bodyBold, color: colors.text },
   savedSub: { ...typography.caption, color: colors.textSecondary, marginTop: 1 },
 
@@ -602,7 +615,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  resultIcon: { fontSize: 20 },
+
   resultTitle: { ...typography.bodyBold, color: colors.text, fontSize: 15 },
   resultHighlight: { color: colors.text },
   resultSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
