@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { getDriverStats, type DriverStats, type StatsPeriod } from '../src/api/stats';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius, gradients } from '../src/theme';
@@ -73,9 +74,12 @@ export default function StatsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>📊 {t('stats.title')}</Text>
+        <View style={styles.titleRow}>
+          <Icon name="chart" size={20} color={colors.text} />
+          <Text style={styles.title}>{t('stats.title')}</Text>
+        </View>
         <View style={{ width: 40 }} />
       </View>
 
@@ -125,12 +129,12 @@ export default function StatsScreen() {
             <View style={styles.heroChips}>
               <View style={styles.heroChip}>
                 <Text style={styles.heroChipText}>
-                  💰 {t('stats.totalRevenue')}: {formatPrice(stats.total_revenue)}
+                  {t('stats.totalRevenue')}: {formatPrice(stats.total_revenue)}
                 </Text>
               </View>
               <View style={styles.heroChip}>
                 <Text style={styles.heroChipText}>
-                  💸 {t('stats.commission')}: {formatPrice(stats.total_commission)}
+                  {t('stats.commission')}: {formatPrice(stats.total_commission)}
                 </Text>
               </View>
             </View>
@@ -155,7 +159,7 @@ export default function StatsScreen() {
           <View style={styles.grid}>
             <View style={styles.gridItem}>
               <View style={[styles.gridIcon, { backgroundColor: colors.successLight }]}>
-                <Text style={styles.gridIconText}>✅</Text>
+                <Icon name="accepted" size={20} color={colors.success} />
               </View>
               <Text style={styles.gridValue}>{stats.completed_orders}</Text>
               <Text style={styles.gridLabel}>{t('stats.completed')}</Text>
@@ -163,7 +167,7 @@ export default function StatsScreen() {
 
             <View style={styles.gridItem}>
               <View style={[styles.gridIcon, { backgroundColor: colors.errorLight }]}>
-                <Text style={styles.gridIconText}>❌</Text>
+                <Icon name="cancelled" size={20} color={colors.error} />
               </View>
               <Text style={[styles.gridValue, { color: colors.error }]}>{stats.cancelled_orders}</Text>
               <Text style={styles.gridLabel}>{t('stats.cancelled')}</Text>
@@ -171,7 +175,7 @@ export default function StatsScreen() {
 
             <View style={styles.gridItem}>
               <View style={[styles.gridIcon, { backgroundColor: colors.warningLight }]}>
-                <Text style={styles.gridIconText}>⭐</Text>
+                <Icon name="star" size={20} color={colors.accent} />
               </View>
               {/* TEMP: ratings not in use yet — fixed 4.0. Restore stats.rating.toFixed(1) later. */}
               <Text style={[styles.gridValue, { color: colors.warning }]}>4.0</Text>
@@ -180,7 +184,7 @@ export default function StatsScreen() {
 
             <View style={styles.gridItem}>
               <View style={[styles.gridIcon, { backgroundColor: colors.infoLight }]}>
-                <Text style={styles.gridIconText}>💰</Text>
+                <Icon name="money" size={20} color={colors.primary} />
               </View>
               <Text style={styles.gridValue}>{formatPrice(stats.current_balance)}</Text>
               <Text style={styles.gridLabel}>{t('stats.balance')}</Text>
@@ -190,7 +194,9 @@ export default function StatsScreen() {
           {/* Daily chart */}
           {stats.daily.length > 0 && (
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>📈 {t('stats.dailyChart')}</Text>
+              <IconText name="chartUp" size={15} color={colors.text} textStyle={styles.cardTitle}>
+                {t('stats.dailyChart')}
+              </IconText>
               <View style={styles.chart}>
                 {stats.daily.map((d) => {
                   const heightPct = (d.earnings / maxDaily) * 100;
@@ -215,7 +221,9 @@ export default function StatsScreen() {
           {/* Top routes */}
           {stats.top_routes.length > 0 && (
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>🏆 {t('stats.topRoutes')}</Text>
+              <IconText name="trophy" size={15} color={colors.text} textStyle={styles.cardTitle}>
+                {t('stats.topRoutes')}
+              </IconText>
               {stats.top_routes.map((r, i) => (
                 <View
                   key={i}
@@ -233,16 +241,18 @@ export default function StatsScreen() {
 
           {/* Service breakdown */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>🚦 {t('stats.services')}</Text>
+            <IconText name="traffic" size={15} color={colors.text} textStyle={styles.cardTitle}>
+              {t('stats.services')}
+            </IconText>
             <View style={styles.serviceRow}>
               {[
-                { emoji: '🚕', count: stats.service_breakdown.taxi, label: t('more.taxi') },
-                { emoji: '📦', count: stats.service_breakdown.parcel, label: t('more.parcel') },
-                { emoji: '🚗', count: stats.service_breakdown.full_car, label: t('more.emptyCar') },
+                { icon: 'taxi' as IconName, count: stats.service_breakdown.taxi, label: t('more.taxi') },
+                { icon: 'parcel' as IconName, count: stats.service_breakdown.parcel, label: t('more.parcel') },
+                { icon: 'car' as IconName, count: stats.service_breakdown.full_car, label: t('more.emptyCar') },
               ].map((s) => (
                 <View key={s.label} style={styles.serviceItem}>
                   <View style={styles.serviceCircle}>
-                    <Text style={styles.serviceEmoji}>{s.emoji}</Text>
+                    <Icon name={s.icon} size={22} color={colors.primary} />
                   </View>
                   <Text style={styles.serviceCount}>{s.count}</Text>
                   <Text style={styles.serviceLabel}>{s.label}</Text>
@@ -282,7 +292,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.surface,
   },
-  backIcon: { fontSize: 24, color: colors.primary },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { ...typography.h3, color: colors.text, fontWeight: '800' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
@@ -409,7 +419,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
-  gridIconText: { fontSize: 20 },
   gridValue: { ...typography.h2, color: colors.primary },
   gridLabel: { ...typography.small, color: colors.textSecondary, marginTop: 4, textAlign: 'center' },
 
@@ -453,7 +462,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
-  serviceEmoji: { fontSize: 26 },
   serviceCount: { ...typography.h3, color: colors.primary, fontWeight: '800' },
   serviceLabel: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
 });
