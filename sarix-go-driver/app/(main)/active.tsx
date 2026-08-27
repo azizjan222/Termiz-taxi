@@ -51,7 +51,7 @@ export default function ActiveOrdersScreen() {
             name="active"
             size={11}
             color={colors.warning}
-            textStyle={[styles.statusBadgeText, { flex: 0 }]}
+            textStyle={styles.statusBadgeText}
           >
             {t('more.onTheWay')}
           </IconText>

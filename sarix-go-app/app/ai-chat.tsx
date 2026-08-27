@@ -195,7 +195,7 @@ export default function AiChatScreen() {
             name="profile"
             size={13}
             color={colors.primary}
-            textStyle={[styles.needHumanText, { flex: 0 }]}
+            textStyle={styles.needHumanText}
           >
             {t('ai.needHuman')}
           </IconText>

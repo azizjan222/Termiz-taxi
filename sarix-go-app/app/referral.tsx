@@ -90,7 +90,7 @@ export default function ReferralScreen() {
             name="upload"
             size={16}
             color={colors.textOnPrimary}
-            textStyle={[styles.shareBtnText, { flex: 0 }]}
+            textStyle={styles.shareBtnText}
           >
             Ulashish
           </IconText>

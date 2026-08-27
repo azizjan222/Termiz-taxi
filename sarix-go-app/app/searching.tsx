@@ -266,7 +266,7 @@ export default function SearchingScreen() {
           name="check"
           size={13}
           color={colors.success}
-          textStyle={[styles.sentLabel, { flex: 0 }]}
+          textStyle={styles.sentLabel}
           style={styles.sentLabelRow}
         >
           Zakas yuborildi

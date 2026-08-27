@@ -456,7 +456,7 @@ export default function OrderDetailScreen() {
                   name="location"
                   size={12}
                   color="#FFFFFF"
-                  textStyle={[styles.mapDistanceText, { flex: 0 }]}
+                  textStyle={styles.mapDistanceText}
                 >
                   {mapDistanceText}
                 </IconText>
@@ -657,7 +657,7 @@ export default function OrderDetailScreen() {
                   name="check"
                   size={16}
                   color="#0E1B3D"
-                  textStyle={[styles.completeBtnText, { flex: 0 }]}
+                  textStyle={styles.completeBtnText}
                 >
                   {t('order.complete')}
                 </IconText>
@@ -687,7 +687,7 @@ export default function OrderDetailScreen() {
                   name="check"
                   size={16}
                   color="#FFFFFF"
-                  textStyle={[styles.completeBtnText, { color: '#FFFFFF', flex: 0 }]}
+                  textStyle={[styles.completeBtnText, { color: '#FFFFFF' }]}
                 >
                   {pickedUpBtnText}
                 </IconText>
