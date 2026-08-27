@@ -6,16 +6,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { getSupportInfo } from '../src/api/ai';
 import { changeLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from '../src/i18n';
 import { useThemeStore, type ThemeMode } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
-const THEMES: { mode: ThemeMode; label: string; icon: string }[] = [
-  { mode: 'auto', label: 'Avtomatik', icon: '🌗' },
-  { mode: 'light', label: 'Yorug\'', icon: '☀️' },
-  { mode: 'dark', label: 'Qorong\'i', icon: '🌙' },
+const THEMES: { mode: ThemeMode; label: string; icon: IconName }[] = [
+  { mode: 'auto', label: 'Avtomatik', icon: 'themeAuto' },
+  { mode: 'light', label: 'Yorug\'', icon: 'sun' },
+  { mode: 'dark', label: 'Qorong\'i', icon: 'moon' },
 ];
 
 export default function SettingsScreen() {
@@ -46,7 +47,7 @@ export default function SettingsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>{t('profile.settings')}</Text>
         <View style={{ width: 40 }} />
@@ -54,7 +55,9 @@ export default function SettingsScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Language */}
-        <Text style={styles.sectionTitle}>🌐 {t('settings.language')}</Text>
+        <IconText name="language" size={15} color={colors.text} textStyle={styles.sectionTitle}>
+          {t('settings.language')}
+        </IconText>
         <View style={styles.card}>
           {SUPPORTED_LANGUAGES.map((lang) => {
             const selected = currentLang === lang.code;
@@ -69,14 +72,16 @@ export default function SettingsScreen() {
                 <Text style={[styles.optionLabel, selected && styles.optionLabelSelected]}>
                   {lang.label}
                 </Text>
-                {selected && <Text style={styles.optionCheck}>✓</Text>}
+                {selected && <Icon name="check" size={16} color={colors.primary} />}
               </TouchableOpacity>
             );
           })}
         </View>
 
         {/* Theme */}
-        <Text style={styles.sectionTitle}>🎨 Mavzu</Text>
+        <IconText name="palette" size={15} color={colors.text} textStyle={styles.sectionTitle}>
+          Mavzu
+        </IconText>
         <View style={styles.card}>
           {THEMES.map((theme) => {
             const selected = themeMode === theme.mode;
@@ -87,11 +92,11 @@ export default function SettingsScreen() {
                 onPress={() => setThemeMode(theme.mode)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.optionFlag}>{theme.icon}</Text>
+                <Icon name={theme.icon} size={22} color={colors.textSecondary} style={styles.optionFlag} />
                 <Text style={[styles.optionLabel, selected && styles.optionLabelSelected]}>
                   {theme.label}
                 </Text>
-                {selected && <Text style={styles.optionCheck}>✓</Text>}
+                {selected && <Icon name="check" size={16} color={colors.primary} />}
               </TouchableOpacity>
             );
           })}
@@ -104,7 +109,7 @@ export default function SettingsScreen() {
             onPress={openSupport}
             activeOpacity={0.7}
           >
-            <Text style={styles.optionFlag}>💡</Text>
+            <Icon name="idea" size={20} color={colors.textSecondary} style={styles.optionFlag} />
             <Text style={styles.optionLabel}>{t('profile.feedback')}</Text>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
@@ -117,7 +122,7 @@ export default function SettingsScreen() {
             onPress={() => router.push('/terms')}
             activeOpacity={0.7}
           >
-            <Text style={styles.optionFlag}>📄</Text>
+            <Icon name="document" size={20} color={colors.textSecondary} style={styles.optionFlag} />
             <Text style={styles.optionLabel}>{t('settings.terms')}</Text>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>

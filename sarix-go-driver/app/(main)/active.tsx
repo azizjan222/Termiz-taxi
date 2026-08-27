@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, IconText } from '../../src/components/Icon';
 import { listMyActive, type DriverOrder } from '../../src/api/driver';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
@@ -46,16 +47,25 @@ export default function ActiveOrdersScreen() {
           {item.from_city} → {item.to_city}
         </Text>
         <View style={styles.statusBadge}>
-          <Text style={styles.statusBadgeText}>🟡 {t('more.onTheWay')}</Text>
+          <IconText
+            name="active"
+            size={11}
+            color={colors.warning}
+            textStyle={[styles.statusBadgeText, { flex: 0 }]}
+          >
+            {t('more.onTheWay')}
+          </IconText>
         </View>
       </View>
-      <Text style={styles.passenger}>📞 {item.passenger_phone}</Text>
+      <IconText name="phone" size={13} color={colors.textSecondary} textStyle={styles.passenger}>
+        {item.passenger_phone}
+      </IconText>
       <Text style={styles.persons}>
         {item.service_type === 'parcel'
-          ? `📦 ${t('more.parcel')}`
+          ? t('more.parcel')
           : item.service_type === 'full_car'
-            ? `🚗 ${t('more.emptyCar')}`
-            : `👥 ${t('more.peopleCount', { n: item.person_count })}`}
+            ? t('more.emptyCar')
+            : t('more.peopleCount', { n: item.person_count })}
       </Text>
     </TouchableOpacity>
   );
@@ -68,7 +78,7 @@ export default function ActiveOrdersScreen() {
 
       {orders.length === 0 && !refreshing ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>📭</Text>
+          <Icon name="inboxEmpty" size={64} color={colors.textMuted} />
           <Text style={styles.emptyText}>{t('more.noActiveOrders')}</Text>
         </View>
       ) : (
@@ -118,6 +128,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   passenger: { ...typography.caption, color: colors.text, marginBottom: 2 },
   persons: { ...typography.caption, color: colors.textSecondary },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyEmoji: { fontSize: 64, marginBottom: spacing.md },
   emptyText: { ...typography.body, color: colors.textSecondary },
 });

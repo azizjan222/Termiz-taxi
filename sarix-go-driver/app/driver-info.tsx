@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 
+import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import { API_URL, getAuthToken } from '../src/api/client';
 import { useDriverStore } from '../src/store/driver';
@@ -158,7 +159,7 @@ export default function DriverInfoScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>Ma'lumotlarim</Text>
         <View style={{ width: 40 }} />
@@ -179,7 +180,7 @@ export default function DriverInfoScreen() {
         {/* Contact-number card: shown to passengers on orders; confirm it works or change it. */}
         <View style={styles.contactCard}>
           <View style={styles.contactTop}>
-            <View style={styles.phoneBadge}><Text style={styles.phoneBadgeIcon}>📞</Text></View>
+            <View style={styles.phoneBadge}><Icon name="phone" size={14} color={colors.textSecondary} /></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.contactLabel}>{t('contact.title')}</Text>
               <Text style={styles.contactNumber}>{displayNumber || '—'}</Text>
@@ -235,20 +236,20 @@ export default function DriverInfoScreen() {
 
         <Text style={styles.label}>Texnik pasport surati</Text>
         {techUri ? <Image source={{ uri: techUri, headers: documentToken ? { Authorization: `Bearer ${documentToken}` } : undefined }} style={styles.preview} /> : null}
-        <Button title="📄 Texpasport surati" onPress={() => pickImage(setTechUri)} variant="outline" />
+        <Button title="Texpasport surati" onPress={() => pickImage(setTechUri)} variant="outline" />
 
         <Text style={[styles.label, { marginTop: spacing.md }]}>Haydovchilik guvohnomasi surati</Text>
         {licenseUri ? <Image source={{ uri: licenseUri, headers: documentToken ? { Authorization: `Bearer ${documentToken}` } : undefined }} style={styles.preview} /> : null}
-        <Button title="🪪 Guvohnoma surati" onPress={() => pickImage(setLicenseUri)} variant="outline" />
+        <Button title="Guvohnoma surati" onPress={() => pickImage(setLicenseUri)} variant="outline" />
 
-        <Button title="✅ Saqlash" onPress={save} loading={saving} variant="accent" style={{ marginTop: spacing.lg }} />
+        <Button title="Saqlash" onPress={save} loading={saving} variant="accent" style={{ marginTop: spacing.lg }} />
       </ScrollView>
 
       <Modal visible={pickerOpen} animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <SafeAreaView style={styles.container} edges={['top']}>
           <View style={styles.header}>
             <TouchableOpacity onPress={() => setPickerOpen(false)} style={styles.backBtn}>
-              <Text style={styles.backIcon}>←</Text>
+              <Icon name="back" size={26} color={colors.primary} />
             </TouchableOpacity>
             <Text style={styles.title}>Modelni tanlang</Text>
             <View style={{ width: 40 }} />
@@ -289,7 +290,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.white,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   title: { ...typography.h3, color: colors.primary },
   body: { padding: spacing.lg, paddingBottom: spacing.xxl },
   hint: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 20 },
@@ -322,7 +322,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: '#EDE7FF',
     alignItems: 'center', justifyContent: 'center',
   },
-  phoneBadgeIcon: { fontSize: 20 },
   contactLabel: { ...typography.caption, color: colors.textSecondary },
   contactNumber: { ...typography.h3, color: colors.text, marginTop: 2, letterSpacing: 0.5 },
   contactQuestion: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.md, lineHeight: 19 },

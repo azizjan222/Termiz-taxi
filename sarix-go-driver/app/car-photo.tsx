@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
+import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import { api, API_URL } from '../src/api/client';
 import { useDriverStore } from '../src/store/driver';
@@ -80,7 +81,7 @@ export default function CarPhotoScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>Mashina rasmi</Text>
         <View style={{ width: 40 }} />
@@ -91,7 +92,7 @@ export default function CarPhotoScreen() {
           <Image source={{ uri: imageUri }} style={styles.preview} />
         ) : (
           <View style={styles.placeholder}>
-            <Text style={styles.placeholderEmoji}>🚗</Text>
+            <Icon name="car" size={64} color={colors.textMuted} />
             <Text style={styles.placeholderText}>Mashina rasmi qo'shing</Text>
           </View>
         )}
@@ -103,14 +104,14 @@ export default function CarPhotoScreen() {
 
         <View style={styles.buttons}>
           <Button
-            title="📷 Kamera"
+            title="Kamera"
             onPress={takePhoto}
             variant="outline"
             fullWidth={false}
             style={{ flex: 1 }}
           />
           <Button
-            title="🖼 Galereya"
+            title="Galereya"
             onPress={pickImage}
             variant="outline"
             fullWidth={false}
@@ -120,7 +121,7 @@ export default function CarPhotoScreen() {
 
         {imageUri && !imageUri.startsWith('http') && (
           <Button
-            title="✅ Yuklash"
+            title="Yuklash"
             onPress={upload}
             loading={uploading}
             variant="accent"
@@ -143,7 +144,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.white,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   title: { ...typography.h3, color: colors.primary },
   body: { flex: 1, padding: spacing.lg },
   preview: {
@@ -163,7 +163,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.divider,
     borderStyle: 'dashed',
   },
-  placeholderEmoji: { fontSize: 80, marginBottom: spacing.sm },
   placeholderText: { ...typography.body, color: colors.textSecondary },
   hint: {
     ...typography.caption,

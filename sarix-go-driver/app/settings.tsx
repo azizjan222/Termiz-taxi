@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { changeLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from '../src/i18n';
 import { useThemeStore, type ThemeMode } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -19,10 +20,10 @@ export default function SettingsScreen() {
     (i18n.language as SupportedLanguage) || 'uz'
   );
 
-  const THEMES: { mode: ThemeMode; label: string; icon: string }[] = [
-    { mode: 'auto', label: t('settings.themeAuto'), icon: '🌗' },
-    { mode: 'light', label: t('settings.themeLight'), icon: '☀️' },
-    { mode: 'dark', label: t('settings.themeDark'), icon: '🌙' },
+  const THEMES: { mode: ThemeMode; label: string; icon: IconName }[] = [
+    { mode: 'auto', label: t('settings.themeAuto'), icon: 'themeAuto' },
+    { mode: 'light', label: t('settings.themeLight'), icon: 'sun' },
+    { mode: 'dark', label: t('settings.themeDark'), icon: 'moon' },
   ];
 
   const handleLanguageChange = async (code: SupportedLanguage) => {
@@ -34,16 +35,21 @@ export default function SettingsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.surface }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={[styles.backIcon, { color: colors.primary }]}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>{t('settings.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-          🌐 {t('settings.language')}
-        </Text>
+        <IconText
+          name="language"
+          size={14}
+          color={colors.textSecondary}
+          textStyle={[styles.sectionTitle, { color: colors.textSecondary }]}
+        >
+          {t('settings.language')}
+        </IconText>
         <View style={[styles.card, { backgroundColor: colors.background }]}>
           {SUPPORTED_LANGUAGES.map((lang) => {
             const selected = currentLang === lang.code;
@@ -58,15 +64,20 @@ export default function SettingsScreen() {
                 <Text style={[styles.optionLabel, { color: colors.text }, selected && styles.bold]}>
                   {lang.label}
                 </Text>
-                {selected && <Text style={[styles.check, { color: colors.success }]}>✓</Text>}
+                {selected && <Icon name="check" size={16} color={colors.success} />}
               </TouchableOpacity>
             );
           })}
         </View>
 
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-          🎨 {t('settings.theme')}
-        </Text>
+        <IconText
+          name="palette"
+          size={14}
+          color={colors.textSecondary}
+          textStyle={[styles.sectionTitle, { color: colors.textSecondary }]}
+        >
+          {t('settings.theme')}
+        </IconText>
         <View style={[styles.card, { backgroundColor: colors.background }]}>
           {THEMES.map((theme) => {
             const selected = themeMode === theme.mode;
@@ -77,11 +88,11 @@ export default function SettingsScreen() {
                 onPress={() => setThemeMode(theme.mode)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.optionFlag}>{theme.icon}</Text>
+                <Icon name={theme.icon} size={22} color={colors.textSecondary} style={styles.optionFlag} />
                 <Text style={[styles.optionLabel, { color: colors.text }, selected && styles.bold]}>
                   {theme.label}
                 </Text>
-                {selected && <Text style={[styles.check, { color: colors.success }]}>✓</Text>}
+                {selected && <Icon name="check" size={16} color={colors.success} />}
               </TouchableOpacity>
             );
           })}
@@ -94,7 +105,7 @@ export default function SettingsScreen() {
             onPress={() => router.push('/terms')}
             activeOpacity={0.7}
           >
-            <Text style={styles.optionFlag}>📄</Text>
+            <Icon name="document" size={20} color={colors.textSecondary} style={styles.optionFlag} />
             <Text style={[styles.optionLabel, { color: colors.text }]}>{t('settings.terms')}</Text>
             <Text style={{ fontSize: 24, color: colors.textSecondary }}>›</Text>
           </TouchableOpacity>
