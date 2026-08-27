@@ -22,7 +22,7 @@ from app.models import (
 )
 from app.services import notify_i18n as nt
 from app.services.driver_pdf import build_driver_pdf
-from app.services.push import send_push, send_push_bulk
+from app.services.push import check_push_receipts, send_push, send_push_bulk
 from app.services.rewards import effective_commission
 from app.utils.timefmt import local_day_start_utc, local_day_str, local_month_start_utc
 
@@ -1171,7 +1171,7 @@ async def api_push_log(request: web.Request) -> web.Response:
                 .group_by(NotificationLog.status)
                 .all()
             )
-            out = {"sent": 0, "failed": 0}
+            out = {"sent": 0, "delivered": 0, "failed": 0}
             for status, n in rows:
                 out[status or "unknown"] = n
             return out
@@ -1273,9 +1273,24 @@ async def api_push_log(request: web.Request) -> web.Response:
         session.close()
 
 
+@require_admin_api
+async def api_push_receipts(request: web.Request) -> web.Response:
+    """POST /admin/api/push-receipts - ask Expo whether "sent" pushes were delivered."""
+    session = get_session()
+    try:
+        result = await check_push_receipts(session)
+        return web.json_response(result)
+    except Exception as e:
+        logger.error(f"Receipt check failed: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+    finally:
+        session.close()
+
+
 def setup_api_routes(app: web.Application):
     app.router.add_get("/admin/api/stats", api_stats)
     app.router.add_get("/admin/api/push-log", api_push_log)
+    app.router.add_post("/admin/api/push-receipts", api_push_receipts)
     app.router.add_get("/admin/api/statistics", api_statistics)
     app.router.add_get("/admin/api/drivers", api_drivers)
     app.router.add_post("/admin/api/drivers", api_create_driver)

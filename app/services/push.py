@@ -17,6 +17,9 @@ from app.services import notify_i18n as nt
 logger = logging.getLogger(__name__)
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+# Delivery outcomes live behind a second call: the send response is only an acceptance
+# ticket. See check_push_receipts().
+EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts"
 
 # Localized fallback words used when a name/field is missing.
 _DRIVER_W = {"uz": "Haydovchi", "uz-cyrl": "Ҳайдовчи", "ru": "Водитель", "en": "Driver"}
@@ -119,6 +122,10 @@ async def send_push(
                     return False
 
                 log_entry.status = "sent"
+                # Keep the receipt id: "sent" only means Expo accepted the message, and
+                # FCM can still reject it later. check_push_receipts() resolves these.
+                if isinstance(receipts, dict) and receipts.get("id"):
+                    log_entry.ticket_id = str(receipts["id"])
                 session.add(log_entry)
                 session.commit()
                 return True
@@ -206,6 +213,9 @@ async def send_push_bulk(
             log_entry.status = "sent" if ok else "failed"
             if ok:
                 sent += 1
+                # See check_push_receipts(): acceptance is not delivery.
+                if ticket.get("id"):
+                    log_entry.ticket_id = str(ticket["id"])
             else:
                 log_entry.error = (
                     ticket.get("message", "Unknown") if isinstance(ticket, dict) else "No ticket"
@@ -220,6 +230,87 @@ async def send_push_bulk(
             session.add(log_entry)
         session.commit()
     return sent
+
+
+async def check_push_receipts(session: Session, limit: int = 300) -> dict:
+    """Resolve whether pushes marked "sent" were actually DELIVERED.
+
+    Expo's send call returns a ticket, which only confirms Expo accepted the message. The
+    real outcome lives in a receipt fetched separately by ticket id, and that is where the
+    failures that matter show up:
+
+      * MismatchSenderId   - the app's google-services.json belongs to a different Firebase
+                             project than the FCM key uploaded to Expo. Sends look perfect
+                             and nothing is ever delivered.
+      * DeviceNotRegistered- the token is stale (app uninstalled/reinstalled).
+
+    Nothing read receipts before, so every one of those failures was invisible: the log
+    said "sent", the operator saw a healthy zero-error dashboard, and the notification
+    still never arrived. Rows are updated in place to `delivered` or `failed`.
+    """
+    pending = (
+        session.query(NotificationLog)
+        .filter(NotificationLog.status == "sent")
+        .filter(NotificationLog.ticket_id.isnot(None))
+        .order_by(NotificationLog.id.desc())
+        .limit(limit)
+        .all()
+    )
+    if not pending:
+        return {"checked": 0, "delivered": 0, "failed": 0, "pending": 0}
+
+    by_ticket = {log.ticket_id: log for log in pending}
+    delivered = failed = still_pending = 0
+
+    ids = list(by_ticket.keys())
+    for start in range(0, len(ids), 300):  # Expo accepts up to 300 ids per call
+        chunk = ids[start:start + 300]
+        try:
+            async with aiohttp.ClientSession() as http:
+                async with http.post(
+                    EXPO_RECEIPTS_URL,
+                    json={"ids": chunk},
+                    headers={"Accept": "application/json", "Content-Type": "application/json"},
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    result = await resp.json()
+        except Exception as e:
+            logger.error(f"Expo receipt fetch error: {e}")
+            continue
+
+        receipts = result.get("data") or {}
+        if not isinstance(receipts, dict):
+            continue
+
+        for ticket_id, receipt in receipts.items():
+            log = by_ticket.get(ticket_id)
+            if not log or not isinstance(receipt, dict):
+                continue
+            status = receipt.get("status")
+            if status == "ok":
+                log.status = "delivered"
+                delivered += 1
+            elif status == "error":
+                log.status = "failed"
+                detail = (receipt.get("details") or {}).get("error")
+                log.error = detail or receipt.get("message") or "Unknown receipt error"
+                failed += 1
+                # A stale token wastes every future send and gets the project throttled.
+                if detail == "DeviceNotRegistered":
+                    model = Driver if log.recipient_type == "driver" else User
+                    dead = session.query(model).filter_by(id=log.recipient_id).first()
+                    if dead:
+                        dead.push_token = None
+            else:
+                still_pending += 1
+
+    session.commit()
+    return {
+        "checked": len(ids),
+        "delivered": delivered,
+        "failed": failed,
+        "pending": still_pending,
+    }
 
 
 async def notify_driver_new_order(session: Session, order, drivers: list):

@@ -130,6 +130,10 @@ def _apply_schema_migrations() -> int:
         ("payments", "receipt_sha256", "VARCHAR(64)"),
         # Bonus ledger idempotency
         ("bonus_transactions", "idempotency_key", "VARCHAR(120)"),
+        # Expo push receipt id. A ticket only means Expo ACCEPTED the message; whether FCM
+        # delivered it is a separate lookup keyed by this id, and without storing it the
+        # log could never tell "sent" from "actually arrived".
+        ("notification_log", "ticket_id", "VARCHAR(80)"),
     ]
 
     inspector = inspect(engine)

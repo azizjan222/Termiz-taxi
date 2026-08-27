@@ -602,11 +602,18 @@ PUSH_LOG_HTML = """<h2>Push diagnostika</h2>
 <div class="fs-3" id="pl-online-token">-</div>
 <div class="small" id="pl-unreachable"></div></div></div></div>
 <div class="col-md-3"><div class="card"><div class="card-body">
-<div class="text-muted small">24 soatda yuborilgan</div>
-<div class="fs-3 text-success" id="pl-sent">-</div></div></div></div>
+<div class="text-muted small">24 soatda qabul qilingan</div>
+<div class="fs-3" id="pl-sent">-</div>
+<div class="small text-muted">Expo oldi (yetkazildi degani emas)</div></div></div></div>
 <div class="col-md-3"><div class="card"><div class="card-body">
-<div class="text-muted small">24 soatda xato</div>
-<div class="fs-3 text-danger" id="pl-failed">-</div></div></div></div>
+<div class="text-muted small">Yetkazildi / xato</div>
+<div class="fs-3"><span class="text-success" id="pl-delivered">-</span>
+<span class="text-muted">/</span><span class="text-danger" id="pl-failed">-</span></div></div></div></div>
+</div>
+<div class="mb-3">
+<button class="btn btn-outline-primary btn-sm" id="pl-check" onclick="checkReceipts()">
+Yetkazilganini Expo dan tekshirish</button>
+<span class="ms-2 small" id="pl-check-result"></span>
 </div>
 <div id="pl-diagnosis"></div>
 <div id="pl-notoken-wrap" style="display:none">
@@ -648,6 +655,7 @@ const unreachable=(s.drivers_online-s.drivers_online_with_token);
 document.getElementById('pl-unreachable').innerHTML=unreachable>0
 ?'<span class="text-danger">'+unreachable+' ta token yo\\'q</span>':'<span class="text-success">hammasida token bor</span>';
 document.getElementById('pl-sent').textContent=(s.last_24h||{}).sent||0;
+document.getElementById('pl-delivered').textContent=(s.last_24h||{}).delivered||0;
 document.getElementById('pl-failed').textContent=(s.last_24h||{}).failed||0;
 
 // Turn the numbers into a plain-language verdict, so the cause does not have to be
@@ -658,17 +666,25 @@ document.getElementById('pl-failed').textContent=(s.last_24h||{}).failed||0;
 // receive anything — technically true and completely misleading, because a driver with no
 // token is never counted as a failure: no send is even attempted for them.
 const sent=(s.last_24h||{}).sent||0, failed=(s.last_24h||{}).failed||0;
+const delivered=(s.last_24h||{}).delivered||0;
 let msg='', cls='info';
-if(s.drivers_online>0 && s.drivers_online_with_token===0){
+if(sent>0 && delivered===0 && failed===0){
+msg='Expo '+sent+' ta push ni QABUL QILDI, lekin yetkazilganini hech biri tasdiqlamagan. Bu telefonga yetgan degani EMAS. Yuqoridagi tugmani bosib Expo dan tekshiring.';cls='warning';
+}else if(failed>0 && delivered===0){
+// Checked before the tokenless drivers on purpose: "nothing is being delivered at all"
+// outranks "some drivers are unreachable", and reporting the smaller problem first hid
+// the bigger one entirely.
+msg='Yetkazilgan push YO\\'Q — '+failed+' tasi rad etilgan. Pastdagi xato matnini o\\'qing. MismatchSenderId bo\\'lsa, ilovadagi google-services.json Expo dagi FCM kalitidan BOSHQA Firebase loyihasiga tegishli; DeviceNotRegistered bo\\'lsa token eskirgan.';cls='danger';
+}else if(s.drivers_online>0 && s.drivers_online_with_token===0){
 msg='Online haydovchilarning HECH BIRIDA push token yo\\'q, ya\\'ni ilova yopiqda zakas hech kimga bormaydi. Ilova tokenni ro\\'yxatdan o\\'tkaza olmayapti — bildirishnoma ruxsati yoki eski ilova versiyasi.';cls='danger';
 }else if(unreachable>0){
 msg=unreachable+' ta online haydovchiga push BORA OLMAYDI (token yo\\'q). Ular zakasni faqat ilova ochiq turganda ko\\'radi — yopiqda o\\'tkazib yuboradi. Pastdagi ro\\'yxatdan kimligini ko\\'ring.'+(failed>0?' Bundan tashqari ba\\'zi push xato bilan qaytgan.':'');cls='warning';
-}else if(failed>0 && sent===0){
-msg='Barcha push xato bilan qaytdi. Pastdagi xato matnini o\\'qing: MismatchSenderId yoki shunga o\\'xshash bo\\'lsa, Expo dagi FCM V1 kaliti mos emas.';cls='danger';
 }else if(failed>0){
 msg='Bir qismi xato bilan qaytdi — pastdagi jadvalda sababini ko\\'ring.';cls='warning';
+}else if(delivered>0){
+msg=delivered+' ta push telefonga YETKAZILGANI Expo tomonidan tasdiqlangan. Shunga qaramay ko\\'rinmayotgan bo\\'lsa, muammo qurilma tomonida (batareya optimizatsiyasi, bildirishnoma o\\'chirilgan).';cls='success';
 }else if(sent>0){
-msg='Barcha online haydovchida token bor va push xatosiz yuborilyapti. Shunga qaramay yetmayotgan bo\\'lsa, muammo qurilma tomonida (batareya optimizatsiyasi, bildirishnoma o\\'chirilgan).';cls='success';
+msg='Push xatosiz yuborilyapti. Yetkazilganini aniqlash uchun yuqoridagi tugmani bosing.';cls='info';
 }else{
 msg='24 soat ichida umuman push yuborilmagan. Zakas yaratilganda online haydovchi bo\\'lmagan bo\\'lishi mumkin.';cls='secondary';
 }
@@ -692,6 +708,16 @@ tb.innerHTML+=`<tr><td>${r.id}</td><td>${esc(when)}</td><td>${who}</td><td>${esc
 });
 if(!(d.rows||[]).length)tb.innerHTML='<tr><td colspan="7" class="text-muted">Yozuv yo\\'q</td></tr>';
 });
+}
+function checkReceipts(){
+const btn=document.getElementById('pl-check'), out=document.getElementById('pl-check-result');
+btn.disabled=true;out.textContent='Tekshirilyapti...';
+fetch('/admin/api/push-receipts',{method:'POST'}).then(r=>r.json()).then(d=>{
+btn.disabled=false;
+if(d.error){out.innerHTML='<span class="text-danger">'+esc(d.error)+'</span>';return;}
+out.innerHTML='<span class="text-muted">'+d.checked+' ta tekshirildi: '+d.delivered+' yetkazildi, '+d.failed+' xato, '+d.pending+' hali navbatda</span>';
+loadPushLog();
+}).catch(e=>{btn.disabled=false;out.innerHTML='<span class="text-danger">'+esc(String(e))+'</span>';});
 }
 loadPushLog();
 </script>"""
