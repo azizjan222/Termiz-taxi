@@ -19,6 +19,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 
+import { Icon, type IconName } from '../../src/components/Icon';
 import { useAuthStore } from '../../src/store/auth';
 import { uploadProfilePhoto, updateProfile } from '../../src/api/auth';
 import { API_URL } from '../../src/api/client';
@@ -33,14 +34,15 @@ const DRIVER_APP_PLAY_URL = `https://play.google.com/store/apps/details?id=${DRI
 const DRIVER_APP_INTENT = `market://details?id=${DRIVER_APP_PACKAGE}`;
 
 interface MenuItem {
-  icon: string;
+  icon: IconName;
   labelKey: string;
   onPress: () => void;
   highlight?: boolean;
 }
 
-// Tinted background per menu item (fixed pastel tints — they read well in both
-// light and dark mode because the emoji icons sit on top).
+// Tinted background per menu item. The tints are fixed light pastels and the matching
+// foregrounds below are fixed dark shades, so each pair keeps its contrast in both light
+// and dark mode without needing a themed variant.
 const ICON_TINTS: Record<string, string> = {
   'profile.orderHistory': '#FFF3CC',     // gold
   'profile.savedAddresses': '#FEE2E2',   // red/pink
@@ -50,6 +52,19 @@ const ICON_TINTS: Record<string, string> = {
   'ai.title': '#E0E7FF',                 // indigo
   'profile.faq': '#FEE2E2',              // red
   'profile.settings': '#EEF1F8',         // gray
+};
+
+// Foreground for the icon on each tint above. Emoji could not be coloured, so this pairing
+// did not exist before — the glyph was whatever hue the system font happened to use.
+const ICON_COLORS: Record<string, string> = {
+  'profile.orderHistory': '#B88700',
+  'profile.savedAddresses': '#DC2626',
+  'profile.paymentMethods': '#B88700',
+  'profile.notifications': '#D97706',
+  'profile.promoCodes': '#059669',
+  'ai.title': '#4F46E5',
+  'profile.faq': '#DC2626',
+  'profile.settings': '#656B78',
 };
 
 export default function ProfileScreen() {
@@ -157,17 +172,17 @@ export default function ProfileScreen() {
   };
 
   const menu: MenuItem[] = [
-    { icon: '👨‍✈️', labelKey: 'profile.becomeDriver', onPress: openDriverApp, highlight: true },
-    { icon: '📋', labelKey: 'profile.orderHistory', onPress: () => router.push('/(tabs)/history') },
-    { icon: '📍', labelKey: 'profile.savedAddresses', onPress: () => router.push('/saved-addresses') },
+    { icon: 'driver', labelKey: 'profile.becomeDriver', onPress: openDriverApp, highlight: true },
+    { icon: 'history', labelKey: 'profile.orderHistory', onPress: () => router.push('/(tabs)/history') },
+    { icon: 'location', labelKey: 'profile.savedAddresses', onPress: () => router.push('/saved-addresses') },
     // TEMP: invite-a-friend disabled for now — re-enable later (keyin qo'shamiz)
-    // { icon: '🎁', labelKey: 'profile.inviteFriends', onPress: () => router.push('/referral') },
-    { icon: '💳', labelKey: 'profile.paymentMethods', onPress: () => Alert.alert('Soon') },
-    { icon: '🔔', labelKey: 'profile.notifications', onPress: () => router.push('/notifications') },
-    { icon: '🏷', labelKey: 'profile.promoCodes', onPress: () => Alert.alert('Soon') },
-    { icon: '🤖', labelKey: 'ai.title', onPress: () => router.push('/ai-chat') },
-    { icon: '❓', labelKey: 'profile.faq', onPress: () => router.push('/faq') },
-    { icon: '⚙️', labelKey: 'profile.settings', onPress: () => router.push('/settings') },
+    // { icon: 'gift', labelKey: 'profile.inviteFriends', onPress: () => router.push('/referral') },
+    { icon: 'card', labelKey: 'profile.paymentMethods', onPress: () => Alert.alert('Soon') },
+    { icon: 'notification', labelKey: 'profile.notifications', onPress: () => router.push('/notifications') },
+    { icon: 'tag', labelKey: 'profile.promoCodes', onPress: () => Alert.alert('Soon') },
+    { icon: 'robot', labelKey: 'ai.title', onPress: () => router.push('/ai-chat') },
+    { icon: 'help', labelKey: 'profile.faq', onPress: () => router.push('/faq') },
+    { icon: 'settings', labelKey: 'profile.settings', onPress: () => router.push('/settings') },
   ];
 
   const becomeDriver = menu.find((m) => m.highlight);
@@ -188,7 +203,8 @@ export default function ProfileScreen() {
             onPress={openEditModal}
             activeOpacity={0.8}
           >
-            <Text style={styles.editPillText}>✏️ Tahrirlash</Text>
+            <Icon name="edit" size={13} color={colors.primary} />
+            <Text style={styles.editPillText}>Tahrirlash</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.85}>
@@ -209,7 +225,11 @@ export default function ProfileScreen() {
               </View>
             )}
             <View style={styles.avatarEdit}>
-              <Text style={styles.avatarEditText}>{uploading ? '…' : '📷'}</Text>
+              {uploading ? (
+                <Text style={styles.avatarEditText}>…</Text>
+              ) : (
+                <Icon name="camera" size={13} color={colors.text} />
+              )}
             </View>
           </TouchableOpacity>
 
@@ -221,7 +241,7 @@ export default function ProfileScreen() {
         {/* Promo banner */}
         {/*
         <View style={styles.promo}>
-          <Text style={styles.promoIcon}>🎁</Text>
+          <Icon name="gift" size={24} color={colors.accent} style={styles.promoIcon} />
           <Text style={styles.promoText}>{t('profile.inviteFriends')}</Text>
         </View>
         */}
@@ -240,7 +260,8 @@ export default function ProfileScreen() {
               style={styles.driverBanner}
             >
               <View style={styles.driverIconTile}>
-                <Text style={styles.driverIcon}>{becomeDriver.icon}</Text>
+                {/* Dark glyph: the tile sits on the gold gradient. */}
+                <Icon name={becomeDriver.icon} size={24} color="#3D2C00" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.driverTitle}>{t(becomeDriver.labelKey)}</Text>
@@ -266,7 +287,11 @@ export default function ProfileScreen() {
                   { backgroundColor: ICON_TINTS[item.labelKey] || colors.surface },
                 ]}
               >
-                <Text style={styles.menuIcon}>{item.icon}</Text>
+                <Icon
+                  name={item.icon}
+                  size={20}
+                  color={ICON_COLORS[item.labelKey] || colors.textSecondary}
+                />
               </View>
               <Text style={styles.menuLabel}>{t(item.labelKey)}</Text>
               <Text style={styles.menuArrow}>›</Text>
@@ -379,6 +404,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     right: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
     backgroundColor: '#E0E7FF',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -420,7 +446,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.md,
     marginVertical: spacing.md,
   },
-  promoIcon: { fontSize: 24, marginRight: spacing.md },
+  promoIcon: { marginRight: spacing.md },
   promoText: { flex: 1, ...typography.body, color: colors.textOnPrimary },
   driverWrap: {
     marginHorizontal: spacing.lg,
@@ -447,7 +473,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  driverIcon: { fontSize: 26 },
   driverTitle: { ...typography.bodyBold, color: colors.textOnAccent, fontWeight: '700' },
   driverSubtitle: {
     ...typography.small,
@@ -482,7 +507,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  menuIcon: { fontSize: 20 },
   menuLabel: { ...typography.body, color: colors.text, flex: 1 },
   menuArrow: { fontSize: 24, color: colors.textMuted, fontWeight: '300' },
   logoutButton: {

@@ -1,14 +1,17 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Text, View, StyleSheet } from 'react-native';
+import { View, StyleSheet, type ColorValue } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon, type IconName } from '../../src/components/Icon';
 import { useThemeStore } from '../../src/store/theme';
 
-const Icon: React.FC<{ emoji: string }> = ({ emoji }) => (
+// `color` comes from tabBarActiveTintColor / tabBarInactiveTintColor. The emoji this
+// replaces could not be tinted, so the active tab was only distinguishable by its label.
+const TabIcon: React.FC<{ name: IconName; color: ColorValue }> = ({ name, color }) => (
   <View style={styles.iconWrapper}>
-    <Text style={styles.icon}>{emoji}</Text>
+    <Icon name={name} size={24} color={color} />
   </View>
 );
 
@@ -40,21 +43,21 @@ export default function MainLayout() {
         name="orders"
         options={{
           title: t('home.available'),
-          tabBarIcon: () => <Icon emoji="🚕" />,
+          tabBarIcon: ({ color }) => <TabIcon name="taxi" color={color} />,
         }}
       />
       <Tabs.Screen
         name="active"
         options={{
           title: t('home.active'),
-          tabBarIcon: () => <Icon emoji="🟡" />,
+          tabBarIcon: ({ color }) => <TabIcon name="active" color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: t('profile.title'),
-          tabBarIcon: () => <Icon emoji="👤" />,
+          tabBarIcon: ({ color }) => <TabIcon name="profile" color={color} />,
         }}
       />
     </Tabs>
@@ -63,5 +66,4 @@ export default function MainLayout() {
 
 const styles = StyleSheet.create({
   iconWrapper: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  icon: { fontSize: 22 },
 });
