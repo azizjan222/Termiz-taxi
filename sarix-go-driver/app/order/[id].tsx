@@ -9,6 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 
+import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { listMyActive, completeOrder, startTrip, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
 import { API_URL } from '../../src/api/client';
 import { useRealtimeStore } from '../../src/store/realtime';
@@ -345,11 +346,16 @@ export default function OrderDetailScreen() {
   // driverCoords. The target is the pickup before pickup, the destination after.
   const enRoute = isEnRouteToDestination(order);
   const isParcel = order.service_type === 'parcel';
+  const serviceIcon: IconName = isParcel
+    ? 'parcel'
+    : order.service_type === 'full_car'
+    ? 'car'
+    : 'taxi';
   // Service-aware wording: taxi talks about the passenger, parcel about the parcel.
   const contactLabel = isParcel ? t('more.sender') : t('more.passenger');
   const pickupBannerText = isParcel ? t('more.goPickupParcel') : t('more.goPickupPassenger');
   const destBannerText = isParcel ? t('more.deliverParcel') : t('more.deliverPassenger');
-  const pickedUpBtnText = isParcel ? `✅ ${t('more.pickedBtnParcel')}` : `✅ ${t('more.pickedBtnPassenger')}`;
+  const pickedUpBtnText = isParcel ? t('more.pickedBtnParcel') : t('more.pickedBtnPassenger');
   const target = deriveTarget(order);
   // Map pin captions so each marker is self-explanatory ("easy to understand"):
   //   A = the place to reach — passenger before pickup, parcel sender for a parcel,
@@ -366,13 +372,13 @@ export default function OrderDetailScreen() {
   let mapDistanceText: string | null = null;
   if (deriveMapVisible(order) && target !== null) {
     if (!driverCoords) {
-      mapDistanceText = `📍 ${t('more.calculating')}`;
+      mapDistanceText = t('more.calculating');
     } else {
       const etaHint =
         ETA_HINT_ENABLED && Number.isFinite(distanceMeters)
           ? ` · ~${formatEta(distanceMeters, ETA_AVG_SPEED_KMH)}`
           : '';
-      mapDistanceText = `📍 ${formatDistance(distanceMeters)}${etaHint}`;
+      mapDistanceText = `${formatDistance(distanceMeters)}${etaHint}`;
     }
   }
 
@@ -380,11 +386,11 @@ export default function OrderDetailScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>#{order.id}</Text>
         <View style={styles.serviceChip}>
-          <Text style={styles.serviceChipEmoji}>{isParcel ? '📦' : order.service_type === 'full_car' ? '🚗' : '🚕'}</Text>
+          <Icon name={serviceIcon} size={20} color={colors.primary} />
         </View>
       </View>
 
@@ -392,7 +398,7 @@ export default function OrderDetailScreen() {
         {/* Stage banner: en route to destination (passenger on board) vs heading to pickup. */}
         {enRoute ? (
           <View style={styles.destBanner}>
-            <Text style={styles.timerEmoji}>🧭</Text>
+            <Icon name="compass" size={28} color={colors.primary} style={styles.timerEmoji} />
             <View style={{ flex: 1 }}>
               <Text style={styles.destBannerText}>{destBannerText}</Text>
               <Text style={styles.timerSub}>{shortenAddress(order.to_address, order.to_city)}</Text>
@@ -413,7 +419,12 @@ export default function OrderDetailScreen() {
           </View>
         ) : (
           <View style={styles.statusBanner}>
-            <Text style={styles.statusEmoji}>{isParcel ? '📦' : '🚕'}</Text>
+            <Icon
+              name={isParcel ? 'parcel' : 'taxi'}
+              size={28}
+              color={colors.primary}
+              style={styles.statusEmoji}
+            />
             <Text style={styles.statusText}>{pickupBannerText}</Text>
           </View>
         )}
@@ -434,14 +445,21 @@ export default function OrderDetailScreen() {
             {target === null && (
               <View style={styles.mapUnavailable} pointerEvents="none">
                 <Text style={styles.mapUnavailableText}>
-                  📍 {enRoute ? t('more.mapUnavailableDest') : t('more.mapUnavailablePassenger')}
+                  {enRoute ? t('more.mapUnavailableDest') : t('more.mapUnavailablePassenger')}
                 </Text>
               </View>
             )}
             {/* Distance + ETA between driver and target, written on the map itself. */}
             {mapDistanceText && (
               <View style={styles.mapDistanceBadge} pointerEvents="none">
-                <Text style={styles.mapDistanceText}>{mapDistanceText}</Text>
+                <IconText
+                  name="location"
+                  size={12}
+                  color="#FFFFFF"
+                  textStyle={[styles.mapDistanceText, { flex: 0 }]}
+                >
+                  {mapDistanceText}
+                </IconText>
               </View>
             )}
           </View>
@@ -463,7 +481,7 @@ export default function OrderDetailScreen() {
             ) : (
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
-                  {order.passenger_name?.[0]?.toUpperCase() || '👤'}
+                  {order.passenger_name?.[0]?.toUpperCase() || '?'}
                 </Text>
               </View>
             )}
@@ -480,7 +498,7 @@ export default function OrderDetailScreen() {
               accessibilityLabel={`${contactLabel}ga xabar yuborish`}
               accessibilityHint="SMS ilovasini ochadi"
             >
-              <Text style={styles.smsBtnIcon}>💬</Text>
+              <Icon name="chat" size={22} color={colors.primary} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.callBtn}
@@ -489,7 +507,7 @@ export default function OrderDetailScreen() {
               accessibilityLabel={`${contactLabel}ga qo‘ng‘iroq qilish`}
               accessibilityHint="Telefon ilovasini ochadi"
             >
-              <Text style={styles.callBtnIcon}>📞</Text>
+              <Icon name="phone" size={22} color={colors.textOnPrimary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -502,12 +520,16 @@ export default function OrderDetailScreen() {
             <View style={styles.extrasRow}>
               {order.female_only && (
                 <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>👩 {t('more.femaleInCabin')}</Text>
+                  <IconText name="female" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                    {t('more.femaleInCabin')}
+                  </IconText>
                 </View>
               )}
               {order.has_roof_rack && (
                 <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>🧳 {t('more.roofRack')}</Text>
+                  <IconText name="luggage" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                    {t('more.roofRack')}
+                  </IconText>
                 </View>
               )}
             </View>
@@ -517,21 +539,35 @@ export default function OrderDetailScreen() {
         {/* Route */}
         <View style={[styles.card, { marginTop: spacing.md }]}>
           <View style={styles.row}>
-            <Text style={styles.label}>{!enRoute ? '📍 ' : ''}{t('order.from')}</Text>
+            {!enRoute ? (
+              <IconText name="location" size={12} color={colors.textSecondary} textStyle={styles.label}>
+                {t('order.from')}
+              </IconText>
+            ) : (
+              <Text style={styles.label}>{t('order.from')}</Text>
+            )}
             <Text style={[styles.value, !enRoute && { color: colors.info }]} numberOfLines={2}>
               {shortenAddress(order.from_address, order.from_city)}
             </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>{enRoute ? '🏁 ' : ''}{t('order.to')}</Text>
+            {enRoute ? (
+              <IconText name="flag" size={12} color={colors.textSecondary} textStyle={styles.label}>
+                {t('order.to')}
+              </IconText>
+            ) : (
+              <Text style={styles.label}>{t('order.to')}</Text>
+            )}
             <Text style={[styles.value, enRoute && { color: colors.info }]} numberOfLines={2}>
               {shortenAddress(order.to_address, order.to_city)}
             </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>🕒 {t('more.departureTime')}</Text>
+            <IconText name="clock" size={12} color={colors.textSecondary} textStyle={styles.label}>
+              {t('more.departureTime')}
+            </IconText>
             <Text style={styles.value}>{order.departure_time || t('more.now')}</Text>
           </View>
           <View style={styles.divider} />
@@ -539,18 +575,22 @@ export default function OrderDetailScreen() {
             <View style={styles.row}>
               <Text style={styles.label}>{t('more.serviceType')}</Text>
               <Text style={styles.value}>
-                {isParcel ? `📦 ${t('more.parcelLabel')}` : `🚗 ${t('more.fullCarLabel')}`}
+                {isParcel ? t('more.parcelLabel') : t('more.fullCarLabel')}
               </Text>
             </View>
           ) : (
             <View style={styles.row}>
-              <Text style={styles.label}>👥 {t('order.persons')}</Text>
+              <IconText name="people" size={12} color={colors.textSecondary} textStyle={styles.label}>
+                {t('order.persons')}
+              </IconText>
               <Text style={styles.value}>{order.person_count}</Text>
             </View>
           )}
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>💵 {t('order.price')}</Text>
+            <IconText name="cash" size={12} color={colors.textSecondary} textStyle={styles.label}>
+              {t('order.price')}
+            </IconText>
             <Text
               style={[
                 styles.value,
@@ -586,7 +626,7 @@ export default function OrderDetailScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.navBtn}
           >
-            <Text style={styles.navBtnIcon}>🧭</Text>
+            <Icon name="compass" size={20} color="#0E1B3D" style={styles.navBtnIcon} />
             <Text style={styles.navBtnText}>
               {enRoute
                 ? (isParcel ? t('more.navDeliverParcel') : t('more.navigation'))
@@ -613,7 +653,14 @@ export default function OrderDetailScreen() {
               {loading ? (
                 <ActivityIndicator color="#0E1B3D" />
               ) : (
-                <Text style={styles.completeBtnText}>✅ {t('order.complete')}</Text>
+                <IconText
+                  name="check"
+                  size={16}
+                  color="#0E1B3D"
+                  textStyle={[styles.completeBtnText, { flex: 0 }]}
+                >
+                  {t('order.complete')}
+                </IconText>
               )}
             </LinearGradient>
           </TouchableOpacity>
@@ -636,7 +683,14 @@ export default function OrderDetailScreen() {
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={[styles.completeBtnText, { color: '#FFFFFF' }]}>{pickedUpBtnText}</Text>
+                <IconText
+                  name="check"
+                  size={16}
+                  color="#FFFFFF"
+                  textStyle={[styles.completeBtnText, { color: '#FFFFFF', flex: 0 }]}
+                >
+                  {pickedUpBtnText}
+                </IconText>
               )}
             </LinearGradient>
           </TouchableOpacity>
@@ -664,7 +718,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.surface,
   },
-  backIcon: { fontSize: 26, color: colors.primary },
   serviceChip: {
     width: 40,
     height: 40,
@@ -673,7 +726,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.surface,
   },
-  serviceChipEmoji: { fontSize: 20 },
   title: { ...typography.h3, color: colors.text },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
@@ -722,7 +774,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.lg,
     marginBottom: spacing.md,
   },
-  statusEmoji: { fontSize: 28, marginRight: spacing.md },
+  statusEmoji: { marginRight: spacing.md },
   statusText: { ...typography.bodyBold, color: colors.warning },
   destBanner: {
     flexDirection: 'row',
@@ -741,7 +793,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.lg,
     marginBottom: spacing.md,
   },
-  timerEmoji: { fontSize: 28, marginRight: spacing.md },
+  timerEmoji: { marginRight: spacing.md },
   timerText: { ...typography.bodyBold, color: colors.textOnPrimary },
   timerSub: { ...typography.small, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
   timerCountdown: { ...typography.h2, color: colors.accent, fontVariant: ['tabular-nums'] },
@@ -781,7 +833,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  callBtnIcon: { fontSize: 22 },
   smsBtn: {
     width: 48,
     height: 48,
@@ -791,7 +842,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.sm,
   },
-  smsBtnIcon: { fontSize: 22 },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -830,7 +880,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  navBtnIcon: { fontSize: 20, marginRight: spacing.sm },
+  navBtnIcon: { marginRight: spacing.sm },
   navBtnText: { ...typography.button, color: colors.textOnPrimary },
   completeBtn: {
     alignItems: 'center',
