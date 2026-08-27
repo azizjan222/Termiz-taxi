@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, IconText } from '../src/components/Icon';
 import { askAi, getSupportInfo, type ChatMessage } from '../src/api/ai';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -97,11 +98,11 @@ export default function AiChatScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <View style={styles.aiAvatar}>
-            <Text style={styles.aiAvatarText}>🤖</Text>
+            <Icon name="robot" size={20} color={colors.textOnPrimary} />
           </View>
           <View>
             <Text style={styles.title}>{t('ai.title')}</Text>
@@ -109,7 +110,7 @@ export default function AiChatScreen() {
           </View>
         </View>
         <TouchableOpacity style={styles.humanBtn} onPress={openSupport}>
-          <Text style={styles.humanBtnText}>👤</Text>
+          <Icon name="profile" size={18} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -185,12 +186,19 @@ export default function AiChatScreen() {
             onPress={() => sendMessage(input)}
             disabled={!input.trim() || loading}
           >
-            <Text style={styles.sendBtnIcon}>➤</Text>
+            <Icon name="send" size={18} color={colors.textOnPrimary} />
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={styles.needHumanBtn} onPress={openSupport}>
-          <Text style={styles.needHumanText}>👤 {t('ai.needHuman')}</Text>
+          <IconText
+            name="profile"
+            size={13}
+            color={colors.primary}
+            textStyle={[styles.needHumanText, { flex: 0 }]}
+          >
+            {t('ai.needHuman')}
+          </IconText>
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -209,14 +217,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderBottomColor: colors.divider,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   aiAvatar: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: colors.accent,
     alignItems: 'center', justifyContent: 'center',
   },
-  aiAvatarText: { fontSize: 20 },
   title: { ...typography.bodyBold, color: colors.primary },
   subtitle: { ...typography.small, color: colors.textSecondary },
   humanBtn: {
@@ -224,7 +230,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.surface,
     alignItems: 'center', justifyContent: 'center',
   },
-  humanBtnText: { fontSize: 20 },
   messages: { padding: spacing.md, paddingBottom: spacing.lg },
   message: {
     maxWidth: '85%',
@@ -281,7 +286,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { opacity: 0.4 },
-  sendBtnIcon: { fontSize: 18, color: colors.primary, fontWeight: '700' },
   needHumanBtn: {
     backgroundColor: colors.primary,
     padding: spacing.sm,
