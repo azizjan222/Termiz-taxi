@@ -38,7 +38,6 @@ from app.services.push_report import (
 from app.services.rewards import effective_commission
 from app.utils.timefmt import local_day_start_utc, local_day_str, local_month_start_utc
 
-
 logger = logging.getLogger(__name__)
 
 

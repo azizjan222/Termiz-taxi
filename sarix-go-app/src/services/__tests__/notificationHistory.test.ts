@@ -5,6 +5,7 @@
  * the same message must not appear twice, order must not depend on arrival, and a
  * dismissed message must stay dismissed.
  */
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
@@ -40,10 +41,8 @@ jest.mock('../../api/announcements', () => ({
   markAnnouncementsRead: jest.fn(async () => undefined),
 }));
 
-const mockFetch = fetchAnnouncements as jest.MockedFunction<typeof fetchAnnouncements>;
-const mockMarkRead = markAnnouncementsRead as jest.MockedFunction<
-  typeof markAnnouncementsRead
->;
+const mockFetch = jest.mocked(fetchAnnouncements);
+const mockMarkRead = jest.mocked(markAnnouncementsRead);
 
 const KEY = '@sarixgo/notifications';
 const mem = () => (AsyncStorage as any).__mem as Map<string, string>;
