@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon } from '../../src/components/Icon';
 import { listMyOrders, type Order } from '../../src/api/orders';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
@@ -73,7 +74,7 @@ export default function HistoryScreen() {
             { backgroundColor: isParcel ? colors.warningLight : '#FFF3CC' },
           ]}
         >
-          <Text style={styles.iconTileText}>{isParcel ? '📦' : '🚕'}</Text>
+          <Icon name={isParcel ? 'parcel' : 'taxi'} size={24} color={colors.primary} />
         </View>
 
         <View style={styles.cardMiddle}>
@@ -81,7 +82,7 @@ export default function HistoryScreen() {
             {item.from_city} → {item.to_city}
           </Text>
           <View style={styles.cardDateRow}>
-            <Text style={styles.cardDateIcon}>📅</Text>
+            <Icon name="calendar" size={11} color={colors.textMuted} style={styles.cardDateIcon} />
             <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
           </View>
         </View>
@@ -118,7 +119,7 @@ export default function HistoryScreen() {
               activeTab === 'taxi' && styles.tabTextActive,
             ]}
           >
-            🚕 {t('home.orderTaxi')}
+            {t('home.orderTaxi')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -132,14 +133,14 @@ export default function HistoryScreen() {
               activeTab === 'parcel' && styles.tabTextActive,
             ]}
           >
-            📦 {t('tariff.parcel')}
+            {t('tariff.parcel')}
           </Text>
         </TouchableOpacity>
       </View>
 
       {filtered.length === 0 && !refreshing ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>📭</Text>
+          <Icon name="inboxEmpty" size={64} color={colors.textMuted} />
           <Text style={styles.emptyText}>Buyurtmalar yo'q</Text>
         </View>
       ) : (
@@ -209,7 +210,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  iconTileText: { fontSize: 24 },
   cardMiddle: { flex: 1, marginRight: spacing.sm },
   cardRoute: { ...typography.bodyBold, color: colors.text },
   cardDateRow: {
@@ -217,7 +217,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     marginTop: 4,
   },
-  cardDateIcon: { fontSize: 11, marginRight: 4 },
+  cardDateIcon: { marginRight: 4 },
   cardDate: { ...typography.small, color: colors.textSecondary },
   cardRight: { alignItems: 'flex-end' },
   cardPrice: { ...typography.bodyBold, color: colors.primary, marginTop: 6 },
@@ -246,6 +246,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   badgeText_cancelled: { color: colors.error },
   badgeText_expired: { color: colors.error },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyEmoji: { fontSize: 64, marginBottom: spacing.md },
   emptyText: { ...typography.body, color: colors.textSecondary },
 });

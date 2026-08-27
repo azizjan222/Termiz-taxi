@@ -13,6 +13,7 @@ import { listAvailableOrders, acceptOrder, setOnline as apiSetOnline, type Drive
 import { useDriverStore } from '../../src/store/driver';
 import { useRealtimeStore } from '../../src/store/realtime';
 import { useThemeStore } from '../../src/store/theme';
+import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { IncomingOrderModal } from '../../src/components/IncomingOrderModal';
 import { stopAlert } from '../../src/services/notifications';
 import { typography, spacing, radius, gradients } from '../../src/theme';
@@ -237,10 +238,10 @@ export default function OrdersScreen() {
     return `${Math.floor(diff / 3600)}h`;
   };
 
-  const getServiceIcon = (type: string) => {
-    if (type === 'parcel') return '📦';
-    if (type === 'full_car') return '🚗';
-    return '🚕';
+  const getServiceIcon = (type: string): IconName => {
+    if (type === 'parcel') return 'parcel';
+    if (type === 'full_car') return 'car';
+    return 'taxi';
   };
 
   const renderOrder = ({ item }: { item: DriverOrder }) => {
@@ -252,13 +253,15 @@ export default function OrdersScreen() {
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderLeft}>
             <View style={styles.serviceIconTile}>
-              <Text style={styles.serviceIcon}>{getServiceIcon(item.service_type)}</Text>
+              <Icon name={getServiceIcon(item.service_type)} size={20} color={colors.primary} />
             </View>
             <Text style={styles.timeAgo}>{formatTimeAgo(item.created_at)} {t('more.ago')}</Text>
           </View>
           {item.source === 'app' && (
             <View style={styles.sourceBadge}>
-              <Text style={styles.sourceBadgeText}>📱 {t('more.appBadge')}</Text>
+              <IconText name="mobile" size={11} color={colors.info} textStyle={styles.sourceBadgeText}>
+                {t('more.appBadge')}
+              </IconText>
             </View>
           )}
         </View>
@@ -284,16 +287,22 @@ export default function OrdersScreen() {
             sees special requirements before accepting. */}
         {(item.female_only || item.has_roof_rack) && (
           <View style={styles.extrasBlock}>
-            <Text style={styles.extrasTitle}>📋 {t('more.extras')}</Text>
+            <IconText name="history" size={12} color="#B45309" textStyle={styles.extrasTitle}>
+              {t('more.extras')}
+            </IconText>
             <View style={styles.extrasRow}>
               {item.female_only && (
                 <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>👩 {t('more.femaleInCabin')}</Text>
+                  <IconText name="female" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                    {t('more.femaleInCabin')}
+                  </IconText>
                 </View>
               )}
               {item.has_roof_rack && (
                 <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>🧳 {t('more.roofRack')}</Text>
+                  <IconText name="luggage" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                    {t('more.roofRack')}
+                  </IconText>
                 </View>
               )}
             </View>
@@ -301,21 +310,32 @@ export default function OrdersScreen() {
         )}
 
         <View style={styles.cardInfo}>
-          <Text style={styles.cardInfoText}>
-            👤 {item.passenger_name || t('more.passenger')}
-          </Text>
-          <Text style={styles.cardInfoText}>
-            🕒 {t('more.departure')}: {item.departure_time || t('more.now')}
-          </Text>
-          <Text style={styles.cardInfoText}>
+          <IconText name="profile" size={13} color={colors.textSecondary} textStyle={styles.cardInfoText}>
+            {item.passenger_name || t('more.passenger')}
+          </IconText>
+          <IconText name="clock" size={13} color={colors.textSecondary} textStyle={styles.cardInfoText}>
+            {t('more.departure')}: {item.departure_time || t('more.now')}
+          </IconText>
+          <IconText
+            name={item.service_type === 'parcel' ? 'parcel' : 'people'}
+            size={13}
+            color={colors.textSecondary}
+            textStyle={styles.cardInfoText}
+          >
             {item.service_type === 'parcel'
-              ? `📦 ${t('more.parcelNegotiable')}`
-              : `👥 ${t('more.peopleCount', { n: item.person_count })} · ${formatPrice(item.price)} ${t('more.currency')}`}
-          </Text>
+              ? t('more.parcelNegotiable')
+              : `${t('more.peopleCount', { n: item.person_count })} · ${formatPrice(item.price)} ${t('more.currency')}`}
+          </IconText>
           {item.note && (
-            <Text style={styles.note} numberOfLines={2}>
-              💬 {item.note}
-            </Text>
+            <IconText
+              name="chat"
+              size={13}
+              color={colors.textSecondary}
+              textStyle={styles.note}
+              numberOfLines={2}
+            >
+              {item.note}
+            </IconText>
           )}
         </View>
 
@@ -334,7 +354,9 @@ export default function OrdersScreen() {
               </Text>
               {onFreeTrial && (
                 <View style={styles.bonusTag}>
-                  <Text style={styles.bonusTagText}>🎁 Bonus</Text>
+                  <IconText name="gift" size={11} color={colors.success} textStyle={styles.bonusTagText}>
+                    Bonus
+                  </IconText>
                 </View>
               )}
             </View>
@@ -358,7 +380,7 @@ export default function OrdersScreen() {
               style={[styles.acceptBtn, insufficientBalance && styles.acceptBtnDisabled]}
             >
               <Text style={styles.acceptBtnText}>
-                {accepting === item.id ? '...' : `${t('order.accept')} →`}
+                {accepting === item.id ? '...' : t('order.accept')}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -406,14 +428,14 @@ export default function OrdersScreen() {
       {/* Trial / balance status card */}
       {driver?.has_active_subscription ? (
         <View style={[styles.statusCard, styles.statusCardTrial]}>
-          <Text style={styles.statusCardIcon}>🎁</Text>
+          <Icon name="gift" size={24} color={colors.success} style={styles.statusCardIcon} />
           <Text style={styles.statusCardTitle}>
             {t('more.trialDaysLeft', { days: driver.subscription_days_left ?? 0 })}
           </Text>
         </View>
       ) : (
         <View style={styles.statusCard}>
-          <Text style={styles.statusCardIcon}>💰</Text>
+          <Icon name="money" size={24} color={colors.accent} style={styles.statusCardIcon} />
           <View style={{ flex: 1 }}>
             <Text style={styles.statusCardLabel}>{t('profile.balance')}</Text>
             <Text style={styles.statusCardValue}>
@@ -444,7 +466,9 @@ export default function OrdersScreen() {
               : 'Administrator tasdig‘i kutilmoqda'
           }
         >
-          <Text style={styles.topupBannerText}>🪪 {receiveMsg}</Text>
+          <IconText name="idCard" size={13} color="#B00020" textStyle={styles.topupBannerText}>
+            {receiveMsg}
+          </IconText>
           {receiveCode === 'documents_required' && (
             <Text style={styles.topupBannerBtn}>Hujjatlarni to‘ldirish</Text>
           )}
@@ -456,9 +480,11 @@ export default function OrdersScreen() {
           activeOpacity={0.85}
         >
           <Text style={styles.topupBannerText}>
-            {receiveMsg || `⚠️ ${t('more.balanceEmpty')}`}
+            {receiveMsg || t('more.balanceEmpty')}
           </Text>
-          <Text style={styles.topupBannerBtn}>💳 {t('more.topUp')}</Text>
+          <IconText name="card" size={14} color={colors.primary} textStyle={styles.topupBannerBtn}>
+            {t('more.topUp')}
+          </IconText>
         </TouchableOpacity>
       ) : null}
 
@@ -479,7 +505,11 @@ export default function OrdersScreen() {
           refreshing ? null : (
             <View style={styles.empty}>
               <View style={styles.emptyIconCircle}>
-                <Text style={styles.emptyEmoji}>{canReceive ? '🚕' : '💰'}</Text>
+                <Icon
+                  name={canReceive ? 'taxi' : 'money'}
+                  size={52}
+                  color={colors.textMuted}
+                />
               </View>
               <Text style={styles.emptyTitle}>
                 {canReceive ? t('home.noOrders') : t('more.balanceEmptyOrders')}
@@ -489,7 +519,17 @@ export default function OrdersScreen() {
                   {isOnline ? t('home.noOrdersHint') : t('home.offlineHint')}
                 </Text>
               )}
-              <Text style={styles.pullHint}>↓ {t('home.pullToRefresh')}</Text>
+              <IconText
+                name="arrowDown"
+                size={13}
+                color={colors.textMuted}
+                // flex: 0 undoes IconText's default so the pair stays centred
+                // together instead of the label filling the row.
+                textStyle={[styles.pullHint, { flex: 0 }]}
+                style={styles.pullHintRow}
+              >
+                {t('home.pullToRefresh')}
+              </IconText>
             </View>
           )
         }
@@ -627,7 +667,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  serviceIcon: { fontSize: 20 },
+
   timeAgo: { ...typography.small, color: colors.textMuted },
   sourceBadge: {
     backgroundColor: colors.infoLight,
@@ -729,7 +769,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.lg,
   },
-  emptyEmoji: { fontSize: 52 },
   emptyTitle: { ...typography.h3, color: colors.text, textAlign: 'center', marginBottom: spacing.xs },
   emptySubtitle: {
     ...typography.caption,
@@ -748,10 +787,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.primary,
   },
   refreshBtnText: { ...typography.bodyBold, color: colors.primary },
+  pullHintRow: { justifyContent: 'center', marginTop: spacing.sm },
   pullHint: {
     ...typography.caption,
     color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: spacing.sm,
   },
 });

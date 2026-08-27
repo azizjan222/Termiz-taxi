@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, IconText } from '../../src/components/Icon';
 import { useAuthStore } from '../../src/store/auth';
 import { useOrderStore } from '../../src/store/order';
 import { useThemeStore } from '../../src/store/theme';
@@ -65,7 +66,7 @@ export default function HomeScreen() {
           accessibilityHint="Olish va borish manzillarini tanlash oynasini ochadi"
         >
           <View style={[styles.serviceIcon, { backgroundColor: colors.accent }]}>
-            <Text style={styles.serviceEmoji}>🚕</Text>
+            <Icon name="taxi" size={28} color={colors.primary} />
           </View>
           <View style={styles.serviceText}>
             <Text style={styles.serviceTitle}>{t('home.orderTaxi')}</Text>
@@ -98,7 +99,7 @@ export default function HomeScreen() {
           accessibilityHint="Jo‘natmani olish va yetkazish manzillarini tanlash oynasini ochadi"
         >
           <View style={[styles.serviceIcon, { backgroundColor: '#E0E7FF' }]}>
-            <Text style={styles.serviceEmoji}>📦</Text>
+            <Icon name="parcel" size={28} color={colors.primary} />
           </View>
           <View style={styles.serviceText}>
             <Text style={styles.serviceTitle}>{t('home.orderParcel')}</Text>
@@ -124,7 +125,9 @@ export default function HomeScreen() {
         {/* TEMP: invite-a-friend promo hidden on home — re-enable later (keyin qo'shamiz) */}
         {/*
         <View style={styles.promoCard}>
-          <Text style={styles.promoText}>🎁 {t('profile.inviteFriends')}</Text>
+          <IconText name="gift" size={14} color={colors.accent} textStyle={styles.promoText}>
+            {t('profile.inviteFriends')}
+          </IconText>
         </View>
         */}
       </ScrollView>
@@ -176,7 +179,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  serviceEmoji: { fontSize: 28 },
   serviceText: { flex: 1 },
   serviceTitle: { ...typography.bodyBold, color: colors.text },
   serviceSub: {
