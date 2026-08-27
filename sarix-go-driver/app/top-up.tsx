@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
-import { Icon, IconText } from '../src/components/Icon';
+import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import {
   listMethods,
@@ -33,6 +33,20 @@ import type { ThemeColors } from '../src/theme/colors-themed';
 
 const PRESET_AMOUNTS = [10000, 20000, 50000, 100000];
 const MIN_AMOUNT = 1000;
+
+const METHOD_ICONS: Record<PaymentMethod['id'], IconName> = {
+  card: 'card',
+  click: 'wallet',
+  payme: 'wallet',
+};
+
+// Click and Payme get the same wallet shape, so the brand colour is what tells them
+// apart — exactly the job the old 💙 / 💚 glyphs were doing.
+const METHOD_COLORS: Record<PaymentMethod['id'], string> = {
+  card: '#B88700',
+  click: '#0F86FF',
+  payme: '#00CFC1',
+};
 
 /**
  * Screenshot upload failures used to collapse into a bare "Xatolik yuz berdi",
@@ -184,6 +198,12 @@ export default function TopUpScreen() {
     }
   };
 
+  // Chosen from `method.id`, not from the server's `icon` field.
+  //
+  // The backend sends a glyph there (💳 / 💙 / 💚), which cannot be sized or coloured
+  // from here and renders differently per device. `id` is already a typed union, so the
+  // client can pick its own icon without the backend having to know about our icon set —
+  // and older app versions keep working, because the `icon` field is left untouched.
   const renderMethod = (method: PaymentMethod) => {
     const isSelected = selectedMethod === method.id;
     return (
@@ -203,7 +223,11 @@ export default function TopUpScreen() {
         accessibilityState={{ selected: isSelected, disabled: Boolean(method.disabled) }}
       >
         <View style={styles.methodIcon}>
-          <Text style={styles.methodIconText}>{method.icon}</Text>
+          <Icon
+            name={METHOD_ICONS[method.id] ?? 'card'}
+            size={22}
+            color={METHOD_COLORS[method.id] ?? colors.textSecondary}
+          />
         </View>
         <View style={styles.methodInfo}>
           <Text style={styles.methodName}>
@@ -252,7 +276,9 @@ export default function TopUpScreen() {
 
           {/* Bonus banner */}
           <View style={styles.bonusBanner}>
-            <Icon name="gift" size={28} color={colors.success} style={styles.bonusEmoji} />
+            {/* Matches bonusText: the banner sits on accentLight, where the green
+                success colour reads as a different message than the label it labels. */}
+            <Icon name="gift" size={26} color={colors.primary} />
             <Text style={styles.bonusText}>
               Birinchi to'lovda <Text style={styles.bonusBold}>+50% BONUS!</Text>
             </Text>
@@ -444,7 +470,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.lg,
     gap: spacing.sm,
   },
-  bonusEmoji: { fontSize: 28 },
+
   bonusText: { flex: 1, ...typography.body, color: colors.primary },
   bonusBold: { fontWeight: '800' },
   sectionTitle: {
@@ -503,7 +529,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  methodIconText: { fontSize: 24 },
   methodInfo: { flex: 1 },
   methodName: { ...typography.bodyBold, color: colors.text },
   methodDesc: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
