@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import { getOrder, cancelOrder } from '../src/api/orders';
 import { useAuthStore } from '../src/store/auth';
@@ -30,22 +31,22 @@ const { width: SCREEN_W } = Dimensions.get('window');
 
 // Promo / info banners shown while the passenger waits. They auto-rotate
 // (right -> left) every 7s and can also be swiped manually.
-type Banner = { emoji: string; title: string; text: string; bg: string };
+type Banner = { icon: IconName; title: string; text: string; bg: string };
 const BANNERS: Banner[] = [
   {
-    emoji: '🚖',
+    icon: 'taxi',
     title: 'Buyurtmangiz qabul qilindi',
     text: 'Sarix Go yaqin atrofdagi haydovchilarni qidirmoqda — biroz kuting.',
     bg: '#E0E7FF',
   },
   {
-    emoji: '☀️',
+    icon: 'sun',
     title: 'Issiqda kutib oʻtirmaysiz',
     text: 'Taksini koʻchada kutmang — haydovchi oʻzi uyingiz oldidan olib ketadi.',
     bg: '#FFF3CC',
   },
   {
-    emoji: '💳',
+    icon: 'card',
     title: 'Narx oldindan aniq',
     text: 'Savdolashish yoʻq — narx buyurtma berishdan oldin koʻrsatiladi. Naqd yoki karta.',
     bg: '#D1FAE5',
@@ -253,11 +254,23 @@ export default function SearchingScreen() {
             <Animated.View style={[styles.pulse, { transform: [{ scale }], opacity }]} />
           )}
           <View style={[styles.statusIcon, found && styles.statusIconFound]}>
-            <Text style={styles.statusEmoji}>{found ? '✅' : '🔍'}</Text>
+            <Icon
+              name={found ? "accepted" : "search"}
+              size={32}
+              color={found ? colors.success : colors.primary}
+            />
           </View>
         </View>
 
-        <Text style={styles.sentLabel}>✓ Zakas yuborildi</Text>
+        <IconText
+          name="check"
+          size={13}
+          color={colors.success}
+          textStyle={[styles.sentLabel, { flex: 0 }]}
+          style={styles.sentLabelRow}
+        >
+          Zakas yuborildi
+        </IconText>
 
         {found ? (
           <>
@@ -288,7 +301,7 @@ export default function SearchingScreen() {
           {BANNERS.map((b, i) => (
             <View key={i} style={styles.bannerPage}>
               <View style={[styles.banner, { backgroundColor: b.bg }]}>
-                <Text style={styles.bannerEmoji}>{b.emoji}</Text>
+                <Icon name={b.icon} size={40} color={colors.primary} style={styles.bannerEmoji} />
                 <Text style={styles.bannerTitle}>{b.title}</Text>
                 <Text style={styles.bannerText}>{b.text}</Text>
               </View>
@@ -345,8 +358,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
   },
   statusIconFound: { backgroundColor: colors.success },
-  statusEmoji: { fontSize: 32 },
-  sentLabel: { ...typography.caption, color: colors.success, fontWeight: '700', marginBottom: spacing.xs },
+  sentLabelRow: { justifyContent: 'center', marginBottom: spacing.xs },
+  sentLabel: { ...typography.caption, color: colors.success, fontWeight: '700' },
   statusTitle: { ...typography.h3, color: colors.text, textAlign: 'center' },
   timer: {
     ...typography.h2,
@@ -374,7 +387,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     minHeight: 160,
     justifyContent: 'center',
   },
-  bannerEmoji: { fontSize: 40, marginBottom: spacing.sm },
+  bannerEmoji: { marginBottom: spacing.sm },
   bannerTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.xs },
   bannerText: { ...typography.body, color: colors.text, opacity: 0.8 },
   dots: {

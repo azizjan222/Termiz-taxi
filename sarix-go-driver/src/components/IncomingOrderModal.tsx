@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { type DriverOrder } from '../api/driver';
+import { Icon, IconText, type IconName } from './Icon';
 import { typography, spacing, radius, gradients } from '../theme';
 import type { ThemeColors } from '../theme/colors-themed';
 
@@ -33,8 +34,8 @@ interface Props {
 
 const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
-const serviceIcon = (type: string) =>
-  type === 'parcel' ? '📦' : type === 'full_car' ? '🚗' : '🚕';
+const serviceIcon = (type: string): IconName =>
+  type === 'parcel' ? 'parcel' : type === 'full_car' ? 'car' : 'taxi';
 
 /**
  * Ride-hailing style "new order" popup. Slides up from the bottom with a
@@ -123,18 +124,23 @@ export const IncomingOrderModal: React.FC<Props> = ({
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <View style={styles.iconTile}>
-                <Text style={styles.iconTileText}>{serviceIcon(order.service_type)}</Text>
+                <Icon name={serviceIcon(order.service_type)} size={22} color={colors.primary} />
               </View>
               <View>
-                <Text style={styles.headerTitle}>🔔 Yangi zakas!</Text>
+                <View style={styles.headerTitleRow}>
+                  <Icon name="notification" size={18} color={colors.text} />
+                  <Text style={styles.headerTitle}>Yangi zakas!</Text>
+                </View>
                 <Text style={styles.headerSub}>
-                  {order.source === 'app' ? '📱 Ilovadan' : 'Telegram'} · {secsLeft}s
+                  {order.source === 'app' ? 'Ilovadan' : 'Telegram'} · {secsLeft}s
                 </Text>
               </View>
             </View>
             {order.female_only && (
               <View style={styles.femaleTag}>
-                <Text style={styles.femaleTagText}>👩 Ayol</Text>
+                <IconText name="female" size={12} color="#DB2777" textStyle={styles.femaleTagText}>
+                  Ayol
+                </IconText>
               </View>
             )}
           </View>
@@ -166,16 +172,22 @@ export const IncomingOrderModal: React.FC<Props> = ({
               driver clearly sees special requirements BEFORE accepting. */}
           {(order.female_only || order.has_roof_rack) && (
             <View style={styles.extrasBlock}>
-              <Text style={styles.extrasTitle}>📋 Qo'shimcha talablar</Text>
+              <IconText name="history" size={12} color="#B45309" textStyle={styles.extrasTitle}>
+                Qo'shimcha talablar
+              </IconText>
               <View style={styles.extrasRow}>
                 {order.female_only && (
                   <View style={styles.extraTag}>
-                    <Text style={styles.extraTagText}>👩 Salonda ayol bor</Text>
+                    <IconText name="female" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                      Salonda ayol bor
+                    </IconText>
                   </View>
                 )}
                 {order.has_roof_rack && (
                   <View style={styles.extraTag}>
-                    <Text style={styles.extraTagText}>🧳 Tomida yukxona bor</Text>
+                    <IconText name="luggage" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                      Tomida yukxona bor
+                    </IconText>
                   </View>
                 )}
               </View>
@@ -185,14 +197,20 @@ export const IncomingOrderModal: React.FC<Props> = ({
           {/* Meta chips */}
           <View style={styles.chipsRow}>
             <View style={styles.chip}>
-              <Text style={styles.chipText}>👤 {order.passenger_name || "Yo'lovchi"}</Text>
+              <IconText name="profile" size={13} color={colors.textSecondary} textStyle={styles.chipText}>
+                {order.passenger_name || "Yo'lovchi"}
+              </IconText>
             </View>
             <View style={styles.chip}>
-              <Text style={styles.chipText}>🕒 {order.departure_time || 'Hozir'}</Text>
+              <IconText name="clock" size={13} color={colors.textSecondary} textStyle={styles.chipText}>
+                {order.departure_time || 'Hozir'}
+              </IconText>
             </View>
             {!isParcel && (
               <View style={styles.chip}>
-                <Text style={styles.chipText}>👥 {order.person_count} kishi</Text>
+                <IconText name="people" size={13} color={colors.textSecondary} textStyle={styles.chipText}>
+                  {order.person_count} kishi
+                </IconText>
               </View>
             )}
           </View>
@@ -210,12 +228,22 @@ export const IncomingOrderModal: React.FC<Props> = ({
               <Text style={[styles.commission, onFreeTrial && styles.commissionStruck]}>
                 -{formatPrice(order.commission)} so'm
               </Text>
-              {onFreeTrial && <Text style={styles.bonusText}>🎁 Bonus davri</Text>}
+              {onFreeTrial && <IconText name="gift" size={12} color={colors.success} textStyle={styles.bonusText}>
+                Bonus davri
+              </IconText>}
             </View>
           </View>
 
           {!!order.note && (
-            <Text style={styles.note} numberOfLines={2}>💬 {order.note}</Text>
+            <IconText
+              name="chat"
+              size={13}
+              color={colors.textSecondary}
+              textStyle={styles.note}
+              numberOfLines={2}
+            >
+              {order.note}
+            </IconText>
           )}
 
           {/* Actions */}
@@ -228,7 +256,7 @@ export const IncomingOrderModal: React.FC<Props> = ({
                 style={styles.acceptBtn}
               >
                 <Text style={styles.acceptBtnText}>
-                  {accepting ? 'Qabul qilinmoqda...' : '✅ Qabul qilish'}
+                  {accepting ? 'Qabul qilinmoqda...' : 'Qabul qilish'}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -282,7 +310,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconTileText: { fontSize: 26 },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   headerTitle: { ...typography.h3, color: colors.text },
   headerSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
   femaleTag: {
