@@ -10,6 +10,7 @@ import { useDriverStore } from '../src/store/driver';
 import { useThemeStore } from '../src/store/theme';
 import {
   registerPushToken,
+  isPushRegistered,
   addNotificationReceivedListener,
   addNotificationResponseListener,
   stopAlert,
@@ -39,11 +40,35 @@ export default function RootLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Register push token after auth
+  // Register the push token after auth, and keep retrying until it succeeds.
+  //
+  // This used to be a single fire-and-forget attempt with the error thrown away. One
+  // failure — permission not granted yet, no network at launch — left the driver without a
+  // token for the whole install, and nothing surfaced it: the backend skips tokenless
+  // drivers, so those orders are not even logged as failed sends. Admin diagnostics found
+  // 3 of 5 online drivers like that, receiving orders only while the app was open.
+  //
+  // Retrying when the app returns to the foreground covers the recoverable cases (network
+  // came back, permission granted later from Settings).
   useEffect(() => {
-    if (isAuth && ready) {
-      registerPushToken().catch(() => {});
-    }
+    if (!(isAuth && ready)) return;
+    let cancelled = false;
+
+    const attempt = () => {
+      if (cancelled || isPushRegistered()) return;
+      registerPushToken().catch(() => {
+        // registerPushToken already logs; never let this reject unhandled.
+      });
+    };
+
+    attempt();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') attempt();
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   }, [isAuth, ready]);
 
   // App-wide realtime order socket: connect once the driver is authenticated,

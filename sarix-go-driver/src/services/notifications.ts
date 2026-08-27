@@ -183,19 +183,45 @@ export async function getExpoPushToken(): Promise<string | null> {
   }
 }
 
+/**
+ * Whether the backend currently holds this device's push token.
+ *
+ * Tracked so registration can be retried. Without a token the driver is only ever alerted
+ * while the app is open — the backend skips them entirely, so it is not even recorded as a
+ * failed send. Admin push diagnostics found most online drivers in exactly that state.
+ */
+let pushRegistered = false;
+
+export function isPushRegistered(): boolean {
+  return pushRegistered;
+}
+
 export async function registerPushToken(): Promise<boolean> {
   try {
     await setupNotificationChannels();
     const token = await getExpoPushToken();
-    if (!token) return false;
+    if (!token) {
+      // Usually a denied notification permission. Nothing here can recover that, but it
+      // must not pass silently: this is the difference between a driver who receives
+      // orders with the app closed and one who does not.
+      console.warn(
+        '[push] no token: notification permission denied, or this build has no FCM config'
+      );
+      pushRegistered = false;
+      return false;
+    }
     await api.post('/api/notifications/register-token', { token, language: i18n.language });
+    pushRegistered = true;
     return true;
-  } catch {
+  } catch (e) {
+    console.warn('[push] token registration failed:', e);
+    pushRegistered = false;
     return false;
   }
 }
 
 export async function unregisterPushToken(): Promise<void> {
+  pushRegistered = false;
   try {
     await api.post('/api/notifications/remove-token');
   } catch {}

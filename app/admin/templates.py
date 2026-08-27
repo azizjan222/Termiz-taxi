@@ -609,6 +609,15 @@ PUSH_LOG_HTML = """<h2>Push diagnostika</h2>
 <div class="fs-3 text-danger" id="pl-failed">-</div></div></div></div>
 </div>
 <div id="pl-diagnosis"></div>
+<div id="pl-notoken-wrap" style="display:none">
+<h5 class="mt-4">Online, lekin push bora olmaydigan haydovchilar</h5>
+<p class="text-muted small mb-2">Bu haydovchilar zakasni faqat ilova ochiq turganda ko'radi.
+Ilovani ochib, bildirishnoma ruxsatini berishlari kerak — yoki ilovaning yangi versiyasini o'rnatishlari.</p>
+<div class="table-responsive mb-4">
+<table class="table table-sm table-bordered" id="pl-notoken">
+<thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Mashina</th></tr></thead><tbody></tbody></table>
+</div>
+</div>
 <h5 class="mt-4">Eng ko'p uchragan xatolar (7 kun)</h5>
 <div class="table-responsive mb-4">
 <table class="table table-sm" id="pl-errors"><thead><tr><th>Xato</th><th>Soni</th></tr></thead><tbody></tbody></table>
@@ -643,20 +652,32 @@ document.getElementById('pl-failed').textContent=(s.last_24h||{}).failed||0;
 
 // Turn the numbers into a plain-language verdict, so the cause does not have to be
 // inferred from four separate counters.
+//
+// Tokenless drivers are checked BEFORE the send counters on purpose. Judging by the
+// counters alone said "push yuborish ishlayapti" while 3 of 5 online drivers could not
+// receive anything — technically true and completely misleading, because a driver with no
+// token is never counted as a failure: no send is even attempted for them.
 const sent=(s.last_24h||{}).sent||0, failed=(s.last_24h||{}).failed||0;
 let msg='', cls='info';
-if(unreachable>0 && s.drivers_online_with_token===0){
-msg='Online haydovchilarning HECH BIRIDA push token yo\\'q. Ilova tokenni ro\\'yxatdan o\\'tkaza olmayapti — google-services.json yoki bildirishnoma ruxsati muammosi.';cls='danger';
+if(s.drivers_online>0 && s.drivers_online_with_token===0){
+msg='Online haydovchilarning HECH BIRIDA push token yo\\'q, ya\\'ni ilova yopiqda zakas hech kimga bormaydi. Ilova tokenni ro\\'yxatdan o\\'tkaza olmayapti — bildirishnoma ruxsati yoki eski ilova versiyasi.';cls='danger';
+}else if(unreachable>0){
+msg=unreachable+' ta online haydovchiga push BORA OLMAYDI (token yo\\'q). Ular zakasni faqat ilova ochiq turganda ko\\'radi — yopiqda o\\'tkazib yuboradi. Pastdagi ro\\'yxatdan kimligini ko\\'ring.'+(failed>0?' Bundan tashqari ba\\'zi push xato bilan qaytgan.':'');cls='warning';
 }else if(failed>0 && sent===0){
 msg='Barcha push xato bilan qaytdi. Pastdagi xato matnini o\\'qing: MismatchSenderId yoki shunga o\\'xshash bo\\'lsa, Expo dagi FCM V1 kaliti mos emas.';cls='danger';
 }else if(failed>0){
 msg='Bir qismi xato bilan qaytdi — pastdagi jadvalda sababini ko\\'ring.';cls='warning';
 }else if(sent>0){
-msg='Push yuborish ishlayapti. Yetmayotgan bo\\'lsa muammo qurilma tomonida (batareya optimizatsiyasi, bildirishnoma o\\'chirilgan).';cls='success';
+msg='Barcha online haydovchida token bor va push xatosiz yuborilyapti. Shunga qaramay yetmayotgan bo\\'lsa, muammo qurilma tomonida (batareya optimizatsiyasi, bildirishnoma o\\'chirilgan).';cls='success';
 }else{
-msg='24 soat ichida umuman push yuborilmagan. Zakas yaratilganda haydovchi online bo\\'lmagan bo\\'lishi mumkin.';cls='secondary';
+msg='24 soat ichida umuman push yuborilmagan. Zakas yaratilganda online haydovchi bo\\'lmagan bo\\'lishi mumkin.';cls='secondary';
 }
 document.getElementById('pl-diagnosis').innerHTML='<div class="alert alert-'+cls+'">'+esc(msg)+'</div>';
+
+const nt=d.online_without_token||[];
+document.getElementById('pl-notoken-wrap').style.display=nt.length?'':'none';
+const ntb=document.querySelector('#pl-notoken tbody');ntb.innerHTML='';
+nt.forEach(x=>{ntb.innerHTML+=`<tr><td>${x.id}</td><td>${esc(x.name||'-')}</td><td>${esc(x.phone||'')}</td><td>${esc(x.car_number||'')}</td></tr>`;});
 
 const et=document.querySelector('#pl-errors tbody');et.innerHTML='';
 (s.top_errors||[]).forEach(e=>{et.innerHTML+=`<tr><td><code>${esc(e.error)}</code></td><td>${e.count}</td></tr>`;});

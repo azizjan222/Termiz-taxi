@@ -1190,6 +1190,25 @@ async def api_push_log(request: web.Request) -> web.Response:
             .count()
         )
 
+        # The actionable list: these drivers are online and expecting work, but no push can
+        # reach them, so they only see orders while the app is open in front of them. Named
+        # here so an operator can contact them instead of only seeing a count.
+        online_without_token = [
+            {
+                "id": d.id,
+                "name": (f"{d.first_name or ''} {d.last_name or ''}").strip() or None,
+                "phone": d.phone,
+                "car_number": d.car_number,
+            }
+            for d in (
+                verified.filter(Driver.is_online == True)  # noqa: E712
+                .filter(Driver.push_token.is_(None))
+                .order_by(Driver.id.desc())
+                .limit(50)
+                .all()
+            )
+        ]
+
         top_errors = [
             {"error": err or "(bo'sh)", "count": n}
             for err, n in (
@@ -1247,6 +1266,7 @@ async def api_push_log(request: web.Request) -> web.Response:
                 "last_7d": counts_since(week_ago),
                 "top_errors": top_errors,
             },
+            "online_without_token": online_without_token,
             "rows": rows,
         })
     finally:
