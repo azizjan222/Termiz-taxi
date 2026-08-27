@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { Button } from '../../src/components/Button';
 import YandexMap, { type MapMarker, type YandexMapHandle } from '../../src/components/YandexMap';
 import { getOrder, cancelOrder, type Order } from '../../src/api/orders';
@@ -200,21 +201,20 @@ export default function OrderDetailScreen() {
   const isActive = ['new', 'accepted', 'in_progress'].includes(order.status);
   const isParcel = order.service_type === 'parcel';
   const isFullCar = order.service_type === 'full_car';
+  const serviceIcon: IconName = isParcel ? 'parcel' : isFullCar ? 'car' : 'taxi';
   const serviceBadge = isParcel
-    ? `📦 ${t('order.parcel')}`
+    ? t('order.parcel')
     : isFullCar
-    ? `🚗 ${t('order.fullCar')}`
-    : `🚕 ${t('order.taxi')}`;
-  const statusEmoji =
+    ? t('order.fullCar')
+    : t('order.taxi');
+  const statusIcon: IconName =
     order.status === 'completed'
-      ? '🏁'
+      ? 'completed'
       : order.status === 'accepted'
-      ? '✅'
+      ? 'accepted'
       : order.status === 'in_progress'
-      ? isParcel
-        ? '📦'
-        : '🚕'
-      : '⏳';
+      ? serviceIcon
+      : 'clock';
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -223,7 +223,7 @@ export default function OrderDetailScreen() {
           onPress={() => router.replace('/(tabs)/home')}
           style={styles.backBtn}
         >
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>#{order.id}</Text>
         <View style={{ width: 40 }} />
@@ -237,17 +237,34 @@ export default function OrderDetailScreen() {
             isActive && order.status === 'accepted' && { backgroundColor: colors.successLight },
           ]}
         >
-          <Text style={styles.statusEmoji}>{statusEmoji}</Text>
+          <Icon
+            name={statusIcon}
+            size={28}
+            color={colors.primary}
+            style={styles.statusEmoji}
+          />
           <Text style={styles.statusText}>{t(`status.${order.status}`)}</Text>
           <View style={styles.serviceChip}>
-            <Text style={styles.serviceChipText}>{serviceBadge}</Text>
+            <IconText
+              name={serviceIcon}
+              size={12}
+              color={colors.textOnPrimary}
+              textStyle={[styles.serviceChipText, { flex: 0 }]}
+            >
+              {serviceBadge}
+            </IconText>
           </View>
         </View>
 
         {/* Reassurance message right after the driver accepts. */}
         {order.status === 'accepted' && order.driver && (
           <View style={styles.acceptedInfo}>
-            <Text style={styles.acceptedInfoIcon}>🤝</Text>
+            <Icon
+              name="handshake"
+              size={20}
+              color={colors.success}
+              style={styles.acceptedInfoIcon}
+            />
             <Text style={styles.acceptedInfoText}>{t('order.driverAccepted')}</Text>
           </View>
         )}
@@ -272,7 +289,7 @@ export default function OrderDetailScreen() {
               ]}
             />
             <Text style={styles.mapHint}>
-              {driverLoc ? `🚕 ${t('driverMap.title')}` : t('driverMap.waiting')}
+              {driverLoc ? t('driverMap.title') : t('driverMap.waiting')}
             </Text>
           </View>
         )}
@@ -295,7 +312,7 @@ export default function OrderDetailScreen() {
               ) : (
                 <View style={styles.driverAvatar}>
                   <Text style={styles.driverAvatarText}>
-                    {order.driver.first_name?.[0]?.toUpperCase() || '👨'}
+                    {order.driver.first_name?.[0]?.toUpperCase() || '?'}
                   </Text>
                 </View>
               )}
@@ -311,7 +328,14 @@ export default function OrderDetailScreen() {
                     accessibilityLabel="Haydovchiga qo‘ng‘iroq qilish"
                     accessibilityHint="Telefon ilovasida haydovchi raqamini ochadi"
                   >
-                    <Text style={styles.driverPhone}>📱 {order.driver.phone}</Text>
+                    <IconText
+                      name="mobile"
+                      size={12}
+                      color={colors.primary}
+                      textStyle={styles.driverPhone}
+                    >
+                      {order.driver.phone}
+                    </IconText>
                   </TouchableOpacity>
                 ) : null}
                 {/* Rating hidden from the passenger for now (per request). */}
@@ -323,14 +347,14 @@ export default function OrderDetailScreen() {
                 accessibilityLabel="Haydovchiga qo‘ng‘iroq qilish"
                 accessibilityHint="Telefon ilovasida haydovchi raqamini ochadi"
               >
-                <Text style={styles.callBtnIcon}>📞</Text>
+                <Icon name="phone" size={22} color={colors.textOnPrimary} />
               </TouchableOpacity>
             </View>
 
             {order.driver.car_model && (
               <View style={styles.carInfo}>
                 <Text style={styles.carText}>
-                  🚗 {order.driver.car_model}
+                  {order.driver.car_model}
                   {order.driver.car_number ? ` · ${order.driver.car_number}` : ''}
                 </Text>
               </View>
@@ -342,12 +366,16 @@ export default function OrderDetailScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t('order.summary')}</Text>
           <View style={styles.row}>
-            <Text style={styles.label}>📍 {t('order.from')}</Text>
+            <IconText name="location" size={12} color={colors.textSecondary} textStyle={styles.label}>
+              {t('order.from')}
+            </IconText>
             <Text style={styles.value}>{order.from_city}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>🏁 {t('order.to')}</Text>
+            <IconText name="flag" size={12} color={colors.textSecondary} textStyle={styles.label}>
+              {t('order.to')}
+            </IconText>
             <Text style={styles.value}>{order.to_city}</Text>
           </View>
           <View style={styles.divider} />
@@ -358,13 +386,17 @@ export default function OrderDetailScreen() {
             </View>
           ) : (
             <View style={styles.row}>
-              <Text style={styles.label}>👥 {t('order.persons')}</Text>
+              <IconText name="people" size={12} color={colors.textSecondary} textStyle={styles.label}>
+                {t('order.persons')}
+              </IconText>
               <Text style={styles.value}>{order.person_count}</Text>
             </View>
           )}
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>💵 {t('order.price')}</Text>
+            <IconText name="cash" size={12} color={colors.textSecondary} textStyle={styles.label}>
+              {t('order.price')}
+            </IconText>
             <Text style={[styles.value, styles.price]}>
               {isParcel ? t('order.negotiable') : `${formatPrice(order.price)} so'm`}
             </Text>
@@ -374,7 +406,7 @@ export default function OrderDetailScreen() {
         {order.note && (
           <View style={[styles.card, { marginTop: spacing.md }]}>
             <Text style={styles.cardTitle}>
-              {isParcel ? `📦 ${t('order.parcel')}` : t('order.note')}
+              {isParcel ? t('order.parcel') : t('order.note')}
             </Text>
             <Text style={styles.noteText}>{order.note}</Text>
           </View>
@@ -412,7 +444,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   title: { ...typography.h3, color: colors.primary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg },
@@ -425,7 +456,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.md,
     ...CARD_SHADOW,
   },
-  statusEmoji: { fontSize: 28, marginRight: spacing.md },
+  statusEmoji: { marginRight: spacing.md },
   statusText: { ...typography.h3, color: colors.textOnPrimary, flex: 1 },
   serviceChip: {
     backgroundColor: 'rgba(255,255,255,0.22)',
@@ -443,7 +474,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.sm,
     marginBottom: spacing.md,
   },
-  acceptedInfoIcon: { fontSize: 20, marginRight: spacing.sm },
+  acceptedInfoIcon: { marginRight: spacing.sm },
   acceptedInfoText: { ...typography.bodyBold, color: colors.success, flex: 1 },
   mapCard: {
     height: 240,
@@ -492,7 +523,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  callBtnIcon: { fontSize: 22 },
   carInfo: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.divider },
   carText: { ...typography.caption, color: colors.textSecondary },
   card: {
