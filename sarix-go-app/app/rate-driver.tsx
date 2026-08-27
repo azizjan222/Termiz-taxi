@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
+import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import { ratePassenger } from '../src/api/ratings';
 import { useThemeStore } from '../src/store/theme';
@@ -69,7 +70,11 @@ export default function RateDriverScreen() {
               activeOpacity={0.7}
             >
               <Text style={[styles.star, n <= stars && styles.starActive]}>
-                {n <= stars ? '⭐' : '☆'}
+                <Icon
+                  name={n <= stars ? 'star' : 'starOutline'}
+                  size={40}
+                  color={n <= stars ? colors.accent : colors.textMuted}
+                />
               </Text>
             </TouchableOpacity>
           ))}

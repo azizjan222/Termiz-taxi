@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon } from '../../src/components/Icon';
 import { Button } from '../../src/components/Button';
 import { Input } from '../../src/components/Input';
 import { updateProfile } from '../../src/api/auth';
@@ -142,7 +143,7 @@ export default function NameScreen() {
           <View style={styles.card}>
             <View style={styles.cardTop}>
               <View style={styles.phoneBadge}>
-                <Text style={styles.phoneBadgeIcon}>📞</Text>
+                <Icon name="phone" size={16} color={colors.textSecondary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardLabel}>{t('auth.contactTitle')}</Text>
@@ -150,7 +151,7 @@ export default function NameScreen() {
               </View>
               {mode === 'confirmed' && (
                 <View style={styles.okBadge}>
-                  <Text style={styles.okBadgeText}>✓</Text>
+                  <Icon name="check" size={13} color={colors.textOnPrimary} />
                 </View>
               )}
             </View>
@@ -169,7 +170,7 @@ export default function NameScreen() {
                   keyboardType="phone-pad"
                   autoFocus
                   containerStyle={{ marginBottom: spacing.sm }}
-                  rightIcon={isValidPhone(newPhone) ? <Text style={styles.checkIcon}>✓</Text> : undefined}
+                  rightIcon={isValidPhone(newPhone) ? <Icon name="check" size={18} color={colors.success} /> : undefined}
                 />
                 <Button
                   title={t('auth.saveNumber')}
@@ -193,7 +194,7 @@ export default function NameScreen() {
                   activeOpacity={0.85}
                 >
                   <Text style={[styles.pillText, mode === 'confirmed' ? styles.pillTextConfirmed : styles.pillTextPrimary]}>
-                    ✓ {t('auth.numberWorksYes')}
+                    {t('auth.numberWorksYes')}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.pill, styles.pillGhost]} onPress={startEditing} activeOpacity={0.85}>
@@ -251,14 +252,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: '#E0E7FF',
     alignItems: 'center', justifyContent: 'center',
   },
-  phoneBadgeIcon: { fontSize: 22 },
   cardLabel: { ...typography.small, color: colors.textSecondary },
   cardNumber: { ...typography.h3, color: colors.text, marginTop: 2, letterSpacing: 0.5 },
   okBadge: {
     width: 28, height: 28, borderRadius: 14, backgroundColor: colors.success,
     alignItems: 'center', justifyContent: 'center',
   },
-  okBadgeText: { color: colors.textOnPrimary, fontWeight: '800', fontSize: 15 },
   cardQuestion: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -282,7 +281,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   pillTextConfirmed: { color: colors.success },
   pillTextGhost: { color: colors.text },
   editBox: { marginTop: spacing.md },
-  checkIcon: { color: colors.success, fontWeight: '800', fontSize: 18 },
   cancelBtn: { alignSelf: 'center', paddingVertical: spacing.md, marginTop: spacing.xs },
   cancelText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
   footer: { paddingBottom: spacing.lg, paddingTop: spacing.sm },

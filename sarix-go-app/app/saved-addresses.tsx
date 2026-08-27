@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import {
   listAddresses, createAddress, deleteAddress,
@@ -86,7 +87,7 @@ export default function SavedAddressesScreen() {
 
       {items.length === 0 && !loading ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>📍</Text>
+          <Icon name="location" size={64} color={colors.textMuted} />
           <Text style={styles.emptyText}>Saqlangan manzillar yo'q</Text>
           <Text style={styles.emptyHint}>
             Tez-tez ishlatadigan manzillaringizni qo'shing
@@ -107,7 +108,7 @@ export default function SavedAddressesScreen() {
                 style={styles.deleteBtn}
                 onPress={() => handleDelete(item)}
               >
-                <Text style={styles.deleteIcon}>🗑</Text>
+                <Icon name="delete" size={18} color={colors.error} />
               </TouchableOpacity>
             </View>
           )}
@@ -187,7 +188,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   addIcon: { fontSize: 24, color: colors.primary, fontWeight: '700' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
-  emptyEmoji: { fontSize: 64, marginBottom: spacing.md },
   emptyText: { ...typography.h3, color: colors.text, marginBottom: 4 },
   emptyHint: {
     ...typography.body,
@@ -206,7 +206,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   cardLabel: { ...typography.bodyBold, color: colors.primary, marginBottom: 2 },
   cardAddress: { ...typography.body, color: colors.text },
   deleteBtn: { padding: spacing.sm },
-  deleteIcon: { fontSize: 20 },
   modalContainer: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   modalContent: {
     backgroundColor: colors.white,

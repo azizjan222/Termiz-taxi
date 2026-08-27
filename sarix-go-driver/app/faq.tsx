@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon } from '../src/components/Icon';
 import { getSupportInfo, type SupportInfo } from '../src/api/ai';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -93,7 +94,7 @@ export default function FaqScreen() {
           onPress={openSupport}
           activeOpacity={0.85}
         >
-          <Text style={styles.supportIcon}>💬</Text>
+          <Icon name="chat" size={20} color={colors.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.supportTitle}>{t('faq.contactSupport')}</Text>
             <Text style={styles.supportSub}>
@@ -109,7 +110,7 @@ export default function FaqScreen() {
           onPress={openEmail}
           activeOpacity={0.85}
         >
-          <Text style={styles.emailIcon}>📧</Text>
+          <Icon name="email" size={20} color={colors.primary} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.emailTitle, { color: colors.primary }]}>{t('faq.emailSupport')}</Text>
             <Text style={[styles.emailSub, { color: colors.textSecondary }]}>{supportEmail}</Text>
@@ -146,7 +147,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     marginTop: spacing.lg,
   },
-  supportIcon: { fontSize: 26, marginRight: spacing.md },
   supportTitle: { ...typography.bodyBold, color: '#FFFFFF' },
   supportSub: { ...typography.small, color: '#FFFFFF', opacity: 0.8, marginTop: 2 },
   supportArrow: { fontSize: 24, color: '#FFFFFF' },
@@ -158,7 +158,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     borderWidth: 1,
   },
-  emailIcon: { fontSize: 24, marginRight: spacing.md },
   emailTitle: { ...typography.bodyBold },
   emailSub: { ...typography.small, marginTop: 2 },
   emailArrow: { fontSize: 24 },

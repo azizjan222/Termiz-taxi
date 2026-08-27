@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon } from '../src/components/Icon';
 import { getSupportInfo } from '../src/api/ai';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -100,7 +101,7 @@ export default function FaqScreen() {
           onPress={() => Linking.openURL(supportUrl)}
           activeOpacity={0.85}
         >
-          <Text style={styles.supportIcon}>💬</Text>
+          <Icon name="chat" size={20} color={colors.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.supportTitle}>{t('faq.contactSupport')}</Text>
             <Text style={styles.supportSub}>@{supportUsername}</Text>
@@ -114,7 +115,7 @@ export default function FaqScreen() {
           onPress={() => Linking.openURL(`mailto:${supportEmail}`)}
           activeOpacity={0.85}
         >
-          <Text style={styles.emailIcon}>📧</Text>
+          <Icon name="email" size={20} color={colors.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.emailTitle}>{t('faq.emailSupport')}</Text>
             <Text style={styles.emailSub}>{supportEmail}</Text>
@@ -160,7 +161,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: spacing.lg,
     backgroundColor: colors.primary,
   },
-  supportIcon: { fontSize: 26, marginRight: spacing.md },
   supportTitle: { ...typography.bodyBold, color: colors.textOnPrimary },
   supportSub: { ...typography.small, color: colors.textOnPrimary, opacity: 0.8, marginTop: 2 },
   supportArrow: { fontSize: 24, color: colors.textOnPrimary },
@@ -174,7 +174,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primary,
   },
-  emailIcon: { fontSize: 24, marginRight: spacing.md },
   emailTitle: { ...typography.bodyBold, color: colors.primary },
   emailSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
   emailArrow: { fontSize: 24, color: colors.primary },

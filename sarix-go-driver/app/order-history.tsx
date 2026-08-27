@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { Icon, IconText } from '../src/components/Icon';
 import { getOrdersHistory, type DriverHistoryOrder } from '../src/api/driver';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -98,7 +99,14 @@ export default function OrderHistoryScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={[styles.backIcon, { color: colors.primary }]}>←</Text>
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>📋 {t('history.title')}</Text>
+        <IconText
+          name="history"
+          size={18}
+          color={colors.text}
+          textStyle={[styles.title, { color: colors.text }]}
+        >
+          {t('history.title')}
+        </IconText>
         <View style={{ width: 40 }} />
       </View>
 
@@ -120,7 +128,7 @@ export default function OrderHistoryScreen() {
         <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
       ) : orders.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emptyEmoji}>📭</Text>
+          <Icon name="inboxEmpty" size={64} color={colors.textMuted} />
           <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{t('history.empty')}</Text>
           <Text style={[styles.emptyHint, { color: colors.textMuted }]}>{t('history.emptyHint')}</Text>
         </View>
@@ -155,7 +163,6 @@ const styles = StyleSheet.create({
   tab: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.md, alignItems: 'center' },
   tabText: { ...typography.caption, fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyEmoji: { fontSize: 64, marginBottom: spacing.md },
   emptyText: { ...typography.body },
   emptyHint: { ...typography.caption, marginTop: 4 },
   list: { padding: spacing.lg },
