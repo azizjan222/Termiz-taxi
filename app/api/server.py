@@ -326,6 +326,9 @@ def create_app(bot=None) -> web.Application:
     # Push Notifications
     app.router.add_post("/api/notifications/register-token", notif_api.register_token)
     app.router.add_post("/api/notifications/remove-token", notif_api.remove_token)
+    # In-app inbox: lets a broadcast reach users who never got (or never could get) a push.
+    app.router.add_get("/api/notifications", notif_api.list_notifications)
+    app.router.add_post("/api/notifications/read", notif_api.mark_notifications_read)
 
     # Ratings (passenger ↔ driver)
     app.router.add_post("/api/orders/{id}/rate-driver", ratings_api.passenger_rate_driver)

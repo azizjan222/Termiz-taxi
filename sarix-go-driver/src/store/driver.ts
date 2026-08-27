@@ -89,6 +89,13 @@ export const useDriverStore = create<DriverState>((set) => ({
       const { unregisterPushToken } = await import('../services/notifications');
       await unregisterPushToken();
     } catch {}
+    // Drop the cached notification history too. Announcements are per-account, so on a
+    // shared phone the next driver to sign in would otherwise read the previous one's
+    // messages out of local storage.
+    try {
+      const { resetNotificationHistory } = await import('../services/notificationHistory');
+      await resetNotificationHistory();
+    } catch {}
     await clearAuthToken();
     await SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
     set({ driver: null, isAuthenticated: false, isOnline: false });

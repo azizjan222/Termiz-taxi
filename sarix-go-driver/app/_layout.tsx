@@ -15,7 +15,7 @@ import {
   addNotificationResponseListener,
   stopAlert,
 } from '../src/services/notifications';
-import { addNotification } from '../src/services/notificationHistory';
+import { addNotification, syncAnnouncements } from '../src/services/notificationHistory';
 import * as realtime from '../src/services/realtime';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 
@@ -69,6 +69,18 @@ export default function RootLayout() {
       cancelled = true;
       sub.remove();
     };
+  }, [isAuth, ready]);
+
+  // Pull admin announcements once signed in, and again whenever the app is brought back
+  // to the foreground. Push is not a reliable delivery channel — it needs a registered
+  // token on a real device — so this sync is what actually makes a broadcast arrive.
+  useEffect(() => {
+    if (!(isAuth && ready)) return;
+    syncAnnouncements().catch(() => {});
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') syncAnnouncements().catch(() => {});
+    });
+    return () => sub.remove();
   }, [isAuth, ready]);
 
   // App-wide realtime order socket: connect once the driver is authenticated,

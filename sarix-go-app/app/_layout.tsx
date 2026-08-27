@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -12,7 +13,7 @@ import { AnimatedSplash } from '../src/components/AnimatedSplash';
 import { getAppConfig, compareVersions } from '../src/api/app-config';
 import { registerPushToken } from '../src/services/notifications';
 import { addNotificationReceivedListener } from '../src/services/notifications';
-import { addNotification } from '../src/services/notificationHistory';
+import { addNotification, syncAnnouncements } from '../src/services/notificationHistory';
 import Constants from 'expo-constants';
 
 export default function RootLayout() {
@@ -51,6 +52,18 @@ export default function RootLayout() {
     if (isAuth && ready) {
       registerPushToken().catch(() => {});
     }
+  }, [isAuth, ready]);
+
+  // Pull admin announcements once signed in, and again whenever the app is brought back
+  // to the foreground. Push is not a reliable delivery channel — it needs a registered
+  // token on a real device — so this sync is what actually makes a broadcast arrive.
+  useEffect(() => {
+    if (!isAuth || !ready) return;
+    syncAnnouncements().catch(() => {});
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') syncAnnouncements().catch(() => {});
+    });
+    return () => sub.remove();
   }, [isAuth, ready]);
 
   // Persist every received push notification into the in-app history.

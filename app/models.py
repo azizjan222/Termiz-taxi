@@ -543,6 +543,73 @@ class NotificationLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+# ============= ANNOUNCEMENTS (in-app inbox) =============
+class Announcement(Base):
+    """An admin broadcast, readable in the app by everyone in its audience.
+
+    Push and Telegram are both fire-and-forget: a recipient with no push token, or whose
+    device was off when the message went out, had no way to ever see it. Only people who
+    had opened the mobile app on a real device could receive a broadcast at all, so
+    "Barchaga" reached almost nobody. Persisting the broadcast lets the apps list it
+    whenever they next open, which is what makes "send to everyone" true.
+
+    Stored ONCE per broadcast, not once per recipient: a fan-out row per user would mean
+    tens of thousands of rows for a single message, while the audience is expressible as
+    a filter.
+    """
+    __tablename__ = "announcements"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # 'all' | 'drivers' | 'passengers' | 'user' (a single named recipient)
+    audience = Column(String(20), nullable=False, default="all", index=True)
+    # Only set when audience == 'user'.
+    recipient_type = Column(String(20), nullable=True)  # 'user' or 'driver'
+    recipient_id = Column(Integer, nullable=True)
+    # Normally NULL: the title is localized to the reader's own language when served, so
+    # one row serves all four languages. A stored value overrides that.
+    title = Column(String(200), nullable=True)
+    body = Column(Text, nullable=False)
+    created_by = Column(String(100), nullable=True)  # admin username, for traceability
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "audience IN ('all', 'drivers', 'passengers', 'user')",
+            name="ck_announcement_audience",
+        ),
+        Index("ix_announcement_recipient", "recipient_type", "recipient_id"),
+    )
+
+
+class AnnouncementRead(Base):
+    """Marks one announcement as read by one recipient.
+
+    A row appears only once someone actually reads the message, so this table grows with
+    engagement rather than with audience size. The unique constraint makes marking a
+    message read idempotent, which matters because the apps re-sync on every open.
+    """
+    __tablename__ = "announcement_reads"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    announcement_id = Column(
+        Integer, ForeignKey("announcements.id"), nullable=False, index=True
+    )
+    recipient_type = Column(String(20), nullable=False)  # 'user' or 'driver'
+    recipient_id = Column(Integer, nullable=False)
+    read_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "announcement_id", "recipient_type", "recipient_id",
+            name="uq_announcement_read",
+        ),
+        CheckConstraint(
+            "recipient_type IN ('user', 'driver')",
+            name="ck_announcement_read_recipient_type",
+        ),
+    )
+
+
 # ============= SOS / EMERGENCY =============
 class SosAlert(Base):
     """Emergency SOS alerts."""

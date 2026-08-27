@@ -66,6 +66,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    // Drop the cached notification history too. Announcements are per-account, so on a
+    // shared phone the next person to sign in would otherwise read the previous user's
+    // messages out of local storage.
+    try {
+      const { resetNotificationHistory } = await import('../services/notificationHistory');
+      await resetNotificationHistory();
+    } catch {}
     await clearAuthToken();
     await SecureStore.deleteItemAsync(USER_CACHE_KEY).catch(() => {});
     set({ user: null, isAuthenticated: false });

@@ -16,8 +16,8 @@ from app.seed_data import seed_routes
 #: migration list had moved on, so a database missing the newer columns was reported
 #: ready. Forgetting to bump it can no longer hide a missing COLUMN either -- the
 #: additive column pass below always runs (see the comment there).
-SCHEMA_VERSION = 2026082503
-SCHEMA_NAME = "telegram_login_code"
+SCHEMA_VERSION = 2026082701
+SCHEMA_NAME = "announcement_inbox"
 
 
 def _apply_schema_migrations() -> int:

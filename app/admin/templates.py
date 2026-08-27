@@ -746,7 +746,15 @@ PUSH_HTML = """<h2>Push xabar yuborish</h2>
 <label class="form-label">Xabar matni</label>
 <textarea class="form-control" id="push-message" rows="3"></textarea>
 </div>
-<button class="btn btn-primary" onclick="sendPush()">Yuborish</button>
+<div class="form-check mb-3">
+<input class="form-check-input" type="checkbox" id="push-telegram" checked>
+<label class="form-check-label" for="push-telegram">
+Ilova o'rnatmaganlarga Telegram bot orqali yuborish
+</label>
+<div class="form-text">Push token faqat mobil ilovani ochgan foydalanuvchilarda bo'ladi.
+Botdan ro'yxatdan o'tganlarga xabar Telegram orqali boradi.</div>
+</div>
+<button class="btn btn-primary" id="push-btn" onclick="sendPush()">Yuborish</button>
 <div id="push-result" class="mt-2"></div>
 </div>
 </div>"""
@@ -756,15 +764,41 @@ function toggleRecipient(){
 const v=document.getElementById('push-target').value;
 document.getElementById('recipient-row').classList.toggle('d-none',v!=='specific');
 }
+function pushStatsHtml(s){
+if(!s)return '';
+let h='<hr class="my-2"><div class="small">';
+h+='<div>Qabul qiluvchilar: <b>'+s.recipients+'</b></div>';
+h+='<div>Push token bor: <b>'+s.with_token+'</b> — yuborildi: <b>'+s.push_sent+'</b>'+(s.push_failed?', xato: <b>'+s.push_failed+'</b>':'')+'</div>';
+if(s.telegram_queued)h+='<div>Telegram: <b>'+s.telegram_queued+'</b> ta xabar fonda yuborilmoqda</div>';
+else if(s.telegram_attempted)h+='<div>Telegram: <b>'+s.telegram_sent+'</b> yuborildi'+(s.telegram_failed?', <b>'+s.telegram_failed+'</b> xato':'')+' ('+s.telegram_attempted+' ta urinish)</div>';
+if(s.unreached)h+='<div class="text-warning">Darhol yetib bormadi: <b>'+s.unreached+'</b></div>';
+if(s.inbox_saved)h+='<div class="text-success">Xabar ilovada saqlandi — hamma ilovani ochganda ko\\'radi</div>';
+if(s.errors&&s.errors.length){
+h+='<div class="mt-2">Sabablari:<ul class="mb-0">';
+s.errors.forEach(function(e){h+='<li>'+esc(e.error)+' — '+e.count+' ta</li>';});
+h+='</ul></div>';
+}
+return h+'</div>';
+}
 function sendPush(){
 const target=document.getElementById('push-target').value;
 const message=document.getElementById('push-message').value;
 const recipient_id=parseInt(document.getElementById('push-recipient').value)||null;
 const recipient_type=document.getElementById('push-rtype').value;
-fetch('/admin/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,message,recipient_id,recipient_type})})
+const telegram=document.getElementById('push-telegram').checked;
+const btn=document.getElementById('push-btn');
+const box=document.getElementById('push-result');
+if(!message.trim()){box.innerHTML='<div class="alert alert-danger">Xabar matni bo\\'sh</div>';return;}
+// A broadcast can take a while (Telegram is rate-limited), so disable the button
+// instead of letting an impatient click send the same message twice.
+btn.disabled=true;btn.textContent='Yuborilmoqda...';
+box.innerHTML='<div class="alert alert-secondary">Yuborilmoqda, kuting...</div>';
+fetch('/admin/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,message,recipient_id,recipient_type,telegram})})
 .then(r=>r.json()).then(d=>{
-document.getElementById('push-result').innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+'">'+esc(d.detail||d.error||'Yuborildi')+'</div>';
-}).catch(e=>{document.getElementById('push-result').innerHTML='<div class="alert alert-danger">Xato</div>';});
+const level=d.error?'danger':(d.level||'success');
+box.innerHTML='<div class="alert alert-'+level+'">'+esc(d.detail||d.error||'Yuborildi')+pushStatsHtml(d.stats)+'</div>';
+}).catch(e=>{box.innerHTML='<div class="alert alert-danger">Xato: '+esc(String(e))+'</div>';})
+.finally(()=>{btn.disabled=false;btn.textContent='Yuborish';});
 }
 </script>"""
 
