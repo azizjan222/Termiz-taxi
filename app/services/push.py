@@ -4,6 +4,7 @@ All user-facing push text is localized to the recipient's language
 (``User.language`` / ``Driver.language``) via :mod:`app.services.notify_i18n`,
 with an Uzbek fallback.
 """
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -11,12 +12,16 @@ from typing import Optional
 import aiohttp
 from sqlalchemy.orm import Session
 
+from app.database import get_session
 from app.models import Driver, NotificationLog, User
 from app.services import notify_i18n as nt
 
 logger = logging.getLogger(__name__)
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+# How often the background loop resolves pending receipts. Expo needs a short while to
+# produce one, so there is no value in polling faster.
+_RECEIPT_POLL_SECONDS = 300
 # Delivery outcomes live behind a second call: the send response is only an acceptance
 # ticket. See check_push_receipts().
 EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts"
@@ -421,6 +426,41 @@ async def check_push_receipts(session: Session, limit: int = 300) -> dict:
         "failed": failed,
         "pending": still_pending,
     }
+
+
+async def _receipt_loop():
+    """Periodically resolve pending push receipts.
+
+    Receipt checking started as a button in the admin panel, which meant the truth about
+    delivery was only known when somebody remembered to look. Since this is the only place
+    a silent delivery failure is visible at all, it runs on its own now: statuses settle to
+    `delivered`/`failed` by themselves and dead tokens are cleared without intervention.
+
+    Expo needs a moment to resolve a receipt, hence the first wait before the first pass.
+    """
+    while True:
+        try:
+            await asyncio.sleep(_RECEIPT_POLL_SECONDS)
+            session = get_session()
+            try:
+                result = await check_push_receipts(session)
+                if result["delivered"] or result["failed"]:
+                    logger.info(
+                        "Push receipts: %d delivered, %d failed, %d still pending",
+                        result["delivered"], result["failed"], result["pending"],
+                    )
+            finally:
+                session.close()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            # Never let one bad pass kill the loop: the next tick should still run.
+            logger.error("Receipt loop error: %s", e)
+
+
+def start_receipt_scheduler() -> asyncio.Task:
+    """Create and return the background task (call from the running event loop)."""
+    return asyncio.create_task(_receipt_loop())
 
 
 async def notify_driver_new_order(session: Session, order, drivers: list):
