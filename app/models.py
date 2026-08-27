@@ -534,8 +534,12 @@ class NotificationLog(Base):
     title = Column(String(200))
     body = Column(Text)
     data = Column(Text)  # JSON
-    status = Column(String(20))  # sent, failed
+    status = Column(String(20))  # sent, delivered, failed
     error = Column(Text)
+    # Expo receipt id from the send ticket. "sent" only means Expo accepted the message;
+    # whether FCM actually delivered it is a separate lookup keyed by this id. Kept so a
+    # silent delivery failure (MismatchSenderId, DeviceNotRegistered) can be seen at all.
+    ticket_id = Column(String(80))
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
