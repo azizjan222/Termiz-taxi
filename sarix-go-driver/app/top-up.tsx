@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
+import { Icon, IconText } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import {
   listMethods,
@@ -225,7 +226,7 @@ export default function TopUpScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>Balansni to'ldirish</Text>
         <View style={{ width: 40 }} />
@@ -244,14 +245,14 @@ export default function TopUpScreen() {
             </Text>
             {(driver?.balance || 0) < 20000 && (
               <Text style={styles.balanceWarning}>
-                ⚠️ Zakas qabul qilish uchun kamida 20 000 so'm bo'lishi kerak
+                Zakas qabul qilish uchun kamida 20 000 so'm bo'lishi kerak
               </Text>
             )}
           </View>
 
           {/* Bonus banner */}
           <View style={styles.bonusBanner}>
-            <Text style={styles.bonusEmoji}>🎁</Text>
+            <Icon name="gift" size={28} color={colors.success} style={styles.bonusEmoji} />
             <Text style={styles.bonusText}>
               Birinchi to'lovda <Text style={styles.bonusBold}>+50% BONUS!</Text>
             </Text>
@@ -321,7 +322,14 @@ export default function TopUpScreen() {
                     </Text>
                   )}
                 </View>
-                <Text style={styles.copyBtn}>Nusxa 📋</Text>
+                <IconText
+                  name="document"
+                  size={13}
+                  color={colors.primary}
+                  textStyle={[styles.copyBtn, { flex: 0 }]}
+                >
+                  Nusxa
+                </IconText>
               </TouchableOpacity>
 
               <Text style={styles.sectionTitle}>2️⃣ To'lov skrinshotini yuklang</Text>
@@ -348,7 +356,7 @@ export default function TopUpScreen() {
                   disabled={submitting}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.uploadIcon}>📸</Text>
+                  <Icon name="camera" size={28} color={colors.primary} style={styles.uploadIcon} />
                   <Text style={styles.uploadText}>Skrinshot yuklash</Text>
                 </TouchableOpacity>
               )}
@@ -410,7 +418,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderBottomColor: colors.divider,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   title: { ...typography.h3, color: colors.primary },
   scroll: { padding: spacing.lg },
   balanceCard: {

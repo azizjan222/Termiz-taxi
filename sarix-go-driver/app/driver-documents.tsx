@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
+import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import {
   uploadLicenseImage,
@@ -53,15 +54,15 @@ interface DocSpec {
   key: DocKey;
   title: string;
   side: string;
-  emoji: string;
+  icon: IconName;
   guide: string;
 }
 
 const DOCS: DocSpec[] = [
-  { key: 'licenseFront', title: 'Haydovchilik guvohnomasi', side: 'Old tomoni', emoji: '🪪', guide: 'Rasm va familiya ko\'rinsin' },
-  { key: 'licenseBack', title: 'Haydovchilik guvohnomasi', side: 'Orqa tomoni', emoji: '🪪', guide: 'Toifalar (B, C...) ko\'rinsin' },
-  { key: 'techFront', title: 'Texnik pasport', side: 'Old tomoni', emoji: '📋', guide: 'Davlat raqami ko\'rinsin' },
-  { key: 'techBack', title: 'Texnik pasport', side: 'Orqa tomoni', emoji: '📋', guide: 'Egasi ma\'lumoti ko\'rinsin' },
+  { key: 'licenseFront', title: 'Haydovchilik guvohnomasi', side: 'Old tomoni', icon: 'idCard', guide: 'Rasm va familiya ko\'rinsin' },
+  { key: 'licenseBack', title: 'Haydovchilik guvohnomasi', side: 'Orqa tomoni', icon: 'idCard', guide: 'Toifalar (B, C...) ko\'rinsin' },
+  { key: 'techFront', title: 'Texnik pasport', side: 'Old tomoni', icon: 'document', guide: 'Davlat raqami ko\'rinsin' },
+  { key: 'techBack', title: 'Texnik pasport', side: 'Orqa tomoni', icon: 'document', guide: 'Egasi ma\'lumoti ko\'rinsin' },
 ];
 
 const uploaders: Record<DocKey, (uri: string) => Promise<{ url: string }>> = {
@@ -211,13 +212,21 @@ export default function DriverDocumentsScreen() {
           ) : (
             <>
               <View style={styles.docIllustration}>
-                <Text style={styles.docIllustrationEmoji}>{doc.emoji}</Text>
+                <Icon name={doc.icon} size={44} color={colors.textMuted} />
                 <View style={styles.docLines}>
                   <View style={[styles.docLine, { width: '70%' }]} />
                   <View style={[styles.docLine, { width: '45%' }]} />
                 </View>
               </View>
-              <Text style={styles.frameHint}>📷 Suratga olish</Text>
+              <IconText
+                name="camera"
+                size={13}
+                color={colors.primary}
+                textStyle={[styles.frameHint, { flex: 0 }]}
+                style={styles.frameHintRow}
+              >
+                Suratga olish
+              </IconText>
             </>
           )}
           {busy && (
@@ -227,7 +236,7 @@ export default function DriverDocumentsScreen() {
           )}
           {isUp && !busy && (
             <View style={styles.doneBadge}>
-              <Text style={styles.doneBadgeText}>✓</Text>
+              <Icon name="check" size={14} color={colors.textOnPrimary} />
             </View>
           )}
         </View>
@@ -247,7 +256,7 @@ export default function DriverDocumentsScreen() {
         style={styles.header}
       >
         <View style={styles.headerIconCircle}>
-          <Text style={styles.headerEmoji}>📄</Text>
+          <Icon name="document" size={40} color={colors.primary} />
         </View>
         <Text style={styles.title}>Hujjatlarni yuklang</Text>
         <Text style={styles.subtitle}>
@@ -258,7 +267,7 @@ export default function DriverDocumentsScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* How-to banner */}
         <View style={styles.tipCard}>
-          <Text style={styles.tipIcon}>💡</Text>
+          <Icon name="idea" size={18} color="#B45309" />
           <Text style={styles.tipText}>
             Hujjatni tekis yuzaga qo'ying, yaxshi yorug'likda, barcha ma'lumotlar aniq
             o'qiladigan holatda suratga oling. Soya yoki yorqin aks tushmasin.
@@ -267,7 +276,9 @@ export default function DriverDocumentsScreen() {
 
         {/* Personal info */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>👤 Shaxsiy ma'lumotlar</Text>
+          <IconText name="profile" size={15} color={colors.text} textStyle={styles.sectionTitle}>
+            Shaxsiy ma'lumotlar
+          </IconText>
 
           <Text style={styles.label}>
             Ism <Text style={styles.required}>*</Text>
@@ -299,7 +310,7 @@ export default function DriverDocumentsScreen() {
               registered number; the driver confirms or changes it here. */}
           <View style={styles.contactCard}>
             <View style={styles.contactTop}>
-              <View style={styles.phoneBadge}><Text style={styles.phoneBadgeIcon}>📞</Text></View>
+              <View style={styles.phoneBadge}><Icon name="phone" size={14} color={colors.textSecondary} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.contactLabel}>Bog'lanish uchun raqam</Text>
                 <Text style={styles.contactNumber}>{displayNumber ? formatPhone(displayNumber) : '—'}</Text>
@@ -343,7 +354,9 @@ export default function DriverDocumentsScreen() {
 
         {/* Car info */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>🚗 Mashina ma'lumotlari</Text>
+          <IconText name="car" size={15} color={colors.text} textStyle={styles.sectionTitle}>
+            Mashina ma'lumotlari
+          </IconText>
 
           <Text style={styles.label}>Markasi (modeli)</Text>
           <TouchableOpacity
@@ -382,7 +395,9 @@ export default function DriverDocumentsScreen() {
 
         {/* License */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>🪪 Haydovchilik guvohnomasi</Text>
+          <IconText name="idCard" size={15} color={colors.text} textStyle={styles.sectionTitle}>
+            Haydovchilik guvohnomasi
+          </IconText>
           <Text style={styles.sectionHint}>Ikkala tomonini ham suratga oling</Text>
           <View style={styles.slotRow}>
             {renderSlot(DOCS[0])}
@@ -392,7 +407,9 @@ export default function DriverDocumentsScreen() {
 
         {/* Tech passport */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>📋 Texnik pasport</Text>
+          <IconText name="document" size={15} color={colors.text} textStyle={styles.sectionTitle}>
+            Texnik pasport
+          </IconText>
           <Text style={styles.sectionHint}>Ikkala tomonini ham suratga oling</Text>
           <View style={styles.slotRow}>
             {renderSlot(DOCS[2])}
@@ -403,7 +420,7 @@ export default function DriverDocumentsScreen() {
 
       <View style={styles.footer}>
         <Button
-          title={allDone ? '✅ Tasdiqlash' : "Avval barcha maydonlarni to'ldiring"}
+          title={allDone ? 'Tasdiqlash' : "Avval barcha maydonlarni to'ldiring"}
           onPress={handleSubmit}
           loading={submitting}
           variant={allDone ? 'success' : 'outline'}
@@ -415,7 +432,7 @@ export default function DriverDocumentsScreen() {
         <SafeAreaView style={styles.container} edges={['top']}>
           <View style={styles.pickerHeader}>
             <TouchableOpacity onPress={() => setPickerOpen(false)} style={styles.backBtn}>
-              <Text style={styles.backIcon}>←</Text>
+              <Icon name="back" size={26} color={colors.primary} />
             </TouchableOpacity>
             <Text style={styles.pickerTitle}>Modelni tanlang</Text>
             <View style={{ width: 40 }} />
@@ -472,7 +489,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
-  headerEmoji: { fontSize: 32 },
   title: { ...typography.h2, color: colors.textOnPrimary },
   subtitle: {
     ...typography.caption,
@@ -493,7 +509,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accentLight,
   },
-  tipIcon: { fontSize: 20 },
   tipText: { flex: 1, ...typography.caption, color: colors.accentDark, lineHeight: 18 },
 
   // Card section wrapper
@@ -549,7 +564,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  phoneBadgeIcon: { fontSize: 20 },
   contactLabel: { ...typography.caption, color: colors.textSecondary },
   contactNumber: { ...typography.h3, color: colors.text, marginTop: 2, letterSpacing: 0.5 },
   contactQuestion: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.md, lineHeight: 19 },
@@ -589,10 +603,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
   },
   docIllustration: { alignItems: 'center', justifyContent: 'center' },
-  docIllustrationEmoji: { fontSize: 30, marginBottom: 6 },
   docLines: { width: 64, gap: 4, alignItems: 'center' },
   docLine: { height: 4, borderRadius: 2, backgroundColor: colors.border },
-  frameHint: { ...typography.small, color: colors.primary, marginTop: 8, fontWeight: '600' },
+  frameHintRow: { marginTop: 8, justifyContent: 'center' },
+  frameHint: { ...typography.small, color: colors.primary, fontWeight: '600' },
   doneBadge: {
     position: 'absolute',
     top: 6,
@@ -604,7 +618,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  doneBadgeText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 14 },
   slotSide: { ...typography.bodyBold, color: colors.text, marginTop: spacing.sm, fontSize: 14 },
   slotGuide: { ...typography.small, color: colors.textSecondary, marginTop: 1 },
 
@@ -625,7 +638,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.background,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   pickerTitle: { ...typography.h3, color: colors.primary },
   modelRow: {
     paddingVertical: spacing.md,
