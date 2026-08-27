@@ -74,6 +74,17 @@ async def send_push(
 
     token = recipient.push_token
 
+    # Refuse a token Expo cannot parse instead of spending a request to be told so. The
+    # stored value is cleared, otherwise every future send repeats the same failure and
+    # counts against the project's rate limit.
+    if not looks_like_expo_token(token):
+        logger.warning(
+            "Malformed push token on %s %s — clearing it", recipient_type, recipient_id
+        )
+        recipient.push_token = None
+        session.commit()
+        return False
+
     payload = {
         "to": token,
         "title": title,
@@ -110,7 +121,26 @@ async def send_push(
             ) as resp:
                 result = await resp.json()
                 receipts = result.get("data", {})
-                if isinstance(receipts, dict) and receipts.get("status") == "error":
+
+                # A wholesale rejection puts the reason in a top-level `errors` array and
+                # leaves `data` absent. That case used to fall straight through to
+                # status="sent": rejected pushes were counted as successful, so the
+                # dashboard showed healthy numbers for notifications nobody received.
+                if result.get("errors") or not isinstance(receipts, dict) or not receipts:
+                    reason = (
+                        _describe_expo_errors(result["errors"])
+                        if result.get("errors")
+                        else "Expo javobida ticket yo'q"
+                    )
+                    logger.error("Expo rejected push to %s %s: %s",
+                                 recipient_type, recipient_id, reason)
+                    log_entry.status = "failed"
+                    log_entry.error = reason
+                    session.add(log_entry)
+                    session.commit()
+                    return False
+
+                if receipts.get("status") == "error":
                     log_entry.status = "failed"
                     log_entry.error = receipts.get("message", "Unknown")
                     # Stale/uninstalled device -> drop the dead token so we stop wasting
@@ -141,13 +171,47 @@ async def send_push(
         return False
 
 
-async def _expo_send_batch(messages: list) -> list:
-    """POST a batch of Expo push messages in ONE request and return the tickets list
-    (aligned to `messages`). Expo accepts up to 100 messages per call. Returns [] on
-    transport failure so callers can mark everything failed without crashing.
+def looks_like_expo_token(token) -> bool:
+    """Whether a stored value can plausibly be sent to Expo.
+
+    Worth checking before sending because Expo validates every token in a batch and
+    rejects the WHOLE request if one of them is malformed. A single junk value — a test
+    row, a hand-edited record — therefore used to silence every real driver in the same
+    batch, and each of them was logged with the opaque error "No ticket".
+    """
+    if not isinstance(token, str):
+        return False
+    t = token.strip()
+    return t.startswith("ExponentPushToken[") or t.startswith("ExpoPushToken[")
+
+
+def _describe_expo_errors(errors) -> str:
+    """Flatten Expo's top-level `errors` array into one readable line."""
+    if not isinstance(errors, list):
+        return str(errors)
+    parts = []
+    for err in errors:
+        if isinstance(err, dict):
+            code = err.get("code") or ""
+            msg = err.get("message") or ""
+            parts.append(f"{code}: {msg}".strip(": ").strip())
+        else:
+            parts.append(str(err))
+    return " | ".join(p for p in parts if p) or "Expo rejected the request"
+
+
+async def _expo_send_batch(messages: list) -> tuple:
+    """POST a batch of Expo push messages in ONE request.
+
+    Returns ``(tickets, error)``. ``tickets`` is aligned to `messages`; ``error`` is a
+    readable reason when Expo rejected the request as a whole.
+
+    The error used to be thrown away: the response's top-level `errors` array was never
+    read, so a wholesale rejection surfaced only as an empty ticket list and every
+    recipient was logged as "No ticket" with no way to find out why.
     """
     if not messages:
-        return []
+        return [], None
     try:
         async with aiohttp.ClientSession() as http:
             async with http.post(
@@ -161,13 +225,21 @@ async def _expo_send_batch(messages: list) -> list:
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 result = await resp.json()
+                if result.get("errors"):
+                    reason = _describe_expo_errors(result["errors"])
+                    logger.error(
+                        "Expo rejected a batch of %d message(s): %s", len(messages), reason
+                    )
+                    return [], reason
                 data = result.get("data", [])
                 if isinstance(data, dict):  # single-message response shape
                     data = [data]
-                return data if isinstance(data, list) else []
+                if not isinstance(data, list):
+                    return [], f"Unexpected Expo response shape: {type(data).__name__}"
+                return data, None
     except Exception as e:
         logger.error(f"Expo batch send error: {e}")
-        return []
+        return [], str(e)
 
 
 async def send_push_bulk(
@@ -184,51 +256,89 @@ async def send_push_bulk(
     DeviceNotRegistered tokens. Returns how many Expo accepted. Used for the admin
     broadcast and the new-order fan-out so the last recipient isn't alerted late.
     """
+    def _clear_token(item):
+        model = Driver if item["recipient_type"] == "driver" else User
+        dead = session.query(model).filter_by(id=item["recipient_id"]).first()
+        if dead:
+            dead.push_token = None
+
+    def _log(item, *, status, error=None, ticket_id=None):
+        entry = NotificationLog(
+            recipient_type=item["recipient_type"],
+            recipient_id=item["recipient_id"],
+            title=item["title"],
+            body=item["body"],
+            data=json.dumps(item.get("data") or {}),
+        )
+        entry.status = status
+        entry.error = error
+        entry.ticket_id = ticket_id
+        session.add(entry)
+
+    def _message(item):
+        return {
+            "to": item["token"],
+            "title": item["title"],
+            "body": item["body"],
+            "sound": sound,
+            "priority": "high",
+            "channelId": item.get("channel_id", channel_id),
+            "data": item.get("data") or {},
+        }
+
+    def _record(item, ticket, fallback_error):
+        """Log one recipient's outcome. Returns True when Expo accepted the message."""
+        if isinstance(ticket, dict) and ticket.get("status") == "ok":
+            # See check_push_receipts(): acceptance is not delivery.
+            _log(item, status="sent", ticket_id=str(ticket["id"]) if ticket.get("id") else None)
+            return True
+        if isinstance(ticket, dict):
+            detail = (ticket.get("details") or {}).get("error")
+            _log(item, status="failed", error=ticket.get("message") or detail or "Unknown")
+            if detail == "DeviceNotRegistered":
+                _clear_token(item)
+        else:
+            _log(item, status="failed", error=fallback_error or "No ticket")
+        return False
+
     sent = 0
-    for start in range(0, len(items), 100):
-        chunk = items[start:start + 100]
-        messages = [
-            {
-                "to": it["token"],
-                "title": it["title"],
-                "body": it["body"],
-                "sound": sound,
-                "priority": "high",
-                "channelId": it.get("channel_id", channel_id),
-                "data": it.get("data") or {},
-            }
-            for it in chunk
-        ]
-        tickets = await _expo_send_batch(messages)
-        for i, it in enumerate(chunk):
-            ticket = tickets[i] if i < len(tickets) else None
-            ok = isinstance(ticket, dict) and ticket.get("status") == "ok"
-            log_entry = NotificationLog(
-                recipient_type=it["recipient_type"],
-                recipient_id=it["recipient_id"],
-                title=it["title"],
-                body=it["body"],
-                data=json.dumps(it.get("data") or {}),
-            )
-            log_entry.status = "sent" if ok else "failed"
-            if ok:
-                sent += 1
-                # See check_push_receipts(): acceptance is not delivery.
-                if ticket.get("id"):
-                    log_entry.ticket_id = str(ticket["id"])
-            else:
-                log_entry.error = (
-                    ticket.get("message", "Unknown") if isinstance(ticket, dict) else "No ticket"
-                )
-                if isinstance(ticket, dict) and (ticket.get("details") or {}).get("error") == "DeviceNotRegistered":
-                    if it["recipient_type"] == "driver":
-                        dead = session.query(Driver).filter_by(id=it["recipient_id"]).first()
-                    else:
-                        dead = session.query(User).filter_by(id=it["recipient_id"]).first()
-                    if dead:
-                        dead.push_token = None
-            session.add(log_entry)
+
+    # Drop unusable tokens BEFORE sending: one malformed value makes Expo reject the whole
+    # batch, which is how a handful of junk rows silenced every real driver alongside them.
+    usable = []
+    for it in items:
+        if looks_like_expo_token(it.get("token")):
+            usable.append(it)
+        else:
+            _log(it, status="failed", error="Token Expo push token formatida emas")
+            _clear_token(it)
+    if len(usable) != len(items):
+        logger.warning(
+            "Dropped %d push recipient(s) with a malformed token", len(items) - len(usable)
+        )
         session.commit()
+
+    for start in range(0, len(usable), 100):
+        chunk = usable[start:start + 100]
+        tickets, batch_error = await _expo_send_batch([_message(it) for it in chunk])
+
+        # Expo refused the request as a whole. Retry each message on its own so one bad
+        # recipient cannot keep the rest of the batch from being delivered, and so the
+        # per-recipient reason is recorded instead of a blanket failure.
+        if not tickets and batch_error and len(chunk) > 1:
+            logger.warning("Batch rejected (%s); retrying %d individually", batch_error, len(chunk))
+            for it in chunk:
+                one, one_error = await _expo_send_batch([_message(it)])
+                if _record(it, one[0] if one else None, one_error or batch_error):
+                    sent += 1
+            session.commit()
+            continue
+
+        for i, it in enumerate(chunk):
+            if _record(it, tickets[i] if i < len(tickets) else None, batch_error):
+                sent += 1
+        session.commit()
+
     return sent
 
 
