@@ -12,6 +12,7 @@ from app.bot import keyboards as kb
 from app.bot.access import money
 from app.bot.state import ADMIN_ID, WAIT_MINUTES, WARN_MINUTES
 from app.bot.store import store
+from app.services import notify_i18n as nt
 
 logger = logging.getLogger("sarixgo.bot.orders")
 
@@ -260,7 +261,7 @@ async def _notify_admin_order_accepted(context, order, driver):
             order.service_type, "🚕 Taksi")
         name = (driver.first_name or "Haydovchi").strip()
         car = " · ".join(p for p in [driver.car_model, driver.car_number] if p) or "—"
-        price = f"{money(order.price)} so'm" if order.price else "Kelishiladi"
+        price = nt.price_text("uz", order.price)
         await context.bot.send_message(
             ADMIN_ID,
             ("✅ <b>Zakas qabul qilindi</b>\n\n"
@@ -283,12 +284,15 @@ async def _confirm_accept_to_driver(context, driver_telegram_id, order):
         subject = "🚗 Bo'sh mashina"
     else:
         subject = f"👥 {order.person_count} kishi"
+    # price=0 encodes "to be agreed" (how parcel orders are created), so it must not be
+    # printed as "0 so'm". nt.price_text owns that rule for every channel.
+    price_txt = nt.price_text("uz", order.price)
     text = (
         "🚕 <b>BUYURTMA QABUL QILINDI!</b>\n\n"
         f"📍 {escape(str(order.from_city or '—'))} → "
         f"{escape(str(order.to_city or '—'))}\n"
         f"{subject}\n"
-        f"💰 Narxi: {money(order.price)} so'm\n"
+        f"💰 Narxi: {price_txt}\n"
         f"📞 Yo'lovchi: {escape(str(order.passenger_phone or '—'))}\n"
         f"👤 {escape(order.passenger_name or 'Nomalum')}"
     )

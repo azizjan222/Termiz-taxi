@@ -512,7 +512,6 @@ async def notify_driver_new_order(session: Session, order, drivers: list):
     if not targets:
         return
 
-    price_str = _fmt_amount(order.price or 0)
     data = {"type": "new_order", "order_id": order.id}
     items = []
     for d in targets:
@@ -523,7 +522,9 @@ async def notify_driver_new_order(session: Session, order, drivers: list):
             from_city=order.from_city,
             to_city=order.to_city,
             subject_str=nt.subject(lang, order.service_type, order.person_count),
-            price_str=price_str,
+            # Raw amount, not a pre-formatted string: nt.price_text() owns the
+            # "0 means to be agreed" rule so no caller can drop it.
+            price=order.price,
         )
         items.append({
             "recipient_type": "driver",

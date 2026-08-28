@@ -21,9 +21,31 @@ def norm_lang(lang: Optional[str]) -> str:
 # Currency word per language.
 _CCY = {"uz": "so'm", "uz-cyrl": "сўм", "ru": "сум", "en": "soʻm"}
 
+# Shown instead of an amount when the price is still to be agreed.
+_NEGOTIABLE = {
+    "uz": "Kelishiladi", "uz-cyrl": "Келишилади",
+    "ru": "Договорная", "en": "Negotiable",
+}
+
 
 def currency(lang: str) -> str:
     return _CCY[norm_lang(lang)]
+
+
+def price_text(lang: str, price) -> str:
+    """Localized price, or the "to be agreed" wording when there is no amount.
+
+    ``price = 0`` is how the app encodes "to be agreed" — parcel orders are created that
+    way on purpose (see ``app/api/orders.py``), because the sender and driver settle the
+    fee between themselves. Rendering that literally produced push notifications reading
+    "Pochta · 0 so'm", which looks like a free delivery.
+
+    Formatting lives here rather than at the call site so a caller cannot forget the rule.
+    """
+    lang = norm_lang(lang)
+    if not price:
+        return _NEGOTIABLE[lang]
+    return f"{price:,}".replace(",", " ") + f" {currency(lang)}"
 
 
 def subject(lang: str, service_type: str, person_count: int) -> str:
@@ -45,7 +67,7 @@ def subject(lang: str, service_type: str, person_count: int) -> str:
 
 
 def new_order(lang: str, *, service_type: str, from_city: str, to_city: str,
-              subject_str: str, price_str: str) -> tuple[str, str]:
+              subject_str: str, price) -> tuple[str, str]:
     lang = norm_lang(lang)
     if service_type == "parcel":
         title = {"uz": "📦 Yangi pochta!", "uz-cyrl": "📦 Янги почта!",
@@ -53,7 +75,7 @@ def new_order(lang: str, *, service_type: str, from_city: str, to_city: str,
     else:
         title = {"uz": "🚕 Yangi zakas!", "uz-cyrl": "🚕 Янги заказ!",
                  "ru": "🚕 Новый заказ!", "en": "🚕 New order!"}[lang]
-    body = f"{from_city} → {to_city} · {subject_str} · {price_str} {currency(lang)}"
+    body = f"{from_city} → {to_city} · {subject_str} · {price_text(lang, price)}"
     return title, body
 
 
