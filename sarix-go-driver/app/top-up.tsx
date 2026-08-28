@@ -16,6 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
@@ -54,19 +56,19 @@ const METHOD_COLORS: Record<PaymentMethod['id'], string> = {
  * answers with a plain-text 413/502, not our JSON error shape) and a timeout on
  * a slow connection. Name those explicitly and keep the status code visible.
  */
-function describeUploadError(e: any): string {
+function describeUploadError(e: any, t: TFunction): string {
   const status = e?.response?.status;
+  // A message the backend chose is already meant for the driver; pass it through.
   const serverError = e?.response?.data?.error;
   if (serverError) return serverError;
-  if (status === 413) return 'Rasm juda katta. Kichikroq skrinshot tanlang.';
-  if (status) return `Server xatosi (${status}). Keyinroq urinib ko'ring.`;
-  if (e?.code === 'ECONNABORTED') {
-    return "Internet sekin - yuborish uzoq davom etdi. Qayta urinib ko'ring.";
-  }
-  return `Tarmoq xatosi: ${e?.message || 'noma\'lum'}`;
+  if (status === 413) return t('topUp.errTooLarge');
+  if (status) return t('topUp.errServer', { status });
+  if (e?.code === 'ECONNABORTED') return t('topUp.errSlowNetwork');
+  return t('topUp.errNetwork', { message: e?.message || t('topUp.unknown') });
 }
 
 export default function TopUpScreen() {
+  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const driver = useDriverStore((s) => s.driver);
@@ -100,7 +102,7 @@ export default function TopUpScreen() {
     const card = methods.find((m) => m.id === 'card');
     if (card?.card_number) {
       Clipboard.setString(card.card_number);
-      Alert.alert('✅', 'Karta nusxa olindi');
+      Alert.alert(t('topUp.copied'));
     }
   };
 
@@ -121,18 +123,18 @@ export default function TopUpScreen() {
       // Surface the underlying reason instead of a generic message so gallery/native
       // failures are actually diagnosable in the field.
       const reason = e?.message || String(e);
-      Alert.alert('❌ Rasm tanlashda xatolik', reason);
+      Alert.alert(t('topUp.errImagePick'), reason);
     }
   };
 
   const submitCardTopup = async () => {
     const amt = getActualAmount();
     if (amt < MIN_AMOUNT) {
-      Alert.alert('❌', `Minimal summa ${formatPrice(MIN_AMOUNT)} so'm`);
+      Alert.alert(t('common.error'), t('topUp.errMinAmount', { amount: formatPrice(MIN_AMOUNT) }));
       return;
     }
     if (!screenshot) {
-      Alert.alert('📸 Skrinshot kerak', 'Avval to\'lov skrinshotini tanlang.');
+      Alert.alert(t('topUp.needScreenshot'), t('topUp.needScreenshotBody'));
       return;
     }
     setSubmitting(true);
@@ -144,12 +146,12 @@ export default function TopUpScreen() {
         await loadDriver();
       } catch {}
       Alert.alert(
-        '✅ Yuborildi',
-        res.message || 'To\'lov skrinshoti yuborildi. Admin tasdiqlashini kuting.',
+        t('topUp.sentTitle'),
+        res.message || t('topUp.sentBody'),
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (e: any) {
-      Alert.alert('❌', describeUploadError(e));
+      Alert.alert(t('common.error'), describeUploadError(e, t));
     } finally {
       setSubmitting(false);
     }
@@ -158,7 +160,7 @@ export default function TopUpScreen() {
   const handleTopUp = async () => {
     const amt = getActualAmount();
     if (amt < MIN_AMOUNT) {
-      Alert.alert('❌', `Minimal summa ${formatPrice(MIN_AMOUNT)} so'm`);
+      Alert.alert(t('common.error'), t('topUp.errMinAmount', { amount: formatPrice(MIN_AMOUNT) }));
       return;
     }
 
@@ -184,14 +186,14 @@ export default function TopUpScreen() {
       if (supported) {
         await Linking.openURL(result.url);
         Alert.alert(
-          '⏳ To\'lov sahifasi ochildi',
-          'To\'lovni amalga oshirgach, balansingiz avtomatik to\'ldiriladi.'
+          t('topUp.providerOpened'),
+          t('topUp.providerOpenedBody')
         );
       } else {
-        Alert.alert('❌', 'Brauzer ochib bo\'lmadi');
+        Alert.alert(t('common.error'), t('topUp.errBrowser'));
       }
     } catch (e: any) {
-      const msg = e?.response?.data?.error || 'Xatolik yuz berdi';
+      const msg = e?.response?.data?.error || t('topUp.errGeneric');
       Alert.alert('❌', msg);
     } finally {
       setLoading(false);
@@ -232,7 +234,7 @@ export default function TopUpScreen() {
         <View style={styles.methodInfo}>
           <Text style={styles.methodName}>
             {method.name}
-            {method.disabled && ' (Tez orada)'}
+            {method.disabled && ` ${t('topUp.comingSoon')}`}
           </Text>
           <Text style={styles.methodDesc}>{method.description}</Text>
           {method.card_number && (
@@ -252,7 +254,7 @@ export default function TopUpScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Balansni to'ldirish</Text>
+        <Text style={styles.title}>{t('topUp.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -263,13 +265,13 @@ export default function TopUpScreen() {
         <ScrollView contentContainerStyle={styles.scroll}>
           {/* Current balance */}
           <View style={styles.balanceCard}>
-            <Text style={styles.balanceLabel}>Joriy balans</Text>
+            <Text style={styles.balanceLabel}>{t('topUp.currentBalance')}</Text>
             <Text style={styles.balanceValue}>
-              {formatPrice(driver?.balance || 0)} so'm
+              {formatPrice(driver?.balance || 0)} {t('more.currency')}
             </Text>
             {(driver?.balance || 0) < 20000 && (
               <Text style={styles.balanceWarning}>
-                Zakas qabul qilish uchun kamida 20 000 so'm bo'lishi kerak
+                {t('topUp.minBalanceHint')}
               </Text>
             )}
           </View>
@@ -280,12 +282,12 @@ export default function TopUpScreen() {
                 success colour reads as a different message than the label it labels. */}
             <Icon name="gift" size={26} color={colors.primary} />
             <Text style={styles.bonusText}>
-              Birinchi to'lovda <Text style={styles.bonusBold}>+50% BONUS!</Text>
+              {t('topUp.firstTopUp')} <Text style={styles.bonusBold}>+50% BONUS!</Text>
             </Text>
           </View>
 
           {/* Amount selection */}
-          <Text style={styles.sectionTitle}>Summa</Text>
+          <Text style={styles.sectionTitle}>{t('topUp.amount')}</Text>
           <View style={styles.amounts}>
             {PRESET_AMOUNTS.map((a) => (
               <TouchableOpacity
@@ -300,7 +302,7 @@ export default function TopUpScreen() {
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`${formatPrice(a)} so‘m`}
-                accessibilityHint="Balans to‘ldirish summasini tanlaydi"
+                accessibilityHint={t('topUp.a11ySelectAmount')}
                 accessibilityState={{ selected: amount === a && !customAmount }}
               >
                 <Text
@@ -317,17 +319,17 @@ export default function TopUpScreen() {
 
           <TextInput
             style={styles.customAmountInput}
-            placeholder="Yoki o'zingiz yozing..."
+            placeholder={t('topUp.amountPlaceholder')}
             placeholderTextColor={colors.textMuted}
             keyboardType="number-pad"
             value={customAmount}
             onChangeText={(t) => setCustomAmount(t.replace(/[^\d]/g, ''))}
-            accessibilityLabel="Boshqa summa"
-            accessibilityHint="Balansga qo‘shiladigan summani so‘mda kiriting"
+            accessibilityLabel={t('topUp.otherAmount')}
+            accessibilityHint={t('topUp.a11yEnterAmount')}
           />
 
           {/* Payment methods */}
-          <Text style={styles.sectionTitle}>To'lov turi</Text>
+          <Text style={styles.sectionTitle}>{t('topUp.paymentType')}</Text>
           <View style={styles.methods}>
             {methods.map(renderMethod)}
           </View>
@@ -335,10 +337,10 @@ export default function TopUpScreen() {
           {/* Card manual flow: show card number + screenshot upload */}
           {selectedMethod === 'card' && (
             <View style={styles.cardFlow}>
-              <Text style={styles.sectionTitle}>1️⃣ Kartaga to'lang</Text>
+              <Text style={styles.sectionTitle}>{t('topUp.step1')}</Text>
               <TouchableOpacity style={styles.cardNumberBox} onPress={copyCard} activeOpacity={0.8}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardNumberLabel}>Karta raqami</Text>
+                  <Text style={styles.cardNumberLabel}>{t('topUp.cardNumber')}</Text>
                   <Text style={styles.cardNumberValue}>
                     {methods.find((m) => m.id === 'card')?.card_number || '—'}
                   </Text>
@@ -354,14 +356,13 @@ export default function TopUpScreen() {
                   color={colors.primary}
                   textStyle={styles.copyBtn}
                 >
-                  Nusxa
+                  {t('topUp.copy')}
                 </IconText>
               </TouchableOpacity>
 
-              <Text style={styles.sectionTitle}>2️⃣ To'lov skrinshotini yuklang</Text>
+              <Text style={styles.sectionTitle}>{t('topUp.step2')}</Text>
               <Text style={styles.cardHint}>
-                Kartaga to'lab bo'lgach, to'lov skrinshotini tanlang. Admin tasdiqlashi
-                bilan balansingiz to'ldiriladi.
+                {t('topUp.cardHint')}
               </Text>
 
               {screenshot ? (
@@ -372,7 +373,7 @@ export default function TopUpScreen() {
                     onPress={pickScreenshot}
                     disabled={submitting}
                   >
-                    <Text style={styles.changeShotText}>Boshqa rasm tanlash</Text>
+                    <Text style={styles.changeShotText}>{t('topUp.pickAnotherImage')}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -383,7 +384,7 @@ export default function TopUpScreen() {
                   activeOpacity={0.85}
                 >
                   <Icon name="camera" size={28} color={colors.primary} style={styles.uploadIcon} />
-                  <Text style={styles.uploadText}>Skrinshot yuklash</Text>
+                  <Text style={styles.uploadText}>{t('topUp.uploadScreenshot')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -393,7 +394,7 @@ export default function TopUpScreen() {
         {/* Footer */}
         <View style={styles.footer}>
           <View style={styles.footerInfo}>
-            <Text style={styles.footerLabel}>To'lanadigan</Text>
+            <Text style={styles.footerLabel}>{t('topUp.payable')}</Text>
             <Text style={styles.footerAmount}>
               {formatPrice(getActualAmount())} so'm
             </Text>
@@ -402,11 +403,11 @@ export default function TopUpScreen() {
             title={
               selectedMethod === 'card'
                 ? submitting
-                  ? 'Yuborilmoqda...'
-                  : 'Yuborish'
+                  ? t('topUp.sending')
+                  : t('common.send')
                 : loading
                 ? '...'
-                : "To'lash"
+                : t('topUp.pay')
             }
             onPress={handleTopUp}
             loading={loading || submitting}
@@ -418,11 +419,11 @@ export default function TopUpScreen() {
             variant="accent"
             fullWidth={false}
             style={{ flex: 1, marginLeft: spacing.md }}
-            accessibilityLabel={selectedMethod === 'card' ? "To‘lov tasdig‘ini yuborish" : "To‘lovni boshlash"}
+            accessibilityLabel={t(selectedMethod === 'card' ? 'topUp.a11yConfirmSend' : 'topUp.a11yStartPayment')}
             accessibilityHint={
               selectedMethod === 'card'
-                ? "Tanlangan skrinshotni admin tasdig‘i uchun yuboradi"
-                : "Tanlangan to‘lov provayderini ochadi"
+                ? t('topUp.a11ySubmitScreenshot')
+                : t('topUp.a11yOpenProvider')
             }
           />
         </View>
