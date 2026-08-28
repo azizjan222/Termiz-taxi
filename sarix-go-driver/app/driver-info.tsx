@@ -102,11 +102,11 @@ export default function DriverInfoScreen() {
 
   const save = async () => {
     if (!firstName.trim()) {
-      Alert.alert('❌', 'Ismni kiriting');
+      Alert.alert('❌', t('driverInfo.errName'));
       return;
     }
     if (pinfl && pinfl.replace(/\D/g, '').length !== 14) {
-      Alert.alert('❌', 'JSHSHIR 14 ta raqamdan iborat bo\'lishi kerak');
+      Alert.alert('❌', t('driverInfo.errPinfl'));
       return;
     }
     setSaving(true);
@@ -130,11 +130,11 @@ export default function DriverInfoScreen() {
       }
       // Refresh the store from the server so everything stays in sync.
       try { const fresh = await getMe(); setDriver(fresh); } catch { setDriver(updated); }
-      Alert.alert('✅', 'Ma\'lumotlaringiz saqlandi', [
+      Alert.alert('✅', t('driverInfo.saved'), [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (e: any) {
-      Alert.alert('❌', e?.response?.data?.error || 'Saqlab bo\'lmadi');
+      Alert.alert('❌', e?.response?.data?.error || t('driverInfo.errSave'));
     } finally {
       setSaving(false);
     }
@@ -161,21 +161,18 @@ export default function DriverInfoScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Ma'lumotlarim</Text>
+        <Text style={styles.title}>{t('driverInfo.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        <Text style={styles.hint}>
-          Botda ro'yxatdan o'tganingizdan so'ng ma'lumotlaringizni shu yerda
-          to'ldiring/yangilang. Mashina rasmini bu yerda so'ramaymiz.
-        </Text>
+        <Text style={styles.hint}>{t('driverInfo.hint')}</Text>
 
-        <Text style={styles.label}>Ism</Text>
-        <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="Ism" />
+        <Text style={styles.label}>{t('driverInfo.firstName')}</Text>
+        <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder={t('driverInfo.firstName')} />
 
-        <Text style={styles.label}>Familiya</Text>
-        <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="Familiya" />
+        <Text style={styles.label}>{t('driverInfo.lastName')}</Text>
+        <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder={t('driverInfo.lastName')} />
 
         {/* Contact-number card: shown to passengers on orders; confirm it works or change it. */}
         <View style={styles.contactCard}>
@@ -218,31 +215,31 @@ export default function DriverInfoScreen() {
           )}
         </View>
 
-        <Text style={styles.label}>JSHSHIR (14 raqam)</Text>
-        <TextInput style={styles.input} value={pinfl} onChangeText={setPinfl} placeholder="JSHSHIR" keyboardType="number-pad" maxLength={14} />
+        <Text style={styles.label}>{t('driverInfo.pinflLabel')}</Text>
+        <TextInput style={styles.input} value={pinfl} onChangeText={setPinfl} placeholder={t('driverInfo.pinflPlaceholder')} keyboardType="number-pad" maxLength={14} />
 
-        <Text style={styles.label}>Mashina raqami</Text>
+        <Text style={styles.label}>{t('driverInfo.carNumber')}</Text>
         <TextInput style={styles.input} value={carNumber} onChangeText={setCarNumber} placeholder="90A123BC" autoCapitalize="characters" />
 
-        <Text style={styles.label}>Modeli</Text>
+        <Text style={styles.label}>{t('driverInfo.carModel')}</Text>
         <TouchableOpacity style={styles.input} onPress={() => { setSearch(''); setPickerOpen(true); }}>
           <Text style={carModel ? styles.pickerValue : styles.pickerPlaceholder}>
-            {carModel || 'Modelni tanlang'}
+            {carModel || t('driverInfo.selectModel')}
           </Text>
         </TouchableOpacity>
 
-        <Text style={styles.label}>Ishlab chiqarilgan yili</Text>
+        <Text style={styles.label}>{t('driverInfo.carYear')}</Text>
         <TextInput style={styles.input} value={carYear} onChangeText={setCarYear} placeholder="2018" keyboardType="number-pad" maxLength={4} />
 
-        <Text style={styles.label}>Texnik pasport surati</Text>
+        <Text style={styles.label}>{t('driverInfo.techLabel')}</Text>
         {techUri ? <Image source={{ uri: techUri, headers: documentToken ? { Authorization: `Bearer ${documentToken}` } : undefined }} style={styles.preview} /> : null}
-        <Button title="Texpasport surati" onPress={() => pickImage(setTechUri)} variant="outline" />
+        <Button title={t('driverInfo.techBtn')} onPress={() => pickImage(setTechUri)} variant="outline" />
 
-        <Text style={[styles.label, { marginTop: spacing.md }]}>Haydovchilik guvohnomasi surati</Text>
+        <Text style={[styles.label, { marginTop: spacing.md }]}>{t('driverInfo.licenseLabel')}</Text>
         {licenseUri ? <Image source={{ uri: licenseUri, headers: documentToken ? { Authorization: `Bearer ${documentToken}` } : undefined }} style={styles.preview} /> : null}
-        <Button title="Guvohnoma surati" onPress={() => pickImage(setLicenseUri)} variant="outline" />
+        <Button title={t('driverInfo.licenseBtn')} onPress={() => pickImage(setLicenseUri)} variant="outline" />
 
-        <Button title="Saqlash" onPress={save} loading={saving} variant="accent" style={{ marginTop: spacing.lg }} />
+        <Button title={t('common.save')} onPress={save} loading={saving} variant="accent" style={{ marginTop: spacing.lg }} />
       </ScrollView>
 
       <Modal visible={pickerOpen} animationType="slide" onRequestClose={() => setPickerOpen(false)}>
@@ -251,11 +248,11 @@ export default function DriverInfoScreen() {
             <TouchableOpacity onPress={() => setPickerOpen(false)} style={styles.backBtn}>
               <Icon name="back" size={26} color={colors.primary} />
             </TouchableOpacity>
-            <Text style={styles.title}>Modelni tanlang</Text>
+            <Text style={styles.title}>{t('driverInfo.selectModel')}</Text>
             <View style={{ width: 40 }} />
           </View>
           <View style={{ padding: spacing.md }}>
-            <TextInput style={styles.input} value={search} onChangeText={setSearch} placeholder="Qidirish..." />
+            <TextInput style={styles.input} value={search} onChangeText={setSearch} placeholder={t('driverInfo.search')} />
           </View>
           {models.length === 0 ? (
             <ActivityIndicator style={{ marginTop: spacing.lg }} color={colors.primary} />
