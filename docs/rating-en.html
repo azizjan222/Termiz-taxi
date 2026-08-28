@@ -3,103 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rating system - Sarix Go</title>
-    <meta name="description" content="How ratings work in Sarix Go: 1 to 5 stars, the average, who rates whom, and what a rating affects.">
+    <title>About ratings - Sarix Go</title>
+    <meta name="description" content="How ratings work in Sarix Go: who rates whom, how the average is worked out, and whether a rating affects the orders you get.">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #1a1a1a; line-height: 1.7; }
         .header { background: #0E1B3D; color: #fff; padding: 32px 20px; text-align: center; }
         .header h1 { color: #F4C430; font-size: 24px; }
         .header p { color: rgba(255,255,255,0.8); margin-top: 4px; font-size: 14px; }
-        .content { max-width: 700px; margin: 0 auto; padding: 32px 20px; }
-        h2 { color: #0E1B3D; margin: 28px 0 12px; font-size: 20px; }
-        p, li { font-size: 15px; margin-bottom: 8px; }
-        ul { padding-left: 20px; }
-        .updated { text-align: center; color: #666; font-size: 13px; margin-bottom: 24px; }
+        .content { max-width: 640px; margin: 0 auto; padding: 32px 20px; }
+        h2 { color: #0E1B3D; margin: 28px 0 10px; font-size: 19px; }
+        p, li { font-size: 16px; margin-bottom: 10px; }
+        ul { padding-left: 22px; }
         .langs { text-align: center; margin-bottom: 24px; font-size: 14px; }
         .langs a { margin: 0 6px; }
-        .box { background: #F7F8FA; border-left: 3px solid #F4C430; padding: 14px 16px; border-radius: 6px; margin: 16px 0; }
-        table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 15px; }
-        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; }
-        th { color: #0E1B3D; }
+        .lead { background: #F7F8FA; border-left: 3px solid #F4C430; padding: 16px 18px; border-radius: 6px; margin-bottom: 8px; font-size: 17px; }
+        .example { background: #FFFBEB; border: 1px solid #F4C430; padding: 14px 16px; border-radius: 6px; margin: 12px 0; }
         .footer { text-align: center; padding: 24px; color: #666; font-size: 13px; border-top: 1px solid #eee; margin-top: 40px; }
         a { color: #0E1B3D; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Rating system</h1>
+        <h1>About ratings</h1>
         <p>Sarix Go - Termiz Sariosiyo Taxi</p>
     </div>
     <div class="content">
-        <p class="updated">Last updated: 28 August 2026</p>
         <p class="langs">
             <a href="./rating.html">O'zbekcha</a> ·
             <a href="./rating-ru.html">Русский</a> ·
             <strong>English</strong>
         </p>
 
-        <h2>In short</h2>
-        <div class="box">
-            After every <strong>completed</strong> ride the passenger rates the driver and
-            the driver rates the passenger, from 1 to 5 stars. A rating is the plain average
-            of every star received.
+        <p class="lead">A rating is the average of the stars people give you.</p>
+
+        <h2>Who gives the rating?</h2>
+        <p>After the ride a screen opens on the passenger's phone and they give the driver 1 to 5 stars.</p>
+        <p>The driver gives the passenger stars in the same way.</p>
+
+        <h2>How is the rating worked out?</h2>
+        <p>It is the average of all the stars.</p>
+        <div class="example">
+            For example, stars of 5, 4, 5, 5 give a rating of <strong>4.8</strong>.
         </div>
+        <p>The number of ratings is shown next to it: "4.8 · 12 ratings". A driver with a single five-star rating also shows "5.0" — but "4.8" from 200 people deserves more trust.</p>
 
-        <h2>1. Who rates whom</h2>
-        <p>Rating goes <strong>both ways</strong>:</p>
-        <ul>
-            <li><strong>Passenger → driver.</strong> Once the ride is completed, the rating screen opens in the passenger app.</li>
-            <li><strong>Driver → passenger.</strong> When the driver completes the ride, they are shown the same screen.</li>
-        </ul>
-        <p>Both are <strong>optional</strong>. You can skip with "Later" — skipping has no effect on anyone's rating.</p>
+        <h2>Why does it show "—" instead of a number?</h2>
+        <p>Nobody has given a rating yet. The number appears as soon as the first one arrives.</p>
+        <p>We do not show an invented starting value — putting "4.0" on everyone, for instance, bears no relation to reality.</p>
 
-        <h2>2. What can be rated</h2>
+        <h2>Does a rating affect the orders you get?</h2>
+        <p><strong>No.</strong> An order goes out to every eligible driver at the same time. Whoever accepts first gets it, whether their rating is high or low.</p>
+        <p>A persistently low rating together with complaints is reviewed by an administrator.</p>
+
+        <h2>Do you have to give a rating?</h2>
+        <p><strong>No.</strong> Just tap "Later" — the screen closes and nobody's rating is affected.</p>
+
+        <h2>Can a rating be changed later?</h2>
+        <p><strong>No.</strong> Each ride gets one rating, and it cannot be changed once sent.</p>
         <ul>
-            <li>Only a <strong>completed</strong> ride can be rated.</li>
+            <li>Only a completed ride can be rated.</li>
             <li>A cancelled order cannot be rated.</li>
-            <li>An order that found no driver (expired) cannot be rated.</li>
-            <li>Each side rates a given ride <strong>once</strong>.</li>
-            <li>A submitted rating <strong>cannot be changed or deleted</strong>.</li>
+            <li>There are no half stars — only 1, 2, 3, 4, 5.</li>
+            <li>The comment is optional, up to 500 characters.</li>
         </ul>
 
-        <h2>3. What the stars mean</h2>
-        <table>
-            <tr><th>Stars</th><th>Meaning</th></tr>
-            <tr><td>1</td><td>Very bad</td></tr>
-            <tr><td>2</td><td>Bad</td></tr>
-            <tr><td>3</td><td>Average</td></tr>
-            <tr><td>4</td><td>Good</td></tr>
-            <tr><td>5</td><td>Excellent</td></tr>
-        </table>
-        <p>Only whole stars are accepted — there is no such value as 4.5.</p>
+        <h2>Where is the rating visible?</h2>
+        <p>A driver sees their own rating on their profile and under "Statistics". A passenger sees the driver's rating in the driver's details.</p>
 
-        <h2>4. Comment</h2>
-        <p>You may add a comment alongside the stars, but that is optional too. Length is <strong>up to 500 characters</strong>.</p>
-
-        <h2>5. How the rating is calculated</h2>
-        <p>A rating is the <strong>plain average</strong> of every star received. There is no time weighting and no dropping of older ratings: the first one counts exactly as much as the latest.</p>
-        <div class="box">
-            For example: 5, 4, 5, 5 — the average is <strong>4.75</strong>, displayed as <strong>4.8</strong>.
-        </div>
-        <p>It is shown to one decimal place, with <strong>how many ratings it is based on</strong> next to it — for example "Rating · 12 ratings". That matters: 5.0 from 1 rating and 4.8 from 200 are entirely different things.</p>
-
-        <h2>6. When there are no ratings yet</h2>
-        <p>If nobody has rated you, the number is replaced by <strong>"—"</strong> and the words "No ratings yet".</p>
-        <p>We deliberately do not show an invented starting value. A new driver sitting at "5.0" creates false confidence, and "4.0" bears no relation to reality at all. The number appears only once there is a real rating behind it.</p>
-
-        <h2>7. Where the rating is visible</h2>
-        <ul>
-            <li>A <strong>driver</strong> sees their own rating on their profile and under "Statistics".</li>
-            <li>A <strong>passenger</strong> sees the driver's rating in the driver's details.</li>
-        </ul>
-
-        <h2>8. What a rating affects</h2>
-        <p>At present a rating <strong>does not affect order distribution</strong>: an order goes out to every eligible driver at the same time, and the ride goes to whoever accepts first. Ratings exist for transparency and quality control.</p>
-        <p>A persistently low rating together with complaints is reviewed by an administrator and may lead to the account being blocked (clause 7 of the <a href="./terms-en.html">Terms of Service</a>).</p>
-
-        <h2>9. Contact</h2>
-        <p>If you believe a rating was unfair, write to us:</p>
+        <h2>Any questions</h2>
         <p>Telegram: <a href="https://t.me/SarixGo_support_bot">@SarixGo_support_bot</a></p>
         <p>Email: <a href="mailto:sarixgo.support@gmail.com">sarixgo.support@gmail.com</a></p>
     </div>

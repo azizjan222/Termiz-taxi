@@ -173,7 +173,15 @@ export default function StatsScreen() {
               <Text style={styles.gridLabel}>{t('stats.cancelled')}</Text>
             </View>
 
-            <View style={styles.gridItem}>
+            {/* Same as on the profile: the number invites the question, so make it lead to
+                the answer. */}
+            <TouchableOpacity
+              style={styles.gridItem}
+              onPress={() => router.push('/rating-info')}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityHint={t('ratingInfo.title')}
+            >
               <View style={[styles.gridIcon, { backgroundColor: colors.warningLight }]}>
                 <Icon
                   name={stats.rating_count > 0 ? 'star' : 'starOutline'}
@@ -195,7 +203,7 @@ export default function StatsScreen() {
                   ? `${stats.rating_count} ${t('more.ratingsCount')}`
                   : t('more.noRatingsYet')}
               </Text>
-            </View>
+            </TouchableOpacity>
 
             <View style={styles.gridItem}>
               <View style={[styles.gridIcon, { backgroundColor: colors.infoLight }]}>

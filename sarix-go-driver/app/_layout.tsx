@@ -203,6 +203,7 @@ export default function RootLayout() {
           <Stack.Screen name="car-photo" />
           <Stack.Screen name="driver-info" />
           <Stack.Screen name="rate-passenger" />
+          <Stack.Screen name="rating-info" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

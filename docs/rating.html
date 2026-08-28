@@ -3,103 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reyting tizimi - Sarix Go</title>
-    <meta name="description" content="Sarix Go da reyting qanday hisoblanadi: 1-5 yulduz, o'rtacha qiymat, kim kimni baholaydi va baho nimaga ta'sir qiladi.">
+    <title>Reyting haqida - Sarix Go</title>
+    <meta name="description" content="Sarix Go da reyting qanday hisoblanadi: kim baho beradi, o'rtacha qanday chiqadi, reyting zakas olishga ta'sir qiladimi.">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #1a1a1a; line-height: 1.7; }
         .header { background: #0E1B3D; color: #fff; padding: 32px 20px; text-align: center; }
         .header h1 { color: #F4C430; font-size: 24px; }
         .header p { color: rgba(255,255,255,0.8); margin-top: 4px; font-size: 14px; }
-        .content { max-width: 700px; margin: 0 auto; padding: 32px 20px; }
-        h2 { color: #0E1B3D; margin: 28px 0 12px; font-size: 20px; }
-        p, li { font-size: 15px; margin-bottom: 8px; }
-        ul { padding-left: 20px; }
-        .updated { text-align: center; color: #666; font-size: 13px; margin-bottom: 24px; }
+        .content { max-width: 640px; margin: 0 auto; padding: 32px 20px; }
+        h2 { color: #0E1B3D; margin: 28px 0 10px; font-size: 19px; }
+        p, li { font-size: 16px; margin-bottom: 10px; }
+        ul { padding-left: 22px; }
         .langs { text-align: center; margin-bottom: 24px; font-size: 14px; }
         .langs a { margin: 0 6px; }
-        .box { background: #F7F8FA; border-left: 3px solid #F4C430; padding: 14px 16px; border-radius: 6px; margin: 16px 0; }
-        table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 15px; }
-        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; }
-        th { color: #0E1B3D; }
+        .lead { background: #F7F8FA; border-left: 3px solid #F4C430; padding: 16px 18px; border-radius: 6px; margin-bottom: 8px; font-size: 17px; }
+        .example { background: #FFFBEB; border: 1px solid #F4C430; padding: 14px 16px; border-radius: 6px; margin: 12px 0; }
         .footer { text-align: center; padding: 24px; color: #666; font-size: 13px; border-top: 1px solid #eee; margin-top: 40px; }
         a { color: #0E1B3D; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Reyting tizimi</h1>
+        <h1>Reyting haqida</h1>
         <p>Sarix Go - Termiz Sariosiyo Taxi</p>
     </div>
     <div class="content">
-        <p class="updated">Oxirgi yangilanish: 28 Avgust 2026</p>
         <p class="langs">
             <strong>O'zbekcha</strong> ·
             <a href="./rating-ru.html">Русский</a> ·
             <a href="./rating-en.html">English</a>
         </p>
 
-        <h2>Qisqacha</h2>
-        <div class="box">
-            Har bir <strong>yakunlangan</strong> safardan keyin yo'lovchi haydovchini,
-            haydovchi esa yo'lovchini 1 dan 5 yulduzgacha baholaydi. Reyting - olingan
-            barcha yulduzlarning oddiy o'rtachasi.
+        <p class="lead">Reyting - sizga qo'yilgan yulduzlarning o'rtachasi.</p>
+
+        <h2>Kim baho beradi?</h2>
+        <p>Safar tugagach yo'lovchining telefonida oyna chiqadi va u haydovchiga 1 dan 5 gacha yulduz qo'yadi.</p>
+        <p>Haydovchi ham xuddi shunday yo'lovchiga yulduz qo'yadi.</p>
+
+        <h2>Reyting qanday chiqadi?</h2>
+        <p>Barcha yulduzlarning o'rtachasi olinadi.</p>
+        <div class="example">
+            Masalan 5, 4, 5, 5 yulduz olingan bo'lsa - reyting <strong>4.8</strong> bo'ladi.
         </div>
+        <p>Yonida nechta baho olingani ham yoziladi: «4.8 · 12 baho». Chunki bitta odam 5 yulduz bergan haydovchi ham «5.0» bo'ladi - lekin 200 kishi baholagan «4.8» ga ko'proq ishonish mumkin.</p>
 
-        <h2>1. Kim kimni baholaydi</h2>
-        <p>Baholash <strong>ikki tomonlama</strong>:</p>
+        <h2>Nega raqam o'rnida «—» turadi?</h2>
+        <p>Hali hech kim baho bermagan. Birinchi baho kelishi bilan raqam paydo bo'ladi.</p>
+        <p>Biz o'ylab topilgan boshlang'ich raqam ko'rsatmaymiz - masalan hammaga «4.0» deb yozib qo'yish haqiqatga aloqasi yo'q.</p>
+
+        <h2>Reyting zakas olishga ta'sir qiladimi?</h2>
+        <p><strong>Yo'q.</strong> Zakas barcha mos haydovchilarga bir vaqtda boradi. Kim birinchi qabul qilsa, zakas o'shanga tegadi - reyting baland bo'lsa ham, past bo'lsa ham.</p>
+        <p>Doimiy past reyting va shikoyatlar bo'lsa, administrator ko'rib chiqadi.</p>
+
+        <h2>Baho berish shartmi?</h2>
+        <p><strong>Yo'q.</strong> «Keyinroq» tugmasini bosish kifoya - oyna yopiladi va bu hech kimning reytingiga ta'sir qilmaydi.</p>
+
+        <h2>Bahoni keyin o'zgartirsa bo'ladimi?</h2>
+        <p><strong>Yo'q.</strong> Har bir safarga bitta baho beriladi va yuborilgandan keyin o'zgarmaydi.</p>
         <ul>
-            <li><strong>Yo'lovchi → haydovchi.</strong> Safar yakunlangach yo'lovchi ilovasida baholash oynasi ochiladi.</li>
-            <li><strong>Haydovchi → yo'lovchi.</strong> Haydovchi safarni yakunlaganda unga ham shunday oyna ko'rsatiladi.</li>
-        </ul>
-        <p>Ikkalasi ham <strong>ixtiyoriy</strong>. «Keyinroq» tugmasini bosib o'tkazib yuborish mumkin - bu reytingga hech qanday ta'sir qilmaydi.</p>
-
-        <h2>2. Nimani baholash mumkin</h2>
-        <ul>
-            <li>Faqat <strong>yakunlangan</strong> safar baholanadi.</li>
-            <li>Bekor qilingan buyurtma baholanmaydi.</li>
-            <li>Haydovchi topilmagan (muddati o'tgan) buyurtma baholanmaydi.</li>
-            <li>Har bir safar uchun har bir tomon <strong>bir marta</strong> baho beradi.</li>
-            <li>Yuborilgan bahoni <strong>o'zgartirish yoki o'chirish mumkin emas</strong>.</li>
-        </ul>
-
-        <h2>3. Yulduzlar nimani bildiradi</h2>
-        <table>
-            <tr><th>Yulduz</th><th>Ma'nosi</th></tr>
-            <tr><td>1</td><td>Juda yomon</td></tr>
-            <tr><td>2</td><td>Yomon</td></tr>
-            <tr><td>3</td><td>O'rtacha</td></tr>
-            <tr><td>4</td><td>Yaxshi</td></tr>
-            <tr><td>5</td><td>A'lo</td></tr>
-        </table>
-        <p>Faqat butun yulduz qabul qilinadi - 4.5 kabi qiymat yo'q.</p>
-
-        <h2>4. Izoh</h2>
-        <p>Yulduz bilan birga izoh yozish ham mumkin, lekin bu ham ixtiyoriy. Izoh uzunligi <strong>500 belgigacha</strong>.</p>
-
-        <h2>5. Reyting qanday hisoblanadi</h2>
-        <p>Reyting - olingan barcha yulduzlarning <strong>oddiy o'rtachasi</strong>. Vaqt bo'yicha vaznlash yoki eski baholarni chiqarib tashlash yo'q: birinchi baho ham, oxirgisi ham bir xil og'irlikka ega.</p>
-        <div class="box">
-            Masalan: 5, 4, 5, 5 - o'rtacha <strong>4.75</strong>, ekranda <strong>4.8</strong> deb ko'rinadi.
-        </div>
-        <p>Ekranda bir xona aniqlikda ko'rsatiladi, yonida esa <strong>nechta bahoga asoslangani</strong> yoziladi - masalan «Reyting · 12 baho». Bu muhim: 5.0 (1 baho) va 4.8 (200 baho) butunlay boshqa narsa.</p>
-
-        <h2>6. Hali baho bo'lmasa</h2>
-        <p>Hech kim sizni baholamagan bo'lsa, raqam o'rnida <strong>«—»</strong> va «Hali baho yo'q» yoziladi.</p>
-        <p>Biz ataylab o'ylab topilgan boshlang'ich raqam ko'rsatmaymiz. Yangi haydovchining reytingi «5.0» deb turishi soxta ishonch beradi, «4.0» deb turishi esa haqiqatga umuman aloqasi yo'q. Raqam faqat haqiqiy baho bo'lganda paydo bo'ladi.</p>
-
-        <h2>7. Reyting qayerda ko'rinadi</h2>
-        <ul>
-            <li><strong>Haydovchi</strong> o'z reytingini ilovaning profil sahifasida va «Statistika» bo'limida ko'radi.</li>
-            <li><strong>Yo'lovchi</strong> haydovchi haqidagi ma'lumotda uning reytingini ko'radi.</li>
+            <li>Faqat yakunlangan safar baholanadi.</li>
+            <li>Bekor qilingan zakas baholanmaydi.</li>
+            <li>Yarim yulduz yo'q - faqat 1, 2, 3, 4, 5.</li>
+            <li>Izoh yozish ixtiyoriy, 500 belgigacha.</li>
         </ul>
 
-        <h2>8. Reyting nimaga ta'sir qiladi</h2>
-        <p>Ayni paytda reyting <strong>buyurtma taqsimlanishiga ta'sir qilmaydi</strong>: buyurtma barcha mos haydovchilarga bir vaqtda yuboriladi va kim birinchi qabul qilsa, safar o'shanga tegadi. Reyting - ochiqlik va sifat nazorati uchun.</p>
-        <p>Doimiy past reyting va shikoyatlar administrator tomonidan ko'rib chiqiladi va akkauntni bloklashga olib kelishi mumkin (<a href="./terms.html">Foydalanish shartlari</a>ning 7-bandi).</p>
+        <h2>Reyting qayerda ko'rinadi?</h2>
+        <p>Haydovchi o'z reytingini ilovaning profil sahifasida va «Statistika» bo'limida ko'radi. Yo'lovchi esa haydovchining reytingini u haqidagi ma'lumotda ko'radi.</p>
 
-        <h2>9. Aloqa</h2>
-        <p>Adolatsiz baho olgan deb hisoblasangiz, bizga yozing:</p>
+        <h2>Savol bo'lsa</h2>
         <p>Telegram: <a href="https://t.me/SarixGo_support_bot">@SarixGo_support_bot</a></p>
         <p>Email: <a href="mailto:sarixgo.support@gmail.com">sarixgo.support@gmail.com</a></p>
     </div>
