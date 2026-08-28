@@ -31,6 +31,7 @@ def fmt(n: int) -> str:
     return f"{n:,}".replace(",", " ")
 
 
+
 def _audit_telegram_admin(session, update: Update, action: str, **kwargs):
     details = dict(kwargs.pop("details", {}) or {})
     details["telegram_update_id"] = update.update_id
@@ -181,7 +182,7 @@ async def cmd_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += (
             f"{status_emoji}{service} <b>#{o.id}</b>\n"
             f"   📍 {escape(str(o.from_city or '-'))} → {escape(str(o.to_city or '-'))}\n"
-            f"   👥 {o.person_count} kishi · {fmt(o.price or 0)} so'm\n"
+            f"   👥 {o.person_count} kishi · {nt.price_text('uz', o.price)}\n"
             f"   📞 {escape(str(o.passenger_phone or '-'))}\n"
         )
         if o.driver_id:
@@ -1121,7 +1122,7 @@ async def cmd_active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += (
             f"{status_emoji} <b>#{o.id}</b> {escape(str(o.from_city or '-'))} \u2192 "
             f"{escape(str(o.to_city or '-'))}\n"
-            f"   Status: {escape(str(o.status or '-'))} | {fmt(o.price or 0)} so'm\n"
+            f"   Status: {escape(str(o.status or '-'))} | {nt.price_text('uz', o.price)}\n"
             f"   \U0001f4c5 {created}\n\n"
         )
 
