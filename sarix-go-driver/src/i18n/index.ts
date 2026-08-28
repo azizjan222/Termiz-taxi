@@ -349,6 +349,8 @@ export const uz = {
   },
   more: {
     currency: "so'm",
+    unitKm: 'km',
+    unitM: 'm',
     now: 'Hozir',
     address: 'Manzil',
     ago: 'oldin',
@@ -825,6 +827,8 @@ export const ru = {
   },
   more: {
     currency: 'сум',
+    unitKm: 'км',
+    unitM: 'м',
     now: 'Сейчас',
     address: 'Адрес',
     ago: 'назад',
@@ -1299,6 +1303,8 @@ export const en = {
   },
   more: {
     currency: 'UZS',
+    unitKm: 'km',
+    unitM: 'm',
     now: 'Now',
     address: 'Address',
     ago: 'ago',
@@ -1773,6 +1779,8 @@ export const uzCyrl = {
   },
   more: {
     currency: 'сўм',
+    unitKm: 'км',
+    unitM: 'м',
     now: 'Ҳозир',
     address: 'Манзил',
     ago: 'олдин',
