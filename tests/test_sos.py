@@ -43,6 +43,8 @@ def _driver(db, telegram_id=9001):
 def _order(db, *, passenger=None, driver=None, from_city="Termiz", to_city="Denov"):
     row = Order(
         passenger_id=passenger.id if passenger else None,
+        # NOT NULL on the orders table.
+        passenger_phone=passenger.phone if passenger else "+998900000000",
         driver_id=driver.id if driver else None,
         from_city=from_city,
         to_city=to_city,

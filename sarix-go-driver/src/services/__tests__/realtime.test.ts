@@ -234,6 +234,42 @@ describe('realtime socket manager', () => {
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
+  it('can reconnect after a disconnect() — logging out must not latch the socket shut', async () => {
+    // Regression: disconnect() set intentionalClose = true and nothing ever cleared it,
+    // while openWithFreshToken() refuses to open while it is set. A driver who logged out
+    // and back in got NO socket for the rest of the process: the UI showed a green
+    // "Onlayn" and not a single order arrived until the app was force-killed.
+    realtime.connect(555);
+    await flush();
+    FakeWebSocket.last.simulateOpen();
+    realtime.disconnect();
+
+    realtime.connect(555);
+    await flush();
+
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    FakeWebSocket.last.simulateOpen();
+    expect(realtime.isOpen()).toBe(true);
+    expect(useRealtimeStore.getState().status).toBe('open');
+  });
+
+  it('can reconnect after an unauthorized frame once the driver signs in again', async () => {
+    // Same latch, reached via handleUnauthorized(). The app's 401 handler signs the driver
+    // out and back in; that has to be able to open a socket again.
+    realtime.connect(555);
+    await flush();
+    FakeWebSocket.last.simulateOpen();
+    FakeWebSocket.last.simulateMessage({ type: 'error', error: 'unauthorized' });
+    expect(useRealtimeStore.getState().status).toBe('unauthorized');
+
+    mockStoredToken = 'tok-fresh';
+    realtime.connect(555);
+    await flush();
+
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(FakeWebSocket.last.url).toContain('token=tok-fresh');
+  });
+
   it('connect() is idempotent for the same driver while the socket is live', async () => {
     realtime.connect(555);
     await flush();

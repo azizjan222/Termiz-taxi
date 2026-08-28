@@ -269,6 +269,14 @@ export function connect(telegramId: number | string) {
 
   currentId = id;
   backoffIndex = 0;
+  // Clear the "stay closed" latch. `disconnect()` and `handleUnauthorized()` both set
+  // intentionalClose = true and nothing ever cleared it, while openWithFreshToken() refuses
+  // to open when it is set. So once a driver logged out, or once the backend rejected their
+  // token, connect() could NEVER open a socket again for the rest of the process: logging
+  // back in left the app showing "Onlayn" with a green indicator and delivering zero orders
+  // until the app was force-killed. connect() is an explicit request to be connected, so it
+  // is the right place to release the latch.
+  intentionalClose = false;
   openWithFreshToken(id);
 }
 
