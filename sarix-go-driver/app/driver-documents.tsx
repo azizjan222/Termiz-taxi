@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
 
 import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
@@ -52,17 +53,16 @@ type DocKey = 'licenseFront' | 'licenseBack' | 'techFront' | 'techBack';
 
 interface DocSpec {
   key: DocKey;
-  title: string;
-  side: string;
+  sideKey: string;
   icon: IconName;
-  guide: string;
+  guideKey: string;
 }
 
 const DOCS: DocSpec[] = [
-  { key: 'licenseFront', title: 'Haydovchilik guvohnomasi', side: 'Old tomoni', icon: 'idCard', guide: 'Rasm va familiya ko\'rinsin' },
-  { key: 'licenseBack', title: 'Haydovchilik guvohnomasi', side: 'Orqa tomoni', icon: 'idCard', guide: 'Toifalar (B, C...) ko\'rinsin' },
-  { key: 'techFront', title: 'Texnik pasport', side: 'Old tomoni', icon: 'document', guide: 'Davlat raqami ko\'rinsin' },
-  { key: 'techBack', title: 'Texnik pasport', side: 'Orqa tomoni', icon: 'document', guide: 'Egasi ma\'lumoti ko\'rinsin' },
+  { key: 'licenseFront', sideKey: 'docs.sideFront', icon: 'idCard', guideKey: 'docs.guideLicenseFront' },
+  { key: 'licenseBack', sideKey: 'docs.sideBack', icon: 'idCard', guideKey: 'docs.guideLicenseBack' },
+  { key: 'techFront', sideKey: 'docs.sideFront', icon: 'document', guideKey: 'docs.guideTechFront' },
+  { key: 'techBack', sideKey: 'docs.sideBack', icon: 'document', guideKey: 'docs.guideTechBack' },
 ];
 
 const uploaders: Record<DocKey, (uri: string) => Promise<{ url: string }>> = {
@@ -73,6 +73,7 @@ const uploaders: Record<DocKey, (uri: string) => Promise<{ url: string }>> = {
 };
 
 export default function DriverDocumentsScreen() {
+  const { t } = useTranslation();
   const driver = useDriverStore((s) => s.driver);
   const setDriver = useDriverStore((s) => s.setDriver);
   const colors = useThemeStore((s) => s.colors);
@@ -153,19 +154,19 @@ export default function DriverDocumentsScreen() {
 
   const handleSubmit = async () => {
     if (!firstName.trim()) {
-      Alert.alert('Diqqat', 'Ismingizni kiriting.');
+      Alert.alert(t('common.attention'), t('docs.errName'));
       return;
     }
     if (!isValidPhone(displayNumber)) {
-      Alert.alert('Diqqat', "Bog'lanish uchun to'g'ri telefon raqamini kiriting.");
+      Alert.alert(t('common.attention'), t('docs.errPhone'));
       return;
     }
     if (!carModel.trim() || !carYear.trim() || !carNumber.trim()) {
-      Alert.alert('Diqqat', 'Mashina markasi, yili va davlat raqamini kiriting.');
+      Alert.alert(t('common.attention'), t('docs.errCar'));
       return;
     }
     if (!allUploaded) {
-      Alert.alert('Diqqat', 'Barcha hujjatlarning ikkala tomonini yuklang.');
+      Alert.alert(t('common.attention'), t('docs.errDocs'));
       return;
     }
     setSubmitting(true);
@@ -180,7 +181,7 @@ export default function DriverDocumentsScreen() {
       });
       const res = await submitDocuments();
       if (res?.driver) setDriver(res.driver);
-      Alert.alert('Tayyor ✅', 'Hujjatlaringiz qabul qilindi.', [
+      Alert.alert(t('docs.doneTitle'), t('docs.doneBody'), [
         { text: 'Davom etish', onPress: () => router.replace('/(main)/orders') },
       ]);
     } catch (e: any) {
@@ -225,7 +226,7 @@ export default function DriverDocumentsScreen() {
                 textStyle={styles.frameHint}
                 style={styles.frameHintRow}
               >
-                Suratga olish
+                {t('docs.takePhoto')}
               </IconText>
             </>
           )}
@@ -240,8 +241,8 @@ export default function DriverDocumentsScreen() {
             </View>
           )}
         </View>
-        <Text style={styles.slotSide}>{doc.side}</Text>
-        <Text style={styles.slotGuide}>{doc.guide}</Text>
+        <Text style={styles.slotSide}>{t(doc.sideKey)}</Text>
+        <Text style={styles.slotGuide}>{t(doc.guideKey)}</Text>
       </TouchableOpacity>
     );
   };
@@ -258,9 +259,9 @@ export default function DriverDocumentsScreen() {
         <View style={styles.headerIconCircle}>
           <Icon name="document" size={40} color={colors.primary} />
         </View>
-        <Text style={styles.title}>Hujjatlarni yuklang</Text>
+        <Text style={styles.title}>{t('docs.title')}</Text>
         <Text style={styles.subtitle}>
-          Ilovadan to'liq foydalanish uchun ma'lumot va hujjatlaringizni kiriting
+          {t('docs.subtitle')}
         </Text>
       </LinearGradient>
 
@@ -277,30 +278,30 @@ export default function DriverDocumentsScreen() {
         {/* Personal info */}
         <View style={styles.card}>
           <IconText name="profile" size={15} color={colors.text} textStyle={styles.sectionTitle}>
-            Shaxsiy ma'lumotlar
+            {t('docs.personal')}
           </IconText>
 
           <Text style={styles.label}>
-            Ism <Text style={styles.required}>*</Text>
+            {t('docs.firstName')} <Text style={styles.required}>*</Text>
           </Text>
           <TextInput
             style={styles.input}
             value={firstName}
             onChangeText={setFirstName}
-            placeholder="Ismingiz"
+            placeholder={t('docs.firstNamePlaceholder')}
             placeholderTextColor={colors.textMuted}
             autoCapitalize="words"
             maxLength={50}
           />
 
           <Text style={styles.label}>
-            Familiya <Text style={styles.optional}>(ixtiyoriy)</Text>
+            {t('docs.lastName')} <Text style={styles.optional}>{t('docs.optional')}</Text>
           </Text>
           <TextInput
             style={styles.input}
             value={lastName}
             onChangeText={setLastName}
-            placeholder="Familiyangiz"
+            placeholder={t('docs.lastNamePlaceholder')}
             placeholderTextColor={colors.textMuted}
             autoCapitalize="words"
             maxLength={50}
@@ -312,13 +313,13 @@ export default function DriverDocumentsScreen() {
             <View style={styles.contactTop}>
               <View style={styles.phoneBadge}><Icon name="phone" size={14} color={colors.textSecondary} /></View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.contactLabel}>Bog'lanish uchun raqam</Text>
+                <Text style={styles.contactLabel}>{t('docs.contactPhone')}</Text>
                 <Text style={styles.contactNumber}>{displayNumber ? formatPhone(displayNumber) : '—'}</Text>
               </View>
             </View>
             {phoneEditing ? (
               <View style={{ marginTop: spacing.md }}>
-                <Text style={styles.label}>Yangi raqam</Text>
+                <Text style={styles.label}>{t('docs.newPhone')}</Text>
                 <TextInput
                   style={styles.input}
                   value={newPhone}
@@ -336,7 +337,7 @@ export default function DriverDocumentsScreen() {
                   style={{ marginTop: spacing.sm, opacity: isValidPhone(newPhone) ? 1 : 0.5 }}
                 />
                 <TouchableOpacity style={styles.phoneCancel} onPress={() => setPhoneEditing(false)} activeOpacity={0.7}>
-                  <Text style={styles.phoneCancelText}>Bekor qilish</Text>
+                  <Text style={styles.phoneCancelText}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -345,7 +346,7 @@ export default function DriverDocumentsScreen() {
                   Yo'lovchilar shu raqam orqali bog'lanadi. To'g'ri bo'lsa davom eting, aks holda o'zgartiring.
                 </Text>
                 <TouchableOpacity style={styles.changeBtn} onPress={startEditingPhone} activeOpacity={0.85}>
-                  <Text style={styles.changeBtnText}>Raqamni o'zgartirish</Text>
+                  <Text style={styles.changeBtnText}>{t('docs.changePhone')}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -355,10 +356,10 @@ export default function DriverDocumentsScreen() {
         {/* Car info */}
         <View style={styles.card}>
           <IconText name="car" size={15} color={colors.text} textStyle={styles.sectionTitle}>
-            Mashina ma'lumotlari
+            {t('docs.carInfo')}
           </IconText>
 
-          <Text style={styles.label}>Markasi (modeli)</Text>
+          <Text style={styles.label}>{t('docs.carModel')}</Text>
           <TouchableOpacity
             style={styles.input}
             onPress={() => { setSearch(''); setPickerOpen(true); }}
@@ -369,7 +370,7 @@ export default function DriverDocumentsScreen() {
             </Text>
           </TouchableOpacity>
 
-          <Text style={styles.label}>Ishlab chiqarilgan yili</Text>
+          <Text style={styles.label}>{t('docs.carYear')}</Text>
           <TextInput
             style={styles.input}
             value={carYear}
@@ -380,7 +381,7 @@ export default function DriverDocumentsScreen() {
             maxLength={4}
           />
 
-          <Text style={styles.label}>Davlat raqami</Text>
+          <Text style={styles.label}>{t('docs.carNumber')}</Text>
           <TextInput
             style={styles.input}
             value={carNumber}
@@ -396,9 +397,9 @@ export default function DriverDocumentsScreen() {
         {/* License */}
         <View style={styles.card}>
           <IconText name="idCard" size={15} color={colors.text} textStyle={styles.sectionTitle}>
-            Haydovchilik guvohnomasi
+            {t('docs.license')}
           </IconText>
-          <Text style={styles.sectionHint}>Ikkala tomonini ham suratga oling</Text>
+          <Text style={styles.sectionHint}>{t('docs.bothSides')}</Text>
           <View style={styles.slotRow}>
             {renderSlot(DOCS[0])}
             {renderSlot(DOCS[1])}
@@ -408,7 +409,7 @@ export default function DriverDocumentsScreen() {
         {/* Tech passport */}
         <View style={styles.card}>
           <IconText name="document" size={15} color={colors.text} textStyle={styles.sectionTitle}>
-            Texnik pasport
+            {t('docs.techPassport')}
           </IconText>
           <Text style={styles.sectionHint}>Ikkala tomonini ham suratga oling</Text>
           <View style={styles.slotRow}>
@@ -420,7 +421,7 @@ export default function DriverDocumentsScreen() {
 
       <View style={styles.footer}>
         <Button
-          title={allDone ? 'Tasdiqlash' : "Avval barcha maydonlarni to'ldiring"}
+          title={allDone ? t('common.confirm') : t('docs.fillAllFirst')}
           onPress={handleSubmit}
           loading={submitting}
           variant={allDone ? 'success' : 'outline'}
@@ -434,7 +435,7 @@ export default function DriverDocumentsScreen() {
             <TouchableOpacity onPress={() => setPickerOpen(false)} style={styles.backBtn}>
               <Icon name="back" size={26} color={colors.primary} />
             </TouchableOpacity>
-            <Text style={styles.pickerTitle}>Modelni tanlang</Text>
+            <Text style={styles.pickerTitle}>{t('docs.selectModel')}</Text>
             <View style={{ width: 40 }} />
           </View>
           <View style={{ padding: spacing.md }}>
@@ -442,7 +443,7 @@ export default function DriverDocumentsScreen() {
               style={styles.input}
               value={search}
               onChangeText={setSearch}
-              placeholder="Qidirish..."
+              placeholder={t('docs.search')}
               placeholderTextColor={colors.textMuted}
             />
           </View>
