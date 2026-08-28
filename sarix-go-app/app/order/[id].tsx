@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,24 @@ import type { ThemeColors } from '../../src/theme/colors-themed';
 // the 10s poll refresh the marker instead of leaving it frozen.
 const WS_LOCATION_STALE_MS = 20000;
 
+/**
+ * No NEW driver position for this long -> say so instead of implying live tracking.
+ *
+ * The driver app only reports location in the foreground, so backgrounding it (or losing
+ * signal) freezes the pin. Nothing on screen distinguished a car standing still from an
+ * app that stopped reporting ten minutes ago — the caption said "Haydovchi joylashuvi"
+ * either way. The driver sends every ~10s, so a minute of silence is unambiguous.
+ */
+const DRIVER_STALE_MS = 60000;
+
+/**
+ * How long after our own setCenter() a camera move is still assumed to be ours.
+ *
+ * The map reports `boundschange` for programmatic pans too, and setCenter animates over
+ * 500ms, so without this window every auto-follow would look like the passenger panning.
+ */
+const PROGRAMMATIC_SETTLE_MS = 900;
+
 export default function OrderDetailScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
@@ -52,6 +70,18 @@ export default function OrderDetailScreen() {
   // Map handle + readiness, so we can live-follow the driver as they move.
   const mapRef = useRef<YandexMapHandle>(null);
   const [mapReady, setMapReady] = useState(false);
+  // Device-clock time we last saw a NEW driver position, from either transport.
+  //
+  // Deliberately NOT computed from `location_updated_at` minus `Date.now()`: that compares
+  // a server timestamp against the phone's clock, and a device with a skewed clock would
+  // report a live driver as hours stale (or vice versa). Instead we notice when the server
+  // stamp CHANGES, which needs no clock agreement at all.
+  const lastPositionAtRef = useRef(0);
+  const lastServerStampRef = useRef<string | null>(null);
+  const [locationStale, setLocationStale] = useState(false);
+  // Auto-follow the driver, until the passenger pans the map themselves.
+  const [following, setFollowing] = useState(true);
+  const programmaticMoveAtRef = useRef(0);
 
   const load = async () => {
     try {
@@ -72,6 +102,13 @@ export default function OrderDetailScreen() {
             ? prev
             : { lat: data.driver!.current_lat!, lon: data.driver!.current_lon! }
         );
+      }
+      // Freshness: a CHANGED server stamp means the driver really did report again.
+      // Comparing stamps rather than clocks keeps this correct on a phone whose time is off.
+      const stamp = data.driver?.location_updated_at ?? null;
+      if (stamp && stamp !== lastServerStampRef.current) {
+        lastServerStampRef.current = stamp;
+        lastPositionAtRef.current = Date.now();
       }
     } catch {
       // Record the failure. This screen is reached with router.replace and renders no
@@ -103,6 +140,7 @@ export default function OrderDetailScreen() {
       onMessage: (msg) => {
         if (msg.type === 'driver_location' && msg.order_id?.toString() === id) {
           lastWsLocationAtRef.current = Date.now();
+          lastPositionAtRef.current = Date.now();
           setDriverLoc({ lat: msg.lat, lon: msg.lon });
         } else if (msg.type === 'order_started' && msg.order_id?.toString() === id) {
           // Driver reached the passenger and started the trip -> notify in-app.
@@ -120,13 +158,49 @@ export default function OrderDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, id]);
 
-  // Live-follow: recenter the map on the driver whenever their position updates,
-  // so the passenger can track the driver moving in real time.
+  // Live-follow: recenter the map on the driver whenever their position updates, so the
+  // passenger can track the driver moving in real time.
+  //
+  // Gated on `following`: this used to recenter unconditionally, so a passenger who panned
+  // away to look at the route ahead was yanked back to the car on the very next position
+  // frame — every few seconds, with no way to stop it. Panning now hands them control and
+  // a "recenter" button gives it back.
   useEffect(() => {
-    if (mapReady && driverLoc) {
+    if (mapReady && driverLoc && following) {
+      programmaticMoveAtRef.current = Date.now();
       mapRef.current?.setCenter(driverLoc.lat, driverLoc.lon);
     }
-  }, [mapReady, driverLoc]);
+  }, [mapReady, driverLoc, following]);
+
+  /** A camera move we did not cause means the passenger panned/zoomed: stop following. */
+  const handleMapCameraMove = useCallback(() => {
+    if (Date.now() - programmaticMoveAtRef.current > PROGRAMMATIC_SETTLE_MS) {
+      setFollowing(false);
+    }
+  }, []);
+
+  const handleRecenter = useCallback(() => {
+    setFollowing(true);
+    if (driverLoc) {
+      programmaticMoveAtRef.current = Date.now();
+      mapRef.current?.setCenter(driverLoc.lat, driverLoc.lon);
+    }
+  }, [driverLoc]);
+
+  // Flip the "position is stale" flag on a timer: nothing else re-renders while the driver
+  // is silent, which is exactly the case we need to surface.
+  const orderStatus = order?.status;
+  useEffect(() => {
+    if (!orderStatus || !['accepted', 'in_progress'].includes(orderStatus)) return;
+    const tick = () =>
+      setLocationStale(
+        lastPositionAtRef.current > 0 &&
+          Date.now() - lastPositionAtRef.current > DRIVER_STALE_MS
+      );
+    tick();
+    const i = setInterval(tick, 5000);
+    return () => clearInterval(i);
+  }, [orderStatus]);
 
   // After completion, prompt the passenger to rate the driver (once, if not rated yet).
   useEffect(() => {
@@ -309,7 +383,13 @@ export default function OrderDetailScreen() {
               initialLat={driverLoc?.lat ?? order.from_lat ?? undefined}
               initialLon={driverLoc?.lon ?? order.from_lon ?? undefined}
               initialZoom={15}
-              onMapReady={() => setMapReady(true)}
+              onMapReady={() => {
+                // The initial fit fires boundschange; treat it as ours so it does not
+                // immediately count as the passenger panning.
+                programmaticMoveAtRef.current = Date.now();
+                setMapReady(true);
+              }}
+              onCameraMove={handleMapCameraMove}
               markers={[
                 // `label` becomes Yandex's `iconCaption` — a TEXT caption drawn beside the
                 // pin. Emoji were unreadable there (the WebView falls back to whatever
@@ -334,8 +414,29 @@ export default function OrderDetailScreen() {
                   : []),
               ]}
             />
-            <Text style={styles.mapHint}>
-              {driverLoc ? t('driverMap.title') : t('driverMap.waiting')}
+            {/* Shown only once the passenger has taken the camera over. */}
+            {!following && driverLoc && (
+              <TouchableOpacity
+                style={styles.recenterBtn}
+                onPress={handleRecenter}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t('driverMap.recenter')}
+              >
+                <Icon name="target" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+            <Text
+              style={[
+                styles.mapHint,
+                locationStale && { color: colors.warning, fontWeight: '700' },
+              ]}
+            >
+              {!driverLoc
+                ? t('driverMap.waiting')
+                : locationStale
+                ? t('driverMap.stale')
+                : t('driverMap.title')}
             </Text>
           </View>
         )}
@@ -533,6 +634,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     ...CARD_SHADOW,
   },
   map: { flex: 1 },
+  recenterBtn: {
+    position: 'absolute',
+    right: spacing.sm,
+    bottom: 36,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CARD_SHADOW,
+  },
   mapHint: {
     ...typography.small,
     color: colors.textSecondary,

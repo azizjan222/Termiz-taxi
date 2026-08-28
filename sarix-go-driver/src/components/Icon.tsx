@@ -27,6 +27,8 @@ const GLYPHS = {
   arrowRight: 'arrow-right',
   arrowDown: 'arrow-down',
   arrowUp: 'arrow-up',
+  bookmark: 'bookmark-outline',
+  plus: 'plus',
   swap: 'swap-vertical',
   send: 'send',
   search: 'magnify',

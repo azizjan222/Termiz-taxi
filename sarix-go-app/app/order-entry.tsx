@@ -5,17 +5,25 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
+import { Button } from '../src/components/Button';
 import YandexMap, { YandexMapHandle } from '../src/components/YandexMap';
 import { reverseGeocode } from '../src/services/geocoding';
 import { resolveRouteCity } from '../src/services/cityResolver';
 import { detectLocation } from '../src/services/location';
 import { listCities, listRoutes, type Route } from '../src/api/orders';
+import { createAddress, listAddresses, type SavedAddress } from '../src/api/addresses';
+import { describeApiError } from '../src/api/errors';
 import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -39,6 +47,18 @@ const LONG_HAUL_MIN_KM = 70; // "masofasi 70 km kam bo'lmagan tumanlar"
  * then gets sent to the wrong place.
  */
 const ADDRESS_KEEP_RADIUS_M = 150;
+
+/**
+ * Two pins this close together are the same place for a saved-address list.
+ *
+ * The backend has no duplicate detection at all, so without a check here a passenger who
+ * taps "save" twice on the same spot — or saves their home again from a slightly different
+ * pin — ends up with near-identical rows eating into their 10-address allowance.
+ */
+const NEAR_DUPLICATE_M = 60;
+
+/** Server-side cap in app/api/addresses.py. Mirrored so we can say so before the request. */
+const MAX_SAVED_ADDRESSES = 10;
 
 /** Great-circle distance in metres. */
 function distanceMeters(aLat: number, aLon: number, bLat: number, bLon: number): number {
@@ -119,9 +139,17 @@ export default function OrderEntryScreen() {
   //  - 'from' (default) -> the pickup point (Yo'lovchini olish nuqtasi)
   //  - 'to'             -> the final destination (Yakuniy manzil), opened from the
   //                        "Xarita" button on the destination row of route-select.
-  const { pick } = useLocalSearchParams<{ pick?: 'from' | 'to' }>();
-  const pickMode: 'from' | 'to' = pick === 'to' ? 'to' : 'from';
+  //  - 'save'           -> not part of an order at all: pick a point to store in
+  //                        "Mening manzillarim". Opened from saved-addresses.tsx.
+  //
+  // 'save' reuses this screen rather than getting its own because everything it needs is
+  // already here and hard to get right: the debounced Uzbek reverse-geocode, the 150 m
+  // staleness guard, GPS auto-detect, and tap-to-move-the-pin.
+  const { pick } = useLocalSearchParams<{ pick?: 'from' | 'to' | 'save' }>();
+  const pickMode: 'from' | 'to' | 'save' =
+    pick === 'to' ? 'to' : pick === 'save' ? 'save' : 'from';
   const isDest = pickMode === 'to';
+  const isSaveMode = pickMode === 'save';
 
   const [center, setCenter] = useState<{ lat: number; lon: number }>(() => {
     if (pick === 'to' && orderStore.toLat != null && orderStore.toLon != null) {
@@ -140,6 +168,15 @@ export default function OrderEntryScreen() {
   const [resolving, setResolving] = useState(true); // Start as resolving since we detect on mount
   const [detecting, setDetecting] = useState(true); // Start as detecting
   const [cities, setCities] = useState<string[]>([]);
+
+  // Saved addresses, loaded so the cap and the duplicate check can be answered before
+  // firing a request the server would only reject with an untranslated message.
+  const [saved, setSaved] = useState<SavedAddress[]>([]);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveLabel, setSaveLabel] = useState('');
+  const [savingAddress, setSavingAddress] = useState(false);
+  // Synchronous guard: `savingAddress` only disables the button on the next render.
+  const saveInFlightRef = useRef(false);
 
 
   const mapRef = useRef<YandexMapHandle>(null);
@@ -330,18 +367,111 @@ export default function OrderEntryScreen() {
     };
   }, []);
 
-  // Compute 2 long-haul (>= 70 km) destination districts from the pickup city.
+  /**
+   * Suggested destinations that are genuinely at least LONG_HAUL_MIN_KM away FROM HERE.
+   *
+   * This used to fall back to every long route in the system whenever the pickup city was
+   * not derived yet (which is most of the first second, before GPS and the geocoder land).
+   * The rows were populated, but with districts that are 70 km from *some other* city —
+   * so the screen promised "70 km dan kam bo'lmagan" and showed something else. Now the
+   * list stays empty until we know where the passenger actually is, and every row carries
+   * the real distance so the claim is checkable.
+   *
+   * Sorted nearest-first among the qualifying routes: the closest long-haul option is the
+   * one a passenger is most likely to want.
+   */
   const longHaul = useMemo(() => {
     const pickupCity = fullAddress ? deriveCity(fullAddress) : null;
-    const farEnough = allRoutes.filter((r) => (r.distance_km ?? 0) >= LONG_HAUL_MIN_KM);
-    const fromHere = pickupCity
-      ? farEnough.filter((r) => r.from_city.toLowerCase() === pickupCity.toLowerCase())
-      : [];
-    const pickedCities = (fromHere.length ? fromHere : farEnough).map((r) => r.to_city);
-    return Array.from(new Set(pickedCities))
-      .filter((c) => c !== pickupCity)
-      .slice(0, 2);
+    if (!pickupCity) return [];
+    const seen = new Set<string>();
+    return allRoutes
+      .filter(
+        (r) =>
+          (r.distance_km ?? 0) >= LONG_HAUL_MIN_KM &&
+          r.from_city.toLowerCase() === pickupCity.toLowerCase() &&
+          r.to_city.toLowerCase() !== pickupCity.toLowerCase()
+      )
+      .sort((a, b) => (a.distance_km ?? 0) - (b.distance_km ?? 0))
+      .filter((r) => {
+        const key = r.to_city.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 3)
+      .map((r) => ({ city: r.to_city, km: r.distance_km ?? 0 }));
   }, [allRoutes, fullAddress, deriveCity]);
+
+  // ---------------------------------------------------------------- saved addresses
+  useEffect(() => {
+    let active = true;
+    listAddresses()
+      .then((list) => { if (active) setSaved(list); })
+      .catch(() => {
+        // Non-fatal: without the list we lose the local cap/duplicate pre-check, and the
+        // server's own 400 becomes the backstop.
+      });
+    return () => { active = false; };
+  }, []);
+
+  /** The address currently under the pin, or null when nothing has resolved yet. */
+  const pinAddress = (address || '').trim() || null;
+
+  const persistAddress = async (labelText: string) => {
+    if (saveInFlightRef.current) return;
+    if (!pinAddress) {
+      Alert.alert(t('common.attention'), t('addresses.noAddressYet'));
+      return;
+    }
+    if (saved.length >= MAX_SAVED_ADDRESSES) {
+      Alert.alert(
+        t('common.attention'),
+        t('addresses.limitReached', { max: MAX_SAVED_ADDRESSES })
+      );
+      return;
+    }
+    // Same text, or a pin within NEAR_DUPLICATE_M of one already saved.
+    const duplicate = saved.find(
+      (a) =>
+        a.address.trim().toLowerCase() === pinAddress.toLowerCase() ||
+        (a.latitude != null &&
+          a.longitude != null &&
+          distanceMeters(a.latitude, a.longitude, center.lat, center.lon) <= NEAR_DUPLICATE_M)
+    );
+    if (duplicate) {
+      Alert.alert(t('common.attention'), t('addresses.duplicate'));
+      return;
+    }
+
+    saveInFlightRef.current = true;
+    setSavingAddress(true);
+    try {
+      const created = await createAddress({
+        label: labelText.trim() || undefined,
+        address: pinAddress,
+        // Coordinates are the whole point: route-select feeds them straight into the order,
+        // so a saved address with a pin sends the driver to the exact spot rather than to
+        // whatever the city resolver guesses from the text.
+        latitude: center.lat,
+        longitude: center.lon,
+      });
+      setSaved((prev) => [created, ...prev]);
+      setSaveModalOpen(false);
+      setSaveLabel('');
+      if (isSaveMode) {
+        // Came here from "Mening manzillarim" purely to pick a point — go straight back;
+        // that screen refetches on focus.
+        router.back();
+        return;
+      }
+      Alert.alert(t('common.success'), t('addresses.saved'));
+    } catch (e: any) {
+      Alert.alert(t('common.error'), describeApiError(e, t));
+    } finally {
+      saveInFlightRef.current = false;
+      setSavingAddress(false);
+    }
+  };
 
   const handleCameraMove = (lat: number, lon: number) => {
     setCenter({ lat, lon });
@@ -411,6 +541,35 @@ export default function OrderEntryScreen() {
   };
 
   const isParcel = orderStore.serviceType === 'parcel';
+  const atSavedLimit = saved.length >= MAX_SAVED_ADDRESSES;
+
+  /** "Save this address" affordance, shown in the order-picking modes. */
+  const renderSaveRow = () => (
+    <TouchableOpacity
+      style={styles.saveRow}
+      onPress={() => setSaveModalOpen(true)}
+      disabled={!pinAddress || atSavedLimit}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={t('addresses.saveTitle')}
+    >
+      <Icon
+        name="bookmark"
+        size={18}
+        color={!pinAddress || atSavedLimit ? colors.textMuted : colors.primary}
+      />
+      <Text
+        style={[
+          styles.saveRowText,
+          (!pinAddress || atSavedLimit) && { color: colors.textMuted },
+        ]}
+      >
+        {atSavedLimit
+          ? t('addresses.limitReachedShort', { max: MAX_SAVED_ADDRESSES })
+          : t('addresses.saveThis')}
+      </Text>
+    </TouchableOpacity>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -430,7 +589,11 @@ export default function OrderEntryScreen() {
         {/* Top "Manzilingiz" card */}
         <View style={styles.topCard} pointerEvents="box-none">
           <Text style={styles.topLabel}>
-            {isDest ? `${t('orderEntry.finalAddress')} ›` : `${t('orderEntry.yourAddress')} ›`}
+            {isSaveMode
+              ? t('addresses.saveTitle')
+              : isDest
+              ? `${t('orderEntry.finalAddress')} ›`
+              : `${t('orderEntry.yourAddress')} ›`}
           </Text>
           {address ? (
             // Keep the resolved address visible while a new lookup runs (e.g. when
@@ -462,7 +625,11 @@ export default function OrderEntryScreen() {
         {/* Center pin */}
         <View pointerEvents="none" style={styles.pinContainer}>
           <View style={[styles.pinIcon, isDest && { backgroundColor: colors.primary }]}>
-            <Icon name={isDest ? 'flag' : 'person'} size={30} color={colors.primary} />
+            <Icon
+              name={isSaveMode ? 'bookmark' : isDest ? 'flag' : 'person'}
+              size={30}
+              color={colors.primary}
+            />
           </View>
           <View style={styles.pinStick} />
         </View>
@@ -484,9 +651,15 @@ export default function OrderEntryScreen() {
       <View style={styles.sheet}>
         <View style={styles.sheetHandle} />
         <View style={styles.sheetHeader}>
-          <Icon name={isParcel ? 'parcel' : 'taxi'} size={22} color={colors.primary} />
+          <Icon
+            name={isSaveMode ? 'bookmark' : isParcel ? 'parcel' : 'taxi'}
+            size={22}
+            color={colors.primary}
+          />
           <Text style={styles.sheetTitle}>
-            {isDest
+            {isSaveMode
+              ? t('addresses.add')
+              : isDest
               ? isParcel
                 ? t('orderEntry.deliveryAddress')
                 : t('orderEntry.whereTo')
@@ -496,7 +669,42 @@ export default function OrderEntryScreen() {
           </Text>
         </View>
 
-        {isDest ? (
+        {isSaveMode ? (
+          <>
+            {/* Save-only mode: no order involved, just name the picked point and store it. */}
+            <View style={styles.destPreview}>
+              <Icon name="pin" size={14} color={colors.textSecondary} style={styles.destPreviewIcon} />
+              <Text style={styles.destPreviewText} numberOfLines={2}>
+                {pinAddress || t('orderEntry.dragToPick')}
+              </Text>
+            </View>
+
+            <Text style={styles.fieldLabel}>{t('addresses.label')}</Text>
+            <TextInput
+              style={styles.input}
+              value={saveLabel}
+              onChangeText={setSaveLabel}
+              placeholder={t('addresses.labelPlaceholder')}
+              placeholderTextColor={colors.textMuted}
+              editable={!savingAddress}
+              maxLength={50}
+            />
+
+            <Button
+              title={t('common.save')}
+              onPress={() => persistAddress(saveLabel)}
+              loading={savingAddress}
+              disabled={!pinAddress || atSavedLimit}
+              variant="primary"
+              style={{ marginTop: spacing.md }}
+            />
+            {atSavedLimit && (
+              <Text style={styles.limitHint}>
+                {t('addresses.limitReached', { max: MAX_SAVED_ADDRESSES })}
+              </Text>
+            )}
+          </>
+        ) : isDest ? (
           <>
             {/* Destination map mode: show the chosen address and a confirm button */}
             <View style={styles.destPreview}>
@@ -512,6 +720,7 @@ export default function OrderEntryScreen() {
             >
               <Text style={styles.confirmBtnText}>{t('orderEntry.confirmAddress')}</Text>
             </TouchableOpacity>
+            {renderSaveRow()}
           </>
         ) : (
           <>
@@ -524,26 +733,76 @@ export default function OrderEntryScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* Quick long-haul districts (>= 70 km) */}
+            {/* Suggested destinations, each genuinely >= 70 km from the pickup city. The
+                distance is shown so the claim can be checked rather than trusted. */}
             {longHaul.map((d) => (
               <TouchableOpacity
-                key={d}
+                key={d.city}
                 style={styles.quickRow}
-                onPress={() => handleQuickDestination(d)}
+                onPress={() => handleQuickDestination(d.city)}
                 activeOpacity={0.7}
               >
                 <View style={styles.quickIcon}>
                   <Icon name="location" size={16} color={colors.textSecondary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.quickTitle}>{d}</Text>
-                  <Text style={styles.quickSub}>{t('cities.region')}</Text>
+                  <Text style={styles.quickTitle}>{d.city}</Text>
+                  <Text style={styles.quickSub}>
+                    {t('orderEntry.kmAway', { km: d.km })}
+                  </Text>
                 </View>
               </TouchableOpacity>
             ))}
+
+            {renderSaveRow()}
           </>
         )}
       </View>
+
+      {/* Label prompt for "save this address" (from/to modes) */}
+      <Modal visible={saveModalOpen} animationType="slide" transparent>
+        <KeyboardAvoidingView
+          style={styles.modalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('addresses.saveTitle')}</Text>
+            <Text style={styles.modalAddress} numberOfLines={3}>
+              {pinAddress || t('orderEntry.tapOrDragMap')}
+            </Text>
+
+            <Text style={styles.fieldLabel}>{t('addresses.label')}</Text>
+            <TextInput
+              style={styles.input}
+              value={saveLabel}
+              onChangeText={setSaveLabel}
+              placeholder={t('addresses.labelPlaceholder')}
+              placeholderTextColor={colors.textMuted}
+              editable={!savingAddress}
+              maxLength={50}
+            />
+
+            <View style={styles.modalButtons}>
+              <Button
+                title={t('common.cancel')}
+                onPress={() => setSaveModalOpen(false)}
+                disabled={savingAddress}
+                variant="outline"
+                fullWidth={false}
+                style={{ flex: 1 }}
+              />
+              <Button
+                title={t('common.save')}
+                onPress={() => persistAddress(saveLabel)}
+                loading={savingAddress}
+                variant="primary"
+                fullWidth={false}
+                style={{ flex: 1, marginLeft: spacing.md }}
+              />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -690,4 +949,46 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
   },
   confirmBtnText: { ...typography.h3, color: colors.textOnPrimary },
+
+  // --- "save this address" ---
+  saveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  saveRowText: { ...typography.body, color: colors.primary, fontWeight: '600' },
+  limitHint: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+  fieldLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  input: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    ...typography.body,
+    color: colors.text,
+  },
+  modalContainer: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalContent: {
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+  },
+  modalTitle: { ...typography.h2, color: colors.primary },
+  modalAddress: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  modalButtons: { flexDirection: 'row', marginTop: spacing.lg },
 });
