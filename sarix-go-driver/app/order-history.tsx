@@ -40,7 +40,7 @@ export default function OrderHistoryScreen() {
   const formatDate = (iso?: string | null) => {
     if (!iso) return '';
     const d = new Date(iso);
-    return d.toLocaleDateString('uz-UZ', {
+    return d.toLocaleDateString(dateLocaleTag(), {
       day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
     });
   };

@@ -172,6 +172,7 @@ export const uz = {
   },
   notifications: {
     newOrder: '🚕 Yangi zakas keldi!',
+    newOrderShort: 'Yangi zakas keldi!',
     newOrderBody: "{{from}} → {{to}} · {{price}} so'm",
     orderCancelled: '❌ Zakas bekor qilindi',
     orderCancelledBody: "Yo'lovchi zakasni bekor qildi",
@@ -179,6 +180,7 @@ export const uz = {
     historyTitle: 'Bildirishnomalar',
     empty: 'Bildirishnomalar yo\'q',
     clear: 'Tozalash',
+    fallbackTitle: 'Bildirishnoma',
   },
   faq: {
     title: 'Yordam / FAQ',
@@ -236,6 +238,9 @@ export const uz = {
       'Onlayn rejim nima?',
     ],
     needHuman: 'Adminga yozish',
+    errSession: "Sessiya muddati tugagan bo'lishi mumkin. Ilovadan chiqib, qaytadan kiring.",
+    errRetry: "Hozircha javob bera olmadim. Biroz keyinroq urinib ko'ring yoki yordam uchun adminga murojaat qiling.",
+    sourceGuide: "Ko'rsatma",
   },
   docs: {
     title: 'Hujjatlarni yuklang',
@@ -272,6 +277,10 @@ export const uz = {
     errDocs: 'Barcha hujjatlarning ikkala tomonini yuklang.',
     doneTitle: 'Tayyor',
     doneBody: 'Hujjatlaringiz qabul qilindi.',
+    photoTip: "Hujjatni tekis yuzaga qo'ying, yaxshi yorug'likda, barcha ma'lumotlar aniq o'qiladigan holatda suratga oling. Soya yoki yorqin aks tushmasin.",
+    contactQuestion: "Yo'lovchilar shu raqam orqali bog'lanadi. To'g'ri bo'lsa davom eting, aks holda o'zgartiring.",
+    errPhotoUpload: "Rasm yuklanmadi. Qayta urinib ko'ring.",
+    errSubmit: "Hujjatlarni yuborib bo'lmadi.",
   },
   driverInfo: {
     title: "Ma'lumotlarim",
@@ -336,6 +345,7 @@ export const uz = {
     a11yOpenProvider: "Tanlangan to'lov provayderini ochadi",
     a11yConfirmSend: "To'lov tasdig'ini yuborish",
     a11yStartPayment: "To'lovni boshlash",
+    bonusBadge: '+50% BONUS!',
   },
   more: {
     currency: "so'm",
@@ -424,6 +434,111 @@ export const uz = {
     femaleInCabin: 'Salonda ayol bor',
     roofRack: 'Tomida yukxona bor',
     extras: "Qo'shimcha talablar",
+    a11yAcceptOrder: '{{from}}dan {{to}}ga buyurtmani qabul qilish',
+    a11yAcceptOrderHint: 'Buyurtmani sizga biriktiradi va tafsilotlarini ochadi',
+    a11yOnlineToggle: 'Buyurtmalarni qabul qilish',
+    a11yOnlineToggleHint: "Onlayn holatni yoqadi yoki o'chiradi",
+    a11yOnlineToggleLocked: 'Administrator hujjatlarni tasdiqlagandan keyin yoqiladi',
+    a11ySendSms: '{{subject}}ga xabar yuborish',
+    a11ySendSmsHint: 'SMS ilovasini ochadi',
+    a11yCall: "{{subject}}ga qo'ng'iroq qilish",
+    a11yCallHint: 'Telefon ilovasini ochadi',
+    a11yNavPickup: 'Olish manziliga navigatsiya',
+    a11yNavDropoff: 'Yetkazish manziliga navigatsiya',
+    a11yNavHint: 'Yandex Navigator, Yandex Maps yoki veb xaritani ochadi',
+    a11yCompleteOrder: 'Buyurtmani yakunlash',
+    a11yCompleteOrderHint: 'Tasdiqlangandan keyin buyurtmani tugallangan deb belgilaydi',
+    a11yStartTripHint: 'Tasdiqlangandan keyin safarni boshlaydi',
+  },
+  departure: {
+    now: 'Hozir',
+    min30: '30 daqiqadan',
+    hour1: '1 soatdan',
+    hour2: '2 soatdan',
+    tomorrow: 'Ertaga',
+  },
+  otp: {
+    title: 'Tasdiqlash kodi',
+    sentTo: 'Kod yuborildi: {{phone}}',
+    codeSentTo: 'Kod {{phone}} raqamiga yuborildi',
+    resend: 'Kodni qayta yuborish',
+    resendIn: 'Qayta yuborish ({{seconds}}s)',
+  },
+  docsStatus: {
+    notVerifiedTitle: 'Hujjatlar tasdiqlanmagan',
+    underReview: 'Hujjatlaringiz administrator tekshiruvida. Tasdiqlanishini kuting.',
+    submitFirst: 'Avval barcha haydovchi hujjatlarini yuboring.',
+    fillIn: "Hujjatlarni to'ldirish",
+    a11yBanner: 'Haydovchi hujjatlari holati',
+    a11yOpenForm: "Hujjatlarni to'ldirish sahifasini ochadi",
+    a11yWaitingApproval: "Administrator tasdig'i kutilmoqda",
+  },
+  channels: {
+    orders: 'Yangi zakaslar',
+    balance: 'Balans',
+    alerts: 'Bildirishnomalar',
+  },
+  map: {
+    errorTitle: "Xaritani yuklab bo'lmadi",
+    errorHint: 'Internetni tekshiring. Muammo davom etsa, Yandex Maps API kalitini tekshiring.',
+    loadFailed: 'Xarita yuklanmadi',
+    webviewError: 'WebView xatosi',
+    networkError: 'Tarmoq xatosi ({{code}})',
+    apiLoadFailed: 'Yandex Maps API yuklanmadi (kalit yoki internet)',
+    initFailed: 'Xarita ishga tushmadi',
+    apiTimeout: 'Yandex Maps API javob bermadi',
+  },
+  terms: {
+    title: 'Foydalanish shartlari',
+    docTitle: '„Sarix Go" ilovasidan foydalanish shartlari va maxfiylik siyosati',
+    updated: 'Oxirgi yangilanish sanasi: 13.06.2026',
+    intro: '„Sarix Go" mobil ilovasidan (keyingi o’rinlarda — „Ilova") foydalanishni boshlashingizdan oldin ushbu shartlar bilan diqqat bilan tanishib chiqing. Ilovada ro’yxatdan o’tish orqali siz ushbu shartlarga to’liq rozilik bildirgan hisoblanasiz.',
+    sections: [
+      {
+        heading: '1. Umumiy qoidalar va xizmat turi',
+        paragraphs: [
+          "„Sarix Go\" — bu ro'yxatdan o'tgan Yo'lovchilar (buyurtma beruvchilar) va ro'yxatdan o'tgan mustaqil Haydovchilar (xizmat ko'rsatuvchilar) o'rtasida buyurtmalarni onlayn muvofiqlashtiruvchi axborot-texnologiya platformasi hisoblanadi.",
+          "Ilova mustaqil ravishda taksi xizmatini ko'rsatmaydi, shaxsiy avtotransport parkiga ega emas va haydovchilar bilan mehnat munosabatlariga kirmaydi.",
+        ],
+      },
+      {
+        heading: "2. Ro'yxatdan o'tish va hisob-kitoblar (Komissiya)",
+        paragraphs: [
+          "Yo'lovchilar uchun: Ilovadan foydalanish va buyurtma (zakas) berish uchun yo'lovchilar telefon raqami orqali ro'yxatdan o'tishlari shart.",
+          "Haydovchilar uchun: Haydovchilar ilovada ishlash va buyurtmalarni qabul qilish uchun tegishli hujjatlarni taqdim etgan holda ro'yxatdan o'tadilar.",
+          'Xizmat haqi (Komissiya): „Sarix Go" ilovasi haydovchilarga buyurtma topib berish va platformadan foydalanish imkoniyatini taqdim etgani uchun, har bir muvaffaqiyatli yakunlangan safardan belgilangan foiz (%) miqdorida xizmat haqi (komissiya) oladi. Komissiya miqdori va uni undirish tartibi ilova tariflarida ko\'rsatiladi.',
+        ],
+      },
+      {
+        heading: "3. Mas'uliyatni cheklash (Baxtsiz hodisalar va zararlar)",
+        paragraphs: [
+          "Yo'l-transport hodisalari: „Sarix Go\" yo'lovchi va haydovchini bog'lovchi vositachi platforma bo'lgani sababli, safar davomida yo'llarda sodir bo'lishi mumkin bo'lgan har qanday baxtsiz hodisalar (avariya), yo'lovchilar yoki uchinchi shaxslarning sog'lig'iga yetkazilgan jismoniy zarar, jarohatlar yoki o'lim holatlari uchun mutlaqo javobgarlikni o'z zimmasiga olmaydi.",
+          "Safar vaqtida xavfsizlik, yo'l harakati qoidalariga rioya qilish va yo'lovchining sog'lig'i uchun barcha javobgarlik transport vositasini boshqarayotgan mustaqil haydovchi zimmasidadir.",
+          "Moliyaviy va moddiy zarar: Safar davomida yo'qolgan, unutilgan yoki shikastlangan buyumlar uchun ilova ma'muriyati javobgar emas. Foydalanuvchilar o'zaro kelishmovchiliklarni amaldagi qonunchilik doirasida, mustaqil ravishda hal qiladilar.",
+        ],
+      },
+      {
+        heading: '4. Tomonlarning huquq va majburiyatlari',
+        paragraphs: [
+          "Haydovchi: Yo'l harakati qoidalariga amal qilishi, avtomobilining texnik sozligini ta'minlashi va yo'lovchiga xavfsiz xizmat ko'rsatishi shart. Shuningdek, ilova komissiyasini o'z vaqtida to'lab borishi lozim.",
+          "Yo'lovchi: Buyurtma berishda manzil va qo'shimcha shartlarni to'g'ri ko'rsatishi, safar haqini haydovchiga kelishilgan miqdorda to'lashi shart.",
+          "Ilova ma'muriyati: Ilovaning uzluksiz ishlashini ta'minlaydi. Qoidalarni buzgan, soxta buyurtma bergan yoki komissiya to'lamagan foydalanuvchi/haydovchilarni ogohlantirishsiz bloklash huquqiga ega.",
+        ],
+      },
+      {
+        heading: "5. Maxfiylik siyosati (Ma'lumotlar himoyasi)",
+        paragraphs: [
+          "Geolokatsiya: Ilova buyurtmalarni to'g'ri shakllantirish va haydovchi hamda yo'lovchining xaritadagi joylashuvini aniqlash uchun geolokatsiya ma'lumotlaridan (fonda va faol holatda) foydalanadi.",
+          "Shaxsiy ma'lumotlar: Ro'yxatdan o'tish paytida olingan telefon raqamlari, ism-shariflar va haydovchilik hujjatlari uchinchi shaxslarga tarqatilmaydi va faqat ilova xavfsizligi hamda xizmat sifatini oshirish uchun ishlatiladi.",
+        ],
+      },
+      {
+        heading: "6. Shartlarga o'zgartirish kiritish",
+        paragraphs: [
+          "„Sarix Go\" ma'muriyati ushbu shartlarni va komissiya foizlarini istalgan vaqtda bir tomonlama o'zgartirish huquqini saqlab qoladi. Yangilangan shartlar ilovada e'lon qilingan paytdan boshlab kuchga kiradi.",
+        ],
+      },
+    ],
   },
 };
 
@@ -537,11 +652,13 @@ export const ru = {
   },
   notifications: {
     newOrder: '🚕 Новый заказ!',
+    newOrderShort: 'Поступил новый заказ!',
     newOrderBody: '{{from}} → {{to}} · {{price}} сум',
     orderCancelled: '❌ Заказ отменён',
     orderCancelledBody: 'Пассажир отменил заказ',
     orderCancelledSpoken: 'Внимание. Пассажир отменил заказ.',
     historyTitle: 'Уведомления', empty: 'Нет уведомлений', clear: 'Очистить',
+    fallbackTitle: 'Уведомление',
   },
   faq: {
     title: 'Помощь / FAQ', contactSupport: 'Связаться с админом',
@@ -597,6 +714,9 @@ export const ru = {
       'Что такое онлайн режим?',
     ],
     needHuman: 'Написать админу',
+    errSession: 'Возможно, сессия истекла. Выйдите из приложения и войдите снова.',
+    errRetry: 'Пока не могу ответить. Попробуйте немного позже или обратитесь к админу за помощью.',
+    sourceGuide: 'Инструкция',
   },
   docs: {
     title: 'Загрузите документы',
@@ -633,6 +753,10 @@ export const ru = {
     errDocs: 'Загрузите обе стороны всех документов.',
     doneTitle: 'Готово',
     doneBody: 'Ваши документы приняты.',
+    photoTip: 'Положите документ на ровную поверхность и сфотографируйте при хорошем освещении, чтобы все данные читались отчётливо. Избегайте теней и засветов.',
+    contactQuestion: 'Пассажиры будут звонить на этот номер. Если он верный — продолжайте, иначе измените его.',
+    errPhotoUpload: 'Фото не загрузилось. Попробуйте снова.',
+    errSubmit: 'Не удалось отправить документы.',
   },
   driverInfo: {
     title: 'Мои данные',
@@ -697,6 +821,7 @@ export const ru = {
     a11yOpenProvider: 'Открывает выбранного платёжного провайдера',
     a11yConfirmSend: 'Отправить подтверждение оплаты',
     a11yStartPayment: 'Начать оплату',
+    bonusBadge: '+50% БОНУС!',
   },
   more: {
     currency: 'сум',
@@ -785,6 +910,111 @@ export const ru = {
     femaleInCabin: 'В салоне женщина',
     roofRack: 'Багажник на крыше',
     extras: 'Дополнительные требования',
+    a11yAcceptOrder: 'Принять заказ из {{from}} в {{to}}',
+    a11yAcceptOrderHint: 'Закрепит заказ за вами и откроет его детали',
+    a11yOnlineToggle: 'Приём заказов',
+    a11yOnlineToggleHint: 'Включает или выключает статус «Онлайн»',
+    a11yOnlineToggleLocked: 'Включится после того, как администратор подтвердит документы',
+    a11ySendSms: 'Отправить сообщение: {{subject}}',
+    a11ySendSmsHint: 'Откроет приложение SMS',
+    a11yCall: 'Позвонить: {{subject}}',
+    a11yCallHint: 'Откроет приложение телефона',
+    a11yNavPickup: 'Навигация к месту посадки',
+    a11yNavDropoff: 'Навигация к адресу доставки',
+    a11yNavHint: 'Откроет Yandex Navigator, Yandex Maps или веб-карту',
+    a11yCompleteOrder: 'Завершить заказ',
+    a11yCompleteOrderHint: 'После подтверждения отметит заказ как выполненный',
+    a11yStartTripHint: 'После подтверждения начнёт поездку',
+  },
+  departure: {
+    now: 'Сейчас',
+    min30: 'Через 30 минут',
+    hour1: 'Через 1 час',
+    hour2: 'Через 2 часа',
+    tomorrow: 'Завтра',
+  },
+  otp: {
+    title: 'Код подтверждения',
+    sentTo: 'Код отправлен: {{phone}}',
+    codeSentTo: 'Код отправлен на номер {{phone}}',
+    resend: 'Отправить код снова',
+    resendIn: 'Отправить снова ({{seconds}}с)',
+  },
+  docsStatus: {
+    notVerifiedTitle: 'Документы не подтверждены',
+    underReview: 'Ваши документы на проверке у администратора. Дождитесь подтверждения.',
+    submitFirst: 'Сначала отправьте все документы водителя.',
+    fillIn: 'Заполнить документы',
+    a11yBanner: 'Статус документов водителя',
+    a11yOpenForm: 'Откроет страницу заполнения документов',
+    a11yWaitingApproval: 'Ожидается подтверждение администратора',
+  },
+  channels: {
+    orders: 'Новые заказы',
+    balance: 'Баланс',
+    alerts: 'Уведомления',
+  },
+  map: {
+    errorTitle: 'Не удалось загрузить карту',
+    errorHint: 'Проверьте интернет. Если проблема повторяется, проверьте ключ Yandex Maps API.',
+    loadFailed: 'Карта не загрузилась',
+    webviewError: 'Ошибка WebView',
+    networkError: 'Ошибка сети ({{code}})',
+    apiLoadFailed: 'Yandex Maps API не загрузился (ключ или интернет)',
+    initFailed: 'Карта не запустилась',
+    apiTimeout: 'Yandex Maps API не ответил',
+  },
+  terms: {
+    title: 'Условия использования',
+    docTitle: 'Условия использования и политика конфиденциальности приложения «Sarix Go»',
+    updated: 'Дата последнего обновления: 13.06.2026',
+    intro: 'Внимательно ознакомьтесь с этими условиями перед началом использования мобильного приложения «Sarix Go» (далее — «Приложение»). Регистрируясь в Приложении, вы полностью соглашаетесь с настоящими условиями.',
+    sections: [
+      {
+        heading: '1. Общие положения и вид услуги',
+        paragraphs: [
+          '«Sarix Go» — это информационно-технологическая платформа, которая онлайн координирует заказы между зарегистрированными Пассажирами (заказчиками) и зарегистрированными независимыми Водителями (исполнителями).',
+          'Приложение не оказывает услуги такси самостоятельно, не владеет собственным автопарком и не вступает в трудовые отношения с водителями.',
+        ],
+      },
+      {
+        heading: '2. Регистрация и расчёты (Комиссия)',
+        paragraphs: [
+          'Для пассажиров: чтобы пользоваться приложением и оформлять заказы, пассажиры обязаны зарегистрироваться по номеру телефона.',
+          'Для водителей: водители регистрируются для работы в приложении и приёма заказов, предоставив соответствующие документы.',
+          'Плата за услугу (Комиссия): за поиск заказов и доступ к платформе приложение «Sarix Go» взимает с водителей плату в виде установленного процента (%) от каждой успешно завершённой поездки. Размер комиссии и порядок её удержания указаны в тарифах приложения.',
+        ],
+      },
+      {
+        heading: '3. Ограничение ответственности (Несчастные случаи и ущерб)',
+        paragraphs: [
+          'Дорожно-транспортные происшествия: поскольку «Sarix Go» является лишь посреднической платформой, связывающей пассажира и водителя, приложение не несёт никакой ответственности за любые несчастные случаи (аварии) на дороге во время поездки, за физический вред, травмы или смерть пассажиров либо третьих лиц.',
+          'Всю ответственность за безопасность во время поездки, соблюдение правил дорожного движения и здоровье пассажира несёт независимый водитель, управляющий транспортным средством.',
+          'Финансовый и материальный ущерб: администрация приложения не отвечает за вещи, потерянные, забытые или повреждённые во время поездки. Пользователи самостоятельно решают взаимные споры в рамках действующего законодательства.',
+        ],
+      },
+      {
+        heading: '4. Права и обязанности сторон',
+        paragraphs: [
+          'Водитель: обязан соблюдать правила дорожного движения, обеспечивать техническую исправность автомобиля и безопасное обслуживание пассажира. Также обязан своевременно оплачивать комиссию приложения.',
+          'Пассажир: обязан корректно указывать адрес и дополнительные условия при оформлении заказа и оплатить поездку водителю в согласованном размере.',
+          'Администрация приложения: обеспечивает бесперебойную работу приложения. Имеет право без предупреждения блокировать пользователей/водителей, нарушивших правила, оформивших ложный заказ или не оплативших комиссию.',
+        ],
+      },
+      {
+        heading: '5. Политика конфиденциальности (Защита данных)',
+        paragraphs: [
+          'Геолокация: приложение использует данные геолокации (в фоновом и активном режиме), чтобы корректно формировать заказы и определять положение водителя и пассажира на карте.',
+          'Персональные данные: номера телефонов, ФИО и водительские документы, полученные при регистрации, не передаются третьим лицам и используются только для безопасности приложения и повышения качества обслуживания.',
+        ],
+      },
+      {
+        heading: '6. Внесение изменений в условия',
+        paragraphs: [
+          'Администрация «Sarix Go» сохраняет за собой право в любое время в одностороннем порядке изменять настоящие условия и размер комиссии. Обновлённые условия вступают в силу с момента их публикации в приложении.',
+        ],
+      },
+    ],
   },
 };
 
@@ -896,11 +1126,13 @@ export const en = {
   },
   notifications: {
     newOrder: '🚕 New order!',
+    newOrderShort: 'A new order has arrived!',
     newOrderBody: '{{from}} → {{to}} · {{price}} UZS',
     orderCancelled: '❌ Order cancelled',
     orderCancelledBody: 'The passenger cancelled the order',
     orderCancelledSpoken: 'Attention. The passenger cancelled the order.',
     historyTitle: 'Notifications', empty: 'No notifications', clear: 'Clear',
+    fallbackTitle: 'Notification',
   },
   faq: {
     title: 'Help / FAQ', contactSupport: 'Contact admin',
@@ -956,6 +1188,9 @@ export const en = {
       'What is online mode?',
     ],
     needHuman: 'Message admin',
+    errSession: 'Your session may have expired. Sign out of the app and sign in again.',
+    errRetry: 'I could not answer just now. Please try again a bit later, or contact the admin for help.',
+    sourceGuide: 'Guide',
   },
   docs: {
     title: 'Upload your documents',
@@ -992,6 +1227,10 @@ export const en = {
     errDocs: 'Upload both sides of every document.',
     doneTitle: 'Done',
     doneBody: 'Your documents have been received.',
+    photoTip: 'Place the document on a flat surface and photograph it in good light so every detail is clearly readable. Avoid shadows and glare.',
+    contactQuestion: 'Passengers will call this number. If it is correct, continue; otherwise change it.',
+    errPhotoUpload: 'The photo did not upload. Please try again.',
+    errSubmit: 'Could not submit the documents.',
   },
   driverInfo: {
     title: 'My details',
@@ -1056,6 +1295,7 @@ export const en = {
     a11yOpenProvider: 'Opens the selected payment provider',
     a11yConfirmSend: 'Send the payment confirmation',
     a11yStartPayment: 'Start the payment',
+    bonusBadge: '+50% BONUS!',
   },
   more: {
     currency: 'UZS',
@@ -1144,6 +1384,111 @@ export const en = {
     femaleInCabin: 'Woman in the cabin',
     roofRack: 'Roof luggage rack',
     extras: 'Extra requests',
+    a11yAcceptOrder: 'Accept the order from {{from}} to {{to}}',
+    a11yAcceptOrderHint: 'Assigns the order to you and opens its details',
+    a11yOnlineToggle: 'Accept orders',
+    a11yOnlineToggleHint: 'Turns the online status on or off',
+    a11yOnlineToggleLocked: 'Enabled once an administrator approves your documents',
+    a11ySendSms: 'Send a message to {{subject}}',
+    a11ySendSmsHint: 'Opens the SMS app',
+    a11yCall: 'Call {{subject}}',
+    a11yCallHint: 'Opens the phone app',
+    a11yNavPickup: 'Navigate to the pickup address',
+    a11yNavDropoff: 'Navigate to the delivery address',
+    a11yNavHint: 'Opens Yandex Navigator, Yandex Maps or the web map',
+    a11yCompleteOrder: 'Complete the order',
+    a11yCompleteOrderHint: 'Marks the order as completed once confirmed',
+    a11yStartTripHint: 'Starts the trip once confirmed',
+  },
+  departure: {
+    now: 'Now',
+    min30: 'In 30 minutes',
+    hour1: 'In 1 hour',
+    hour2: 'In 2 hours',
+    tomorrow: 'Tomorrow',
+  },
+  otp: {
+    title: 'Verification code',
+    sentTo: 'Code sent to: {{phone}}',
+    codeSentTo: 'The code was sent to {{phone}}',
+    resend: 'Resend code',
+    resendIn: 'Resend ({{seconds}}s)',
+  },
+  docsStatus: {
+    notVerifiedTitle: 'Documents not verified',
+    underReview: 'Your documents are being reviewed by an administrator. Please wait for approval.',
+    submitFirst: 'Submit all driver documents first.',
+    fillIn: 'Fill in documents',
+    a11yBanner: 'Driver document status',
+    a11yOpenForm: 'Opens the document submission page',
+    a11yWaitingApproval: 'Waiting for administrator approval',
+  },
+  channels: {
+    orders: 'New orders',
+    balance: 'Balance',
+    alerts: 'Notifications',
+  },
+  map: {
+    errorTitle: 'Could not load the map',
+    errorHint: 'Check your internet connection. If the problem persists, check the Yandex Maps API key.',
+    loadFailed: 'The map did not load',
+    webviewError: 'WebView error',
+    networkError: 'Network error ({{code}})',
+    apiLoadFailed: 'Yandex Maps API did not load (key or internet)',
+    initFailed: 'The map did not start',
+    apiTimeout: 'Yandex Maps API did not respond',
+  },
+  terms: {
+    title: 'Terms of Use',
+    docTitle: 'Terms of Use and Privacy Policy of the "Sarix Go" app',
+    updated: 'Last updated: 13.06.2026',
+    intro: 'Please read these terms carefully before you start using the "Sarix Go" mobile app (the "App"). By registering in the App you fully agree to these terms.',
+    sections: [
+      {
+        heading: '1. General provisions and type of service',
+        paragraphs: [
+          '"Sarix Go" is an information-technology platform that coordinates orders online between registered Passengers (those placing orders) and registered independent Drivers (those providing the service).',
+          'The App does not provide taxi services itself, owns no vehicle fleet, and does not enter into employment relationships with drivers.',
+        ],
+      },
+      {
+        heading: '2. Registration and settlements (Commission)',
+        paragraphs: [
+          'For passengers: to use the App and place an order, passengers must register with a phone number.',
+          'For drivers: drivers register to work in the App and accept orders by submitting the required documents.',
+          'Service fee (Commission): in return for finding orders and providing access to the platform, the "Sarix Go" app charges drivers a set percentage (%) of every successfully completed trip. The commission amount and how it is collected are stated in the App\'s tariffs.',
+        ],
+      },
+      {
+        heading: '3. Limitation of liability (Accidents and damages)',
+        paragraphs: [
+          'Road traffic accidents: because "Sarix Go" is only an intermediary platform connecting passenger and driver, it accepts absolutely no liability for any accidents that may occur on the road during a trip, nor for physical harm, injury or death of passengers or third parties.',
+          "All responsibility for safety during the trip, for complying with traffic rules and for the passenger's wellbeing rests with the independent driver operating the vehicle.",
+          'Financial and material damage: the App administration is not responsible for items lost, forgotten or damaged during a trip. Users resolve disputes between themselves independently, within the applicable law.',
+        ],
+      },
+      {
+        heading: '4. Rights and obligations of the parties',
+        paragraphs: [
+          'Driver: must comply with traffic rules, keep the vehicle in good technical condition and serve the passenger safely. The driver must also pay the App commission on time.',
+          'Passenger: must state the address and any extra conditions correctly when placing an order, and pay the driver the agreed fare.',
+          'App administration: keeps the App running. It may block, without warning, users/drivers who break the rules, place fake orders or fail to pay the commission.',
+        ],
+      },
+      {
+        heading: '5. Privacy policy (Data protection)',
+        paragraphs: [
+          'Geolocation: the App uses geolocation data (in the background and while active) to build orders correctly and to locate the driver and passenger on the map.',
+          'Personal data: phone numbers, names and driving documents collected at registration are not shared with third parties and are used only for App security and to improve service quality.',
+        ],
+      },
+      {
+        heading: '6. Changes to these terms',
+        paragraphs: [
+          'The "Sarix Go" administration reserves the right to unilaterally change these terms and the commission percentages at any time. Updated terms take effect from the moment they are published in the App.',
+        ],
+      },
+    ],
   },
 };
 
@@ -1255,11 +1600,13 @@ export const uzCyrl = {
   },
   notifications: {
     newOrder: '🚕 Янги заказ келди!',
+    newOrderShort: 'Янги заказ келди!',
     newOrderBody: "{{from}} → {{to}} · {{price}} сўм",
     orderCancelled: '❌ Заказ бекор қилинди',
     orderCancelledBody: 'Йўловчи заказни бекор қилди',
     orderCancelledSpoken: 'Диққат. Йўловчи заказни бекор қилди.',
     historyTitle: 'Билдиришномалар', empty: 'Билдиришномалар йўқ', clear: 'Тозалаш',
+    fallbackTitle: 'Билдиришнома',
   },
   faq: {
     title: 'Ёрдам / FAQ', contactSupport: 'Админ билан боғланиш',
@@ -1315,6 +1662,9 @@ export const uzCyrl = {
       'Онлайн режим нима?',
     ],
     needHuman: 'Админга ёзиш',
+    errSession: 'Сессия муддати тугаган бўлиши мумкин. Иловадан чиқиб, қайтадан киринг.',
+    errRetry: 'Ҳозирча жавоб бера олмадим. Бироз кейинроқ уриниб кўринг ёки ёрдам учун админга мурожаат қилинг.',
+    sourceGuide: 'Кўрсатма',
   },
   docs: {
     title: 'Ҳужжатларни юкланг',
@@ -1351,6 +1701,10 @@ export const uzCyrl = {
     errDocs: 'Барча ҳужжатларнинг иккала томонини юкланг.',
     doneTitle: 'Тайёр',
     doneBody: 'Ҳужжатларингиз қабул қилинди.',
+    photoTip: 'Ҳужжатни текис юзага қўйинг, яхши ёруғликда, барча маълумотлар аниқ ўқиладиган ҳолатда суратга олинг. Соя ёки ёрқин акс тушмасин.',
+    contactQuestion: 'Йўловчилар шу рақам орқали боғланади. Тўғри бўлса давом этинг, акс ҳолда ўзгартиринг.',
+    errPhotoUpload: 'Расм юкланмади. Қайта уриниб кўринг.',
+    errSubmit: 'Ҳужжатларни юбориб бўлмади.',
   },
   driverInfo: {
     title: 'Маълумотларим',
@@ -1415,6 +1769,7 @@ export const uzCyrl = {
     a11yOpenProvider: 'Танланган тўлов провайдерини очади',
     a11yConfirmSend: 'Тўлов тасдиғини юбориш',
     a11yStartPayment: 'Тўловни бошлаш',
+    bonusBadge: '+50% БОНУС!',
   },
   more: {
     currency: 'сўм',
@@ -1503,6 +1858,111 @@ export const uzCyrl = {
     femaleInCabin: 'Салонда аёл бор',
     roofRack: 'Томида юкхона бор',
     extras: "Қўшимча талаблар",
+    a11yAcceptOrder: '{{from}}дан {{to}}га буюртмани қабул қилиш',
+    a11yAcceptOrderHint: 'Буюртмани сизга бириктиради ва тафсилотларини очади',
+    a11yOnlineToggle: 'Буюртмаларни қабул қилиш',
+    a11yOnlineToggleHint: 'Онлайн ҳолатни ёқади ёки ўчиради',
+    a11yOnlineToggleLocked: 'Администратор ҳужжатларни тасдиқлагандан кейин ёқилади',
+    a11ySendSms: '{{subject}}га хабар юбориш',
+    a11ySendSmsHint: 'SMS иловасини очади',
+    a11yCall: '{{subject}}га қўнғироқ қилиш',
+    a11yCallHint: 'Телефон иловасини очади',
+    a11yNavPickup: 'Олиш манзилига навигация',
+    a11yNavDropoff: 'Етказиш манзилига навигация',
+    a11yNavHint: 'Yandex Navigator, Yandex Maps ёки веб харитани очади',
+    a11yCompleteOrder: 'Буюртмани якунлаш',
+    a11yCompleteOrderHint: 'Тасдиқлангандан кейин буюртмани тугалланган деб белгилайди',
+    a11yStartTripHint: 'Тасдиқлангандан кейин сафарни бошлайди',
+  },
+  departure: {
+    now: 'Ҳозир',
+    min30: '30 дақиқадан',
+    hour1: '1 соатдан',
+    hour2: '2 соатдан',
+    tomorrow: 'Эртага',
+  },
+  otp: {
+    title: 'Тасдиқлаш коди',
+    sentTo: 'Код юборилди: {{phone}}',
+    codeSentTo: 'Код {{phone}} рақамига юборилди',
+    resend: 'Кодни қайта юбориш',
+    resendIn: 'Қайта юбориш ({{seconds}}с)',
+  },
+  docsStatus: {
+    notVerifiedTitle: 'Ҳужжатлар тасдиқланмаган',
+    underReview: 'Ҳужжатларингиз администратор текширувида. Тасдиқланишини кутинг.',
+    submitFirst: 'Аввал барча ҳайдовчи ҳужжатларини юборинг.',
+    fillIn: 'Ҳужжатларни тўлдириш',
+    a11yBanner: 'Ҳайдовчи ҳужжатлари ҳолати',
+    a11yOpenForm: 'Ҳужжатларни тўлдириш саҳифасини очади',
+    a11yWaitingApproval: 'Администратор тасдиғи кутилмоқда',
+  },
+  channels: {
+    orders: 'Янги закаслар',
+    balance: 'Баланс',
+    alerts: 'Билдиришномалар',
+  },
+  map: {
+    errorTitle: 'Харитани юклаб бўлмади',
+    errorHint: 'Интернетни текширинг. Муаммо давом этса, Yandex Maps API калитини текширинг.',
+    loadFailed: 'Харита юкланмади',
+    webviewError: 'WebView хатоси',
+    networkError: 'Тармоқ хатоси ({{code}})',
+    apiLoadFailed: 'Yandex Maps API юкланмади (калит ёки интернет)',
+    initFailed: 'Харита ишга тушмади',
+    apiTimeout: 'Yandex Maps API жавоб бермади',
+  },
+  terms: {
+    title: 'Фойдаланиш шартлари',
+    docTitle: '„Sarix Go" иловасидан фойдаланиш шартлари ва махфийлик сиёсати',
+    updated: 'Охирги янгиланиш санаси: 13.06.2026',
+    intro: '„Sarix Go" мобил иловасидан (кейинги ўринларда — „Илова") фойдаланишни бошлашингиздан олдин ушбу шартлар билан диққат билан танишиб чиқинг. Иловада рўйхатдан ўтиш орқали сиз ушбу шартларга тўлиқ розилик билдирган ҳисобланасиз.',
+    sections: [
+      {
+        heading: '1. Умумий қоидалар ва хизмат тури',
+        paragraphs: [
+          '„Sarix Go" — бу рўйхатдан ўтган Йўловчилар (буюртма берувчилар) ва рўйхатдан ўтган мустақил Ҳайдовчилар (хизмат кўрсатувчилар) ўртасида буюртмаларни онлайн мувофиқлаштирувчи ахборот-технология платформаси ҳисобланади.',
+          'Илова мустақил равишда такси хизматини кўрсатмайди, шахсий автотранспорт паркига эга эмас ва ҳайдовчилар билан меҳнат муносабатларига кирмайди.',
+        ],
+      },
+      {
+        heading: '2. Рўйхатдан ўтиш ва ҳисоб-китоблар (Комиссия)',
+        paragraphs: [
+          'Йўловчилар учун: Иловадан фойдаланиш ва буюртма (закас) бериш учун йўловчилар телефон рақами орқали рўйхатдан ўтишлари шарт.',
+          'Ҳайдовчилар учун: Ҳайдовчилар иловада ишлаш ва буюртмаларни қабул қилиш учун тегишли ҳужжатларни тақдим этган ҳолда рўйхатдан ўтадилар.',
+          'Хизмат ҳақи (Комиссия): „Sarix Go" иловаси ҳайдовчиларга буюртма топиб бериш ва платформадан фойдаланиш имкониятини тақдим этгани учун, ҳар бир муваффақиятли якунланган сафардан белгиланган фоиз (%) миқдорида хизмат ҳақи (комиссия) олади. Комиссия миқдори ва уни ундириш тартиби илова тарифларида кўрсатилади.',
+        ],
+      },
+      {
+        heading: '3. Масъулиятни чеклаш (Бахтсиз ҳодисалар ва зарарлар)',
+        paragraphs: [
+          'Йўл-транспорт ҳодисалари: „Sarix Go" йўловчи ва ҳайдовчини боғловчи воситачи платформа бўлгани сабабли, сафар давомида йўлларда содир бўлиши мумкин бўлган ҳар қандай бахтсиз ҳодисалар (авария), йўловчилар ёки учинчи шахсларнинг соғлиғига етказилган жисмоний зарар, жароҳатлар ёки ўлим ҳолатлари учун мутлақо жавобгарликни ўз зиммасига олмайди.',
+          'Сафар вақтида хавфсизлик, йўл ҳаракати қоидаларига риоя қилиш ва йўловчининг соғлиғи учун барча жавобгарлик транспорт воситасини бошқараётган мустақил ҳайдовчи зиммасидадир.',
+          'Молиявий ва моддий зарар: Сафар давомида йўқолган, унутилган ёки шикастланган буюмлар учун илова маъмурияти жавобгар эмас. Фойдаланувчилар ўзаро келишмовчиликларни амалдаги қонунчилик доирасида, мустақил равишда ҳал қиладилар.',
+        ],
+      },
+      {
+        heading: '4. Томонларнинг ҳуқуқ ва мажбуриятлари',
+        paragraphs: [
+          'Ҳайдовчи: Йўл ҳаракати қоидаларига амал қилиши, автомобилининг техник созлигини таъминлаши ва йўловчига хавфсиз хизмат кўрсатиши шарт. Шунингдек, илова комиссиясини ўз вақтида тўлаб бориши лозим.',
+          'Йўловчи: Буюртма беришда манзил ва қўшимча шартларни тўғри кўрсатиши, сафар ҳақини ҳайдовчига келишилган миқдорда тўлаши шарт.',
+          'Илова маъмурияти: Илованинг узлуксиз ишлашини таъминлайди. Қоидаларни бузган, сохта буюртма берган ёки комиссия тўламаган фойдаланувчи/ҳайдовчиларни огоҳлантиришсиз блоклаш ҳуқуқига эга.',
+        ],
+      },
+      {
+        heading: '5. Махфийлик сиёсати (Маълумотлар ҳимояси)',
+        paragraphs: [
+          'Геолокация: Илова буюртмаларни тўғри шакллантириш ва ҳайдовчи ҳамда йўловчининг харитадаги жойлашувини аниқлаш учун геолокация маълумотларидан (фонда ва фаол ҳолатда) фойдаланади.',
+          'Шахсий маълумотлар: Рўйхатдан ўтиш пайтида олинган телефон рақамлари, исм-шарифлар ва ҳайдовчилик ҳужжатлари учинчи шахсларга тарқатилмайди ва фақат илова хавфсизлиги ҳамда хизмат сифатини ошириш учун ишлатилади.',
+        ],
+      },
+      {
+        heading: '6. Шартларга ўзгартириш киритиш',
+        paragraphs: [
+          '„Sarix Go" маъмурияти ушбу шартларни ва комиссия фоизларини исталган вақтда бир томонлама ўзгартириш ҳуқуқини сақлаб қолади. Янгиланган шартлар иловада эълон қилинган пайтдан бошлаб кучга киради.',
+        ],
+      },
+    ],
   },
 };
 

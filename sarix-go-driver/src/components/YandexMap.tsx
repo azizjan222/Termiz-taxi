@@ -2,6 +2,9 @@ import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } f
 import { StyleSheet, View, ViewStyle, StyleProp, Text, ActivityIndicator } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import Constants from 'expo-constants';
+import { useTranslation } from 'react-i18next';
+
+import { mapLang } from '../utils/yandexLocale';
 
 export interface MapMarker {
   id: string;
@@ -46,6 +49,7 @@ const DEFAULT_LON = 67.278;
 const DEFAULT_ZOOM = 11;
 
 const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
+  const { t } = useTranslation();
   const webViewRef = useRef<WebView>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -56,6 +60,11 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
     initialLon: props.initialLon ?? DEFAULT_LON,
     initialZoom: props.initialZoom ?? DEFAULT_ZOOM,
     markers: props.markers ?? [],
+    // Diagnostics rendered inside the WebView, localized here because the page has no
+    // access to i18n.
+    msgApiFailed: t('map.apiLoadFailed'),
+    msgInitFailed: t('map.initFailed'),
+    msgApiTimeout: t('map.apiTimeout'),
   });
 
   const sendCommand = (cmd: object) => {
@@ -86,7 +95,7 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
           break;
         case 'apiError':
           setStatus('error');
-          setErrorMsg(data.message || 'Xarita yuklanmadi');
+          setErrorMsg(data.message || t('map.loadFailed'));
           break;
         case 'markerPress':
           props.onMarkerPress?.(data.id);
@@ -124,13 +133,13 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
         showsVerticalScrollIndicator={false}
         onError={(e) => {
           setStatus('error');
-          setErrorMsg(e.nativeEvent?.description || 'WebView xatosi');
+          setErrorMsg(e.nativeEvent?.description || t('map.webviewError'));
         }}
         onHttpError={(e) => {
           // Don't override a successful map load; only surface a hard failure.
           if (status !== 'ready') {
             setStatus('error');
-            setErrorMsg(`Tarmoq xatosi (${e.nativeEvent?.statusCode ?? '?'})`);
+            setErrorMsg(t('map.networkError', { code: e.nativeEvent?.statusCode ?? '?' }));
           }
         }}
       />
@@ -141,12 +150,9 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
             <ActivityIndicator size="large" color="#0E1B3D" />
           ) : (
             <View style={styles.errorBox}>
-              <Text style={styles.errorTitle}>Xaritani yuklab bo'lmadi</Text>
+              <Text style={styles.errorTitle}>{t('map.errorTitle')}</Text>
               <Text style={styles.errorText}>{errorMsg}</Text>
-              <Text style={styles.errorHint}>
-                Internetni tekshiring. Muammo davom etsa, Yandex Maps API kalitini
-                tekshiring.
-              </Text>
+              <Text style={styles.errorHint}>{t('map.errorHint')}</Text>
             </View>
           )}
         </View>
@@ -180,13 +186,21 @@ interface MapHtmlOptions {
   initialLon: number;
   initialZoom: number;
   markers: MapMarker[];
+  msgApiFailed: string;
+  msgInitFailed: string;
+  msgApiTimeout: string;
 }
 
 function generateMapHtml(opts: MapHtmlOptions): string {
-  const { apiKey, initialLat, initialLon, initialZoom, markers } = opts;
+  const {
+    apiKey, initialLat, initialLon, initialZoom, markers,
+    msgApiFailed, msgInitFailed, msgApiTimeout,
+  } = opts;
+  // Embedded in a JS string literal inside the page -> escape quotes.
+  const js = (v: string) => JSON.stringify(v);
   const apiUrl = apiKey
-    ? `https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=uz_UZ`
-    : `https://api-maps.yandex.ru/2.1/?lang=uz_UZ`;
+    ? `https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=${mapLang()}`
+    : `https://api-maps.yandex.ru/2.1/?lang=${mapLang()}`;
 
   return `<!DOCTYPE html>
 <html>
@@ -206,7 +220,14 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
   }
 </style>
-<script src="${apiUrl}" type="text/javascript" onerror="window.__mapApiError && window.__mapApiError('Yandex Maps API yuklanmadi (kalit yoki internet)')"></script>
+<script>
+  window.__MSG = {
+    apiFailed: ${js(msgApiFailed)},
+    initFailed: ${js(msgInitFailed)},
+    apiTimeout: ${js(msgApiTimeout)}
+  };
+</script>
+<script src="${apiUrl}" type="text/javascript" onerror="window.__mapApiError &amp;&amp; window.__mapApiError(window.__MSG.apiFailed)"></script>
 </head>
 <body>
 <div id="map"></div>
@@ -322,12 +343,12 @@ function generateMapHtml(opts: MapHtmlOptions): string {
       try {
         ymaps.ready(init);
       } catch (e) {
-        window.__mapApiError('Xarita ishga tushmadi: ' + e.message);
+        window.__mapApiError(window.__MSG.initFailed + ': ' + e.message);
       }
       return;
     }
     if (tries <= 0) {
-      window.__mapApiError('Yandex Maps API javob bermadi');
+      window.__mapApiError(window.__MSG.apiTimeout);
       return;
     }
     setTimeout(function() { waitForYmaps(tries - 1); }, 300);

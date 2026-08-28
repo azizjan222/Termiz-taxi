@@ -143,6 +143,8 @@ export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
 
       {/* Tagline */}
       <Animated.View style={{ opacity: titleOpacity, transform: [{ translateY: titleTranslate }], alignItems: 'center' }}>
+        {/* Deliberately NOT translated: this renders before initI18n() resolves, so
+            t() would emit the raw key instead of text. */}
         <Text style={styles.subtitle}>Haydovchi uchun</Text>
       </Animated.View>
 

@@ -38,7 +38,7 @@ export default function NotificationsScreen() {
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
-    return d.toLocaleString('uz-UZ', {
+    return d.toLocaleString(dateLocaleTag(), {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     });
   };

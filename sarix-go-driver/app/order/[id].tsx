@@ -34,6 +34,7 @@ import {
 import { typography, spacing, radius, gradients } from '../../src/theme';
 import { useThemeStore } from '../../src/store/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
+import { formatDepartureTime } from '../../src/utils/departureTime';
 
 const CONTACT_WINDOW_MINUTES = 15;
 // Live-distance watcher tuning: update the display on meter-level movement while
@@ -495,8 +496,8 @@ export default function OrderDetailScreen() {
               style={styles.smsBtn}
               onPress={smsPassenger}
               accessibilityRole="button"
-              accessibilityLabel={`${contactLabel}ga xabar yuborish`}
-              accessibilityHint="SMS ilovasini ochadi"
+              accessibilityLabel={t('more.a11ySendSms', { subject: contactLabel })}
+              accessibilityHint={t('more.a11ySendSmsHint')}
             >
               <Icon name="chat" size={22} color={colors.primary} />
             </TouchableOpacity>
@@ -504,8 +505,8 @@ export default function OrderDetailScreen() {
               style={styles.callBtn}
               onPress={callPassenger}
               accessibilityRole="button"
-              accessibilityLabel={`${contactLabel}ga qo‘ng‘iroq qilish`}
-              accessibilityHint="Telefon ilovasini ochadi"
+              accessibilityLabel={t('more.a11yCall', { subject: contactLabel })}
+              accessibilityHint={t('more.a11yCallHint')}
             >
               <Icon name="phone" size={22} color={colors.textOnPrimary} />
             </TouchableOpacity>
@@ -569,7 +570,7 @@ export default function OrderDetailScreen() {
               {/* A parcel is sent, not "departed". */}
               {t(isParcel ? 'more.dispatchTime' : 'more.departureTime')}
             </IconText>
-            <Text style={styles.value}>{order.departure_time || t('more.now')}</Text>
+            <Text style={styles.value}>{formatDepartureTime(order.departure_time, t)}</Text>
           </View>
           <View style={styles.divider} />
           {isParcel || order.service_type === 'full_car' ? (
@@ -618,8 +619,8 @@ export default function OrderDetailScreen() {
           activeOpacity={0.85}
           style={{ marginBottom: spacing.sm }}
           accessibilityRole="button"
-          accessibilityLabel={enRoute ? "Yetkazish manziliga navigatsiya" : "Olish manziliga navigatsiya"}
-          accessibilityHint="Yandex Navigator, Yandex Maps yoki veb xaritani ochadi"
+          accessibilityLabel={t(enRoute ? 'more.a11yNavDropoff' : 'more.a11yNavPickup')}
+          accessibilityHint={t('more.a11yNavHint')}
         >
           <LinearGradient
             colors={['#2E8BFF', '#0B4FC8']}
@@ -641,8 +642,8 @@ export default function OrderDetailScreen() {
             disabled={loading}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="Buyurtmani yakunlash"
-            accessibilityHint="Tasdiqlangandan keyin buyurtmani tugallangan deb belgilaydi"
+            accessibilityLabel={t('more.a11yCompleteOrder')}
+            accessibilityHint={t('more.a11yCompleteOrderHint')}
             accessibilityState={{ disabled: loading, busy: loading }}
           >
             <LinearGradient
@@ -671,8 +672,8 @@ export default function OrderDetailScreen() {
             disabled={loading}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel={isParcel ? "Jo‘natma olindi" : "Yo‘lovchi olindi"}
-            accessibilityHint="Tasdiqlangandan keyin safarni boshlaydi"
+            accessibilityLabel={t(isParcel ? 'more.pickedBtnParcel' : 'more.pickedBtnPassenger')}
+            accessibilityHint={t('more.a11yStartTripHint')}
             accessibilityState={{ disabled: loading, busy: loading }}
           >
             <LinearGradient

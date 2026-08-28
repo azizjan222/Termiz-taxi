@@ -87,8 +87,8 @@ export default function AiChatScreen() {
       const status = e?.response?.status;
       const content =
         status === 401
-          ? "Sessiya muddati tugagan bo'lishi mumkin. Ilovadan chiqib, qaytadan kiring."
-          : "Hozircha javob bera olmadim. Biroz keyinroq urinib ko'ring yoki yordam uchun adminga murojaat qiling.";
+          ? t('ai.errSession')
+          : t('ai.errRetry');
       const errorMsg: DisplayMessage = {
         id: `a_${Date.now()}`,
         role: 'assistant',
@@ -156,7 +156,7 @@ export default function AiChatScreen() {
               </Text>
               {msg.source && msg.role === 'assistant' && msg.source !== 'ai' && (
                 <Text style={styles.sourceTag}>
-                  {msg.source === 'faq' ? 'FAQ' : "Ko'rsatma"}
+                  {msg.source === 'faq' ? 'FAQ' : t('ai.sourceGuide')}
                 </Text>
               )}
             </View>

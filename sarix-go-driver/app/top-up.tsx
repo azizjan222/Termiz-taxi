@@ -282,7 +282,7 @@ export default function TopUpScreen() {
                 success colour reads as a different message than the label it labels. */}
             <Icon name="gift" size={26} color={colors.primary} />
             <Text style={styles.bonusText}>
-              {t('topUp.firstTopUp')} <Text style={styles.bonusBold}>+50% BONUS!</Text>
+              {t('topUp.firstTopUp')} <Text style={styles.bonusBold}>{t('topUp.bonusBadge')}</Text>
             </Text>
           </View>
 
@@ -301,7 +301,7 @@ export default function TopUpScreen() {
                   setCustomAmount('');
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`${formatPrice(a)} so‘m`}
+                accessibilityLabel={`${formatPrice(a)} ${t('more.currency')}`}
                 accessibilityHint={t('topUp.a11ySelectAmount')}
                 accessibilityState={{ selected: amount === a && !customAmount }}
               >
