@@ -4,6 +4,7 @@ import {
   Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import * as Location from 'expo-location';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from './Button';
 import { triggerSos } from '../api/sos';
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export const SosButton: React.FC<Props> = ({ orderId, style }) => {
+  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -26,12 +28,12 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
 
   const handlePress = () => {
     Alert.alert(
-      '🚨 SHOSHILINCH YORDAM',
-      'Sizga yordam kerakmi?',
+      `🚨 ${t('sos.alertTitle')}`,
+      t('sos.alertBody'),
       [
-        { text: 'Bekor qilish', style: 'cancel' },
-        { text: '102 (Politsiya)', onPress: () => Linking.openURL('tel:102') },
-        { text: '🚨 SOS yuborish', style: 'destructive', onPress: () => setModalOpen(true) },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('sos.police'), onPress: () => Linking.openURL('tel:102') },
+        { text: `🚨 ${t('sos.send')}`, style: 'destructive', onPress: () => setModalOpen(true) },
       ]
     );
   };
@@ -58,9 +60,9 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
       });
       setModalOpen(false);
       setNote('');
-      Alert.alert('✅ Yuborildi!', res.message);
+      Alert.alert(`✅ ${t('sos.sent')}`, res.message);
     } catch (e: any) {
-      Alert.alert('❌', e?.response?.data?.error || 'Xatolik');
+      Alert.alert('❌', e?.response?.data?.error || t('common.error'));
     } finally {
       setLoading(false);
     }
@@ -83,17 +85,15 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
         >
           <View style={styles.modalContent}>
             <Icon name="sos" size={56} color={colors.error} style={styles.modalEmoji} />
-            <Text style={styles.modalTitle}>SOS yuborish</Text>
-            <Text style={styles.modalSubtitle}>
-              Adminga zudlik bilan xabar yuboriladi.
-            </Text>
+            <Text style={styles.modalTitle}>{t('sos.send')}</Text>
+            <Text style={styles.modalSubtitle}>{t('sos.modalSubtitle')}</Text>
 
-            <Text style={styles.fieldLabel}>Holat tavsifi (ixtiyoriy)</Text>
+            <Text style={styles.fieldLabel}>{t('sos.noteLabel')}</Text>
             <TextInput
               style={styles.input}
               value={note}
               onChangeText={setNote}
-              placeholder="Nima sodir bo'ldi?"
+              placeholder={t('sos.notePlaceholder')}
               placeholderTextColor={colors.textMuted}
               multiline
               maxLength={500}
@@ -101,14 +101,14 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
 
             <View style={styles.modalButtons}>
               <Button
-                title="Bekor qilish"
+                title={t('common.cancel')}
                 onPress={() => setModalOpen(false)}
                 variant="outline"
                 fullWidth={false}
                 style={{ flex: 1 }}
               />
               <Button
-                title="YUBORISH"
+                title={t('sos.submit')}
                 onPress={sendSos}
                 loading={loading}
                 fullWidth={false}

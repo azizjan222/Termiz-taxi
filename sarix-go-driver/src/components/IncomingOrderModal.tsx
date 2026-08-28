@@ -10,6 +10,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 
 import { type DriverOrder } from '../api/driver';
 import { Icon, IconText, type IconName } from './Icon';
@@ -45,6 +46,7 @@ const serviceIcon = (type: string): IconName =>
 export const IncomingOrderModal: React.FC<Props> = ({
   visible, order, colors, accepting, onFreeTrial, onAccept, onDismiss,
 }) => {
+  const { t } = useTranslation();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   const [slide] = useState(() => new Animated.Value(SCREEN_H));
@@ -129,17 +131,17 @@ export const IncomingOrderModal: React.FC<Props> = ({
               <View>
                 <View style={styles.headerTitleRow}>
                   <Icon name="notification" size={18} color={colors.text} />
-                  <Text style={styles.headerTitle}>Yangi zakas!</Text>
+                  <Text style={styles.headerTitle}>{t('incoming.title')}</Text>
                 </View>
                 <Text style={styles.headerSub}>
-                  {order.source === 'app' ? 'Ilovadan' : 'Telegram'} · {secsLeft}s
+                  {order.source === 'app' ? t('incoming.sourceApp') : 'Telegram'} · {secsLeft}s
                 </Text>
               </View>
             </View>
             {order.female_only && (
               <View style={styles.femaleTag}>
                 <IconText name="female" size={12} color="#DB2777" textStyle={styles.femaleTagText}>
-                  Ayol
+                  {t('incoming.female')}
                 </IconText>
               </View>
             )}
@@ -173,20 +175,20 @@ export const IncomingOrderModal: React.FC<Props> = ({
           {(order.female_only || order.has_roof_rack) && (
             <View style={styles.extrasBlock}>
               <IconText name="history" size={12} color="#B45309" textStyle={styles.extrasTitle}>
-                Qo'shimcha talablar
+                {t('incoming.extras')}
               </IconText>
               <View style={styles.extrasRow}>
                 {order.female_only && (
                   <View style={styles.extraTag}>
                     <IconText name="female" size={12} color="#B45309" textStyle={styles.extraTagText}>
-                      Salonda ayol bor
+                      {t('incoming.femaleInCar')}
                     </IconText>
                   </View>
                 )}
                 {order.has_roof_rack && (
                   <View style={styles.extraTag}>
                     <IconText name="luggage" size={12} color="#B45309" textStyle={styles.extraTagText}>
-                      Tomida yukxona bor
+                      {t('incoming.roofRack')}
                     </IconText>
                   </View>
                 )}
@@ -198,18 +200,18 @@ export const IncomingOrderModal: React.FC<Props> = ({
           <View style={styles.chipsRow}>
             <View style={styles.chip}>
               <IconText name="profile" size={13} color={colors.textSecondary} textStyle={styles.chipText}>
-                {order.passenger_name || "Yo'lovchi"}
+                {order.passenger_name || t('order.persons')}
               </IconText>
             </View>
             <View style={styles.chip}>
               <IconText name="clock" size={13} color={colors.textSecondary} textStyle={styles.chipText}>
-                {order.departure_time || 'Hozir'}
+                {order.departure_time || t('more.now')}
               </IconText>
             </View>
             {!isParcel && (
               <View style={styles.chip}>
                 <IconText name="people" size={13} color={colors.textSecondary} textStyle={styles.chipText}>
-                  {order.person_count} kishi
+                  {t('more.peopleCount', { n: order.person_count })}
                 </IconText>
               </View>
             )}
@@ -218,18 +220,20 @@ export const IncomingOrderModal: React.FC<Props> = ({
           {/* Price + commission */}
           <View style={styles.priceRow}>
             <View>
-              <Text style={styles.priceLabel}>{isParcel ? 'Narx' : 'Narxi'}</Text>
+              <Text style={styles.priceLabel}>{t('order.price')}</Text>
               <Text style={styles.priceValue}>
-                {isParcel ? 'Kelishiladi' : `${formatPrice(order.price)} so'm`}
+                {isParcel
+                  ? t('more.negotiable')
+                  : `${formatPrice(order.price)} ${t('more.currency')}`}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.priceLabel}>Komissiya</Text>
+              <Text style={styles.priceLabel}>{t('order.commission')}</Text>
               <Text style={[styles.commission, onFreeTrial && styles.commissionStruck]}>
-                -{formatPrice(order.commission)} so'm
+                -{formatPrice(order.commission)} {t('more.currency')}
               </Text>
               {onFreeTrial && <IconText name="gift" size={12} color={colors.success} textStyle={styles.bonusText}>
-                Bonus davri
+                {t('incoming.bonusPeriod')}
               </IconText>}
             </View>
           </View>
@@ -256,14 +260,14 @@ export const IncomingOrderModal: React.FC<Props> = ({
                 style={styles.acceptBtn}
               >
                 <Text style={styles.acceptBtnText}>
-                  {accepting ? 'Qabul qilinmoqda...' : 'Qabul qilish'}
+                  {accepting ? t('incoming.accepting') : t('order.accept')}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
           </Animated.View>
 
           <TouchableOpacity onPress={onDismiss} style={styles.skipBtn} activeOpacity={0.7}>
-            <Text style={styles.skipBtnText}>O'tkazib yuborish</Text>
+            <Text style={styles.skipBtnText}>{t('incoming.skip')}</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
