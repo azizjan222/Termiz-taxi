@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { describeApiError } from '../src/api/errors';
 import { useTranslation } from 'react-i18next';
 
 import { Icon, IconText } from '../src/components/Icon';
@@ -105,8 +106,7 @@ export default function ConfirmOrderScreen() {
       // the button during the replace animation would just reopen the double-submit window.
       submitInFlightRef.current = false;
       setLoading(false);
-      const msg = e?.response?.data?.error || t('errors.networkError');
-      Alert.alert(t('common.error'), msg);
+      Alert.alert(t('common.error'), describeApiError(e, t));
     }
   };
 

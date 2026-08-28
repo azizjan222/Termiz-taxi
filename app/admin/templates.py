@@ -481,13 +481,26 @@ if(ok){['nd-phone','nd-first','nd-last','nd-pinfl','nd-carnum','nd-model','nd-ye
 }
 function verifyDriver(id){fetch('/admin/api/drivers/'+id+'/verify',{method:'POST'}).then(()=>loadDrivers());}
 function rejectDriver(id){fetch('/admin/api/drivers/'+id+'/reject',{method:'POST'}).then(()=>loadDrivers());}
+const _topUpInFlight={};
 function topUpDriver(id){
+// Guard against a double-click / second tab: the idempotency key below is minted per
+// call, so two clicks used to mint two different keys and the server -- correctly --
+// treated them as two separate logical top-ups and credited BOTH.
+if(_topUpInFlight[id]){alert('Iltimos kutib turing...');return;}
 const raw=prompt("Qancha so'm qo'shilsin? (manfiy = ayirish)");
 if(raw===null)return;
-const amount=parseInt(raw);
-if(isNaN(amount)||amount===0){alert("Noto'g'ri summa");return;}
+// parseInt("50 000") === 50. Every amount in this panel is rendered space-grouped, so an
+// admin copying "50 000" credited 50 so'm and the alert reported success. Strip the
+// separators the UI itself produces, then demand a clean integer.
+const normalized=String(raw).replace(/[\\s\\u00a0’']/g,'').replace(/,/g,'');
+if(!/^-?\\d+$/.test(normalized)){alert("Noto'g'ri summa. Faqat raqam kiriting, masalan: 50000");return;}
+const amount=parseInt(normalized,10);
+if(!Number.isSafeInteger(amount)||amount===0){alert("Noto'g'ri summa");return;}
+const pretty=amount.toLocaleString('ru-RU').replace(/\\u00a0/g,' ');
+if(!confirm((amount>0?'Qo\\'shilsin: +':'Ayirilsin: ')+pretty+" so'm\\n\\nTasdiqlaysizmi?"))return;
 const idempotency_key=(globalThis.crypto&&globalThis.crypto.randomUUID)?globalThis.crypto.randomUUID():`admin-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-fetch('/admin/api/drivers/'+id+'/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,idempotency_key})}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'Bajarildi');loadDrivers();}).catch(()=>alert('Xato'));
+_topUpInFlight[id]=true;
+fetch('/admin/api/drivers/'+id+'/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,idempotency_key})}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'Bajarildi');loadDrivers();}).catch(()=>alert('Xato')).finally(()=>{delete _topUpInFlight[id];});
 }
 function pushDriver(id){
 const msg=prompt('Xabar matni:');

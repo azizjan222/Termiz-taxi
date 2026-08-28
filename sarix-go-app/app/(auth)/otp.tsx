@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { describeApiError } from '../../src/api/errors';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '../../src/components/Button';
@@ -37,6 +38,9 @@ export default function OtpScreen() {
   const [loading, setLoading] = useState(false);
   const [resendIn, setResendIn] = useState(60);
   const inputRef = useRef<TextInput>(null);
+  // Synchronous in-flight guards (see handleVerify / handleResend).
+  const verifyInFlightRef = useRef(false);
+  const resendInFlightRef = useRef(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -46,12 +50,20 @@ export default function OtpScreen() {
   }, []);
 
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 100);
+    const focusTimer = setTimeout(() => inputRef.current?.focus(), 100);
+    return () => clearTimeout(focusTimer);
   }, []);
 
   const handleVerify = async (verifyCode?: string) => {
     const c = verifyCode || code;
     if (c.length !== CODE_LENGTH) return;
+    // Synchronous guard. Typing the 6th digit auto-submits, and `loading` only disables the
+    // button on the NEXT render — so tapping "Confirm" in the same frame sent a second
+    // verify for the same code. The backend invalidates a code on first use, so the second
+    // request came back 400 and flashed "wrong code" over a login that had just succeeded
+    // (or, if it landed first, failed a genuinely valid code).
+    if (verifyInFlightRef.current) return;
+    verifyInFlightRef.current = true;
 
     setLoading(true);
     setError('');
@@ -66,21 +78,38 @@ export default function OtpScreen() {
         setUser(res.user);
         router.replace('/(tabs)/home');
       }
+      // Deliberately NOT clearing the guard on success: we have navigated away, and
+      // re-enabling would only reopen the double-submit window during the transition.
     } catch (e: any) {
       const msg = e?.response?.data?.error || t('auth.invalidCode');
       setError(msg);
-    } finally {
+      verifyInFlightRef.current = false;
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
+    if (resendInFlightRef.current) return;
+    resendInFlightRef.current = true;
+    // Start the cooldown immediately rather than after the round trip: the button was only
+    // disabled by `resendIn > 0`, so during the request it stayed live and rapid taps sent
+    // several request-otp calls — burning the hourly cap.
+    setResendIn(60);
     try {
       await requestOtp(phone);
-      setResendIn(60);
+      // A new code invalidates the previous one, so clear the stale digits still on screen.
+      setCode('');
+      setError('');
       Alert.alert(t('common.success'), t('auth.codeSentTo') + ' ' + phone);
-    } catch {
-      Alert.alert(t('common.error'), t('errors.networkError'));
+    } catch (e: any) {
+      // Surface the server's message. It explains the real reason ("try again in N
+      // seconds", "too many attempts, wait an hour"); the old blanket "network error" told
+      // the user to check their connection while they were actually rate-limited.
+      Alert.alert(t('common.error'), describeApiError(e, t));
+      // Only allow an immediate retry when it was NOT a throttle response.
+      if (e?.response?.status !== 429 && e?.response?.status !== 400) setResendIn(0);
+    } finally {
+      resendInFlightRef.current = false;
     }
   };
 
@@ -162,7 +191,7 @@ export default function OtpScreen() {
             title={t('common.confirm')}
             onPress={() => handleVerify()}
             loading={loading}
-            disabled={code.length !== CODE_LENGTH}
+            disabled={code.length !== CODE_LENGTH || loading}
             variant="primary"
           />
         </View>

@@ -101,6 +101,22 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
     Map<number, { resolve: (v: string | null) => void; timer: ReturnType<typeof setTimeout> }>
   >(new Map());
 
+  // Resolve and clear anything still pending when the map goes away. Without this every
+  // in-flight geocode left a live 8s timer whose promise later resolved into a consumer
+  // that had already unmounted — order-entry's `finally` then ran setResolving(false) on a
+  // dead screen, which happens on almost every exit since the address resolves on each
+  // camera move.
+  useEffect(
+    () => () => {
+      pendingGeocodes.current.forEach(({ resolve, timer }) => {
+        clearTimeout(timer);
+        resolve(null);
+      });
+      pendingGeocodes.current.clear();
+    },
+    []
+  );
+
   useImperativeHandle(ref, () => ({
     setCenter: (lat, lon, zoom) => sendCommand({ type: 'setCenter', lat, lon, zoom }),
     fitBounds: (markers) => sendCommand({ type: 'fitBounds', markers }),
@@ -117,12 +133,18 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
       }),
   }));
 
-  // Update markers when props change
+  // Update markers when they actually CHANGE.
+  //
+  // The dep used to be the array identity, and callers build a fresh literal on every
+  // render — so during live driver tracking every WebSocket position frame (and every
+  // unrelated re-render) re-injected setMarkers, which removes and rebuilds every
+  // placemark in the page. The pins visibly blinked while the passenger watched the car
+  // move. Comparing the serialized content makes this fire only on a real change.
+  const markersKey = props.markers ? JSON.stringify(props.markers) : '';
   useEffect(() => {
-    if (props.markers) {
-      sendCommand({ type: 'setMarkers', markers: props.markers });
-    }
-  }, [props.markers]);
+    if (!markersKey) return;
+    sendCommand({ type: 'setMarkers', markers: JSON.parse(markersKey) });
+  }, [markersKey]);
 
   const handleMessage = (event: WebViewMessageEvent) => {
     try {

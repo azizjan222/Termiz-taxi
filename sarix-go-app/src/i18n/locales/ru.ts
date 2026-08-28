@@ -22,6 +22,7 @@ export default {
     currency: 'сум',
     sending: 'Отправка...',
     comingSoon: 'Скоро',
+    ok: 'ОК',
   },
   language: {
     select: 'Выберите язык',
@@ -184,6 +185,10 @@ export default {
     networkError: 'Проблема с подключением',
     serverError: 'Ошибка сервера',
     unknownError: 'Неизвестная ошибка',
+    sessionExpired: 'Сессия истекла. Пожалуйста, войдите снова.',
+    fileTooLarge: 'Файл слишком большой (максимум 5 МБ).',
+    slowNetwork: 'Слишком медленное соединение. Попробуйте снова.',
+    serverStatus: 'Ошибка сервера ({{status}}).',
   },
   ai: {
     title: 'AI Помощник',
@@ -225,6 +230,7 @@ export default {
     tooManyAttempts: 'Слишком много попыток. Начните заново.',
     notSharedYet: 'Сначала поделитесь номером в Telegram',
     restart: 'Начать заново',
+    cannotOpenTelegram: 'Не удалось открыть Telegram. Проверьте, установлен ли он, или введите код вручную.',
   },
   notifHistory: {
     title: 'Уведомления',

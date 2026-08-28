@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { describeApiError } from '../src/api/errors';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -139,8 +140,7 @@ export default function NewOrderScreen() {
         params: { orderId: result.order.id.toString() },
       });
     } catch (e: any) {
-      const msg = e?.response?.data?.error || t('errors.networkError');
-      Alert.alert(t('common.error'), msg);
+      Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
       setSubmitting(null);
     }

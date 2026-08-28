@@ -9,6 +9,36 @@ from app.models import Driver, Order, Rating, User
 from app.utils.auth import require_auth
 
 
+def _parse_stars(raw) -> int | None:
+    """Return 1..5, or None when the input is not a valid whole-star rating.
+
+    ``int()`` silently truncated non-integral input: ``4.9`` was stored as 4 and ``True``
+    as 1, both reported back as success. Only genuine whole numbers (or their string form)
+    are accepted now.
+    """
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        stars = raw
+    elif isinstance(raw, str):
+        try:
+            stars = int(raw.strip())
+        except (TypeError, ValueError):
+            return None
+    else:
+        return None
+    return stars if 1 <= stars <= 5 else None
+
+
+def _parse_comment(raw) -> str:
+    """Trim a comment to 500 chars, tolerating a non-string value.
+
+    ``(raw or "").strip()`` assumed a string, so ``{"comment": {"a": 1}}`` raised
+    AttributeError and became a 500.
+    """
+    return raw.strip()[:500] if isinstance(raw, str) else ""
+
+
 @require_auth
 async def passenger_rate_driver(request: web.Request) -> web.Response:
     """POST /api/orders/{id}/rate-driver
@@ -20,15 +50,16 @@ async def passenger_rate_driver(request: web.Request) -> web.Response:
         data = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
+    # Valid JSON that is not an object (e.g. `5`, `"x"`, `[1]`) made every data.get()
+    # below raise AttributeError -> 500 instead of a clean 400.
+    if not isinstance(data, dict):
+        return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    try:
-        stars = int(data.get("stars", 0))
-    except (TypeError, ValueError):
-        stars = 0
-    if stars < 1 or stars > 5:
+    stars = _parse_stars(data.get("stars"))
+    if stars is None:
         return web.json_response({"error": "Yulduz 1 dan 5 gacha"}, status=400)
 
-    comment = (data.get("comment") or "").strip()[:500]
+    comment = _parse_comment(data.get("comment"))
 
     session = get_session()
     try:
@@ -91,15 +122,16 @@ async def driver_rate_passenger(request: web.Request) -> web.Response:
         data = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
+    # Valid JSON that is not an object (e.g. `5`, `"x"`, `[1]`) made every data.get()
+    # below raise AttributeError -> 500 instead of a clean 400.
+    if not isinstance(data, dict):
+        return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    try:
-        stars = int(data.get("stars", 0))
-    except (TypeError, ValueError):
-        stars = 0
-    if stars < 1 or stars > 5:
+    stars = _parse_stars(data.get("stars"))
+    if stars is None:
         return web.json_response({"error": "Yulduz 1 dan 5 gacha"}, status=400)
 
-    comment = (data.get("comment") or "").strip()[:500]
+    comment = _parse_comment(data.get("comment"))
 
     session = get_session()
     try:

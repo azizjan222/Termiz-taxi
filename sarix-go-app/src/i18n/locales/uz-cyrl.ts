@@ -22,6 +22,7 @@ export default {
     currency: 'сўм',
     sending: 'Юборилмоқда...',
     comingSoon: 'Тез орада',
+    ok: 'OK',
   },
   language: {
     select: 'Тилни танланг',
@@ -184,6 +185,10 @@ export default {
     networkError: 'Интернет уланишида муаммо бор',
     serverError: 'Сервер хатолиги',
     unknownError: 'Номаълум хатолик',
+    sessionExpired: 'Сессия муддати тугади. Илтимос, қайтадан киринг.',
+    fileTooLarge: 'Файл жуда катта (максимал 5 МБ).',
+    slowNetwork: 'Интернет жуда секин. Қайта уриниб кўринг.',
+    serverStatus: 'Сервер хатоси ({{status}}).',
   },
   ai: {
     title: 'AI Ёрдамчи',
@@ -225,6 +230,7 @@ export default {
     tooManyAttempts: 'Жуда кўп уриниш. Қайтадан бошланг.',
     notSharedYet: 'Аввал Телеграмда рақамингизни улашинг',
     restart: 'Қайтадан бошлаш',
+    cannotOpenTelegram: 'Телеграм очилмади. Телеграм ўрнатилганини текширинг ёки кодни қўлда киритинг.',
   },
   notifHistory: {
     title: 'Билдиришномалар',

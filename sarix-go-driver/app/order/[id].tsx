@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
+import { describeApiError } from '../../src/api/errors';
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 
@@ -122,7 +123,7 @@ export default function OrderDetailScreen() {
     if (!gone || goneHandledRef.current) return;
     goneHandledRef.current = true;
     Alert.alert(t('common.attention'), t('more.orderNoLongerActive'), [
-      { text: 'OK', onPress: () => router.replace('/(main)/orders') },
+      { text: t('common.ok'), onPress: () => router.replace('/(main)/orders') },
     ]);
   }, [gone, t]);
 
@@ -322,7 +323,7 @@ export default function OrderDetailScreen() {
               const res = await startTrip(parseInt(id));
               if (res?.order) setOrder(res.order);
             } catch (e: any) {
-              Alert.alert(t('common.error'), e?.response?.data?.error || '');
+              Alert.alert(t('common.error'), describeApiError(e, t));
             } finally {
               setLoading(false);
             }
@@ -353,7 +354,7 @@ export default function OrderDetailScreen() {
               { onDismiss: () => router.replace('/(main)/orders') },
             );
           } catch (e: any) {
-            Alert.alert(t('common.error'), e?.response?.data?.error || '');
+            Alert.alert(t('common.error'), describeApiError(e, t));
             setLoading(false);
           }
         },

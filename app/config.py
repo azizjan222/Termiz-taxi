@@ -257,6 +257,11 @@ COMMISSION_WARN_MINUTES = _get_int("COMMISSION_WARN_MINUTES", 5)
 # accepted) for this many minutes is automatically marked "expired" and the passenger
 # is notified (so they aren't stuck on the "searching" screen forever).
 ORDER_EXPIRY_MINUTES = _get_int("ORDER_EXPIRY_MINUTES", 15)
+# Abandoned-order reaper: an order a driver ACCEPTED but never started or completed is
+# closed after this long. Nothing used to close such orders, so they held the passenger's
+# and the driver's active-order slots forever. Deliberately generous — this is a safety net
+# for a driver who vanished, not a deadline for a real ride. Set to 0 to disable.
+ORDER_ABANDON_MINUTES = _get_int("ORDER_ABANDON_MINUTES", 180)
 PARCEL_PRICE = _get_int("PARCEL_PRICE", 30000)
 FULL_CAR_PRICE = _get_int("FULL_CAR_PRICE", 400000)
 # Anti-abuse (passenger order spam). MAX_ACTIVE_ORDERS_PER_USER caps how many live

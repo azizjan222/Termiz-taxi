@@ -7,6 +7,7 @@ from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from app import config
 from app.bot import keyboards as kb
 from app.bot.access import money
 from app.bot.state import ADMIN_ID, WAIT_MINUTES, WARN_MINUTES
@@ -168,7 +169,7 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
     """
     from app.api.websocket import ws_manager
     from app.database import get_session
-    from app.models import Driver, Order
+    from app.models import Driver, Order, User
     from app.services.push import notify_passenger_order_accepted
 
     session = get_session()
@@ -182,7 +183,15 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
                 driver_telegram_id, "❌ Buyurtma allaqachon olingan.")
             return
 
-        driver = session.query(Driver).filter_by(telegram_id=driver_telegram_id).first()
+        # Lock the driver row for the balance read-then-claim below, matching the app's
+        # accept endpoint. Without it two concurrent claims could each read the same
+        # balance and both pass the commission check.
+        driver = (
+            session.query(Driver)
+            .filter_by(telegram_id=driver_telegram_id)
+            .with_for_update()
+            .first()
+        )
         if not driver:
             await context.bot.send_message(
                 driver_telegram_id,
@@ -207,6 +216,28 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
             )
             await context.bot.send_message(driver_telegram_id, message)
             return
+
+        # Active-order limit, same rule as the app's accept endpoint: a driver may hold up
+        # to MAX_ACTIVE_NONPARCEL_ORDERS active taxi/full-car orders, parcels unlimited.
+        # This link bypassed the limit entirely, so a driver could hoard rides they had no
+        # intention of completing and starve everyone else.
+        if order.service_type != "parcel":
+            active_nonparcel = (
+                session.query(Order)
+                .filter(
+                    Order.driver_id == driver.id,
+                    Order.status.in_(["accepted", "in_progress"]),
+                    Order.service_type != "parcel",
+                )
+                .count()
+            )
+            if active_nonparcel >= config.MAX_ACTIVE_NONPARCEL_ORDERS:
+                await context.bot.send_message(
+                    driver_telegram_id,
+                    (f"❌ Sizda {config.MAX_ACTIVE_NONPARCEL_ORDERS} ta faol zakas bor. "
+                     f"Yangi zakas olish uchun avval ularni yoping. "
+                     f"(Pochta zakaslari cheklanmagan)"))
+                return
 
         now = datetime.utcnow()
         on_free_trial = bool(driver.subscription_until and driver.subscription_until > now)
@@ -242,11 +273,31 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
                 "commission_charged": False,
             }, synchronize_session=False)
         )
-        session.commit()
+        # Check the claim BEFORE committing: committing first meant the "already taken"
+        # branch still wrote out whatever else was pending on the session.
         if not claimed:
+            session.rollback()
             await context.bot.send_message(
                 driver_telegram_id, "❌ Buyurtma allaqachon olingan.")
             return
+
+        # Reserve the passenger's bonus in the SAME transaction as the claim, exactly as
+        # the app's accept endpoint does. This was missing entirely, so a passenger who
+        # opted into paying with bonus got NO discount when their order happened to be
+        # claimed through this link — and the scheduler then charged the driver the gross
+        # commission instead of the discounted one.
+        session.refresh(order)
+        if order.passenger_id:
+            passenger = (
+                session.query(User)
+                .filter_by(id=order.passenger_id)
+                .with_for_update()
+                .first()
+            )
+            from app.services import rewards
+            rewards.reserve_bonus_for_order(session, order, driver, passenger)
+
+        session.commit()
         session.refresh(order)
         session.refresh(driver)
 

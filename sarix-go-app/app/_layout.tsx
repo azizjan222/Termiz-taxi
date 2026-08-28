@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { AppState } from 'react-native';
-import { Stack } from 'expo-router';
+import { Alert, AppState } from 'react-native';
+import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import i18n, { initI18n } from '../src/i18n';
+import { setUnauthorizedHandler } from '../src/api/client';
 import { useAuthStore } from '../src/store/auth';
 import { useThemeStore } from '../src/store/theme';
 import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
@@ -45,6 +46,18 @@ export default function RootLayout() {
     })();
     // One-time bootstrap (i18n/theme/user/config); store actions are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Session expiry: the server rejected our token. Sign the user out locally and send them
+  // to the login flow. Without this the app kept rendering a signed-in UI (Home greeting
+  // the user by name, History showing "no orders") while every request failed.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      useAuthStore.getState().expireSession();
+      Alert.alert(i18n.t('common.error'), i18n.t('errors.sessionExpired'));
+      router.replace('/(auth)/telegram-login');
+    });
+    return () => setUnauthorizedHandler(null);
   }, []);
 
   // Register push token after auth

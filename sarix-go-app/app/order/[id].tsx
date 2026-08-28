@@ -21,7 +21,8 @@ import { getOrderRatingStatus } from '../../src/api/ratings';
 import { presentLocalNotification } from '../../src/services/notifications';
 import { addNotification } from '../../src/services/notificationHistory';
 import { useAuthStore } from '../../src/store/auth';
-import { API_URL, WS_URL, getAuthToken } from '../../src/api/client';
+import { API_URL } from '../../src/api/client';
+import { connectPassengerSocket } from '../../src/services/passengerSocket';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
@@ -92,39 +93,29 @@ export default function OrderDetailScreen() {
   }, [id]);
 
   // Live driver location over WebSocket while the trip is active.
+  //
+  // Uses the reconnecting helper: this socket used to have `onerror = () => {}` and no
+  // `onclose`, so a single drop killed live tracking for the rest of the trip.
   useEffect(() => {
     if (!user) return;
-    let ws: WebSocket | null = null;
-    let cancelled = false;
-    (async () => {
-      const token = await getAuthToken();
-      if (cancelled) return;
-      ws = new WebSocket(
-        `${WS_URL}?role=passenger&id=${user.id}&token=${encodeURIComponent(token || '')}`
-      );
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'driver_location' && msg.order_id?.toString() === id) {
-            lastWsLocationAtRef.current = Date.now();
-            setDriverLoc({ lat: msg.lat, lon: msg.lon });
-          } else if (msg.type === 'order_started' && msg.order_id?.toString() === id) {
-            // Driver reached the passenger and started the trip -> notify in-app.
-            const title = t('order.driverArrivedTitle');
-            const body = t('order.driverArrivedBody');
-            presentLocalNotification(title, body, { type: 'order_started', order_id: msg.order_id });
-            addNotification({ title, body, type: 'order_started', data: { order_id: msg.order_id } });
-            // Refresh so the screen reflects the in-progress status.
-            load();
-          }
-        } catch {}
-      };
-      ws.onerror = () => {};
-    })();
-    return () => {
-      cancelled = true;
-      ws?.close();
-    };
+    const handle = connectPassengerSocket({
+      userId: user.id,
+      onMessage: (msg) => {
+        if (msg.type === 'driver_location' && msg.order_id?.toString() === id) {
+          lastWsLocationAtRef.current = Date.now();
+          setDriverLoc({ lat: msg.lat, lon: msg.lon });
+        } else if (msg.type === 'order_started' && msg.order_id?.toString() === id) {
+          // Driver reached the passenger and started the trip -> notify in-app.
+          const title = t('order.driverArrivedTitle');
+          const body = t('order.driverArrivedBody');
+          presentLocalNotification(title, body, { type: 'order_started', order_id: msg.order_id });
+          addNotification({ title, body, type: 'order_started', data: { order_id: msg.order_id } });
+          // Refresh so the screen reflects the in-progress status.
+          load();
+        }
+      },
+    });
+    return () => handle.close();
     // Reconnect only on user/order change; load() is stable enough for this effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, id]);

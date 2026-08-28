@@ -15,6 +15,7 @@ from app.admin.middleware import (
     login_retry_after,
     record_login_failure,
     require_admin,
+    revoke_session,
 )
 from app.admin.templates import (
     DASHBOARD_HTML,
@@ -117,6 +118,9 @@ async def logout(request: web.Request) -> web.Response:
     if not await check_csrf(request):
         return web.Response(text="CSRF validation failed", status=403)
     _record_auth_audit(request, "auth.logout")
+    # Invalidate the signed value server-side, not just in the browser: deleting the
+    # cookie alone left a captured copy usable until it aged out.
+    revoke_session(request)
     response = web.HTTPFound("/admin/login")
     clear_session_cookie(response)
     raise response

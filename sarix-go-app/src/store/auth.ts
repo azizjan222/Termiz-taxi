@@ -14,6 +14,12 @@ interface AuthState {
   setUser: (user: User | null) => void;
   loadUser: () => Promise<void>;
   logout: () => Promise<void>;
+  /**
+   * Drop the session locally after the server rejected our token.
+   * Deliberately performs NO network call — `logout()` touches the API, which would 401
+   * again and re-enter the same handler.
+   */
+  expireSession: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -63,6 +69,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (raw) cached = JSON.parse(raw);
     } catch {}
     set({ user: cached, isAuthenticated: !!cached, isLoading: false });
+  },
+
+  expireSession: () => {
+    set({ user: null, isAuthenticated: false, isLoading: false });
+    clearAuthToken().catch(() => {});
+    SecureStore.deleteItemAsync(USER_CACHE_KEY).catch(() => {});
   },
 
   logout: async () => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,7 @@ import {
   submitDocuments,
   getCarModels,
 } from '../src/api/driver';
+import { describeApiError } from '../src/api/errors';
 import { useDriverStore } from '../src/store/driver';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius, gradients } from '../src/theme';
@@ -106,12 +107,26 @@ export default function DriverDocumentsScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState('');
 
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
+  // `uploading` / `submitting` are state, so they only disable the controls on the NEXT
+  // render; two taps dispatched in the same frame both got through. That matters twice
+  // here: a second picker launch usually rejects with "Different native picker already in
+  // progress", and the shared catch below would then clear the slot the FIRST tap was
+  // legitimately filling; and a double submit fired two router.replace calls.
+  const pickInFlightRef = useRef(false);
+  const submitInFlightRef = useRef(false);
+
   useEffect(() => {
-    getCarModels().then((r) => setModels(r.models)).catch(() => {});
+    getCarModels()
+      .then((r) => { if (aliveRef.current) setModels(r.models); })
+      .catch(() => {});
   }, []);
 
   const pickAndUpload = async (key: DocKey) => {
-    if (uploading) return;
+    if (pickInFlightRef.current || uploading) return;
+    pickInFlightRef.current = true;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -123,17 +138,23 @@ export default function DriverDocumentsScreen() {
       setUploaded((p) => ({ ...p, [key]: false }));
       setUploading(key);
       await uploaders[key](uri);
+      if (!aliveRef.current) return;
       setUploaded((p) => ({ ...p, [key]: true }));
     } catch (e: any) {
+      if (!aliveRef.current) return;
       // Drop the local preview: keeping it made all four slots look filled while
       // `uploaded[key]` stayed false, so the driver saw "Avval barcha maydonlarni
       // to'ldiring" with no way to tell which upload had actually failed. This screen
       // gates access to the app, so a silent failure strands the driver here.
       setUris((p) => ({ ...p, [key]: null }));
       setUploaded((p) => ({ ...p, [key]: false }));
-      Alert.alert(t('common.error'), e?.response?.data?.error || t('docs.errPhotoUpload'));
+      // describeApiError separates a 413 (four photos at quality 0.7 easily exceed the 5MB
+      // cap) from a timeout and from a real server error. On the one screen that gates
+      // access to the whole app, a misdiagnosed 413 traps the driver in onboarding.
+      Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
-      setUploading(null);
+      pickInFlightRef.current = false;
+      if (aliveRef.current) setUploading(null);
     }
   };
 
@@ -153,41 +174,54 @@ export default function DriverDocumentsScreen() {
     !!carYear.trim() && !!carNumber.trim() && allUploaded;
 
   const handleSubmit = async () => {
-    if (!firstName.trim()) {
-      Alert.alert(t('common.attention'), t('docs.errName'));
-      return;
-    }
-    if (!isValidPhone(displayNumber)) {
-      Alert.alert(t('common.attention'), t('docs.errPhone'));
-      return;
-    }
-    if (!carModel.trim() || !carYear.trim() || !carNumber.trim()) {
-      Alert.alert(t('common.attention'), t('docs.errCar'));
-      return;
-    }
-    if (!allUploaded) {
-      Alert.alert(t('common.attention'), t('docs.errDocs'));
-      return;
-    }
-    setSubmitting(true);
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     try {
-      await updateDriverInfo({
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        contact_phone: '+998' + localDigits(displayNumber),
-        car_model: carModel.trim(),
-        car_year: carYear.trim(),
-        car_number: carNumber.trim().toUpperCase(),
-      });
-      const res = await submitDocuments();
-      if (res?.driver) setDriver(res.driver);
-      Alert.alert(t('docs.doneTitle'), t('docs.doneBody'), [
-        { text: t('common.next'), onPress: () => router.replace('/(main)/orders') },
-      ]);
-    } catch (e: any) {
-      Alert.alert(t('common.error'), e?.response?.data?.error || t('docs.errSubmit'));
+      if (!firstName.trim()) {
+        Alert.alert(t('common.attention'), t('docs.errName'));
+        return;
+      }
+      if (!isValidPhone(displayNumber)) {
+        Alert.alert(t('common.attention'), t('docs.errPhone'));
+        return;
+      }
+      if (!carModel.trim() || !carYear.trim() || !carNumber.trim()) {
+        Alert.alert(t('common.attention'), t('docs.errCar'));
+        return;
+      }
+      if (!allUploaded) {
+        Alert.alert(t('common.attention'), t('docs.errDocs'));
+        return;
+      }
+      setSubmitting(true);
+      try {
+        await updateDriverInfo({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          contact_phone: '+998' + localDigits(displayNumber),
+          car_model: carModel.trim(),
+          car_year: carYear.trim(),
+          car_number: carNumber.trim().toUpperCase(),
+        });
+        const res = await submitDocuments();
+        if (res?.driver) setDriver(res.driver);
+        Alert.alert(
+          t('docs.doneTitle'),
+          t('docs.doneBody'),
+          [{ text: t('common.next'), onPress: () => router.replace('/(main)/orders') }],
+          // This dialog's onPress is the ONLY way out of onboarding: _layout.tsx has no
+          // redirect gate on documents_submitted, so an Android dismissal left the driver
+          // sitting on the form after a SUCCESSFUL submission, inviting a resubmit.
+          { cancelable: false }
+        );
+      } catch (e: any) {
+        if (!aliveRef.current) return;
+        Alert.alert(t('common.error'), describeApiError(e, t));
+      } finally {
+        if (aliveRef.current) setSubmitting(false);
+      }
     } finally {
-      setSubmitting(false);
+      submitInFlightRef.current = false;
     }
   };
 
@@ -380,7 +414,8 @@ export default function DriverDocumentsScreen() {
           <TextInput
             style={styles.input}
             value={carNumber}
-            onChangeText={(t) => setCarNumber(t.toUpperCase())}
+            // `text`, not `t` — the old name shadowed the i18n function inside this callback.
+            onChangeText={(text) => setCarNumber(text.toUpperCase())}
             placeholder="01A123BC"
             placeholderTextColor={colors.textMuted}
             autoCapitalize="characters"

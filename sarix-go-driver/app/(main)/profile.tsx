@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Image,
   Modal, TextInput, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -14,6 +14,7 @@ import { useDriverStore } from '../../src/store/driver';
 import { getSupportInfo, type SupportInfo } from '../../src/api/ai';
 import { uploadDriverProfilePhoto, updateDriverInfo } from '../../src/api/driver';
 import { API_URL } from '../../src/api/client';
+import { describeApiError, formatAmount } from '../../src/api/errors';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius, gradients } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
@@ -37,12 +38,38 @@ export default function ProfileScreen() {
   const [firstNameDraft, setFirstNameDraft] = useState('');
   const [lastNameDraft, setLastNameDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const loadDriver = useDriverStore((s) => s.loadDriver);
+
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
+  // Three separate controls call pickAndUploadPhoto (header avatar, modal avatar, modal
+  // "change photo" link) and only one of them was disabled while uploading, so a second
+  // upload was easy to start. Each upload commit deletes the PREVIOUS profile_photo_url
+  // from disk, so the loser could unlink the winner's file.
+  const photoInFlightRef = useRef(false);
+  const saveInFlightRef = useRef(false);
 
   useEffect(() => {
-    getSupportInfo().then(setSupport).catch(() => {});
+    getSupportInfo()
+      .then((info) => { if (aliveRef.current) setSupport(info); })
+      .catch(() => {});
   }, []);
 
+  // The balance card and total_orders render straight from the store, and loadDriver() only
+  // ran at app boot and on the top-up screen. The 15s poll in (main)/orders.tsx refreshes
+  // is_verified / documents_submitted / is_online but NOT balance — so this tab showed the
+  // boot-time balance for an entire shift while commissions were being deducted, including
+  // a stale red "low balance" warning.
+  useFocusEffect(
+    useCallback(() => {
+      loadDriver();
+    }, [loadDriver])
+  );
+
   const pickAndUploadPhoto = async () => {
+    if (photoInFlightRef.current) return;
+    photoInFlightRef.current = true;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -53,15 +80,21 @@ export default function ProfileScreen() {
       if (result.canceled || !result.assets?.[0]?.uri) return;
       setUploading(true);
       const { url } = await uploadDriverProfilePhoto(result.assets[0].uri);
-      if (driver) setDriver({ ...driver, profile_photo_url: url });
+      // Read the CURRENT driver rather than the one captured at render time: the focus
+      // refresh above (or a WS update) can land mid-upload, and spreading the stale copy
+      // would silently roll those fields back.
+      const current = useDriverStore.getState().driver;
+      if (current) setDriver({ ...current, profile_photo_url: url });
     } catch (e: any) {
-      Alert.alert(t('common.error'), e?.response?.data?.error || t('more.somethingWrong'));
+      if (!aliveRef.current) return;
+      Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
-      setUploading(false);
+      photoInFlightRef.current = false;
+      if (aliveRef.current) setUploading(false);
     }
   };
 
-  const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const formatPrice = formatAmount;
 
   const openEditModal = () => {
     setFirstNameDraft(driver?.first_name || '');
@@ -70,26 +103,34 @@ export default function ProfileScreen() {
   };
 
   const handleSaveProfile = async () => {
-    const firstName = firstNameDraft.trim();
-    const lastName = lastNameDraft.trim();
-    if (!firstName) {
-      Alert.alert(t('common.error'), t('more.enterFirstName'));
-      return;
-    }
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
     try {
-      setSaving(true);
-      const { driver: updated } = await updateDriverInfo({
-        first_name: firstName,
-        last_name: lastName,
-      });
-      if (driver) {
-        setDriver({ ...driver, ...updated });
+      const firstName = firstNameDraft.trim();
+      const lastName = lastNameDraft.trim();
+      if (!firstName) {
+        Alert.alert(t('common.error'), t('more.enterFirstName'));
+        return;
       }
-      setEditVisible(false);
-    } catch (e: any) {
-      Alert.alert(t('common.error'), e?.response?.data?.error || t('more.somethingWrong'));
+      try {
+        setSaving(true);
+        const { driver: updated } = await updateDriverInfo({
+          first_name: firstName,
+          last_name: lastName,
+        });
+        const current = useDriverStore.getState().driver;
+        if (current) {
+          setDriver({ ...current, ...updated });
+        }
+        if (aliveRef.current) setEditVisible(false);
+      } catch (e: any) {
+        if (!aliveRef.current) return;
+        Alert.alert(t('common.error'), describeApiError(e, t));
+      } finally {
+        if (aliveRef.current) setSaving(false);
+      }
     } finally {
-      setSaving(false);
+      saveInFlightRef.current = false;
     }
   };
 
@@ -136,7 +177,7 @@ export default function ProfileScreen() {
             <Text style={styles.editPillText}>{t('more.editProfile')}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.85}>
+          <TouchableOpacity onPress={pickAndUploadPhoto} disabled={uploading} activeOpacity={0.85}>
             {driver?.profile_photo_url ? (
               <Image
                 source={{
@@ -412,6 +453,7 @@ export default function ProfileScreen() {
             <TouchableOpacity
               style={styles.modalAvatarWrap}
               onPress={pickAndUploadPhoto}
+              disabled={uploading}
               activeOpacity={0.8}
             >
               {driver?.profile_photo_url ? (

@@ -202,6 +202,23 @@ async def create_order(request: web.Request) -> web.Response:
 
     session = get_session()
     try:
+        # Serialize order creation PER PASSENGER before running the anti-spam counts.
+        #
+        # _check_order_abuse is a check-then-act: it COUNTs live/recent orders, and the
+        # INSERT happens a few statements later. Two POSTs that arrive together (a
+        # double-tap on "Buyurtma berish", or a script) both counted the same pre-insert
+        # state, both saw room under the cap, and both inserted — so
+        # MAX_ACTIVE_ORDERS_PER_USER and ORDER_RATE_LIMIT_PER_MINUTE could be exceeded by
+        # exactly the concurrency the limits exist to stop, blasting every online driver
+        # with duplicate new-order pushes.
+        #
+        # Locking the passenger's own row makes the second request wait until the first
+        # has committed (or rolled back), so its COUNT sees the first order. The lock is
+        # released by the commit/close below, is scoped to this one passenger, and never
+        # blocks anyone else. On SQLite (tests) FOR UPDATE is a no-op, which is fine —
+        # the write serialization there comes from the database lock itself.
+        session.query(User.id).filter(User.id == user.id).with_for_update().first()
+
         # Anti-spam: reject if the passenger already has too many live orders or is
         # creating orders too quickly (protects drivers from notification spam).
         abuse_err = _check_order_abuse(session, user.id, datetime.utcnow())

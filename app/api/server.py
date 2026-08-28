@@ -283,8 +283,8 @@ def create_app(bot=None) -> web.Application:
     # Orders
     app.router.add_post("/api/orders", orders_api.create_order)
     app.router.add_get("/api/orders/my", orders_api.list_my_orders)
-    app.router.add_get("/api/orders/{id}", orders_api.get_order)
-    app.router.add_post("/api/orders/{id}/cancel", orders_api.cancel_order)
+    app.router.add_get(r"/api/orders/{id:\d+}", orders_api.get_order)
+    app.router.add_post(r"/api/orders/{id:\d+}/cancel", orders_api.cancel_order)
 
     # Driver endpoints (haydovchi ilovasi)
     app.router.add_post("/api/driver/login", drivers_api.driver_login)  # always returns 410
@@ -304,10 +304,10 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/driver/orders/available", drivers_api.list_available_orders)
     app.router.add_get("/api/driver/orders/active", drivers_api.list_my_active)
     app.router.add_get("/api/driver/orders/history", drivers_api.driver_orders_history)
-    app.router.add_post("/api/driver/orders/{id}/accept", drivers_api.accept_order)
-    app.router.add_post("/api/driver/orders/{id}/start", drivers_api.start_trip)
-    app.router.add_post("/api/driver/orders/{id}/complete", drivers_api.complete_order)
-    app.router.add_post("/api/driver/orders/{id}/cancel", drivers_api.cancel_by_driver)
+    app.router.add_post(r"/api/driver/orders/{id:\d+}/accept", drivers_api.accept_order)
+    app.router.add_post(r"/api/driver/orders/{id:\d+}/start", drivers_api.start_trip)
+    app.router.add_post(r"/api/driver/orders/{id:\d+}/complete", drivers_api.complete_order)
+    app.router.add_post(r"/api/driver/orders/{id:\d+}/cancel", drivers_api.cancel_by_driver)
     app.router.add_get("/api/driver/balance/history", drivers_api.driver_balance_history)
     app.router.add_get("/api/drivers/recommendations", drivers_api.list_recommended_drivers)
 
@@ -320,8 +320,8 @@ def create_app(bot=None) -> web.Application:
     # Automated providers are deliberately not routed until their production protocol
     # implementations are complete. Manual card transfer remains the only active flow.
     app.router.add_post("/api/driver/payments/topup", payments_api.topup_with_screenshot)
-    app.router.add_get("/api/payments/{id}/status", payments_api.get_payment_status)
-    app.router.add_get("/api/payments/{id}/receipt", payments_api.get_payment_receipt)
+    app.router.add_get(r"/api/payments/{id:\d+}/status", payments_api.get_payment_status)
+    app.router.add_get(r"/api/payments/{id:\d+}/receipt", payments_api.get_payment_receipt)
 
     # Push Notifications
     app.router.add_post("/api/notifications/register-token", notif_api.register_token)
@@ -331,15 +331,15 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/notifications/read", notif_api.mark_notifications_read)
 
     # Ratings (passenger ↔ driver)
-    app.router.add_post("/api/orders/{id}/rate-driver", ratings_api.passenger_rate_driver)
-    app.router.add_post("/api/driver/orders/{id}/rate-passenger", ratings_api.driver_rate_passenger)
-    app.router.add_get("/api/orders/{id}/rating", ratings_api.get_order_rating_status)
+    app.router.add_post(r"/api/orders/{id:\d+}/rate-driver", ratings_api.passenger_rate_driver)
+    app.router.add_post(r"/api/driver/orders/{id:\d+}/rate-passenger", ratings_api.driver_rate_passenger)
+    app.router.add_get(r"/api/orders/{id:\d+}/rating", ratings_api.get_order_rating_status)
 
     # Saved addresses (passenger)
     app.router.add_get("/api/addresses", addresses_api.list_addresses)
     app.router.add_post("/api/addresses", addresses_api.create_address)
-    app.router.add_patch("/api/addresses/{id}", addresses_api.update_address)
-    app.router.add_delete("/api/addresses/{id}", addresses_api.delete_address)
+    app.router.add_patch(r"/api/addresses/{id:\d+}", addresses_api.update_address)
+    app.router.add_delete(r"/api/addresses/{id:\d+}", addresses_api.delete_address)
 
     # Promo codes, Referral & Loyalty (single bonus wallet)
     app.router.add_post("/api/promo/validate", promo_api.validate_promo)

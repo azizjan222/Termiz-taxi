@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,10 @@ import {
   FlatList,
   RefreshControl,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../../src/components/Icon';
@@ -24,30 +25,57 @@ export default function HistoryScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  // Separate from `refreshing`: the first load needs its own state so the empty view isn't
+  // shown before any data has arrived.
+  const [loading, setLoading] = useState(true);
+  // Distinguishes "you have no rides" from "we couldn't load your rides".
+  const [loadError, setLoadError] = useState(false);
   const [activeTab, setActiveTab] = useState<'taxi' | 'parcel'>('taxi');
+  // Only the newest request may write state, so a slow first load can't overwrite the
+  // result of a pull-to-refresh the user triggered afterwards.
+  const reqIdRef = useRef(0);
 
-  const loadOrders = async () => {
-    setRefreshing(true);
+  const loadOrders = useCallback(async (isRefresh = false) => {
+    const reqId = ++reqIdRef.current;
+    if (isRefresh) setRefreshing(true);
     try {
       const list = await listMyOrders('all');
+      if (reqId !== reqIdRef.current) return;
       setOrders(list);
+      setLoadError(false);
     } catch {
-      // ignore — pull-to-refresh failures are silent; existing list stays
+      // This used to be silently ignored, which made a failed FIRST load land in the
+      // "no rides yet" empty state — a returning customer read that as their history
+      // having been deleted. (With the 401 zombie-session bug it happened on every
+      // request.) Now the failure is surfaced with a retry.
+      if (reqId !== reqIdRef.current) return;
+      setLoadError(true);
     } finally {
-      setRefreshing(false);
+      if (reqId === reqIdRef.current) {
+        setRefreshing(false);
+        setLoading(false);
+      }
     }
-  };
-
-  useEffect(() => {
-    loadOrders();
   }, []);
+
+  // Reload every time the tab comes into focus. Tabs stay mounted, so a plain mount-only
+  // effect meant a ride booked after the tab was first opened never appeared, and status
+  // badges stayed frozen at whatever they were on first load.
+  useFocusEffect(
+    useCallback(() => {
+      loadOrders();
+    }, [loadOrders])
+  );
 
   const filtered = orders.filter((o) =>
     activeTab === 'parcel' ? o.service_type === 'parcel' : o.service_type !== 'parcel'
   );
 
-  const formatPrice = (p: number) =>
-    p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  // Guarded: an order serialized with a null price used to red-screen the whole tab.
+  const formatPrice = (p: number | null | undefined) =>
+    typeof p === 'number' && Number.isFinite(p)
+      ? p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+      : '—';
 
   const formatDate = (iso: string) => formatDateTime(iso);
 
@@ -129,7 +157,23 @@ export default function HistoryScreen() {
         </TouchableOpacity>
       </View>
 
-      {filtered.length === 0 && !refreshing ? (
+      {loading ? (
+        <View style={styles.empty}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : loadError && orders.length === 0 ? (
+        <View style={styles.empty}>
+          <Icon name="blocked" size={64} color={colors.textMuted} />
+          <Text style={styles.emptyText}>{t('errors.networkError')}</Text>
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={() => loadOrders()}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.retryBtnText}>{t('common.retry')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : filtered.length === 0 ? (
         <View style={styles.empty}>
           <Icon name="inboxEmpty" size={64} color={colors.textMuted} />
           <Text style={styles.emptyText}>{t('history.empty')}</Text>
@@ -142,7 +186,7 @@ export default function HistoryScreen() {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={loadOrders} />
+            <RefreshControl refreshing={refreshing} onRefresh={() => loadOrders(true)} />
           }
         />
       )}
@@ -236,6 +280,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   badgeText_completed: { color: colors.success },
   badgeText_cancelled: { color: colors.error },
   badgeText_expired: { color: colors.error },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { ...typography.body, color: colors.textSecondary },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  emptyText: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
+  retryBtn: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  retryBtnText: { ...typography.bodyBold, color: colors.textOnPrimary },
 });

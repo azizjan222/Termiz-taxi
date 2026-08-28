@@ -29,6 +29,9 @@ except OSError:
     pass
 TOPUP_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 TOPUP_MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+# How many un-reviewed manual top-ups one driver may have open at a time. Stops an upload
+# loop from filling the receipts directory and spamming the admin chat.
+MAX_PENDING_TOPUPS_PER_DRIVER = 3
 
 
 def _delete_pending_payment_artifacts(payment_id: int, file_path: Path) -> bool:
@@ -67,18 +70,23 @@ def credit_driver_payment(session, payment: Payment):
     if not payment_id:
         return None
 
+    # NOTE on transaction ownership: this helper does NOT own `session`, so it must not
+    # roll it back. It used to call session.rollback() on the "already claimed" and
+    # "payment vanished" paths, actively discarding anything the CALLER had written earlier
+    # in the same transaction — a side effect no caller can see coming from a function whose
+    # contract is "returns None when nothing was credited". Returning None is sufficient:
+    # every caller treats a falsy return as "nothing happened" and does not commit, so the
+    # claim above is simply never persisted.
     claimed = (
         session.query(Payment)
         .filter(Payment.id == payment_id, Payment.status == "pending")
         .update({Payment.status: "processing"}, synchronize_session=False)
     )
     if claimed != 1:
-        session.rollback()
         return None
 
     payment = session.query(Payment).filter_by(id=payment_id).first()
     if not payment:
-        session.rollback()
         return None
 
     driver = session.query(Driver).filter_by(id=payment.driver_id).first()
@@ -336,17 +344,45 @@ async def click_complete(request: web.Request) -> web.Response:
         return web.json_response({"error": -1, "error_note": "Invalid signature"})
 
     transaction_param = data.get("merchant_trans_id")
-    error_code = int(data.get("error", -1))
+    # Provider input is untrusted: an unguarded int() on either of these raised ValueError
+    # and turned malformed callback data into a 500 instead of a protocol-level error.
+    try:
+        error_code = int(data.get("error", -1))
+    except (TypeError, ValueError):
+        return web.json_response({"error": -8, "error_note": "Invalid error code"})
+    try:
+        payment_pk = int(transaction_param)
+    except (TypeError, ValueError):
+        return web.json_response({"error": -5, "error_note": "Transaction not found"})
+
+    incoming_trans_id = str(data.get("click_trans_id", "")).strip()
 
     session = get_session()
     try:
         payment = session.query(Payment).filter_by(
-            id=int(transaction_param), provider="click"
+            id=payment_pk, provider="click"
         ).first()
         if not payment:
             return web.json_response({"error": -5, "error_note": "Transaction not found"})
 
         if payment.status == "approved":
+            # Only report success for a REPLAY of the transaction we actually credited.
+            #
+            # This branch used to answer "Already processed / error: 0" for any callback on
+            # an approved payment, without comparing click_trans_id. A genuinely different
+            # Click transaction pointing at the same merchant_trans_id was therefore booked
+            # as settled by the provider while the driver was credited only once — money
+            # taken from the rider, never delivered.
+            if incoming_trans_id and payment.provider_transaction_id and (
+                incoming_trans_id != payment.provider_transaction_id
+            ):
+                logger.warning(
+                    "Click complete: trans_id mismatch for payment %s (stored=%s incoming=%s)",
+                    payment.id, payment.provider_transaction_id, incoming_trans_id,
+                )
+                return web.json_response(
+                    {"error": -3, "error_note": "Duplicate transaction"}
+                )
             return web.json_response({
                 "click_trans_id": data.get("click_trans_id"),
                 "merchant_trans_id": transaction_param,
@@ -363,7 +399,7 @@ async def click_complete(request: web.Request) -> web.Response:
             if requested_amount != payment.amount:
                 return web.json_response({"error": -2, "error_note": "Wrong amount"})
 
-            click_transaction_id = str(data.get("click_trans_id", "")).strip()
+            click_transaction_id = incoming_trans_id
             duplicate = session.query(Payment).filter(
                 Payment.provider == "click",
                 Payment.provider_transaction_id == click_transaction_id,
@@ -553,6 +589,21 @@ async def topup_with_screenshot(request: web.Request) -> web.Response:
     """
     driver: Driver = request["driver"]
 
+    # A blocked driver has no business topping up, and every other money/order entry point
+    # already refuses them — this handler had no such check.
+    # Every rejection below carries a machine-readable "code" alongside the Uzbek "error".
+    # The apps show the server's text verbatim when they don't recognise the code, which
+    # meant a Russian or English driver hit an Uzbek-only wall on the money path. The code
+    # lets the client pick its own translated message and keep the text as the fallback.
+    if driver.is_blocked:
+        return web.json_response(
+            {
+                "error": "Hisobingiz bloklangan. Administrator bilan bog'laning.",
+                "code": "driver_blocked",
+            },
+            status=403,
+        )
+
     if not request.content_type or "multipart/form-data" not in request.content_type:
         return web.json_response(
             {"error": "multipart/form-data kerak (amount + file)"}, status=400
@@ -602,7 +653,12 @@ async def topup_with_screenshot(request: web.Request) -> web.Response:
                 "error": (
                     f"Summa {config.TOPUP_MIN_AMOUNT} dan "
                     f"{config.TOPUP_MAX_AMOUNT} so'mgacha bo'lishi kerak"
-                )
+                ),
+                "code": "amount_out_of_range",
+                # Sent so the app can render the bounds in the driver's own language
+                # instead of falling back to the Uzbek sentence above.
+                "min_amount": config.TOPUP_MIN_AMOUNT,
+                "max_amount": config.TOPUP_MAX_AMOUNT,
             },
             status=400,
         )
@@ -620,10 +676,40 @@ async def topup_with_screenshot(request: web.Request) -> web.Response:
     receipt_sha256 = hashlib.sha256(file_bytes).hexdigest()
     session = get_session()
     try:
-        duplicate = session.query(Payment).filter_by(receipt_sha256=receipt_sha256).first()
+        # Cap concurrent pending requests per driver. Without this a driver could loop
+        # uploads — each re-encode yields a different sha256, so the duplicate check below
+        # does not stop it — filling the private receipts directory with 5 MB files and
+        # flooding the admin chat. The hourly reaper only runs after TOPUP_PENDING_HOURS.
+        pending_count = (
+            session.query(Payment)
+            .filter_by(driver_id=driver.id, provider="manual_app", status="pending")
+            .count()
+        )
+        if pending_count >= MAX_PENDING_TOPUPS_PER_DRIVER:
+            return web.json_response(
+                {
+                    "error": (
+                        "Sizda tasdiqlanmagan to'lov so'rovi bor. "
+                        "Administrator tasdiqlashini kuting."
+                    ),
+                    "code": "too_many_pending",
+                },
+                status=429,
+            )
+
+        duplicate = (
+            session.query(Payment)
+            .filter_by(receipt_sha256=receipt_sha256)
+            # Only a LIVE submission blocks a resubmission. Matching every row meant a
+            # driver whose request expired (cancelled by the reaper) or was rejected could
+            # never send that screenshot again — a permanent 409 for a legitimate receipt.
+            .filter(Payment.status.in_(["pending", "processing", "approved"]))
+            .first()
+        )
         if duplicate:
             return web.json_response(
-                {"error": "Bu to'lov cheki avval yuborilgan"}, status=409
+                {"error": "Bu to'lov cheki avval yuborilgan", "code": "duplicate_receipt"},
+                status=409,
             )
     finally:
         session.close()
