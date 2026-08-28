@@ -175,11 +175,26 @@ export default function StatsScreen() {
 
             <View style={styles.gridItem}>
               <View style={[styles.gridIcon, { backgroundColor: colors.warningLight }]}>
-                <Icon name="star" size={20} color={colors.accent} />
+                <Icon
+                  name={stats.rating_count > 0 ? 'star' : 'starOutline'}
+                  size={20}
+                  color={colors.accent}
+                />
               </View>
-              {/* TEMP: ratings not in use yet — fixed 4.0. Restore stats.rating.toFixed(1) later. */}
-              <Text style={[styles.gridValue, { color: colors.warning }]}>4.0</Text>
-              <Text style={styles.gridLabel}>{stats.rating_count} {t('more.ratingsCount')}</Text>
+              {/* Was a hardcoded 4.0 behind a "ratings not in use yet" comment that had gone
+                  stale. /api/driver/stats has always returned both rating and rating_count,
+                  and the label directly below already showed the REAL count — so a driver
+                  nobody had rated saw "4.0" and "0 baho" side by side, contradicting itself.
+                  Driver.rating defaults to 5.0 in the DB, so the count is the only thing
+                  that can tell "no ratings" apart from a genuinely earned average. */}
+              <Text style={[styles.gridValue, { color: colors.warning }]}>
+                {stats.rating_count > 0 ? stats.rating.toFixed(1) : '—'}
+              </Text>
+              <Text style={styles.gridLabel}>
+                {stats.rating_count > 0
+                  ? `${stats.rating_count} ${t('more.ratingsCount')}`
+                  : t('more.noRatingsYet')}
+              </Text>
             </View>
 
             <View style={styles.gridItem}>

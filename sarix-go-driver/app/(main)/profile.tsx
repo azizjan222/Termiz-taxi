@@ -263,7 +263,15 @@ export default function ProfileScreen() {
               <Text style={styles.statValue}>{driver?.total_orders || 0}</Text>
               <Text style={styles.statLabel}>{t('profile.totalOrders')}</Text>
             </TouchableOpacity>
-            <View style={styles.statBox}>
+            {/* Tappable: "how is this number calculated?" is the obvious question to have
+                while looking at it, and the answer is faq.q8. */}
+            <TouchableOpacity
+              style={styles.statBox}
+              onPress={() => router.push('/faq')}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityHint={t('faq.title')}
+            >
               <View style={[styles.statIconTile, { backgroundColor: colors.accent }]}>
                 <Icon
                   name={hasRatings ? 'star' : 'starOutline'}
@@ -287,7 +295,7 @@ export default function ProfileScreen() {
                     : t('profile.rating')
                   : t('more.noRatingsYet')}
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
           {/* Car info */}

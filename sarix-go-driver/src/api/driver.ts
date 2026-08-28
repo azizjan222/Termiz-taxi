@@ -56,6 +56,14 @@ export interface DriverOrder {
   passenger_phone?: string | null;
   passenger_name?: string | null;
   passenger_photo_url?: string | null;
+  /**
+   * True when this ride has a registered passenger account that can be rated.
+   *
+   * Optional because an over-the-air update can reach the driver before the backend that
+   * serves the field. Treat `undefined` as "do not offer a rating" rather than as true:
+   * offering one for a bot order with no User row would just produce a 400.
+   */
+  can_rate_passenger?: boolean;
   has_roof_rack: boolean;
   female_only: boolean;
   source: string;

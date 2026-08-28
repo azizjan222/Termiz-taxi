@@ -202,6 +202,8 @@ export const uz = {
     a6: 'Yo\'lovchining telefon raqami ochiladi — 15 daqiqa ichida bog\'laning. "Yo\'l ko\'rsatish" tugmasi orqali xaritada yo\'lovchi oldiga yo\'lni ochishingiz mumkin.',
     q7: 'Onlayn vaqt qanday hisoblanadi?',
     a7: '"Onlayn" rejimini yoqsangiz, bugungi onlayn vaqtingiz hisoblanadi va Statistika bo\'limida ko\'rinadi.',
+    q8: 'Reyting qanday hisoblanadi?',
+    a8: "Safarni yakunlaganingizda yo'lovchini 1 dan 5 yulduzgacha baholaysiz, yo'lovchi ham sizni baholaydi. Baho ixtiyoriy — «Keyinroq» tugmasi bilan o'tkazib yuborishingiz mumkin.\n\nReytingingiz — olingan barcha yulduzlarning oddiy o'rtachasi, bir xona aniqlikda ko'rsatiladi (masalan 4.8). Har bir safar uchun faqat bitta baho beriladi va yuborilgandan keyin o'zgartirilmaydi. Faqat yakunlangan safarlar baholanadi — bekor qilingan buyurtma baholanmaydi.\n\nReytingingizni profil sahifasida va «Statistika» bo'limida ko'rasiz, yonida nechta baho olganingiz ham yoziladi. Hali hech kim baholamagan bo'lsa, raqam o'rnida «—» turadi: o'ylab topilgan son ko'rsatilmaydi.",
   },
   sos: {
     alertTitle: 'SHOSHILINCH YORDAM',
@@ -558,6 +560,21 @@ export const uz = {
       },
     ],
   },
+  rating: {
+    titlePassenger: 'Yo‘lovchini baholang',
+    subtitle: '{{name}} bilan',
+    veryBad: 'Juda yomon',
+    bad: 'Yomon',
+    average: "O'rtacha",
+    good: 'Yaxshi',
+    excellent: "A'lo",
+    commentLabel: 'Izoh (ixtiyoriy)',
+    commentPlaceholderPassenger: "Yo'lovchi haqida...",
+    submit: 'Yuborish',
+    skip: 'Keyinroq',
+    successPassenger: "Rahmat! Bahoyingiz yo'lovchiga yozildi.",
+    rateNow: 'Baholash',
+  },
 };
 
 export const ru = {
@@ -697,6 +714,8 @@ export const ru = {
     a6: 'Откроется номер телефона пассажира — свяжитесь в течение 15 минут. Кнопка "Показать маршрут" откроет на карте путь к пассажиру.',
     q7: 'Как считается время онлайн?',
     a7: 'Когда включён режим "Онлайн", ваше сегодняшнее время онлайн учитывается и отображается в разделе Статистика.',
+    q8: 'Как считается рейтинг?',
+    a8: 'Завершая поездку, вы оцениваете пассажира от 1 до 5 звёзд, а пассажир оценивает вас. Оценка необязательна — её можно пропустить кнопкой «Позже».\n\nВаш рейтинг — это простое среднее всех полученных звёзд, показанное с одним знаком после запятой (например 4.8). За одну поездку ставится одна оценка, и её нельзя изменить после отправки. Оценивать можно только завершённые поездки — отменённый заказ оценить нельзя.\n\nРейтинг виден в профиле и в разделе «Статистика», рядом указано количество полученных оценок. Пока вас никто не оценил, вместо числа стоит «—»: придуманное значение не показывается.',
   },
   sos: {
     alertTitle: 'ЭКСТРЕННАЯ ПОМОЩЬ',
@@ -1052,6 +1071,21 @@ export const ru = {
       },
     ],
   },
+  rating: {
+    titlePassenger: 'Оцените пассажира',
+    subtitle: 'с {{name}}',
+    veryBad: 'Очень плохо',
+    bad: 'Плохо',
+    average: 'Средне',
+    good: 'Хорошо',
+    excellent: 'Отлично',
+    commentLabel: 'Комментарий (необязательно)',
+    commentPlaceholderPassenger: 'О пассажире...',
+    submit: 'Отправить',
+    skip: 'Позже',
+    successPassenger: 'Спасибо! Ваша оценка записана пассажиру.',
+    rateNow: 'Оценить',
+  },
 };
 
 export const en = {
@@ -1189,6 +1223,8 @@ export const en = {
     a6: 'The passenger\'s phone number opens — call them within 15 minutes. The "Navigate" button opens the route to the passenger on the map.',
     q7: 'How is online time counted?',
     a7: 'While "Online" mode is on, your online time for today is counted and shown in the Statistics section.',
+    q8: 'How is the rating calculated?',
+    a8: 'When you complete a ride you rate the passenger from 1 to 5 stars, and the passenger rates you. Rating is optional — you can skip it with "Later".\n\nYour rating is the plain average of every star you have received, shown to one decimal place (for example 4.8). Each ride gets exactly one rating from each side, and it cannot be changed once sent. Only completed rides can be rated — a cancelled order cannot.\n\nYou can see your rating on your profile and under "Statistics", along with how many ratings it is based on. Until somebody rates you it shows "—" rather than a made-up number.',
   },
   sos: {
     alertTitle: 'EMERGENCY HELP',
@@ -1544,6 +1580,21 @@ export const en = {
       },
     ],
   },
+  rating: {
+    titlePassenger: 'Rate the passenger',
+    subtitle: 'with {{name}}',
+    veryBad: 'Very bad',
+    bad: 'Bad',
+    average: 'Average',
+    good: 'Good',
+    excellent: 'Excellent',
+    commentLabel: 'Comment (optional)',
+    commentPlaceholderPassenger: 'About the passenger...',
+    submit: 'Send',
+    skip: 'Later',
+    successPassenger: 'Thank you! Your rating was recorded for the passenger.',
+    rateNow: 'Rate',
+  },
 };
 
 export const uzCyrl = {
@@ -1681,6 +1732,8 @@ export const uzCyrl = {
     a6: 'Йўловчининг телефон рақами очилади — 15 дақиқа ичида боғланинг. "Йўл кўрсатиш" тугмаси орқали харитада йўловчи олдига йўлни очишингиз мумкин.',
     q7: 'Онлайн вақт қандай ҳисобланади?',
     a7: '"Онлайн" режимини ёқсангиз, бугунги онлайн вақтингиз ҳисобланади ва Статистика бўлимида кўринади.',
+    q8: 'Рейтинг қандай ҳисобланади?',
+    a8: 'Сафарни якунлаганингизда йўловчини 1 дан 5 юлдузгача баҳолайсиз, йўловчи ҳам сизни баҳолайди. Баҳо ихтиёрий — «Кейинроқ» тугмаси билан ўтказиб юборишингиз мумкин.\n\nРейтингингиз — олинган барча юлдузларнинг оддий ўртачаси, бир хона аниқликда кўрсатилади (масалан 4.8). Ҳар бир сафар учун фақат битта баҳо берилади ва юборилгандан кейин ўзгартирилмайди. Фақат якунланган сафарлар баҳоланади — бекор қилинган буюртма баҳоланмайди.\n\nРейтингингизни профил саҳифасида ва «Статистика» бўлимида кўрасиз, ёнида нечта баҳо олганингиз ҳам ёзилади. Ҳали ҳеч ким баҳоламаган бўлса, рақам ўрнида «—» туради: ўйлаб топилган сон кўрсатилмайди.',
   },
   sos: {
     alertTitle: 'ШОШИЛИНЧ ЁРДАМ',
@@ -2035,6 +2088,21 @@ export const uzCyrl = {
         ],
       },
     ],
+  },
+  rating: {
+    titlePassenger: 'Йўловчини баҳоланг',
+    subtitle: '{{name}} билан',
+    veryBad: 'Жуда ёмон',
+    bad: 'Ёмон',
+    average: 'Ўртача',
+    good: 'Яхши',
+    excellent: 'Аъло',
+    commentLabel: 'Изоҳ (ихтиёрий)',
+    commentPlaceholderPassenger: 'Йўловчи ҳақида...',
+    submit: 'Юбориш',
+    skip: 'Кейинроқ',
+    successPassenger: 'Раҳмат! Баҳоингиз йўловчига ёзилди.',
+    rateNow: 'Баҳолаш',
   },
 };
 
