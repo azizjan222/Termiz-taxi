@@ -193,6 +193,8 @@ export default {
     emailSupport: 'Email us',
   },
   driverMap: {
+    driverPin: 'Driver',
+    pickupPin: 'Pickup',
     title: 'Driver location',
     waiting: 'Waiting for driver location...',
   },

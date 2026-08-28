@@ -280,11 +280,26 @@ export default function OrderDetailScreen() {
               initialZoom={15}
               onMapReady={() => setMapReady(true)}
               markers={[
+                // `label` becomes Yandex's `iconCaption` — a TEXT caption drawn beside the
+                // pin. Emoji were unreadable there (the WebView falls back to whatever
+                // glyph the system font has), so name each pin instead.
                 ...(driverLoc
-                  ? [{ id: 'driver', lat: driverLoc.lat, lon: driverLoc.lon, label: '🚕', color: '#0E1B3D' } as MapMarker]
+                  ? [{
+                      id: 'driver',
+                      lat: driverLoc.lat,
+                      lon: driverLoc.lon,
+                      label: t('driverMap.driverPin'),
+                      color: '#0E1B3D',
+                    } as MapMarker]
                   : []),
                 ...(order.from_lat != null && order.from_lon != null
-                  ? [{ id: 'pickup', lat: order.from_lat, lon: order.from_lon, label: '📍', color: '#F4C430' } as MapMarker]
+                  ? [{
+                      id: 'pickup',
+                      lat: order.from_lat,
+                      lon: order.from_lon,
+                      label: t('driverMap.pickupPin'),
+                      color: '#F4C430',
+                    } as MapMarker]
                   : []),
               ]}
             />

@@ -193,6 +193,8 @@ export default {
     emailSupport: 'Email орқали ёзиш',
   },
   driverMap: {
+    driverPin: 'Ҳайдовчи',
+    pickupPin: 'Олиб кетиш',
     title: 'Ҳайдовчи жойлашуви',
     waiting: 'Ҳайдовчи жойлашуви кутилмоқда...',
   },
