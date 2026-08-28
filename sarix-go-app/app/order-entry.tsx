@@ -430,7 +430,7 @@ export default function OrderEntryScreen() {
         {/* Top "Manzilingiz" card */}
         <View style={styles.topCard} pointerEvents="box-none">
           <Text style={styles.topLabel}>
-            {isDest ? t('orderEntry.finalAddress') : t('orderEntry.yourAddress')}
+            {isDest ? `${t('orderEntry.finalAddress')} ›` : `${t('orderEntry.yourAddress')} ›`}
           </Text>
           {address ? (
             // Keep the resolved address visible while a new lookup runs (e.g. when
@@ -519,6 +519,9 @@ export default function OrderEntryScreen() {
               <Text style={styles.whereToText}>
                 {isParcel ? t('orderEntry.whereToParcel') : t('orderEntry.whereTo')}
               </Text>
+              <View style={styles.whereToArrow}>
+                <Icon name="arrowRight" size={16} color={colors.textSecondary} />
+              </View>
             </TouchableOpacity>
 
             {/* Quick long-haul districts (>= 70 km) */}
@@ -642,6 +645,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.sm,
   },
   whereToText: { ...typography.bodyBold, color: colors.text, fontSize: 17 },
+  whereToArrow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   quickRow: {
     flexDirection: 'row',
     alignItems: 'center',
