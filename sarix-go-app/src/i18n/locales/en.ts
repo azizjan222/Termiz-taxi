@@ -260,7 +260,7 @@ export default {
     q8: 'How do I change the language and theme?',
     a8: 'In Profile → Settings you can pick the language (Uzbek/Russian/English) and dark/light mode.',
     q9: 'How is the rating calculated?',
-    a9: 'After a ride is completed you rate the driver from 1 to 5 stars, and the driver rates you. Rating is optional — you can skip it with "Later".\n\nA rating is the plain average of every star received, shown to one decimal place (for example 4.8). Each ride gets exactly one rating from each side, and it cannot be changed once sent. Only completed rides can be rated — a cancelled order, or one where no driver was found, cannot.\n\nThe comment is optional too, up to 500 characters.',
+    a9: 'After the ride you give the driver 1 to 5 stars, and the driver gives you stars too. Rating is optional — just tap "Later".\n\nA rating is the average of all the stars. For example 5, 4, 5, 5 gives 4.8.\n\nEach ride gets one rating and it cannot be changed once sent. Only a completed ride can be rated. The comment is optional, up to 500 characters.',
   },
   driverMap: {
     driverPin: 'Driver',

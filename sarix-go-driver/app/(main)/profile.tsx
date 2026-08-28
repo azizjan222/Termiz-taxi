@@ -264,13 +264,14 @@ export default function ProfileScreen() {
               <Text style={styles.statLabel}>{t('profile.totalOrders')}</Text>
             </TouchableOpacity>
             {/* Tappable: "how is this number calculated?" is the obvious question to have
-                while looking at it, and the answer is faq.q8. */}
+                while looking at it. Goes to the rating page only — sending the driver to the
+                whole FAQ list made them hunt for the one entry they had just asked about. */}
             <TouchableOpacity
               style={styles.statBox}
-              onPress={() => router.push('/faq')}
+              onPress={() => router.push('/rating-info')}
               activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityHint={t('faq.title')}
+              accessibilityHint={t('ratingInfo.title')}
             >
               <View style={[styles.statIconTile, { backgroundColor: colors.accent }]}>
                 <Icon

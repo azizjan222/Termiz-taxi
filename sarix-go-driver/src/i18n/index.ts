@@ -203,7 +203,7 @@ export const uz = {
     q7: 'Onlayn vaqt qanday hisoblanadi?',
     a7: '"Onlayn" rejimini yoqsangiz, bugungi onlayn vaqtingiz hisoblanadi va Statistika bo\'limida ko\'rinadi.',
     q8: 'Reyting qanday hisoblanadi?',
-    a8: "Safarni yakunlaganingizda yo'lovchini 1 dan 5 yulduzgacha baholaysiz, yo'lovchi ham sizni baholaydi. Baho ixtiyoriy — «Keyinroq» tugmasi bilan o'tkazib yuborishingiz mumkin.\n\nReytingingiz — olingan barcha yulduzlarning oddiy o'rtachasi, bir xona aniqlikda ko'rsatiladi (masalan 4.8). Har bir safar uchun faqat bitta baho beriladi va yuborilgandan keyin o'zgartirilmaydi. Faqat yakunlangan safarlar baholanadi — bekor qilingan buyurtma baholanmaydi.\n\nReytingingizni profil sahifasida va «Statistika» bo'limida ko'rasiz, yonida nechta baho olganingiz ham yoziladi. Hali hech kim baholamagan bo'lsa, raqam o'rnida «—» turadi: o'ylab topilgan son ko'rsatilmaydi.",
+    a8: "Safar tugagach yo'lovchi sizga 1 dan 5 gacha yulduz qo'yadi, siz ham unga yulduz qo'yasiz. Baho berish shart emas — «Keyinroq» tugmasini bosish kifoya.\n\nReyting — barcha yulduzlarning o'rtachasi. Masalan 5, 4, 5, 5 olsangiz, reyting 4.8 bo'ladi. Yonida nechta baho olganingiz ham yoziladi.\n\nHali hech kim baholamagan bo'lsa, raqam o'rnida «—» turadi. Reyting zakas olishga ta'sir qilmaydi: zakas hammaga bir vaqtda boradi, kim birinchi olsa — o'shanga tegadi.",
   },
   sos: {
     alertTitle: 'SHOSHILINCH YORDAM',
@@ -575,6 +575,52 @@ export const uz = {
     successPassenger: "Rahmat! Bahoyingiz yo'lovchiga yozildi.",
     rateNow: 'Baholash',
   },
+  ratingInfo: {
+    title: 'Reyting haqida',
+    summary: "Reyting — sizga qo'yilgan yulduzlarning o'rtachasi.",
+    sections: [
+      {
+        heading: 'Kim menga baho beradi?',
+        paragraphs: [
+          "Yo'lovchi. Safar tugagach uning telefonida oyna chiqadi va u sizga 1 dan 5 gacha yulduz qo‘yadi.",
+          "Siz ham xuddi shunday yo'lovchiga yulduz qo'yasiz.",
+        ],
+      },
+      {
+        heading: 'Reyting qanday chiqadi?',
+        paragraphs: [
+          "Barcha yulduzlarning o'rtachasi olinadi.",
+          "Masalan: 5, 4, 5, 5 yulduz olgan bo'lsangiz — reytingingiz 4.8 bo'ladi.",
+          'Yonida nechta baho olganingiz ham yoziladi: «4.8 · 12 baho».',
+        ],
+      },
+      {
+        heading: "Nega raqam o'rnida «—» turadi?",
+        paragraphs: [
+          "Hali hech kim sizga baho bermagan. Birinchi baho kelishi bilan raqam paydo bo'ladi.",
+        ],
+      },
+      {
+        heading: 'Reyting zakas olishimga ta‘sir qiladimi?',
+        paragraphs: [
+          "Yo'q. Zakas barcha haydovchilarga bir vaqtda boradi. Kim birinchi qabul qilsa, zakas o'shanga tegadi.",
+        ],
+      },
+      {
+        heading: 'Baho berish shartmi?',
+        paragraphs: [
+          "Yo'q. «Keyinroq» tugmasini bossangiz, oyna yopiladi. Bu reytingga ta'sir qilmaydi.",
+        ],
+      },
+      {
+        heading: 'Bahoni keyin o‘zgartirsa bo‘ladimi?',
+        paragraphs: [
+          "Yo'q. Har bir safarga bitta baho beriladi va yuborilgandan keyin o'zgarmaydi.",
+          'Faqat yakunlangan safar baholanadi — bekor qilingan zakas baholanmaydi.',
+        ],
+      },
+    ],
+  },
 };
 
 export const ru = {
@@ -715,7 +761,7 @@ export const ru = {
     q7: 'Как считается время онлайн?',
     a7: 'Когда включён режим "Онлайн", ваше сегодняшнее время онлайн учитывается и отображается в разделе Статистика.',
     q8: 'Как считается рейтинг?',
-    a8: 'Завершая поездку, вы оцениваете пассажира от 1 до 5 звёзд, а пассажир оценивает вас. Оценка необязательна — её можно пропустить кнопкой «Позже».\n\nВаш рейтинг — это простое среднее всех полученных звёзд, показанное с одним знаком после запятой (например 4.8). За одну поездку ставится одна оценка, и её нельзя изменить после отправки. Оценивать можно только завершённые поездки — отменённый заказ оценить нельзя.\n\nРейтинг виден в профиле и в разделе «Статистика», рядом указано количество полученных оценок. Пока вас никто не оценил, вместо числа стоит «—»: придуманное значение не показывается.',
+    a8: 'После поездки пассажир ставит вам от 1 до 5 звёзд, вы ставите звёзды ему. Оценка необязательна — достаточно нажать «Позже».\n\nРейтинг — это среднее всех звёзд. Например, получили 5, 4, 5, 5 — рейтинг будет 4.8. Рядом написано и количество оценок.\n\nПока никто не оценил, вместо числа стоит «—». На получение заказов рейтинг не влияет: заказ приходит всем одновременно, кто первым принял — тому и заказ.',
   },
   sos: {
     alertTitle: 'ЭКСТРЕННАЯ ПОМОЩЬ',
@@ -1086,6 +1132,52 @@ export const ru = {
     successPassenger: 'Спасибо! Ваша оценка записана пассажиру.',
     rateNow: 'Оценить',
   },
+  ratingInfo: {
+    title: 'О рейтинге',
+    summary: 'Рейтинг — это среднее всех звёзд, которые вам поставили.',
+    sections: [
+      {
+        heading: 'Кто ставит мне оценку?',
+        paragraphs: [
+          'Пассажир. После поездки у него открывается окно, и он ставит вам от 1 до 5 звёзд.',
+          'Вы точно так же ставите звёзды пассажиру.',
+        ],
+      },
+      {
+        heading: 'Как получается рейтинг?',
+        paragraphs: [
+          'Берётся среднее всех звёзд.',
+          'Например: получили 5, 4, 5, 5 — ваш рейтинг будет 4.8.',
+          'Рядом написано, сколько у вас оценок: «4.8 · 12 оценок».',
+        ],
+      },
+      {
+        heading: 'Почему вместо числа стоит «—»?',
+        paragraphs: [
+          'Вас пока никто не оценил. Число появится сразу после первой оценки.',
+        ],
+      },
+      {
+        heading: 'Влияет ли рейтинг на получение заказов?',
+        paragraphs: [
+          'Нет. Заказ приходит всем водителям одновременно. Кто первым принял — тому и заказ.',
+        ],
+      },
+      {
+        heading: 'Обязательно ли ставить оценку?',
+        paragraphs: [
+          'Нет. Нажмёте «Позже» — окно закроется. На рейтинг это не влияет.',
+        ],
+      },
+      {
+        heading: 'Можно ли потом изменить оценку?',
+        paragraphs: [
+          'Нет. За одну поездку ставится одна оценка, и после отправки она не меняется.',
+          'Оценивается только завершённая поездка — отменённый заказ оценить нельзя.',
+        ],
+      },
+    ],
+  },
 };
 
 export const en = {
@@ -1224,7 +1316,7 @@ export const en = {
     q7: 'How is online time counted?',
     a7: 'While "Online" mode is on, your online time for today is counted and shown in the Statistics section.',
     q8: 'How is the rating calculated?',
-    a8: 'When you complete a ride you rate the passenger from 1 to 5 stars, and the passenger rates you. Rating is optional — you can skip it with "Later".\n\nYour rating is the plain average of every star you have received, shown to one decimal place (for example 4.8). Each ride gets exactly one rating from each side, and it cannot be changed once sent. Only completed rides can be rated — a cancelled order cannot.\n\nYou can see your rating on your profile and under "Statistics", along with how many ratings it is based on. Until somebody rates you it shows "—" rather than a made-up number.',
+    a8: 'After the ride the passenger gives you 1 to 5 stars, and you give them stars too. Rating is optional — just tap "Later".\n\nYour rating is the average of all your stars. Get 5, 4, 5, 5 and your rating is 4.8. The number of ratings is shown next to it.\n\nUntil somebody rates you it shows "—". Your rating does not affect the orders you get: an order goes to everyone at once, and whoever accepts first gets it.',
   },
   sos: {
     alertTitle: 'EMERGENCY HELP',
@@ -1595,6 +1687,52 @@ export const en = {
     successPassenger: 'Thank you! Your rating was recorded for the passenger.',
     rateNow: 'Rate',
   },
+  ratingInfo: {
+    title: 'About ratings',
+    summary: 'Your rating is the average of the stars people give you.',
+    sections: [
+      {
+        heading: 'Who rates me?',
+        paragraphs: [
+          'The passenger. After the ride a screen opens on their phone and they give you 1 to 5 stars.',
+          'You give the passenger stars in the same way.',
+        ],
+      },
+      {
+        heading: 'How is the rating worked out?',
+        paragraphs: [
+          'It is the average of all your stars.',
+          'For example: you got 5, 4, 5, 5 — your rating is 4.8.',
+          'The number of ratings is shown next to it: "4.8 · 12 ratings".',
+        ],
+      },
+      {
+        heading: 'Why does it show "—" instead of a number?',
+        paragraphs: [
+          'Nobody has rated you yet. The number appears as soon as the first rating arrives.',
+        ],
+      },
+      {
+        heading: 'Does my rating affect the orders I get?',
+        paragraphs: [
+          'No. An order goes to all drivers at the same time. Whoever accepts first gets it.',
+        ],
+      },
+      {
+        heading: 'Do I have to give a rating?',
+        paragraphs: [
+          'No. Tap "Later" and the screen closes. It does not affect anyone’s rating.',
+        ],
+      },
+      {
+        heading: 'Can I change a rating later?',
+        paragraphs: [
+          'No. Each ride gets one rating, and it cannot be changed once sent.',
+          'Only a completed ride can be rated — a cancelled order cannot.',
+        ],
+      },
+    ],
+  },
 };
 
 export const uzCyrl = {
@@ -1733,7 +1871,7 @@ export const uzCyrl = {
     q7: 'Онлайн вақт қандай ҳисобланади?',
     a7: '"Онлайн" режимини ёқсангиз, бугунги онлайн вақтингиз ҳисобланади ва Статистика бўлимида кўринади.',
     q8: 'Рейтинг қандай ҳисобланади?',
-    a8: 'Сафарни якунлаганингизда йўловчини 1 дан 5 юлдузгача баҳолайсиз, йўловчи ҳам сизни баҳолайди. Баҳо ихтиёрий — «Кейинроқ» тугмаси билан ўтказиб юборишингиз мумкин.\n\nРейтингингиз — олинган барча юлдузларнинг оддий ўртачаси, бир хона аниқликда кўрсатилади (масалан 4.8). Ҳар бир сафар учун фақат битта баҳо берилади ва юборилгандан кейин ўзгартирилмайди. Фақат якунланган сафарлар баҳоланади — бекор қилинган буюртма баҳоланмайди.\n\nРейтингингизни профил саҳифасида ва «Статистика» бўлимида кўрасиз, ёнида нечта баҳо олганингиз ҳам ёзилади. Ҳали ҳеч ким баҳоламаган бўлса, рақам ўрнида «—» туради: ўйлаб топилган сон кўрсатилмайди.',
+    a8: 'Сафар тугагач йўловчи сизга 1 дан 5 гача юлдуз қўяди, сиз ҳам унга юлдуз қўясиз. Баҳо бериш шарт эмас — «Кейинроқ» тугмасини босиш кифоя.\n\nРейтинг — барча юлдузларнинг ўртачаси. Масалан 5, 4, 5, 5 олсангиз, рейтинг 4.8 бўлади. Ёнида нечта баҳо олганингиз ҳам ёзилади.\n\nҲали ҳеч ким баҳоламаган бўлса, рақам ўрнида «—» туради. Рейтинг заказ олишга таъсир қилмайди: заказ ҳаммага бир вақтда боради, ким биринчи олса — ўшанга тегади.',
   },
   sos: {
     alertTitle: 'ШОШИЛИНЧ ЁРДАМ',
@@ -2103,6 +2241,52 @@ export const uzCyrl = {
     skip: 'Кейинроқ',
     successPassenger: 'Раҳмат! Баҳоингиз йўловчига ёзилди.',
     rateNow: 'Баҳолаш',
+  },
+  ratingInfo: {
+    title: 'Рейтинг ҳақида',
+    summary: 'Рейтинг — сизга қўйилган юлдузларнинг ўртачаси.',
+    sections: [
+      {
+        heading: 'Ким менга баҳо беради?',
+        paragraphs: [
+          'Йўловчи. Сафар тугагач унинг телефонида ойна чиқади ва у сизга 1 дан 5 гача юлдуз қўяди.',
+          'Сиз ҳам худди шунday йўловчига юлдуз қўясиз.',
+        ],
+      },
+      {
+        heading: 'Рейтинг қандай чиқади?',
+        paragraphs: [
+          'Барча юлдузларнинг ўртачаси олинади.',
+          'Масалан: 5, 4, 5, 5 юлдуз олган бўлсангиз — рейтингингиз 4.8 бўлади.',
+          'Ёнида нечта баҳо олганингиз ҳам ёзилади: «4.8 · 12 баҳо».',
+        ],
+      },
+      {
+        heading: 'Нега рақам ўрнида «—» туради?',
+        paragraphs: [
+          'Ҳали ҳеч ким сизга баҳо бермаган. Биринчи баҳо келиши билан рақам пайдо бўлади.',
+        ],
+      },
+      {
+        heading: 'Рейтинг заказ олишимга таъсир қиладими?',
+        paragraphs: [
+          'Йўқ. Заказ барча ҳайдовчиларга бир вақтда боради. Ким биринчи қабул қилса, заказ ўшанга тегади.',
+        ],
+      },
+      {
+        heading: 'Баҳо бериш шартми?',
+        paragraphs: [
+          'Йўқ. «Кейинроқ» тугмасини боссангиз, ойна ёпилади. Бу рейтингга таъсир қилмайди.',
+        ],
+      },
+      {
+        heading: 'Баҳони кейин ўзгартирса бўладими?',
+        paragraphs: [
+          'Йўқ. Ҳар бир сафарга битта баҳо берилади ва юборилгандан кейин ўзгармайди.',
+          'Фақат якунланган сафар баҳоланади — бекор қилинган заказ баҳоланмайди.',
+        ],
+      },
+    ],
   },
 };
 
