@@ -199,4 +199,7 @@ async def test_dict_comment_does_not_crash(db):
 
     assert resp.status == 200
     db.expire_all()
-    assert db.query(Rating).one().comment == ""
+    # The non-string comment is dropped rather than crashing, and an empty comment is
+    # stored as NULL (the handler's existing `comment if comment else None`) so the column
+    # never holds a meaningless empty string.
+    assert db.query(Rating).one().comment is None
