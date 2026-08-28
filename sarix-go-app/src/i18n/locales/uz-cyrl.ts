@@ -1,5 +1,6 @@
 export default {
   common: {
+    attention: 'Диққат',
     next: 'Давом этиш',
     back: 'Орқага',
     cancel: 'Бекор қилиш',
@@ -71,6 +72,20 @@ export default {
     parcelHint: 'Ҳужжат ёки документ юбориш',
     perPerson: '{{price}} сўм',
     info: '{{persons}} кишигача йўловчи олинади',
+  },
+  newOrder: {
+    personsStep: 'Йўловчи сони',
+    routeUnavailable: 'Бу йўналиш ҳозирча мавжуд эмас',
+    routeUnavailableHint: 'Илтимос, бошқа манзил танланг ёки кейинроқ уриниб кўринг.',
+    payment: 'Тўлов',
+    extras: 'Қўшимча',
+    paymentMethod: 'Тўлов усули',
+    cardSoon: 'Карта орқали тўлов кейинроқ қўшилади',
+    noteForDriver: 'Ҳайдовчи учун изоҳ',
+    notePlaceholder: 'Масалан: 2-уй олдида кутинг',
+    forSomeoneElse: 'Бошқа одам учун буюртма',
+    femaleInCabin: 'Салонида аёл киши бор',
+    roofRack: 'Томида юкхона бор',
   },
   order: {
     serviceType: 'Хизмат тури',

@@ -95,7 +95,7 @@ export default function NewOrderScreen() {
   const submit = async (targetDriverId?: number) => {
     if (!from || !to) return;
     if (routeUnavailable) {
-      Alert.alert('Diqqat', 'Bu yoʻnalish hozircha mavjud emas');
+      Alert.alert(t('common.attention'), t('newOrder.routeUnavailable'));
       return;
     }
     setSubmitting(targetDriverId ?? 'find');
@@ -159,7 +159,7 @@ export default function NewOrderScreen() {
               <View style={styles.routeRow}>
                 <View style={styles.dotFrom} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.stepLabel}>1. Qayerdan</Text>
+                  <Text style={styles.stepLabel}>1. {t('order.from')}</Text>
                   <Text style={styles.routeValue}>{from}</Text>
                 </View>
               </View>
@@ -167,7 +167,7 @@ export default function NewOrderScreen() {
               <View style={styles.routeRow}>
                 <View style={styles.dotTo} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.stepLabel}>2. Qayerga</Text>
+                  <Text style={styles.stepLabel}>2. {t('order.to')}</Text>
                   <Text style={styles.routeValue}>{to}</Text>
                 </View>
               </View>
@@ -182,7 +182,7 @@ export default function NewOrderScreen() {
 
         {/* Step 3: Ketadigan vaqti */}
         <IconText name="clock" size={15} color={colors.text} textStyle={styles.sectionTitle}>
-          3. Ketadigan vaqti
+          3. {t('order.departureTime')}
         </IconText>
         <View style={styles.chipRow}>
           {TIME_OPTIONS.map((opt) => {
@@ -204,7 +204,7 @@ export default function NewOrderScreen() {
 
         {/* Step 4: Yo'lovchi soni / Bo'sh mashina */}
         <IconText name="profile" size={15} color={colors.text} textStyle={styles.sectionTitle}>
-          4. Yo'lovchi soni
+          4. {t('newOrder.personsStep')}
         </IconText>
         <View style={styles.chipRow}>
           {[1, 2, 3, 4].map((n) => {
@@ -306,9 +306,9 @@ export default function NewOrderScreen() {
           <View style={styles.unavailableBar}>
             <Icon name="blocked" size={18} color={colors.error} style={styles.unavailableIcon} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.unavailableTitle}>Bu yoʻnalish hozircha mavjud emas</Text>
+              <Text style={styles.unavailableTitle}>{t('newOrder.routeUnavailable')}</Text>
               <Text style={styles.unavailableSub}>
-                Iltimos, boshqa manzil tanlang yoki keyinroq urinib koʻring.
+                {t('newOrder.routeUnavailableHint')}
               </Text>
             </View>
           </View>
@@ -339,7 +339,7 @@ export default function NewOrderScreen() {
           >
             <Icon name="cash" size={18} color={colors.textSecondary} style={styles.secondaryIcon} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.secondaryLabel}>To'lov</Text>
+              <Text style={styles.secondaryLabel}>{t('newOrder.payment')}</Text>
               <Text style={styles.secondaryValue}>Naqd</Text>
             </View>
           </TouchableOpacity>
@@ -351,7 +351,7 @@ export default function NewOrderScreen() {
           >
             <Icon name="settings" size={18} color={colors.textSecondary} style={styles.secondaryIcon} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.secondaryLabel}>Qo'shimcha</Text>
+              <Text style={styles.secondaryLabel}>{t('newOrder.extras')}</Text>
               <Text style={styles.secondaryValue}>Sozlamalar</Text>
             </View>
           </TouchableOpacity>
@@ -397,7 +397,7 @@ export default function NewOrderScreen() {
         >
           <TouchableOpacity activeOpacity={1} style={styles.sheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>To'lov usuli</Text>
+            <Text style={styles.sheetTitle}>{t('newOrder.paymentMethod')}</Text>
 
             <TouchableOpacity
               style={[styles.payOption, styles.payOptionSelected]}
@@ -417,7 +417,7 @@ export default function NewOrderScreen() {
               <Text style={styles.payOptionTextDisabled}>Karta</Text>
             </View>
             <Text style={styles.sheetNote}>
-              Karta orqali to'lov keyinroq qo'shiladi
+              {t('newOrder.cardSoon')}
             </Text>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -437,14 +437,14 @@ export default function NewOrderScreen() {
         >
           <TouchableOpacity activeOpacity={1} style={styles.sheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Qo'shimcha</Text>
+            <Text style={styles.sheetTitle}>{t('newOrder.extras')}</Text>
 
             <ScrollView keyboardShouldPersistTaps="handled">
               {/* Haydovchi uchun izoh */}
-              <Text style={styles.optLabel}>Haydovchi uchun izoh</Text>
+              <Text style={styles.optLabel}>{t('newOrder.noteForDriver')}</Text>
               <TextInput
                 style={styles.optInput}
-                placeholder="Masalan: 2-uy oldida kuting"
+                placeholder={t('newOrder.notePlaceholder')}
                 placeholderTextColor={colors.textSecondary}
                 value={orderStore.note}
                 onChangeText={(v) => orderStore.setField('note', v)}
@@ -452,7 +452,7 @@ export default function NewOrderScreen() {
               />
 
               {/* Boshqa odam */}
-              <Text style={styles.optLabel}>Boshqa odam uchun buyurtma</Text>
+              <Text style={styles.optLabel}>{t('newOrder.forSomeoneElse')}</Text>
               <View style={styles.optRowInputs}>
                 <TextInput
                   style={[styles.optInput, { flex: 1, marginRight: spacing.sm }]}
@@ -473,7 +473,7 @@ export default function NewOrderScreen() {
 
               {/* Salonida ayol kishi bor */}
               <View style={styles.optToggleRow}>
-                <Text style={styles.optToggleText}>Salonida ayol kishi bor</Text>
+                <Text style={styles.optToggleText}>{t('newOrder.femaleInCabin')}</Text>
                 <Switch
                   value={orderStore.femaleOnly}
                   onValueChange={(v) => orderStore.setField('femaleOnly', v)}
@@ -483,7 +483,7 @@ export default function NewOrderScreen() {
 
               {/* Tomida yukxona bor */}
               <View style={styles.optToggleRow}>
-                <Text style={styles.optToggleText}>Tomida yukxona bor</Text>
+                <Text style={styles.optToggleText}>{t('newOrder.roofRack')}</Text>
                 <Switch
                   value={orderStore.hasRoofRack}
                   onValueChange={(v) => orderStore.setField('hasRoofRack', v)}
