@@ -327,7 +327,6 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.topUp')}</Text>
                 <Text style={styles.menuSub}>{t('more.topUpSub')}</Text>
               </View>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -342,7 +341,6 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('stats.title')}</Text>
                 <Text style={styles.menuSub}>{t('more.statsSub')}</Text>
               </View>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -357,7 +355,6 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.orderHistory')}</Text>
                 <Text style={styles.menuSub}>{t('more.historySub')}</Text>
               </View>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -372,7 +369,6 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.notifications')}</Text>
                 <Text style={styles.menuSub}>{t('more.notificationsSub')}</Text>
               </View>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -387,7 +383,6 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('more.myInfo')}</Text>
                 <Text style={styles.menuSub}>{t('more.myInfoSub')}</Text>
               </View>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -402,7 +397,6 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('more.carPhoto')}</Text>
                 <Text style={styles.menuSub}>{t('more.carPhotoSub')}</Text>
               </View>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -417,7 +411,6 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.aiAssistant')}</Text>
                 <Text style={styles.menuSub}>{t('profile.aiAssistantHint')}</Text>
               </View>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -434,7 +427,6 @@ export default function ProfileScreen() {
                   {support ? `@${support.telegram_username}` : t('profile.supportHint')}
                 </Text>
               </View>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -449,7 +441,6 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.faq')}</Text>
                 <Text style={styles.menuSub}>{t('more.faqSub')}</Text>
               </View>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -464,7 +455,6 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.settings')}</Text>
                 <Text style={styles.menuSub}>{t('more.settingsSub')}</Text>
               </View>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 

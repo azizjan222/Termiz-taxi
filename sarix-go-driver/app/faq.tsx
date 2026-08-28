@@ -58,7 +58,7 @@ export default function FaqScreen() {
               <View style={styles.qRow}>
                 <Text style={[styles.q, { color: colors.text }]}>{t(`faq.q${n}`)}</Text>
                 <Icon
-                  name={expanded ? 'arrowDown' : 'arrowRight'}
+                  name={expanded ? 'arrowUp' : 'arrowDown'}
                   size={20}
                   color={colors.textMuted}
                 />
@@ -82,7 +82,6 @@ export default function FaqScreen() {
               {support ? `@${support.telegram_username}` : t('faq.contactHint')}
             </Text>
           </View>
-          <Icon name="arrowRight" size={20} color="#FFFFFF" />
         </TouchableOpacity>
 
         {/* Email — questions & suggestions */}
@@ -96,7 +95,6 @@ export default function FaqScreen() {
             <Text style={[styles.emailTitle, { color: colors.primary }]}>{t('faq.emailSupport')}</Text>
             <Text style={[styles.emailSub, { color: colors.textSecondary }]}>{supportEmail}</Text>
           </View>
-          <Icon name="arrowRight" size={20} color={colors.primary} />
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

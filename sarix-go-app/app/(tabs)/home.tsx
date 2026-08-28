@@ -88,9 +88,6 @@ export default function HomeScreen() {
               ))}
             </View>
           </View>
-          <View style={styles.chevronCircle}>
-            <Icon name="arrowRight" size={20} color={colors.textMuted} />
-          </View>
         </TouchableOpacity>
 
         {/* Parcel service card */}
@@ -120,9 +117,6 @@ export default function HomeScreen() {
                 </View>
               ))}
             </View>
-          </View>
-          <View style={styles.chevronCircle}>
-            <Icon name="arrowRight" size={20} color={colors.textMuted} />
           </View>
         </TouchableOpacity>
 
@@ -204,14 +198,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   chipText: {
     ...typography.small,
     fontWeight: '600',
-  },
-  chevronCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: spacing.sm,
   },
 });

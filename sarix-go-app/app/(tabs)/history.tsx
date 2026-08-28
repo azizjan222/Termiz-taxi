@@ -115,7 +115,6 @@ export default function HistoryScreen() {
           <Text style={styles.cardPrice}>{formatPrice(item.price)} {t('common.currency')}</Text>
         </View>
 
-        <Icon name="arrowRight" size={20} color={colors.textMuted} style={styles.chevron} />
       </TouchableOpacity>
     );
   };
@@ -257,7 +256,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   cardRight: { alignItems: 'flex-end' },
   cardPrice: { ...typography.bodyBold, color: colors.primary, marginTop: 6 },
   // Spacing only: Icon takes its size and colour from props.
-  chevron: { marginLeft: spacing.sm },
   badge: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
