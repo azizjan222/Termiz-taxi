@@ -76,17 +76,17 @@ export default function OrderHistoryScreen() {
           </Text>
           {isCompleted ? (
             <Text style={[styles.earned, { color: colors.success }]}>
-              +{formatPrice(item.earned || 0)} so'm
+              +{formatPrice(item.earned || 0)} {t('more.currency')}
             </Text>
           ) : (
             <Text style={[styles.price, { color: colors.textSecondary }]}>
-              {formatPrice(item.price)} so'm
+              {formatPrice(item.price)} {t('more.currency')}
             </Text>
           )}
         </View>
         {isCompleted && (item.commission || 0) > 0 && (
           <Text style={[styles.commission, { color: colors.textMuted }]}>
-            {t('stats.commission')}: -{formatPrice(item.commission)} so'm
+            {t('stats.commission')}: -{formatPrice(item.commission)} {t('more.currency')}
           </Text>
         )}
       </View>

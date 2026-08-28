@@ -5,6 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
@@ -15,6 +16,7 @@ import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
 export default function CarPhotoScreen() {
+  const { t } = useTranslation();
   const driver = useDriverStore((s) => s.driver);
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -38,7 +40,7 @@ export default function CarPhotoScreen() {
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('❌', 'Kamera ruxsati berilmadi');
+      Alert.alert('❌', t('carPhoto.errCameraPermission'));
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -67,11 +69,11 @@ export default function CarPhotoScreen() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      Alert.alert('✅', 'Mashina rasmi yuklandi! Admin tasdiqlashi bilan yo\'lovchilar ko\'radi.', [
+      Alert.alert('✅', t('carPhoto.uploaded'), [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (e: any) {
-      Alert.alert('❌', e?.response?.data?.error || 'Yuklab bo\'lmadi');
+      Alert.alert('❌', e?.response?.data?.error || t('carPhoto.errUpload'));
     } finally {
       setUploading(false);
     }
@@ -83,7 +85,7 @@ export default function CarPhotoScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Mashina rasmi</Text>
+        <Text style={styles.title}>{t('carPhoto.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -93,25 +95,22 @@ export default function CarPhotoScreen() {
         ) : (
           <View style={styles.placeholder}>
             <Icon name="car" size={64} color={colors.textMuted} />
-            <Text style={styles.placeholderText}>Mashina rasmi qo'shing</Text>
+            <Text style={styles.placeholderText}>{t('carPhoto.placeholder')}</Text>
           </View>
         )}
 
-        <Text style={styles.hint}>
-          Yo'lovchilar sizning mashinangizni tanish uchun yaxshi rasm yuklang.
-          Mashina raqami ko'rinishi kerak.
-        </Text>
+        <Text style={styles.hint}>{t('carPhoto.hint')}</Text>
 
         <View style={styles.buttons}>
           <Button
-            title="Kamera"
+            title={t('carPhoto.camera')}
             onPress={takePhoto}
             variant="outline"
             fullWidth={false}
             style={{ flex: 1 }}
           />
           <Button
-            title="Galereya"
+            title={t('carPhoto.gallery')}
             onPress={pickImage}
             variant="outline"
             fullWidth={false}
@@ -121,7 +120,7 @@ export default function CarPhotoScreen() {
 
         {imageUri && !imageUri.startsWith('http') && (
           <Button
-            title="Yuklash"
+            title={t('carPhoto.upload')}
             onPress={upload}
             loading={uploading}
             variant="accent"

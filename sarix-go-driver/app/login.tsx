@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
@@ -24,6 +24,7 @@ const BLUE_GRADIENT: [string, string, string] = ['#2E8BFF', '#1565E0', '#0B3FA8'
 const CODE_LENGTH = 6;
 
 export default function LoginScreen() {
+  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const setDriver = useDriverStore((s) => s.setDriver);
@@ -63,7 +64,7 @@ export default function LoginScreen() {
       // the person finishing the login actually controls that Telegram account.
       setTgWaiting(true);
     } catch {
-      setError("Xatolik. Qayta urinib ko'ring.");
+      setError(t('auth.errRetry'));
     } finally {
       setLoading(false);
     }
@@ -88,39 +89,39 @@ export default function LoginScreen() {
         return;
       }
       if (r.status === 'blocked') {
-        setError(r.message || 'Bloklangan');
+        setError(r.message || t('auth.errBlocked'));
         return;
       }
       if (r.status === 'not_registered') {
         setTgWaiting(false);
         Alert.alert(
-          "⚠️ Ro'yxatdan o'tmagansiz",
-          r.message || "Botda \"Haydovchi bo'lish\"ni bosing",
+          `⚠️ ${t('auth.notRegisteredTitle')}`,
+          r.message || t('auth.notRegisteredBody'),
           [
-            { text: 'Bekor qilish', style: 'cancel' },
-            { text: "Botga o'tish", onPress: openBot },
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('auth.botStart'), onPress: openBot },
           ]
         );
         return;
       }
-      setError('Muddati tugadi');
+      setError(t('auth.errExpired'));
     } catch (e: any) {
       const status = e?.response?.data?.status;
       if (status === 'bad_code') {
-        setError("Kod noto'g'ri");
+        setError(t('auth.errBadCode'));
         setCode('');
       } else if (status === 'too_many_attempts') {
-        setError("Juda ko'p urinish. Qaytadan boshlang.");
+        setError(t('auth.errTooManyAttempts'));
         setTgWaiting(false);
         setTgToken(null);
       } else if (status === 'pending') {
-        setError("Avval Telegram'da raqamingizni ulashing");
+        setError(t('auth.errPendingContact'));
       } else if (status === 'expired' || status === 'not_found') {
-        setError('Muddati tugadi');
+        setError(t('auth.errExpired'));
         setTgWaiting(false);
         setTgToken(null);
       } else {
-        setError("Xatolik. Qayta urinib ko'ring.");
+        setError(t('auth.errRetry'));
       }
     } finally {
       setVerifying(false);
@@ -139,17 +140,15 @@ export default function LoginScreen() {
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Animated.View style={[styles.header, { opacity: fade, transform: [{ translateY: slide }] }]}>
             <View style={styles.logoBox}><Icon name="taxi" size={40} color={colors.primary} /></View>
-            <Text style={styles.title}>Sarix Go Driver</Text>
-            <Text style={styles.subtitle}>Haydovchilar uchun ilova</Text>
+            <Text style={styles.title}>{t('auth.title')}</Text>
+            <Text style={styles.subtitle}>{t('auth.subtitle')}</Text>
           </Animated.View>
 
           <Animated.View style={[styles.body, { opacity: fade, transform: [{ translateY: slide }] }]}>
             {tgWaiting ? (
               <View style={styles.waitingBox}>
-                <Text style={styles.waitingText}>Kodni kiriting</Text>
-                <Text style={styles.waitingHint}>
-                  Bot Telegram'ga yuborgan 6 xonali kodni kiriting
-                </Text>
+                <Text style={styles.waitingText}>{t('auth.enterCode')}</Text>
+                <Text style={styles.waitingHint}>{t('auth.enterCodeHint')}</Text>
                 <TextInput
                   style={styles.codeInput}
                   value={code}
@@ -169,15 +168,15 @@ export default function LoginScreen() {
                 />
                 {error ? <Text style={styles.errorText}>{error}</Text> : null}
                 <TouchableOpacity onPress={() => tgToken && Linking.openURL(`https://t.me/${BOT_USERNAME}?start=auth_${tgToken}`)}>
-                  <Text style={styles.linkText}>Telegram'ni qayta ochish</Text>
+                  <Text style={styles.linkText}>{t('auth.reopenTelegram')}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.steps}>
-                <Step n="1" text="Pastdagi tugmani bosing" />
-                <Step n="2" text='Telegram bot ochiladi — "Boshlash"ni bosing' />
-                <Step n="3" text="Raqamingizni ulashing — bot kod yuboradi" />
-                <Step n="4" text="Kodni ilovaga kiriting" />
+                <Step n="1" text={t('auth.step1')} />
+                <Step n="2" text={t('auth.step2')} />
+                <Step n="3" text={t('auth.step3')} />
+                <Step n="4" text={t('auth.step4')} />
                 {error ? <Text style={styles.errorText}>{error}</Text> : null}
               </View>
             )}
@@ -186,26 +185,24 @@ export default function LoginScreen() {
           <Animated.View style={[styles.footer, { opacity: fade }]}>
             {tgWaiting ? (
               <Button
-                title="Kirish"
+                title={t('auth.login')}
                 onPress={submitCode}
                 loading={verifying}
                 disabled={code.length < CODE_LENGTH}
                 variant="accent"
-                accessibilityLabel="Kod bilan kirish"
+                accessibilityLabel={t('auth.loginWithCode')}
               />
             ) : (
               <>
                 <Button
-                  title="Telegram orqali kirish"
+                  title={t('auth.telegramLogin')}
                   onPress={startTelegram}
                   loading={loading}
                   variant="accent"
-                  accessibilityLabel="Telegram orqali kirish"
-                  accessibilityHint="Telegram botda telefon raqamingizni tasdiqlashni boshlaydi"
+                  accessibilityLabel={t('auth.telegramLogin')}
+                  accessibilityHint={t('auth.telegramHint')}
                 />
-                <Text style={styles.note}>
-                  Telegram orqali kirasiz, hujjatlaringizni ilovada yuklaysiz
-                </Text>
+                <Text style={styles.note}>{t('auth.note')}</Text>
               </>
             )}
           </Animated.View>
