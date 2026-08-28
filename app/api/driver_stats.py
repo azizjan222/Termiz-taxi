@@ -10,6 +10,18 @@ from app.services.rewards import effective_commission, passenger_payable
 from app.utils.timefmt import local_day_start_utc, local_day_str
 
 
+def commission_paid(order) -> int:
+    """Commission actually taken off this driver's balance for ``order``.
+
+    ``effective_commission`` is what the ride *owes*; it is only collected when
+    ``commission_collected`` is set. Free-trial and subscribed drivers are never charged
+    (see the note on ``Order.commission_collected``), so anything reported as "earnings"
+    must consult the flag — otherwise those drivers appear to have paid a commission they
+    never did. ``/api/driver/balance/history`` already does this.
+    """
+    return effective_commission(order) if order.commission_collected else 0
+
+
 def _period_start(period: str) -> datetime:
     now = datetime.utcnow()
     if period == "today":
@@ -61,9 +73,12 @@ async def driver_stats(request: web.Request) -> web.Response:
         # Cash the driver actually collected: bonus and promo discounts are settled against
         # commission, not paid in cash, so neither counts as revenue.
         total_revenue = sum(passenger_payable(o) for o in completed)
-        # Commission the driver actually paid, net of both discounts -- this is the same
-        # figure the commission scheduler deducts from the balance.
-        total_commission = sum(effective_commission(o) for o in completed)
+        # Commission the driver actually paid. `commission_collected` matters: a driver on a
+        # free trial / active subscription is never charged, so counting the commission for
+        # those rides understated their earnings by the full amount of every ride — while
+        # /api/driver/balance/history (which does check the flag) showed the correct figure.
+        # The two endpoints are documented as agreeing, so this one was simply wrong.
+        total_commission = sum(commission_paid(o) for o in completed)
         # Nets out to price - commission, matching the per-day `earnings` figure below.
         net_earnings = total_revenue - total_commission
 
@@ -86,7 +101,7 @@ async def driver_stats(request: web.Request) -> web.Response:
                 # Same basis as the totals above: cash collected, then net of the
                 # commission actually deducted.
                 daily[day]["revenue"] += passenger_payable(o)
-                daily[day]["earnings"] += passenger_payable(o) - effective_commission(o)
+                daily[day]["earnings"] += passenger_payable(o) - commission_paid(o)
 
         daily_list = [
             {"date": k, **v}

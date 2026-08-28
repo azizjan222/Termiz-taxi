@@ -49,8 +49,18 @@ export default function OrdersScreen() {
   const isOnlineRef = useRef(isOnline);
   // Last realtime event we've already consumed (by monotonic seq) so we never
   // re-process the same event on an unrelated re-render.
-  const lastSeqRef = useRef(0);
+  //
+  // `null` until the first run, which then BASELINES to the store's current seq. The store
+  // is module-global and never cleared, so starting at 0 meant any remount of this screen
+  // (e.g. router.replace('/(main)/orders') after handling an order) re-consumed the last
+  // new_order event and re-opened the incoming-order popup with a fresh countdown for a
+  // ride the driver had already dealt with. The order-detail screen already does this.
+  const lastSeqRef = useRef<number | null>(null);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
+  const realtimeStatus = useRealtimeStore((s) => s.status);
+  // Synchronous guard for the online switch, plus a state copy to disable the control.
+  const onlineInFlightRef = useRef(false);
+  const [togglingOnline, setTogglingOnline] = useState(false);
 
   useEffect(() => {
     incomingOrderRef.current = incomingOrder;
@@ -85,7 +95,10 @@ export default function OrdersScreen() {
           is_online: res.is_online ?? currentDriver.is_online,
         });
       }
-      if (res.is_online !== undefined) {
+      // Don't let the 15s poll overwrite a toggle the driver just made and that is still
+      // in flight — the server hasn't seen it yet, so its answer is stale by definition
+      // and would snap the switch back under the driver's finger.
+      if (res.is_online !== undefined && !onlineInFlightRef.current) {
         setOnlineLocal(res.is_online);
         isOnlineRef.current = res.is_online;
       }
@@ -105,6 +118,12 @@ export default function OrdersScreen() {
   // lives in src/services/realtime.ts and is mounted in app/_layout.tsx, so the
   // loud alert + delivery work on any screen. Here we only update the list.
   useEffect(() => {
+    // First run after mount: adopt the current seq as the baseline instead of replaying
+    // whatever event happens to still be sitting in the global store.
+    if (lastSeqRef.current === null) {
+      lastSeqRef.current = lastEvent?.seq ?? 0;
+      return;
+    }
     if (!lastEvent || lastEvent.seq <= lastSeqRef.current) return;
     lastSeqRef.current = lastEvent.seq;
 
@@ -132,6 +151,10 @@ export default function OrdersScreen() {
   }, [lastEvent]);
 
   const toggleOnline = async (val: boolean) => {
+    // Two rapid taps used to fire two overlapping requests; if the FIRST one failed, its
+    // catch reverted the state and clobbered the second (successful) one, leaving the UI
+    // and the server disagreeing about whether the driver is online.
+    if (onlineInFlightRef.current) return;
     if (val && !isVerified) {
       setOnlineLocal(false);
       Alert.alert(
@@ -142,6 +165,8 @@ export default function OrdersScreen() {
       );
       return;
     }
+    onlineInFlightRef.current = true;
+    setTogglingOnline(true);
     setOnlineLocal(val);
     isOnlineRef.current = val;
     // Going offline: immediately clear the visible list + any incoming popup so the
@@ -161,11 +186,15 @@ export default function OrdersScreen() {
       }
     } catch (e: any) {
       setOnlineLocal(!val);
-      const msg =
-        e?.response?.status === 401
-          ? t('more.sessionExpired')
-          : t('more.statusChangeFailed');
-      Alert.alert(t('common.error'), msg);
+      isOnlineRef.current = !val;
+      // A 401 is already handled globally (session expired -> login), so don't also
+      // raise a second alert on top of it.
+      if (e?.response?.status !== 401) {
+        Alert.alert(t('common.error'), t('more.statusChangeFailed'));
+      }
+    } finally {
+      onlineInFlightRef.current = false;
+      setTogglingOnline(false);
     }
   };
 
@@ -401,7 +430,16 @@ export default function OrdersScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>{t('home.available')}</Text>
-          <Text style={styles.headerSub}>Sarix Go Driver</Text>
+          {/* Surface realtime health. The "Onlayn" pill reflects the driver's own toggle,
+              not the socket, so a dead connection used to look identical to a quiet night:
+              green pill, empty list, no orders arriving, nothing explaining why. */}
+          {onlineEnabled && realtimeStatus !== 'open' ? (
+            <Text style={[styles.headerSub, { color: colors.error }]}>
+              {t('more.reconnecting')}
+            </Text>
+          ) : (
+            <Text style={styles.headerSub}>Sarix Go Driver</Text>
+          )}
         </View>
         <View style={[styles.onlinePill, onlineEnabled && styles.onlinePillActive]}>
           <View
@@ -416,7 +454,7 @@ export default function OrdersScreen() {
           <Switch
             value={onlineEnabled}
             onValueChange={toggleOnline}
-            disabled={!isVerified}
+            disabled={!isVerified || togglingOnline}
             trackColor={{ false: colors.border, true: colors.success }}
             thumbColor={colors.white}
             accessibilityRole="switch"
@@ -426,7 +464,11 @@ export default function OrdersScreen() {
                 ? t('more.a11yOnlineToggleHint')
                 : t('more.a11yOnlineToggleLocked')
             }
-            accessibilityState={{ checked: onlineEnabled, disabled: !isVerified }}
+            accessibilityState={{
+              checked: onlineEnabled,
+              disabled: !isVerified || togglingOnline,
+              busy: togglingOnline,
+            }}
           />
         </View>
       </View>

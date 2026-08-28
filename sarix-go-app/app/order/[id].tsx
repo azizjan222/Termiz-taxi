@@ -26,6 +26,10 @@ import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
+// If the socket has delivered no driver position for this long we treat it as dead and let
+// the 10s poll refresh the marker instead of leaving it frozen.
+const WS_LOCATION_STALE_MS = 20000;
+
 export default function OrderDetailScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
@@ -36,8 +40,14 @@ export default function OrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [driverLoc, setDriverLoc] = useState<{ lat: number; lon: number } | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
   const ratedHandledRef = useRef(false);
+  // When the socket last delivered a driver position. Used to decide whether a polled
+  // coordinate is allowed to update the marker (see load()).
+  const lastWsLocationAtRef = useRef(0);
+  // Synchronous guard: the Button's `loading` prop only disables after a re-render, which
+  // is a full React commit behind a fast second tap.
+  const cancelInFlightRef = useRef(false);
+  const [cancelling, setCancelling] = useState(false);
   // Map handle + readiness, so we can live-follow the driver as they move.
   const mapRef = useRef<YandexMapHandle>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -47,9 +57,20 @@ export default function OrderDetailScreen() {
       const data = await getOrder(parseInt(id));
       setOrder(data);
       setLoadError(false);
-      // Seed the driver marker from the last-known location returned by the API.
+      // Driver marker from the last-known location returned by the API.
+      //
+      // This used to be `prev || {...}`, i.e. write-once: after the first non-null value
+      // every later polled coordinate was thrown away, so if the WebSocket died the car
+      // froze on the map for the rest of the trip while the hint still claimed it was
+      // tracking. Now the poll also refreshes the marker — but only when the socket has
+      // gone quiet, so a 10s-old polled position can never overwrite a fresher live one.
       if (data.driver?.current_lat != null && data.driver?.current_lon != null) {
-        setDriverLoc((prev) => prev || { lat: data.driver!.current_lat!, lon: data.driver!.current_lon! });
+        const wsIsStale = Date.now() - lastWsLocationAtRef.current > WS_LOCATION_STALE_MS;
+        setDriverLoc((prev) =>
+          prev && !wsIsStale
+            ? prev
+            : { lat: data.driver!.current_lat!, lon: data.driver!.current_lon! }
+        );
       }
     } catch {
       // Record the failure. This screen is reached with router.replace and renders no
@@ -81,11 +102,11 @@ export default function OrderDetailScreen() {
       ws = new WebSocket(
         `${WS_URL}?role=passenger&id=${user.id}&token=${encodeURIComponent(token || '')}`
       );
-      wsRef.current = ws;
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'driver_location' && msg.order_id?.toString() === id) {
+            lastWsLocationAtRef.current = Date.now();
             setDriverLoc({ lat: msg.lat, lon: msg.lon });
           } else if (msg.type === 'order_started' && msg.order_id?.toString() === id) {
             // Driver reached the passenger and started the trip -> notify in-app.
@@ -119,17 +140,23 @@ export default function OrderDetailScreen() {
   // After completion, prompt the passenger to rate the driver (once, if not rated yet).
   useEffect(() => {
     if (!order || order.status !== 'completed' || !order.driver || ratedHandledRef.current) return;
-    ratedHandledRef.current = true;
     (async () => {
       try {
         const { rated } = await getOrderRatingStatus(parseInt(id));
+        // Latch only AFTER a successful answer. It used to be set before the await with an
+        // empty catch, so a single network blip — very likely at trip end, in a moving
+        // car — permanently suppressed the rating prompt: `order.status` stays 'completed'
+        // so no later render ever retried.
+        ratedHandledRef.current = true;
         if (!rated) {
           router.replace({
             pathname: '/rate-driver',
             params: { orderId: id, driverName: order.driver?.first_name || '' },
           });
         }
-      } catch {}
+      } catch {
+        // Leave the latch down so the next poll-driven render tries again.
+      }
     })();
     // Fire once when the order reaches "completed"; guarded by ratedHandledRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,10 +178,19 @@ export default function OrderDetailScreen() {
         text: t('common.yes'),
         style: 'destructive',
         onPress: async () => {
+          // Two taps used to stack two confirm dialogs; confirming both fired two
+          // cancelOrder() calls. The first navigated home, the second failed (already
+          // cancelled) and raised a "no internet" alert on the home screen about an
+          // operation that had actually succeeded.
+          if (cancelInFlightRef.current) return;
+          cancelInFlightRef.current = true;
+          setCancelling(true);
           try {
             await cancelOrder(parseInt(id));
             router.replace('/(tabs)/home');
           } catch {
+            cancelInFlightRef.current = false;
+            setCancelling(false);
             Alert.alert(t('common.error'), t('errors.networkError'));
           }
         },
@@ -199,6 +235,10 @@ export default function OrderDetailScreen() {
   }
 
   const isActive = ['new', 'accepted', 'in_progress'].includes(order.status);
+  // Cancelling is only offered before the trip starts. Once the driver has begun the ride
+  // the backend rejects it (the fare is paid in cash on arrival), so showing the button
+  // would just produce an error the passenger can do nothing about.
+  const canCancel = ['new', 'accepted'].includes(order.status);
   const isParcel = order.service_type === 'parcel';
   const isFullCar = order.service_type === 'full_car';
   const serviceIcon: IconName = isParcel ? 'parcel' : isFullCar ? 'car' : 'taxi';
@@ -428,12 +468,14 @@ export default function OrderDetailScreen() {
         )}
       </ScrollView>
 
-      {isActive && (
+      {canCancel && (
         <View style={styles.footer}>
           <Button
             title={t('order.cancelOrder')}
             onPress={handleCancel}
             variant="outline"
+            loading={cancelling}
+            disabled={cancelling}
           />
         </View>
       )}

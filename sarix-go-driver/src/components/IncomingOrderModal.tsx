@@ -70,12 +70,17 @@ export const IncomingOrderModal: React.FC<Props> = ({
     ]).start();
 
     // Countdown bar (width-driven, JS driver) + auto-dismiss.
-    Animated.timing(countdown, {
+    // Kept in a variable so cleanup can stop it: it used to run on unmounted/hidden
+    // popups, and the next order's `countdown.setValue(1)` + second .start() then fought
+    // the still-running animation on the same Animated.Value, draining the bar almost
+    // instantly so the driver saw a bogus "a few seconds left".
+    const countdownAnim = Animated.timing(countdown, {
       toValue: 0,
       duration: COUNTDOWN_SEC * 1000,
       easing: Easing.linear,
       useNativeDriver: false,
-    }).start();
+    });
+    countdownAnim.start();
 
     // Attention pulse on the accept button.
     const pulseLoop = Animated.loop(
@@ -86,6 +91,10 @@ export const IncomingOrderModal: React.FC<Props> = ({
     );
     pulseLoop.start();
 
+    // Held so cleanup can cancel it: otherwise the deferred dismiss survived unmount and
+    // fired setIncomingOrder(null) on a gone component — and could land mid-accept.
+    let dismissTimer: ReturnType<typeof setTimeout> | null = null;
+
     const tick = setInterval(() => {
       setSecsLeft((s) => {
         if (s <= 1) {
@@ -93,7 +102,7 @@ export const IncomingOrderModal: React.FC<Props> = ({
           // Defer onDismiss out of the state updater to avoid calling a parent
           // setState from inside this updater (React "Cannot update a component
           // while rendering a different component" warning) — same guard AdBanner uses.
-          setTimeout(onDismiss, 0);
+          dismissTimer = setTimeout(onDismiss, 0);
           return 0;
         }
         return s - 1;
@@ -102,7 +111,9 @@ export const IncomingOrderModal: React.FC<Props> = ({
 
     return () => {
       clearInterval(tick);
+      if (dismissTimer) clearTimeout(dismissTimer);
       pulseLoop.stop();
+      countdownAnim.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, order?.id]);

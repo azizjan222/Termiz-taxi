@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import { type DriverOrder } from '../api/driver';
 
-export type RealtimeStatus = 'connecting' | 'open' | 'closed' | 'reconnecting';
+export type RealtimeStatus =
+  | 'connecting'
+  | 'open'
+  | 'closed'
+  | 'reconnecting'
+  /** The server rejected our token; reconnecting is pointless until the driver signs in. */
+  | 'unauthorized';
 
 export interface RealtimeEvent {
   kind: 'new_order' | 'order_cancelled' | 'order_taken';

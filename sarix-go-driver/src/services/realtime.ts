@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 
 import i18n from '../i18n';
 
-import { WS_URL, getAuthToken } from '../api/client';
+import { WS_URL, getAuthToken, notifyUnauthorized } from '../api/client';
 import { type DriverOrder } from '../api/driver';
 import { useRealtimeStore } from '../store/realtime';
 import { useDriverStore } from '../store/driver';
@@ -27,8 +27,10 @@ import { addNotification } from './notificationHistory';
 let socket: WebSocket | null = null;
 let currentId: string | null = null;
 let intentionalClose = false;
-// Cached auth token, refreshed on each connect() and sent in the WS URL so the
-// backend can verify this driver's identity (prevents impersonation).
+// Auth token sent in the WS URL so the backend can verify this driver's identity
+// (prevents impersonation). Re-read from secure storage before EVERY open, including
+// backoff reconnects: it used to be cached from the first connect(), so once a 401 had
+// wiped the stored token the socket reconnected forever with a stale/empty one.
 let authToken: string | null = null;
 
 // Reconnect (exponential backoff) state.
@@ -85,8 +87,38 @@ function scheduleReconnect() {
   useRealtimeStore.getState().setStatus('reconnecting');
   reconnectTimer = setTimeout(() => {
     if (intentionalClose || currentId == null) return;
-    open(currentId);
+    openWithFreshToken(currentId);
   }, delay);
+}
+
+/**
+ * Read the current token, then open. Every connection attempt goes through here so a
+ * reconnect never reuses a token that has since been invalidated or cleared.
+ */
+function openWithFreshToken(id: string) {
+  getAuthToken()
+    .then((tok) => {
+      authToken = tok;
+      if (currentId === id && !socket && !intentionalClose) open(id);
+    })
+    .catch(() => {
+      if (currentId === id && !socket && !intentionalClose) open(id);
+    });
+}
+
+/**
+ * The backend rejected our identity. Stop the reconnect loop — retrying with the same
+ * (bad) credentials just spins forever — and hand off to the app so it can sign the
+ * driver out and show the login screen.
+ */
+function handleUnauthorized() {
+  intentionalClose = true;
+  currentId = null;
+  authToken = null;
+  clearReconnectTimer();
+  clearPingTimer();
+  useRealtimeStore.getState().setStatus('unauthorized');
+  notifyUnauthorized();
 }
 
 function handleMessage(data: any) {
@@ -100,6 +132,14 @@ function handleMessage(data: any) {
     return;
   }
   if (!msg || typeof msg !== 'object') return;
+
+  if (msg.type === 'error') {
+    // The backend sends {"type":"error","error":"unauthorized"} and then closes when the
+    // token in the WS URL does not verify. This branch did not exist, so the frame was
+    // parsed and dropped and onclose reconnect-looped at the 15s backoff cap forever.
+    if (msg.error === 'unauthorized') handleUnauthorized();
+    return;
+  }
 
   if (msg.type === 'new_order' && msg.order) {
     // Never alert an OFFLINE driver about a new order. The backend already skips
@@ -229,17 +269,7 @@ export function connect(telegramId: number | string) {
 
   currentId = id;
   backoffIndex = 0;
-  // Refresh the auth token before opening so the WS URL carries it. Reconnects
-  // reuse the cached token (no need to re-fetch on every backoff attempt).
-  getAuthToken()
-    .then((tok) => {
-      authToken = tok;
-      // Only open if this connect() is still current and nothing opened yet.
-      if (currentId === id && !socket) open(id);
-    })
-    .catch(() => {
-      if (currentId === id && !socket) open(id);
-    });
+  openWithFreshToken(id);
 }
 
 /** Cleanly close the socket and stop all timers (no reconnect). */

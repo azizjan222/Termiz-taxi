@@ -7,7 +7,6 @@ from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app import config
 from app.bot import keyboards as kb
 from app.bot.access import money
 from app.bot.state import ADMIN_ID, WAIT_MINUTES, WARN_MINUTES
@@ -77,10 +76,18 @@ async def assign_order_to_driver(update: Update, context: ContextTypes.DEFAULT_T
     order = result.order
     driver_phone = store.get_driver_phone(driver_tg_id) or ""
 
-    await context.bot.send_message(
-        order.passenger_telegram_id,
-        f"✅ Haydovchi topildi!\n📞 {driver_phone}",
-        reply_markup=kb.passenger_cancel(order_id))
+    # Guarded: the assignment is already committed at this point, so an exception here
+    # would leave the order accepted and the driver debited while skipping the driver
+    # message and — worse — the auto-cancel timers scheduled at the end of this function,
+    # stranding the order in "accepted" forever.
+    if order.passenger_telegram_id:
+        try:
+            await context.bot.send_message(
+                order.passenger_telegram_id,
+                f"✅ Haydovchi topildi!\n📞 {driver_phone}",
+                reply_markup=kb.passenger_cancel(order_id))
+        except Exception:
+            logger.warning("Could not notify passenger of order %s assignment", order_id)
 
     if order.from_lat and order.from_lon:
         await context.bot.send_location(driver_tg_id, order.from_lat, order.from_lon)
@@ -182,6 +189,15 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
                 "❌ Siz ilovada ro'yxatdan o'tmagansiz. Avval ilovada hujjatlaringizni "
                 "yuboring.")
             return
+        # A blocked driver must not be able to claim work. Every other entry point checks
+        # this (the driver API's request/verify OTP and _get_driver_from_request), but this
+        # deep link only checked is_verified — so an admin block was bypassable by taking
+        # orders through the bot link instead of the app.
+        if driver.is_blocked:
+            await context.bot.send_message(
+                driver_telegram_id,
+                "❌ Hisobingiz bloklangan. Administrator bilan bog'laning.")
+            return
         if not driver.is_verified:
             message = (
                 "❌ Hujjatlaringiz administrator tomonidan hali tasdiqlanmagan. "
@@ -194,11 +210,24 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
 
         now = datetime.utcnow()
         on_free_trial = bool(driver.subscription_until and driver.subscription_until > now)
-        if not on_free_trial and (driver.balance or 0) < config.MIN_DRIVER_BALANCE:
+        # Use the admin-configurable minimum, like the app's accept endpoint does. Reading
+        # the static config value here meant changing "min_balance" in the admin panel had
+        # no effect on orders claimed through this link.
+        from app.services.dynamic_settings import get_min_driver_balance
+        min_balance = get_min_driver_balance(session)
+        if not on_free_trial and (driver.balance or 0) < min_balance:
             await context.bot.send_message(
                 driver_telegram_id,
                 (f"❌ Balans yetarli emas.\n"
-                 f"Kerak: {money(config.MIN_DRIVER_BALANCE)} so'm\n"
+                 f"Kerak: {money(min_balance)} so'm\n"
+                 f"Hozir: {money(driver.balance or 0)} so'm"))
+            return
+        # The app path also refuses when the balance cannot cover this order's commission.
+        if not on_free_trial and (driver.balance or 0) < (order.commission or 0):
+            await context.bot.send_message(
+                driver_telegram_id,
+                (f"❌ Balans bu zakas komissiyasini qoplamaydi.\n"
+                 f"Komissiya: {money(order.commission or 0)} so'm\n"
                  f"Hozir: {money(driver.balance or 0)} so'm"))
             return
 

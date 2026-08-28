@@ -1339,7 +1339,19 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
             .first()
             if order.passenger_id else None
         )
-        from app.services.rewards import release_bonus_for_order
+        # Capture what the driver actually owes BEFORE the discounts are released.
+        #
+        # Discounts are funded out of commission, so releasing first and then charging
+        # `order.commission` billed the driver the GROSS amount — making it more expensive
+        # to cancel a discounted ride than to complete it (the scheduler takes the net).
+        # It also double-granted the discount when the scheduler had already collected the
+        # net: the passenger got their bonus back in the wallet AND kept the reusable promo
+        # code, while the platform had already absorbed the same amount as forgone
+        # commission. The passenger-cancel path in app/api/orders.py already computes the
+        # refund before releasing; this path now matches it.
+        from app.services.rewards import effective_commission, release_bonus_for_order
+        commission_owed = effective_commission(order)
+
         release_bonus_for_order(session, order, passenger)
         # The driver cancelled, so the passenger keeps their promo code for another ride.
         from app.services.promo import release_promo_for_order
@@ -1354,10 +1366,19 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
             .with_for_update()
             .first()
         )
-        subscription_active = bool(d and d.subscription_until and d.subscription_until > now)
+        # Same rule the scheduler uses: honour the terms the ride was accepted under, so a
+        # trial that lapsed after acceptance doesn't retroactively make the ride chargeable.
+        subscription_active = bool(
+            d
+            and d.subscription_until
+            and (
+                d.subscription_until > now
+                or (order.accepted_at and d.subscription_until > order.accepted_at)
+            )
+        )
         charged = False
         if d and not subscription_active and not order.commission_charged:
-            commission = order.commission or 0
+            commission = commission_owed
             if commission > 0:
                 d.balance = (d.balance or 0) - commission
                 session.add(BalanceTransaction(
@@ -1381,8 +1402,11 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
             to_city=order.to_city,
             person_count=order.person_count,
             commission=order.commission,
-            actor=f"Haydovchi: {d.first_name or d.phone}",
-            actor_phone=d.phone,
+            # `d` is re-queried above and can in principle be None; it was dereferenced
+            # unguarded here, which would have raised after the status claim was already
+            # applied and rolled the whole cancellation back behind a 500.
+            actor=f"Haydovchi: {(d.first_name or d.phone) if d else driver.id}",
+            actor_phone=d.phone if d else None,
         ))
         session.commit()
 

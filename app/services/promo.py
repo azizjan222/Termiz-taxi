@@ -93,30 +93,43 @@ def redeem_promo(
     if discount <= 0:
         return 0, None, "Bu buyurtmaga chegirma qo'llanilmaydi"
 
-    # 1) Claim the per-user slot. A duplicate here means a concurrent request won.
-    session.add(PromoUsage(
-        promo_code_id=promo.id,
-        user_id=user_id,
-        discount_amount=discount,
-    ))
+    # Both claims run inside a SAVEPOINT so a failure rolls back only the promo work.
+    #
+    # These used to call session.rollback(), which discards the CALLER's transaction too —
+    # directly contradicting the "the caller must still commit" contract above. It is
+    # harmless with today's only caller (create_order redeems before it adds the Order, so
+    # only read work is lost), but it silently destroys any state a future caller had
+    # already written, and the failure surfaces as a plain 400.
+    savepoint = session.begin_nested()
     try:
-        session.flush()
-    except IntegrityError:
-        session.rollback()
-        return 0, None, "Siz bu kodni allaqachon ishlatgansiz"
+        # 1) Claim the per-user slot. A duplicate here means a concurrent request won.
+        session.add(PromoUsage(
+            promo_code_id=promo.id,
+            user_id=user_id,
+            discount_amount=discount,
+        ))
+        try:
+            session.flush()
+        except IntegrityError:
+            savepoint.rollback()
+            return 0, None, "Siz bu kodni allaqachon ishlatgansiz"
 
-    # 2) Claim a global use. Conditional UPDATE so max_uses can't be exceeded by a race.
-    max_uses = promo.max_uses or 0
-    query = session.query(PromoCode).filter(PromoCode.id == promo.id)
-    if max_uses > 0:
-        query = query.filter(PromoCode.used_count < max_uses)
-    claimed = query.update(
-        {PromoCode.used_count: PromoCode.used_count + 1},
-        synchronize_session=False,
-    )
-    if claimed != 1:
-        session.rollback()
-        return 0, None, "Limit tugagan"
+        # 2) Claim a global use. Conditional UPDATE so max_uses can't be exceeded by a race.
+        max_uses = promo.max_uses or 0
+        query = session.query(PromoCode).filter(PromoCode.id == promo.id)
+        if max_uses > 0:
+            query = query.filter(PromoCode.used_count < max_uses)
+        claimed = query.update(
+            {PromoCode.used_count: PromoCode.used_count + 1},
+            synchronize_session=False,
+        )
+        if claimed != 1:
+            savepoint.rollback()
+            return 0, None, "Limit tugagan"
+    except Exception:
+        if savepoint.is_active:
+            savepoint.rollback()
+        raise
 
     return discount, promo.code, None
 

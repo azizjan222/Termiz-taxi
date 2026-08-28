@@ -44,6 +44,9 @@ const WATCH_TIME_INTERVAL_MS = 2000;  // floor between updates (smoothing)
 const BACKEND_MIN_INTERVAL_MS = 10000; // preserve the existing ~10s broadcast cadence
 // Toggle for the optional ETA hint shown next to the live distance.
 const ETA_HINT_ENABLED = true;
+// How often to re-fetch the order. The realtime socket delivers cancellations instantly;
+// this poll is the fallback for when it is down, so it does not need to be aggressive.
+const ORDER_POLL_MS = 10000;
 
 export default function OrderDetailScreen() {
   const { t } = useTranslation();
@@ -59,6 +62,10 @@ export default function OrderDetailScreen() {
   // behind the cancellation alert — which previously made the screen freeze.
   const [cancelled, setCancelled] = useState(false);
 
+  // Set once the order is no longer among our active orders (cancelled / taken / done).
+  const [gone, setGone] = useState(false);
+  const goneHandledRef = useRef(false);
+
   // Imperative handle + live driver position for the in-app pickup map.
   const mapRef = useRef<YandexMapHandle>(null);
   const [driverCoords, setDriverCoords] = useState<Coords | null>(null);
@@ -68,10 +75,16 @@ export default function OrderDetailScreen() {
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const lastSentAtRef = useRef(0);
 
-  // Load the order, retrying on failure. This is the screen the driver lands on right
+  // Load the order, then KEEP polling. This is the screen the driver lands on right
   // after accepting a ride, and it has no other refresh path: a single un-caught fetch
   // error used to leave `order` null forever, wedging the screen on "Yuklanmoqda..."
   // with no passenger phone, no navigation and no way to complete the trip.
+  //
+  // The poll used to be re-armed ONLY on failure, so on success the order was fetched
+  // exactly once for the lifetime of the screen. The realtime socket was then the only way
+  // to learn about a cancellation — and if it was down (backgrounded app, bad tunnel,
+  // rejected token) the driver kept driving to a pickup that no longer existed, with the
+  // 15-minute contact countdown still ticking.
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -79,16 +92,21 @@ export default function OrderDetailScreen() {
     const load = async () => {
       try {
         const orders = await listMyActive();
-        if (cancelled) return;
-        const o = orders.find((x) => x.id.toString() === id);
-        if (o) {
-          setOrder(o);
-          return;
+        if (!cancelled) {
+          const o = orders.find((x) => x.id.toString() === id);
+          if (o) {
+            setOrder(o);
+            setGone(false);
+          } else {
+            // A successful response that does not contain this order means it is no longer
+            // ours: the passenger cancelled, another driver took it, or it completed.
+            setGone(true);
+          }
         }
       } catch {
-        // Network/API failure: fall through and retry below.
+        // Network/API failure: keep whatever we already have and retry.
       }
-      if (!cancelled) timer = setTimeout(load, 5000);
+      if (!cancelled) timer = setTimeout(load, ORDER_POLL_MS);
     };
 
     load();
@@ -97,6 +115,16 @@ export default function OrderDetailScreen() {
       if (timer) clearTimeout(timer);
     };
   }, [id]);
+
+  // The order stopped being active while we were looking at it. The realtime path handles
+  // this instantly when the socket is up; this covers the case where it is not.
+  useEffect(() => {
+    if (!gone || goneHandledRef.current) return;
+    goneHandledRef.current = true;
+    Alert.alert(t('common.attention'), t('more.orderNoLongerActive'), [
+      { text: 'OK', onPress: () => router.replace('/(main)/orders') },
+    ]);
+  }, [gone, t]);
 
   // React to a passenger cancelling THIS order in real time: the global realtime
   // handler already plays the one-time voice alert + vibration; here we surface an
@@ -334,10 +362,29 @@ export default function OrderDetailScreen() {
   };
 
   if (!order) {
+    // Previously this rendered a bare "Yuklanmoqda…" with no header and no back button, so
+    // a driver who opened a stale push for an order that was already gone was stuck on an
+    // endless spinner with no in-app way out.
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Icon name="back" size={26} color={colors.primary} />
+          </TouchableOpacity>
+          <Text style={styles.title}>{t('order.new')}</Text>
+          <View style={{ width: 40 }} />
+        </View>
         <View style={styles.center}>
-          <Text>{t('common.loading')}</Text>
+          <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>
+            {gone ? t('order.notFound') : t('common.loading')}
+          </Text>
+          <TouchableOpacity
+            style={styles.emptyAction}
+            onPress={() => router.replace('/(main)/orders')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.emptyActionText}>{t('more.nextOrder')}</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -732,7 +779,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.surface,
   },
   title: { ...typography.h3, color: colors.text },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  emptyAction: {
+    marginTop: spacing.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  emptyActionText: { ...typography.bodyBold, color: colors.textOnPrimary },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
   mapCard: {
     height: 280,
