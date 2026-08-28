@@ -14,12 +14,36 @@ COOKIE_NAME = "admin_session"
 CSRF_COOKIE_NAME = "admin_csrf"
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _LOGIN_FAILURES: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+# Upper bound on tracked (ip, username) buckets — see _evict_stale_failures().
+_MAX_LOGIN_BUCKETS = 10_000
+
+# nonce -> unix time after which the entry can be forgotten. See revoke_session().
+_REVOKED_SESSIONS: dict[str, float] = {}
+_MAX_REVOKED_SESSIONS = 10_000
 
 
 def _signature(payload: str, purpose: str) -> str:
     key = app_config.API_SECRET_KEY.encode()
     message = f"{purpose}:{payload}".encode()
     return hmac.new(key, message, hashlib.sha256).hexdigest()
+
+
+def _session_purpose() -> str:
+    """Signature purpose for admin sessions, bound to the CURRENT admin credentials.
+
+    The session cookie is stateless: `timestamp:nonce:signature`. Nothing but the clock
+    could invalidate it, so changing ADMIN_PASSWORD — the one action an operator takes
+    after a suspected compromise — did NOT lock the intruder out. Any cookie they had
+    already captured kept opening the money panel (driver balance top-ups, payment
+    approvals) for the rest of ADMIN_SESSION_SECONDS.
+
+    Mixing a digest of the credentials into the HMAC purpose means a password change
+    changes the expected signature, so every outstanding cookie stops verifying at once.
+    This stays fully stateless (no storage, survives restarts) and the digest never
+    leaves the server — only the resulting signature is sent to the browser.
+    """
+    raw = f"{app_config.ADMIN_USERNAME}:{app_config.ADMIN_PASSWORD}".encode()
+    return f"session:{hashlib.sha256(raw).hexdigest()[:16]}"
 
 
 def _cookie_options(*, httponly: bool) -> dict:
@@ -49,7 +73,7 @@ def create_session_cookie(response: web.StreamResponse) -> web.StreamResponse:
     timestamp = str(int(time.time()))
     nonce = secrets.token_urlsafe(24)
     payload = f"{timestamp}:{nonce}"
-    value = f"{payload}:{_signature(payload, 'session')}"
+    value = f"{payload}:{_signature(payload, _session_purpose())}"
     response.set_cookie(
         COOKIE_NAME,
         value,
@@ -67,8 +91,48 @@ def clear_session_cookie(response: web.StreamResponse) -> web.StreamResponse:
     return response
 
 
+def _prune_revoked(now: float) -> None:
+    """Forget revocations whose cookie would have expired on its own anyway."""
+    for nonce in [n for n, expires in _REVOKED_SESSIONS.items() if expires <= now]:
+        _REVOKED_SESSIONS.pop(nonce, None)
+    if len(_REVOKED_SESSIONS) > _MAX_REVOKED_SESSIONS:
+        # Drop the entries closest to expiring first. Only a real logout can add an
+        # entry here, so this cap is a memory backstop, not an attack surface.
+        for nonce in sorted(_REVOKED_SESSIONS, key=_REVOKED_SESSIONS.get)[
+            : len(_REVOKED_SESSIONS) - _MAX_REVOKED_SESSIONS
+        ]:
+            _REVOKED_SESSIONS.pop(nonce, None)
+
+
+def revoke_session(request: web.Request) -> None:
+    """Make the caller's session cookie stop working, for real.
+
+    Logging out only ever sent `Set-Cookie: admin_session=""` — a client-side instruction.
+    The signed value itself stayed valid until it aged out, so anyone who still held a copy
+    (a shared or public machine's browser store, a proxy log, a screen recording) could keep
+    using the panel long after the administrator believed they had signed out.
+
+    Remembering the revoked nonce until its natural expiry closes that window. The app runs
+    as a single worker (`worker: python main.py`), so in-process state is authoritative;
+    a restart clears the list, but a restart also can only ever make a cookie expire
+    sooner or leave it as it was, never extend it.
+    """
+    cookie = request.cookies.get(COOKIE_NAME, "")
+    parts = cookie.split(":", 2)
+    if len(parts) != 3 or not parts[1]:
+        return
+    now = time.time()
+    _prune_revoked(now)
+    _REVOKED_SESSIONS[parts[1]] = now + app_config.ADMIN_SESSION_SECONDS
+
+
+def reset_revoked_sessions() -> None:
+    """Clear revocation state (used by tests and controlled maintenance)."""
+    _REVOKED_SESSIONS.clear()
+
+
 def check_session(request: web.Request) -> bool:
-    """Validate signature, timestamp syntax, expiration, and future skew."""
+    """Validate signature, timestamp syntax, expiration, future skew, and revocation."""
     cookie = request.cookies.get(COOKIE_NAME, "")
     try:
         timestamp, nonce, signature = cookie.split(":", 2)
@@ -76,10 +140,16 @@ def check_session(request: web.Request) -> bool:
     except (TypeError, ValueError):
         return False
     payload = f"{timestamp}:{nonce}"
-    if not nonce or not hmac.compare_digest(signature, _signature(payload, "session")):
+    if not nonce or not hmac.compare_digest(
+        signature, _signature(payload, _session_purpose())
+    ):
         return False
     age = time.time() - created
-    return -60 <= age <= app_config.ADMIN_SESSION_SECONDS
+    if not (-60 <= age <= app_config.ADMIN_SESSION_SECONDS):
+        return False
+    # Explicitly logged out (see revoke_session).
+    expires = _REVOKED_SESSIONS.get(nonce)
+    return not (expires is not None and expires > time.time())
 
 
 def _valid_csrf_cookie(value: str) -> bool:
@@ -109,8 +179,28 @@ async def check_csrf(request: web.Request) -> bool:
     )
 
 
+def _client_ip(request: web.Request) -> str:
+    """Best-effort client IP, honouring the platform proxy's forwarding header.
+
+    The app runs behind a platform proxy (Docker/Procfile on Railway), so `request.remote`
+    is that proxy's address for EVERY caller. Keying the login throttle on it collapsed the
+    bucket to "global per username": one attacker could burn ADMIN_LOGIN_MAX_ATTEMPTS on
+    `admin` and lock the real administrator out of the money panel, while distributed
+    attackers were not throttled per source at all.
+
+    Only the LAST hop of X-Forwarded-For is trustworthy here (earlier entries are
+    client-supplied and trivially spoofed), and it is the one our own proxy appended.
+    """
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            return parts[-1][:64]
+    return (request.remote or "unknown")[:64]
+
+
 def _login_key(request: web.Request, username: str) -> tuple[str, str]:
-    return (request.remote or "unknown", username.casefold()[:128])
+    return (_client_ip(request), username.casefold()[:128])
 
 
 def _prune_failures(key: tuple[str, str], now: float) -> deque[float]:
@@ -134,9 +224,30 @@ def login_retry_after(request: web.Request, username: str) -> int:
     return max(1, int(app_config.ADMIN_LOGIN_WINDOW_SECONDS - (now - failures[0])))
 
 
+def _evict_stale_failures(now: float) -> None:
+    """Drop buckets whose window has fully elapsed.
+
+    `_LOGIN_FAILURES` is keyed partly by an attacker-supplied username, and entries were
+    only pruned when the SAME key was touched again — so probing distinct usernames left one
+    deque per username behind forever. Sweeping on write bounds the memory, and the hard cap
+    below is a backstop against a burst that outruns the sweep.
+    """
+    cutoff = now - app_config.ADMIN_LOGIN_WINDOW_SECONDS
+    for key in [k for k, v in _LOGIN_FAILURES.items() if not v or v[-1] <= cutoff]:
+        _LOGIN_FAILURES.pop(key, None)
+    if len(_LOGIN_FAILURES) > _MAX_LOGIN_BUCKETS:
+        # Evict the buckets closest to expiring; a dropped bucket only costs an attacker
+        # their accumulated failure count, it never grants access.
+        for key in sorted(_LOGIN_FAILURES, key=lambda k: _LOGIN_FAILURES[k][-1])[
+            : len(_LOGIN_FAILURES) - _MAX_LOGIN_BUCKETS
+        ]:
+            _LOGIN_FAILURES.pop(key, None)
+
+
 def record_login_failure(request: web.Request, username: str) -> None:
     key = _login_key(request, username)
     now = time.monotonic()
+    _evict_stale_failures(now)
     failures = _prune_failures(key, now)
     failures.append(now)
     _LOGIN_FAILURES[key] = failures

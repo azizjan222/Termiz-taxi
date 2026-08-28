@@ -40,6 +40,9 @@ from app.utils.timefmt import local_day_start_utc, local_day_str, local_month_st
 
 logger = logging.getLogger(__name__)
 
+# Sanity ceiling for a single route fare, well inside the int4 column range.
+MAX_ROUTE_PRICE = 100_000_000
+
 
 # Telegram is rate-limited to ~30 messages/second, so a broadcast to a large audience
 # takes longer than a browser (or the proxy in front of it) is willing to wait. Up to this
@@ -572,12 +575,33 @@ async def api_topup_driver_balance(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
+    raw_amount = data.get("amount", 0)
+    # Reject non-integral input outright rather than truncating it: int(4.9) -> 4 and
+    # int(True) -> 1 both used to sail through as "valid" amounts.
+    if isinstance(raw_amount, bool) or not isinstance(raw_amount, (int, str)):
+        return web.json_response({"error": "Noto'g'ri summa"}, status=400)
     try:
-        amount = int(data.get("amount", 0))
+        amount = int(raw_amount)
     except (ValueError, TypeError):
         return web.json_response({"error": "Noto'g'ri summa"}, status=400)
     if amount == 0:
         return web.json_response({"error": "Summa 0 bo'lishi mumkin emas"}, status=400)
+    # Bound the magnitude. Zero was the ONLY rejected value, so a fat-finger or a
+    # compromised session could credit an arbitrary amount of immediately-spendable
+    # commission balance; anything past 2^31-1 also overflowed the int4 columns
+    # (Driver.balance / BalanceTransaction.amount), aborting the transaction and returning
+    # the raw database error to the client. The driver-facing top-up path already enforces
+    # these same bounds — the admin path simply never did.
+    if abs(amount) > config.TOPUP_MAX_AMOUNT:
+        return web.json_response(
+            {
+                "error": (
+                    f"Summa juda katta. Maksimal: "
+                    f"{config.TOPUP_MAX_AMOUNT:,} so'm"
+                ).replace(",", " ")
+            },
+            status=400,
+        )
 
     request_key = str(data.get("idempotency_key") or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9._:-]{8,100}", request_key):
@@ -749,9 +773,34 @@ async def api_update_route(request: web.Request) -> web.Response:
         new_values = dict(old_values)
         for field in ("price_per_person", "full_car_price", "parcel_price"):
             if field in data:
-                value = int(data[field])
-                if value < 0:
-                    return web.json_response({"error": "Narx manfiy bo'lishi mumkin emas"}, status=400)
+                # Parse defensively: a non-numeric value used to fall through to the generic
+                # `except Exception` below and return the raw exception text as a 500.
+                try:
+                    value = int(data[field])
+                except (TypeError, ValueError):
+                    return web.json_response(
+                        {"error": f"'{field}' butun son bo'lishi kerak"}, status=400
+                    )
+                # Only negatives were rejected, so a price of 0 was accepted — and since
+                # commission is a percentage of the fare, that silently makes every ride on
+                # that route free for the driver and worth nothing to the platform.
+                # `parcel_price` legitimately stays 0 (parcel fares are negotiated).
+                minimum = 0 if field == "parcel_price" else 1
+                if value < minimum:
+                    return web.json_response(
+                        {
+                            "error": (
+                                "Narx manfiy bo'lishi mumkin emas"
+                                if minimum == 0
+                                else "Narx 0 dan katta bo'lishi kerak"
+                            )
+                        },
+                        status=400,
+                    )
+                if value > MAX_ROUTE_PRICE:
+                    return web.json_response(
+                        {"error": "Narx juda katta"}, status=400
+                    )
                 setattr(route, field, value)
                 new_values[field] = value
         add_admin_audit(
@@ -780,19 +829,38 @@ async def api_settings(request: web.Request) -> web.Response:
         for s in session.query(Setting).all():
             settings_map[s.key] = s.value
 
-        return web.json_response({
-            "commission_percent": int(settings_map.get("commission_percent", "10")),
-            "free_trial_days": int(settings_map.get("free_trial_days", "30")),
-            "free_trial_limit": int(settings_map.get("free_trial_limit", "100")),
-            "min_balance": int(settings_map.get("min_balance", "20000")),
-        })
-    except Exception:
-        return web.json_response({
+        # Fall back per KEY, not for the whole response.
+        #
+        # This used to be wrapped in a bare `except` that returned a hardcoded set of
+        # defaults. That is genuinely dangerous here: a DB failure — or a single corrupt
+        # `Setting.value` that int() choked on — rendered the settings page as though the
+        # commission were 10% and the minimum balance 20 000, indistinguishable from real
+        # config. The form posts all four fields back, so the next "Save" would write those
+        # invented numbers over the real ones and permanently change what the commission
+        # scheduler charges. Now a bad individual value degrades to that key's default and
+        # is logged, while a real DB failure surfaces as a 500 instead of masquerading as
+        # valid configuration.
+        defaults = {
             "commission_percent": 10,
             "free_trial_days": 30,
             "free_trial_limit": 100,
             "min_balance": 20000,
-        })
+        }
+        payload = {}
+        for key, default in defaults.items():
+            raw = settings_map.get(key)
+            if raw is None:
+                payload[key] = default
+                continue
+            try:
+                payload[key] = int(raw)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "admin settings: %s has a non-numeric value %r, using default %s",
+                    key, raw, default,
+                )
+                payload[key] = default
+        return web.json_response(payload)
     finally:
         session.close()
 
@@ -1454,19 +1522,19 @@ def setup_api_routes(app: web.Application):
     app.router.add_get("/admin/api/statistics", api_statistics)
     app.router.add_get("/admin/api/drivers", api_drivers)
     app.router.add_post("/admin/api/drivers", api_create_driver)
-    app.router.add_get("/admin/api/drivers/{id}", api_driver_detail)
-    app.router.add_get("/admin/api/drivers/{id}/photo/{kind}", api_driver_photo)
+    app.router.add_get(r"/admin/api/drivers/{id:\d+}", api_driver_detail)
+    app.router.add_get(r"/admin/api/drivers/{id:\d+}/photo/{kind}", api_driver_photo)
     app.router.add_get("/admin/api/top-drivers", api_top_drivers)
     app.router.add_get("/admin/api/passengers", api_passengers)
     app.router.add_get("/admin/api/orders", api_orders)
     app.router.add_post("/admin/api/push", api_push)
-    app.router.add_post("/admin/api/drivers/{id}/verify", api_verify_driver)
-    app.router.add_post("/admin/api/drivers/{id}/reject", api_reject_driver)
-    app.router.add_post("/admin/api/drivers/{id}/block", api_block_driver)
-    app.router.add_post("/admin/api/drivers/{id}/unblock", api_unblock_driver)
-    app.router.add_post("/admin/api/drivers/{id}/balance", api_topup_driver_balance)
-    app.router.add_get("/admin/api/drivers/{id}/pdf", api_driver_pdf)
+    app.router.add_post(r"/admin/api/drivers/{id:\d+}/verify", api_verify_driver)
+    app.router.add_post(r"/admin/api/drivers/{id:\d+}/reject", api_reject_driver)
+    app.router.add_post(r"/admin/api/drivers/{id:\d+}/block", api_block_driver)
+    app.router.add_post(r"/admin/api/drivers/{id:\d+}/unblock", api_unblock_driver)
+    app.router.add_post(r"/admin/api/drivers/{id:\d+}/balance", api_topup_driver_balance)
+    app.router.add_get(r"/admin/api/drivers/{id:\d+}/pdf", api_driver_pdf)
     app.router.add_get("/admin/api/routes", api_routes)
-    app.router.add_route("PUT", "/admin/api/routes/{id}", api_update_route)
+    app.router.add_route("PUT", r"/admin/api/routes/{id:\d+}", api_update_route)
     app.router.add_get("/admin/api/settings", api_settings)
     app.router.add_route("PUT", "/admin/api/settings", api_update_settings)

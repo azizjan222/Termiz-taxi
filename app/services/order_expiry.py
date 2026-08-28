@@ -11,6 +11,12 @@ passenger app already understands the ``"expired"`` status (it shows
 Only IMMEDIATE orders expire. Scheduled orders (``departure_time`` set to a future clock
 time like "14:30") are intentionally left alone — they are meant to wait until then.
 
+The same loop also runs a second sweep, ``cancel_abandoned_orders``, which closes orders a
+driver ACCEPTED and then abandoned without ever starting the trip. Without it those orders
+stayed ``"accepted"`` forever and permanently consumed an active-order slot for both the
+passenger and the driver. See that function's docstring for its (deliberately narrow)
+scope and its money policy.
+
 The DB work is synchronous (easy to test, safe on SQLite and Postgres). The status
 flip is done with an ATOMIC ``UPDATE ... WHERE status='new'`` per order — exactly like
 ``accept_order`` — so we can never expire an order a driver accepted in the same instant.
@@ -21,8 +27,9 @@ from datetime import datetime, timedelta
 
 from app import config
 from app.database import get_session
-from app.models import Order
+from app.models import Order, User
 from app.services.promo import release_promo_for_order
+from app.services.rewards import release_bonus_for_order
 
 logger = logging.getLogger("sarixgo.expiry")
 
@@ -154,19 +161,188 @@ async def expire_orders_and_notify() -> int:
     return len(expired)
 
 
+def cancel_abandoned_orders(now: datetime | None = None) -> list[dict]:
+    """Close orders a driver accepted but never started or completed.
+
+    Nothing in the app flow ever ended such an order: ``expire_stale_orders`` only looks at
+    status ``"new"``, and complete/cancel are both driver-initiated. So a driver who
+    accepted a ride and then vanished left it ``"accepted"`` permanently, which:
+
+      * consumed one of the passenger's ``MAX_ACTIVE_ORDERS_PER_USER`` slots, so they were
+        told "Sizda faol buyurtma bor" and could not order again;
+      * consumed one of the driver's ``MAX_ACTIVE_NONPARCEL_ORDERS`` slots forever;
+      * left the passenger with no notification that the ride was never happening.
+
+    Deliberate scope and money policy, since both are judgement calls:
+
+    * Only status ``"accepted"`` is reaped. An ``"in_progress"`` ride is one the driver has
+      physically begun — Termiz→Denov alone is 75-95 km — and cancelling a real journey
+      under the passenger would be worse than leaving it open. Those need a human.
+    * The commission is NOT refunded. The driver consumed the lead (and by this point the
+      15-minute window has long since charged it); refunding would make hoarding orders
+      free. We only set ``commission_charged`` so the scheduler stops reconsidering it.
+    * The passenger's bonus IS returned and their promo code IS un-burnt, because the ride
+      did not happen — the same rule the two cancel endpoints already follow.
+
+    Returns ``{"order_id", "passenger_id", "driver_telegram_id", "from_city", "to_city"}``
+    dicts for the orders actually closed, so the caller can notify both parties.
+    Synchronous (DB only) so it is easy to test.
+    """
+    if config.ORDER_ABANDON_MINUTES <= 0:
+        return []
+
+    now = now or datetime.utcnow()
+    cutoff = now - timedelta(minutes=config.ORDER_ABANDON_MINUTES)
+    closed: list[dict] = []
+
+    session = get_session()
+    try:
+        candidates = (
+            session.query(Order)
+            .filter(
+                Order.status == "accepted",
+                Order.accepted_at != None,  # noqa: E711
+                Order.accepted_at <= cutoff,
+            )
+            .all()
+        )
+
+        for order in candidates:
+            # Atomic claim, mirroring every other status transition: never close an order
+            # the driver started or completed in the same instant.
+            claimed = (
+                session.query(Order)
+                .filter(Order.id == order.id, Order.status == "accepted")
+                .update(
+                    {
+                        "status": "cancelled",
+                        "cancelled_at": now,
+                        "cancelled_by": "system",
+                        "cancel_reason": "Haydovchi safarni boshlamadi (vaqt tugadi)",
+                        # Stop the commission scheduler from revisiting this order.
+                        "commission_charged": True,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if not claimed:
+                continue
+
+            session.refresh(order)
+            passenger = None
+            if order.passenger_id:
+                passenger = (
+                    session.query(User)
+                    .filter_by(id=order.passenger_id)
+                    .with_for_update()
+                    .first()
+                )
+            try:
+                release_bonus_for_order(session, order, passenger)
+            except Exception as bonus_error:  # pragma: no cover - defensive
+                logger.error(
+                    "Bonus release failed for abandoned order %s: %s", order.id, bonus_error
+                )
+            try:
+                release_promo_for_order(session, order)
+            except Exception as promo_error:  # pragma: no cover - defensive
+                logger.error(
+                    "Promo release failed for abandoned order %s: %s", order.id, promo_error
+                )
+
+            # Commit per order so one bad row cannot discard the whole sweep.
+            try:
+                session.commit()
+            except Exception as commit_error:  # pragma: no cover - defensive
+                session.rollback()
+                logger.error(
+                    "Could not close abandoned order %s: %s", order.id, commit_error
+                )
+                continue
+
+            logger.warning(
+                "Closed abandoned order %s (driver %s accepted at %s, never started)",
+                order.id, order.driver_id, order.accepted_at,
+            )
+            closed.append({
+                "order_id": order.id,
+                "passenger_id": order.passenger_id,
+                "driver_telegram_id": order.driver_telegram_id,
+                "from_city": order.from_city,
+                "to_city": order.to_city,
+            })
+    except Exception as e:  # pragma: no cover - defensive
+        session.rollback()
+        logger.error(f"cancel_abandoned_orders failed: {e}")
+    finally:
+        session.close()
+
+    return closed
+
+
+async def cancel_abandoned_and_notify() -> int:
+    """Close abandoned orders and tell both parties. Returns how many were closed."""
+    closed = await asyncio.to_thread(cancel_abandoned_orders)
+    if not closed:
+        return 0
+
+    from app.api.websocket import ws_manager
+
+    for info in closed:
+        order_id = info.get("order_id")
+        passenger_id = info.get("passenger_id")
+        driver_telegram_id = info.get("driver_telegram_id")
+        if passenger_id:
+            try:
+                await ws_manager.send_to_passenger(passenger_id, {
+                    "type": "order_cancelled",
+                    "order_id": order_id,
+                    "by": "system",
+                })
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning("WS notify failed for abandoned order %s: %s", order_id, e)
+        if driver_telegram_id:
+            try:
+                await ws_manager.send_to_driver(driver_telegram_id, {
+                    "type": "order_cancelled",
+                    "order_id": order_id,
+                    "by": "system",
+                })
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning(
+                    "WS notify to driver failed for abandoned order %s: %s", order_id, e
+                )
+
+    return len(closed)
+
+
 async def order_expiry_loop(stop_event: asyncio.Event | None = None):
-    """Periodically expire stale orders until stop_event is set (or forever)."""
+    """Run both sweeps periodically until stop_event is set (or forever).
+
+    Sweep 1 expires ``"new"`` orders nobody accepted; sweep 2 closes ``"accepted"`` orders
+    the driver never started. They share this one loop because both are cheap indexed
+    queries on the same table and both need the same cadence.
+    """
     logger.info(
-        "Order-expiry scheduler started (expiry=%s min, poll=%ss)",
-        config.ORDER_EXPIRY_MINUTES, _POLL_SECONDS,
+        "Order-expiry scheduler started (expiry=%s min, abandon=%s min, poll=%ss)",
+        config.ORDER_EXPIRY_MINUTES, config.ORDER_ABANDON_MINUTES, _POLL_SECONDS,
     )
     while True:
+        # The two sweeps are independent: a failure in one must not skip the other,
+        # so they get their own try/except rather than sharing one.
         try:
             n = await expire_orders_and_notify()
             if n:
                 logger.info("Expired %s stale order(s)", n)
         except Exception as e:  # pragma: no cover - defensive
             logger.error(f"Order-expiry loop error: {e}")
+
+        try:
+            n = await cancel_abandoned_and_notify()
+            if n:
+                logger.info("Closed %s abandoned order(s)", n)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.error(f"Abandoned-order sweep error: {e}")
 
         if stop_event is not None:
             try:

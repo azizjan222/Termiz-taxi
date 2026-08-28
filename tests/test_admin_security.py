@@ -1,9 +1,15 @@
 """Regression tests for admin session, CSRF, throttling, and audit controls."""
 from aiohttp import CookieJar, web
-from aiohttp.test_utils import TestClient, TestServer
+from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
 
 from app import config
-from app.admin.middleware import create_session_cookie, reset_login_limiter
+from app.admin.middleware import (
+    check_session,
+    create_session_cookie,
+    reset_login_limiter,
+    reset_revoked_sessions,
+    revoke_session,
+)
 from app.api.server import create_app
 from app.models import AdminAuditLog, BalanceTransaction, Driver
 
@@ -185,3 +191,80 @@ async def test_admin_cannot_approve_incomplete_driver_documents(db, monkeypatch)
         assert db.query(Driver).filter_by(id=driver_id).one().is_verified is False
     finally:
         await client.close()
+
+
+
+# ===================== session invalidation (logout + rotation) =====================
+
+def _fake_request(cookie_value: str) -> web.Request:
+    """A request carrying only the admin_session cookie, for check_session()."""
+    return make_mocked_request(
+        "GET", "/admin/", headers={"Cookie": f"admin_session={cookie_value}"}
+    )
+
+
+def _issue_session() -> str:
+    response = web.Response()
+    create_session_cookie(response)
+    return response.cookies["admin_session"].value
+
+
+def test_logout_makes_the_signed_cookie_stop_working():
+    """Deleting the cookie is client-side only; a captured copy must also be rejected."""
+    reset_revoked_sessions()
+    value = _issue_session()
+    request = _fake_request(value)
+    assert check_session(request) is True
+
+    revoke_session(request)
+
+    # Same cookie value replayed (e.g. from a shared machine's browser store).
+    assert check_session(_fake_request(value)) is False
+
+
+def test_logout_does_not_revoke_other_admin_sessions():
+    reset_revoked_sessions()
+    first = _issue_session()
+    second = _issue_session()
+    assert first != second
+
+    revoke_session(_fake_request(first))
+
+    assert check_session(_fake_request(first)) is False
+    assert check_session(_fake_request(second)) is True
+
+
+def test_changing_admin_password_invalidates_existing_sessions(monkeypatch):
+    """Rotating the password is the standard response to a compromise — it must log out."""
+    reset_revoked_sessions()
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", "old-password-value")
+    value = _issue_session()
+    assert check_session(_fake_request(value)) is True
+
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", "new-password-value")
+
+    assert check_session(_fake_request(value)) is False
+
+
+def test_changing_admin_username_invalidates_existing_sessions(monkeypatch):
+    reset_revoked_sessions()
+    monkeypatch.setattr(config, "ADMIN_USERNAME", "admin")
+    value = _issue_session()
+    assert check_session(_fake_request(value)) is True
+
+    monkeypatch.setattr(config, "ADMIN_USERNAME", "someone-else")
+
+    assert check_session(_fake_request(value)) is False
+
+
+def test_malformed_session_cookies_are_rejected_and_never_raise():
+    reset_revoked_sessions()
+    for bad in ["", "garbage", "abc:def:ghi", ":nonce:sig", "123:nonce:", "123::sig"]:
+        assert check_session(_fake_request(bad)) is False
+
+
+def test_revoking_a_malformed_cookie_is_a_no_op():
+    reset_revoked_sessions()
+    revoke_session(_fake_request("garbage"))
+    # A valid session issued afterwards must still work.
+    assert check_session(_fake_request(_issue_session())) is True
