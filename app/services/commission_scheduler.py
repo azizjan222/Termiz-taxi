@@ -26,6 +26,21 @@ def _subscription_active(driver: Driver, now: datetime) -> bool:
     return bool(driver and driver.subscription_until and driver.subscription_until > now)
 
 
+def _was_free_when_accepted(driver: Driver, order: Order) -> bool:
+    """True if the driver's subscription covered the moment they accepted ``order``.
+
+    The accept endpoint waives every balance requirement for a driver on the free trial, so
+    such a driver is never asked to hold funds. Re-checking the subscription only at charge
+    time (15 minutes later) meant a trial that lapsed inside that window produced a debit
+    against a driver who had been told the ride was free — pushing them negative and then
+    locking them out of new orders, with no record of why. Honour the terms the ride was
+    accepted under.
+    """
+    if not driver or not driver.subscription_until or not order.accepted_at:
+        return False
+    return driver.subscription_until > order.accepted_at
+
+
 def charge_due_commissions(now: datetime | None = None) -> int:
     """Charge commission for accepted orders whose 15-min window has elapsed.
 
@@ -81,7 +96,17 @@ def charge_due_commissions(now: datetime | None = None) -> int:
                     .with_for_update()
                     .first()
                 )
-                if not driver or _subscription_active(driver, now):
+                if not driver:
+                    # Nothing to charge and nothing to reconcile against; keep the claim so
+                    # the order isn't rescanned forever, but say so — a commission silently
+                    # written off used to leave no trace at all.
+                    logger.warning(
+                        "order %s: driver %s is missing, commission written off",
+                        order.id, order.driver_id,
+                    )
+                    session.commit()
+                    continue
+                if _subscription_active(driver, now) or _was_free_when_accepted(driver, order):
                     # Keep the claim so a subscribed driver isn't rescanned every cycle.
                     session.commit()
                     continue
@@ -101,8 +126,13 @@ def charge_due_commissions(now: datetime | None = None) -> int:
                         note="Deferred order commission",
                     ))
                     order.commission_collected = True
-                session.commit()
-                charged += 1
+                    session.commit()
+                    charged += 1
+                else:
+                    # Fully discounted ride: the claim stands (so we stop rescanning) but no
+                    # money moved and commission_collected stays False. It used to be
+                    # counted as "charged", which made the log overstate collections.
+                    session.commit()
             except Exception as order_error:  # pragma: no cover - defensive
                 # Skip only the poisoned order; the rest of the batch still gets charged.
                 session.rollback()
@@ -154,12 +184,16 @@ async def warn_due_commissions(now: datetime | None = None) -> int:
         if orders:
             from app.services.push import notify_driver_commission_soon
 
+        # Commit the `commission_warned` flag PER ORDER, mirroring charge_due_commissions.
+        # A single commit at the end meant any failure discarded the flags for the whole
+        # batch, so the next cycle re-sent every warning the drivers had already received.
         for order in orders:
             driver = session.query(Driver).filter_by(id=order.driver_id).first()
             # No driver, trial/subscription driver, or zero commission -> nothing to warn
             # about, but mark handled so we don't re-scan every minute.
             if not driver or _subscription_active(driver, now) or (order.commission or 0) <= 0:
                 order.commission_warned = True
+                session.commit()
                 continue
 
             elapsed_min = (now - order.accepted_at).total_seconds() / 60.0
@@ -184,9 +218,17 @@ async def warn_due_commissions(now: datetime | None = None) -> int:
                     logger.warning("commission warn WS failed (order %s): %s", order.id, e)
 
             order.commission_warned = True
+            try:
+                session.commit()
+            except Exception as commit_error:  # pragma: no cover - defensive
+                # Don't let one poisoned row cost the whole batch its flags.
+                session.rollback()
+                logger.error(
+                    "warn_due_commissions could not flag order %s: %s",
+                    order.id, commit_error,
+                )
+                continue
             warned += 1
-
-        session.commit()
     except Exception as e:  # pragma: no cover - defensive
         session.rollback()
         logger.error(f"warn_due_commissions failed: {e}")

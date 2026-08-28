@@ -435,17 +435,31 @@ class BotStore:
             session.close()
 
     def assign_order(self, order_id: int, driver_telegram_id: int) -> AssignResult:
-        """Atomically give a "new" bot order to a driver and reserve the fare.
+        """Atomically give a "new" **bot** order to a driver and reserve the fare.
 
         Returns an :class:`AssignResult`. On success the order is "accepted" and the
         order's price has been debited from the driver's balance (refunded on cancel),
         matching the original bot behaviour. Only one driver can win a given order.
+
+        BOT ORDERS ONLY. This debits ``order.price``, which is correct here because
+        :meth:`create_order` sets ``commission = price`` for bot orders. An app order
+        carries the passenger's full fare in ``price`` and the real (≈10%) platform cut in
+        ``commission``, so routing one through here charged the driver roughly ten times
+        what they owed. Order ids are sequential and the ``/start olish_<id>`` deep link
+        took any id, so this was reachable by guessing. App orders have their own accept
+        path (``accept_app_order_from_bot`` / the driver API) which checks the balance
+        against the commission, enforces the active-order limit and reserves the
+        passenger's bonus.
         """
         session = self._session_factory()
         try:
             order = session.query(Order).filter_by(id=order_id).first()
             if not order or order.status != "new":
                 return AssignResult(ok=False, reason="not_found" if not order else "taken")
+            if (order.source or "bot") != "bot":
+                # Report as not_found rather than a distinct reason: ids are guessable, so
+                # don't confirm to the caller that some other order exists.
+                return AssignResult(ok=False, reason="not_found")
 
             driver = (
                 session.query(Driver)

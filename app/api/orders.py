@@ -448,13 +448,24 @@ async def cancel_order(request: web.Request) -> web.Response:
         if order.status in ("completed", "cancelled", "expired"):
             return web.json_response({"error": "Bekor qilib bo'lmaydi"}, status=400)
 
+        # Once the driver has started the trip the ride is physically happening and the
+        # passenger pays cash on arrival. Allowing a cancel here reversed the platform's
+        # commission (the refund below), released the bonus and un-burnt the promo code
+        # for a ride that actually took place, while the driver kept the fare — and
+        # `total_orders` / ride rewards were never applied either. The driver ends the ride
+        # from their own screen ("complete" or, if it fell through, their cancel action).
+        if order.status == "in_progress":
+            return web.json_response(
+                {"error": "Safar boshlangan — bekor qilib bo'lmaydi"}, status=409
+            )
+
         now = datetime.utcnow()
         claimed = (
             session.query(Order)
             .filter(
                 Order.id == order_id,
                 Order.passenger_id == user.id,
-                Order.status.in_(["new", "accepted", "in_progress"]),
+                Order.status.in_(["new", "accepted"]),
             )
             .update(
                 {
