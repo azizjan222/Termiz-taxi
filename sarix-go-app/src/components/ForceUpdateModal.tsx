@@ -3,6 +3,8 @@ import {
   View, Text, StyleSheet, Modal, TouchableOpacity, Linking,
 } from 'react-native';
 
+import { useTranslation } from 'react-i18next';
+
 import { typography, spacing, radius } from '../theme';
 import { useThemeStore } from '../store/theme';
 import type { ThemeColors } from '../theme/colors-themed';
@@ -15,6 +17,7 @@ interface Props {
 }
 
 export const ForceUpdateModal: React.FC<Props> = ({ visible, playUrl, message }) => {
+  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
@@ -22,9 +25,9 @@ export const ForceUpdateModal: React.FC<Props> = ({ visible, playUrl, message })
       <View style={styles.container}>
         <View style={styles.content}>
           <Icon name="refresh" size={56} color={colors.primary} style={styles.emoji} />
-          <Text style={styles.title}>Yangilanish kerak</Text>
+          <Text style={styles.title}>{t('forceUpdate.title')}</Text>
           <Text style={styles.message}>
-            {message || "Iltimos, ilovani yangi versiyaga yangilang. Eski versiya ishlamaydi."}
+            {message || t('forceUpdate.message')}
           </Text>
           <TouchableOpacity
             style={styles.button}
@@ -37,7 +40,7 @@ export const ForceUpdateModal: React.FC<Props> = ({ visible, playUrl, message })
               color={colors.textOnPrimary}
               textStyle={styles.buttonText}
             >
-              Play Market'da yangilash
+              {t('forceUpdate.button')}
             </IconText>
           </TouchableOpacity>
         </View>

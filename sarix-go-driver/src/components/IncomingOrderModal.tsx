@@ -16,6 +16,7 @@ import { type DriverOrder } from '../api/driver';
 import { Icon, IconText, type IconName } from './Icon';
 import { typography, spacing, radius, gradients } from '../theme';
 import type { ThemeColors } from '../theme/colors-themed';
+import { formatDepartureTime } from '../utils/departureTime';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -205,7 +206,7 @@ export const IncomingOrderModal: React.FC<Props> = ({
             </View>
             <View style={styles.chip}>
               <IconText name="clock" size={13} color={colors.textSecondary} textStyle={styles.chipText}>
-                {order.departure_time || t('more.now')}
+                {formatDepartureTime(order.departure_time, t)}
               </IconText>
             </View>
             {!isParcel && (

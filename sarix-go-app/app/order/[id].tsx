@@ -89,8 +89,8 @@ export default function OrderDetailScreen() {
             setDriverLoc({ lat: msg.lat, lon: msg.lon });
           } else if (msg.type === 'order_started' && msg.order_id?.toString() === id) {
             // Driver reached the passenger and started the trip -> notify in-app.
-            const title = 'Haydovchi keldi! 🚕';
-            const body = 'Haydovchingiz yetib keldi — safar boshlandi.';
+            const title = t('order.driverArrivedTitle');
+            const body = t('order.driverArrivedBody');
             presentLocalNotification(title, body, { type: 'order_started', order_id: msg.order_id });
             addNotification({ title, body, type: 'order_started', data: { order_id: msg.order_id } });
             // Refresh so the screen reflects the in-progress status.
@@ -333,15 +333,15 @@ export default function OrderDetailScreen() {
               )}
               <View style={styles.driverInfo}>
                 <Text style={styles.driverName}>
-                  {order.driver.first_name || 'Haydovchi'}
+                  {order.driver.first_name || t('common.driver')}
                 </Text>
                 {order.driver.phone ? (
                   <TouchableOpacity
                     onPress={callDriver}
                     activeOpacity={0.7}
                     accessibilityRole="button"
-                    accessibilityLabel="Haydovchiga qo‘ng‘iroq qilish"
-                    accessibilityHint="Telefon ilovasida haydovchi raqamini ochadi"
+                    accessibilityLabel={t('order.callDriver')}
+                    accessibilityHint={t('order.a11yCallDriverHint')}
                   >
                     <IconText
                       name="mobile"
@@ -359,8 +359,8 @@ export default function OrderDetailScreen() {
                 style={styles.callBtn}
                 onPress={callDriver}
                 accessibilityRole="button"
-                accessibilityLabel="Haydovchiga qo‘ng‘iroq qilish"
-                accessibilityHint="Telefon ilovasida haydovchi raqamini ochadi"
+                accessibilityLabel={t('order.callDriver')}
+                accessibilityHint={t('order.a11yCallDriverHint')}
               >
                 <Icon name="phone" size={22} color={colors.textOnPrimary} />
               </TouchableOpacity>
@@ -413,7 +413,7 @@ export default function OrderDetailScreen() {
               {t('order.price')}
             </IconText>
             <Text style={[styles.value, styles.price]}>
-              {isParcel ? t('order.negotiable') : `${formatPrice(order.price)} so'm`}
+              {isParcel ? t('order.negotiable') : `${formatPrice(order.price)} ${t('common.currency')}`}
             </Text>
           </View>
         </View>

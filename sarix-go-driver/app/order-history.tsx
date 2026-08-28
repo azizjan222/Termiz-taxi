@@ -10,6 +10,7 @@ import { Icon, IconText } from '../src/components/Icon';
 import { getOrdersHistory, type DriverHistoryOrder } from '../src/api/driver';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
+import { dateLocaleTag } from '../src/utils/dateLocale';
 
 type Filter = 'all' | 'completed' | 'cancelled';
 
@@ -40,7 +41,7 @@ export default function OrderHistoryScreen() {
   const formatDate = (iso?: string | null) => {
     if (!iso) return '';
     const d = new Date(iso);
-    return d.toLocaleDateString('uz-UZ', {
+    return d.toLocaleDateString(dateLocaleTag(), {
       day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
     });
   };

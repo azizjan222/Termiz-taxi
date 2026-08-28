@@ -115,7 +115,7 @@ export async function setupNotificationChannels() {
     } catch {}
 
     await Notifications.setNotificationChannelAsync(ORDERS_CHANNEL, {
-      name: 'Yangi zakaslar',
+      name: i18n.t('channels.orders'),
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 500, 200, 500, 200, 500],
       enableVibrate: true,
@@ -126,7 +126,7 @@ export async function setupNotificationChannels() {
     });
 
     await Notifications.setNotificationChannelAsync('balance', {
-      name: 'Balans',
+      name: i18n.t('channels.balance'),
       importance: Notifications.AndroidImportance.HIGH,
       lightColor: '#10B981',
     });
@@ -135,7 +135,7 @@ export async function setupNotificationChannels() {
     // (order_cancelled.wav) so a cancellation is clearly different from the loud
     // new-order tone (new_order.wav) on ORDERS_CHANNEL. HIGH importance keeps it prompt.
     await Notifications.setNotificationChannelAsync(ALERTS_CHANNEL, {
-      name: 'Bildirishnomalar',
+      name: i18n.t('channels.alerts'),
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 400, 200, 400],
       enableVibrate: true,
@@ -266,6 +266,23 @@ export function addNotificationResponseListener(
 const ALERT_VIBRATION = [0, 700, 300, 700, 300, 700, 300, 700];
 
 /**
+ * Body text for a "new order" alert, in the driver's language.
+ *
+ * Exported because the WebSocket handler in `realtime.ts` writes the same order into the
+ * in-app notification history and must not format it differently (both used to build the
+ * string inline, in hardcoded Uzbek).
+ */
+export function newOrderBody(opts?: { from?: string; to?: string; price?: number }): string {
+  if (!opts?.from || !opts?.to) return i18n.t('notifications.newOrderShort');
+  if (!opts.price) return `${opts.from} → ${opts.to}`;
+  return i18n.t('notifications.newOrderBody', {
+    from: opts.from,
+    to: opts.to,
+    price: opts.price.toLocaleString(),
+  });
+}
+
+/**
  * Alert for a new order: local notification (its channel supplies new_order.wav) plus
  * a vibration pattern.
  *
@@ -278,17 +295,14 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
   if (opts?.orderId && wasOrderAlerted(opts.orderId)) return;
   markOrderAlerted(opts?.orderId);
 
-  const body =
-    opts?.from && opts?.to
-      ? `${opts.from} → ${opts.to}${opts.price ? ` · ${opts.price.toLocaleString()} so'm` : ''}`
-      : 'Yangi zakas keldi!';
+  const body = newOrderBody(opts);
 
   // 1) LOCAL NOTIFICATION with custom sound — this is the most reliable way
   //    to produce an audible alert on both foreground and background.
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '🚕 Yangi zakas!',
+        title: i18n.t('notifications.newOrder'),
         body,
         sound: 'new_order.wav',
         priority: Notifications.AndroidNotificationPriority.MAX,

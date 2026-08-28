@@ -60,8 +60,10 @@ export async function changeLanguage(lang: SupportedLanguage) {
   await i18n.changeLanguage(lang);
   // Re-register the push token so the backend localizes notifications to the new
   // language immediately (dynamic import avoids a circular dependency).
+  // Android notification-channel names are user-visible in system settings and are only
+  // read at create time, so re-run the setup to rename the existing channels too.
   import('../services/notifications')
-    .then((m) => m.registerPushToken())
+    .then((m) => Promise.all([m.registerPushToken(), m.setupNotificationChannels()]))
     .catch(() => {});
 }
 

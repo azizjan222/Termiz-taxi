@@ -26,9 +26,11 @@ import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import { gradients } from '../src/theme/colors';
 import type { ThemeColors } from '../src/theme/colors-themed';
-
-// Step 3 — departure time presets (Ketadigan vaqti)
-const TIME_OPTIONS = ['Hozir', '30 daqiqadan', '1 soatdan', '2 soatdan', 'Ertaga'];
+import {
+  DEPARTURE_CODES,
+  DEPARTURE_WIRE,
+  departureKey,
+} from '../src/utils/departureTime';
 
 export default function NewOrderScreen() {
   const { t } = useTranslation();
@@ -103,6 +105,8 @@ export default function NewOrderScreen() {
       // Fold the optional "Boshqa odam" (someone else) details into the driver note.
       let note = orderStore.note || '';
       if (otherName.trim() || otherPhone.trim()) {
+        // Sent to the driver, so label it in the driver-facing canonical language rather
+        // than in whatever language the passenger happens to be using.
         const other = `Boshqa odam: ${otherName.trim()} ${otherPhone.trim()}`.trim();
         note = note ? `${note}\n${other}` : other;
       }
@@ -119,7 +123,8 @@ export default function NewOrderScreen() {
         person_count: isFullCar ? 4 : persons,
         male_count: orderStore.maleCount,
         female_count: orderStore.femaleCount,
-        departure_time: orderStore.departureTime,
+        // Canonical wire value, not the localized label the passenger saw.
+        departure_time: DEPARTURE_WIRE[orderStore.departureTime],
         note: note || undefined,
         has_roof_rack: orderStore.hasRoofRack,
         female_only: orderStore.femaleOnly,
@@ -147,7 +152,7 @@ export default function NewOrderScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Buyurtma</Text>
+        <Text style={styles.title}>{t('newOrder.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -185,17 +190,17 @@ export default function NewOrderScreen() {
           3. {t('order.departureTime')}
         </IconText>
         <View style={styles.chipRow}>
-          {TIME_OPTIONS.map((opt) => {
-            const selected = orderStore.departureTime === opt;
+          {DEPARTURE_CODES.map((code) => {
+            const selected = orderStore.departureTime === code;
             return (
               <TouchableOpacity
-                key={opt}
+                key={code}
                 style={[styles.chip, selected ? styles.timeChipSelected : styles.chipUnselected]}
-                onPress={() => orderStore.setField('departureTime', opt)}
+                onPress={() => orderStore.setField('departureTime', code)}
                 activeOpacity={0.85}
               >
                 <Text style={[styles.chipText, selected && styles.timeChipTextSelected]}>
-                  {opt}
+                  {t(departureKey(code))}
                 </Text>
               </TouchableOpacity>
             );
@@ -322,7 +327,7 @@ export default function NewOrderScreen() {
             <Text style={styles.priceBarLabel}>{t('order.price')}</Text>
             <Text style={styles.priceBarValue}>
               {quote
-                ? `${formatPrice(quote.price)} so'm`
+                ? `${formatPrice(quote.price)} ${t('common.currency')}`
                 : quoteFailed
                 ? t('errors.networkError')
                 : '...'}
@@ -340,7 +345,7 @@ export default function NewOrderScreen() {
             <Icon name="cash" size={18} color={colors.textSecondary} style={styles.secondaryIcon} />
             <View style={{ flex: 1 }}>
               <Text style={styles.secondaryLabel}>{t('newOrder.payment')}</Text>
-              <Text style={styles.secondaryValue}>Naqd</Text>
+              <Text style={styles.secondaryValue}>{t('order.cash')}</Text>
             </View>
           </TouchableOpacity>
 
@@ -352,7 +357,7 @@ export default function NewOrderScreen() {
             <Icon name="settings" size={18} color={colors.textSecondary} style={styles.secondaryIcon} />
             <View style={{ flex: 1 }}>
               <Text style={styles.secondaryLabel}>{t('newOrder.extras')}</Text>
-              <Text style={styles.secondaryValue}>Sozlamalar</Text>
+              <Text style={styles.secondaryValue}>{t('newOrder.extrasValue')}</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -363,8 +368,8 @@ export default function NewOrderScreen() {
           disabled={submitting !== null || routeUnavailable || quoteFailed}
           activeOpacity={0.9}
           accessibilityRole="button"
-          accessibilityLabel="Buyurtma berish"
-          accessibilityHint="Tanlangan yo‘nalish bo‘yicha haydovchi qidirishni boshlaydi"
+          accessibilityLabel={t('order.confirm')}
+          accessibilityHint={t('newOrder.a11ySubmitHint')}
           accessibilityState={{
             disabled: submitting !== null || routeUnavailable,
             busy: submitting !== null,
@@ -377,7 +382,7 @@ export default function NewOrderScreen() {
             style={styles.ctaBtn}
           >
             <Text style={styles.ctaText}>
-              {submitting === 'find' ? 'Yuborilmoqda...' : 'Buyurtma berish'}
+              {submitting === 'find' ? t('common.sending') : t('order.confirm')}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -408,13 +413,13 @@ export default function NewOrderScreen() {
               activeOpacity={0.85}
             >
               <Icon name="cash" size={20} color={colors.text} style={styles.payOptionIcon} />
-              <Text style={styles.payOptionText}>Naqd</Text>
+              <Text style={styles.payOptionText}>{t('order.cash')}</Text>
               <Icon name="check" size={16} color={colors.primary} />
             </TouchableOpacity>
 
             <View style={styles.payOptionDisabled}>
               <Icon name="card" size={20} color={colors.text} style={styles.payOptionIcon} />
-              <Text style={styles.payOptionTextDisabled}>Karta</Text>
+              <Text style={styles.payOptionTextDisabled}>{t('order.card')}</Text>
             </View>
             <Text style={styles.sheetNote}>
               {t('newOrder.cardSoon')}
@@ -456,14 +461,14 @@ export default function NewOrderScreen() {
               <View style={styles.optRowInputs}>
                 <TextInput
                   style={[styles.optInput, { flex: 1, marginRight: spacing.sm }]}
-                  placeholder="Ism"
+                  placeholder={t('common.name')}
                   placeholderTextColor={colors.textSecondary}
                   value={otherName}
                   onChangeText={setOtherName}
                 />
                 <TextInput
                   style={[styles.optInput, { flex: 1 }]}
-                  placeholder="Telefon"
+                  placeholder={t('common.phone')}
                   placeholderTextColor={colors.textSecondary}
                   value={otherPhone}
                   onChangeText={setOtherPhone}
@@ -496,7 +501,7 @@ export default function NewOrderScreen() {
                 onPress={() => setOptionsSheet(false)}
                 activeOpacity={0.9}
               >
-                <Text style={styles.optDoneText}>Saqlash</Text>
+                <Text style={styles.optDoneText}>{t('common.save')}</Text>
               </TouchableOpacity>
             </ScrollView>
           </TouchableOpacity>

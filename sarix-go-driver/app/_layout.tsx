@@ -5,7 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppState } from 'react-native';
 
-import { initI18n } from '../src/i18n';
+import i18n, { initI18n } from '../src/i18n';
 import { useDriverStore } from '../src/store/driver';
 import { useThemeStore } from '../src/store/theme';
 import {
@@ -119,7 +119,7 @@ export default function RootLayout() {
       // Skip our own local "new order" alert (already saved via the WebSocket handler).
       if ((content.data as any)?.alert === true) return;
       addNotification({
-        title: content.title || 'Bildirishnoma',
+        title: content.title || i18n.t('notifications.fallbackTitle'),
         body: content.body || '',
         type: (content.data as any)?.type,
         data: (content.data as any) || {},

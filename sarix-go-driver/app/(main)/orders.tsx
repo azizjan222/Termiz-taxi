@@ -18,6 +18,7 @@ import { IncomingOrderModal } from '../../src/components/IncomingOrderModal';
 import { stopAlert } from '../../src/services/notifications';
 import { typography, spacing, radius, gradients } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
+import { formatDepartureTime } from '../../src/utils/departureTime';
 
 export default function OrdersScreen() {
   const { t } = useTranslation();
@@ -134,10 +135,10 @@ export default function OrdersScreen() {
     if (val && !isVerified) {
       setOnlineLocal(false);
       Alert.alert(
-        'Hujjatlar tasdiqlanmagan',
+        t('docsStatus.notVerifiedTitle'),
         driver?.documents_submitted
-          ? 'Hujjatlaringiz administrator tekshiruvida. Tasdiqlanishini kuting.'
-          : 'Avval barcha haydovchi hujjatlarini yuboring.'
+          ? t('docsStatus.underReview')
+          : t('docsStatus.submitFirst')
       );
       return;
     }
@@ -316,7 +317,7 @@ export default function OrdersScreen() {
           <IconText name="clock" size={13} color={colors.textSecondary} textStyle={styles.cardInfoText}>
             {/* A parcel is sent, not "departed" — same distinction the passenger app makes. */}
             {t(item.service_type === 'parcel' ? 'more.dispatch' : 'more.departure')}
-            : {item.departure_time || t('more.now')}
+            : {formatDepartureTime(item.departure_time, t)}
           </IconText>
           <IconText
             name={item.service_type === 'parcel' ? 'parcel' : 'people'}
@@ -368,8 +369,11 @@ export default function OrdersScreen() {
             disabled={insufficientBalance || accepting === item.id}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel={`${item.from_city}dan ${item.to_city}ga buyurtmani qabul qilish`}
-            accessibilityHint="Buyurtmani sizga biriktiradi va tafsilotlarini ochadi"
+            accessibilityLabel={t('more.a11yAcceptOrder', {
+              from: item.from_city,
+              to: item.to_city,
+            })}
+            accessibilityHint={t('more.a11yAcceptOrderHint')}
             accessibilityState={{
               disabled: insufficientBalance || accepting === item.id,
               busy: accepting === item.id,
@@ -416,11 +420,11 @@ export default function OrdersScreen() {
             trackColor={{ false: colors.border, true: colors.success }}
             thumbColor={colors.white}
             accessibilityRole="switch"
-            accessibilityLabel="Buyurtmalarni qabul qilish"
+            accessibilityLabel={t('more.a11yOnlineToggle')}
             accessibilityHint={
               isVerified
-                ? 'Onlayn holatni yoqadi yoki o‘chiradi'
-                : 'Administrator hujjatlarni tasdiqlagandan keyin yoqiladi'
+                ? t('more.a11yOnlineToggleHint')
+                : t('more.a11yOnlineToggleLocked')
             }
             accessibilityState={{ checked: onlineEnabled, disabled: !isVerified }}
           />
@@ -461,18 +465,18 @@ export default function OrdersScreen() {
           disabled={receiveCode !== 'documents_required'}
           activeOpacity={0.85}
           accessibilityRole={receiveCode === 'documents_required' ? 'button' : undefined}
-          accessibilityLabel="Haydovchi hujjatlari holati"
+          accessibilityLabel={t('docsStatus.a11yBanner')}
           accessibilityHint={
             receiveCode === 'documents_required'
-              ? 'Hujjatlarni to‘ldirish sahifasini ochadi'
-              : 'Administrator tasdig‘i kutilmoqda'
+              ? t('docsStatus.a11yOpenForm')
+              : t('docsStatus.a11yWaitingApproval')
           }
         >
           <IconText name="idCard" size={13} color="#B00020" textStyle={styles.topupBannerText}>
             {receiveMsg}
           </IconText>
           {receiveCode === 'documents_required' && (
-            <Text style={styles.topupBannerBtn}>Hujjatlarni to‘ldirish</Text>
+            <Text style={styles.topupBannerBtn}>{t('docsStatus.fillIn')}</Text>
           )}
         </TouchableOpacity>
       ) : !canReceive ? (

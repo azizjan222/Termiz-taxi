@@ -16,6 +16,7 @@ import { listMyOrders, type Order } from '../../src/api/orders';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
+import { formatDateTime } from '../../src/utils/dateLocale';
 
 export default function HistoryScreen() {
   const { t } = useTranslation();
@@ -48,17 +49,7 @@ export default function HistoryScreen() {
   const formatPrice = (p: number) =>
     p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
-  const formatDate = (iso: string) => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return d.toLocaleDateString('uz-UZ', {
-      day: '2-digit',
-      month: '2-digit',
-      year: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatDate = (iso: string) => formatDateTime(iso);
 
   const renderOrder = ({ item }: { item: Order }) => {
     const isParcel = item.service_type === 'parcel';
@@ -93,7 +84,7 @@ export default function HistoryScreen() {
               {t(`status.${item.status}`)}
             </Text>
           </View>
-          <Text style={styles.cardPrice}>{formatPrice(item.price)} so'm</Text>
+          <Text style={styles.cardPrice}>{formatPrice(item.price)} {t('common.currency')}</Text>
         </View>
 
         <Text style={styles.chevron}>›</Text>
@@ -141,7 +132,7 @@ export default function HistoryScreen() {
       {filtered.length === 0 && !refreshing ? (
         <View style={styles.empty}>
           <Icon name="inboxEmpty" size={64} color={colors.textMuted} />
-          <Text style={styles.emptyText}>Buyurtmalar yo'q</Text>
+          <Text style={styles.emptyText}>{t('history.empty')}</Text>
         </View>
       ) : (
         <FlatList

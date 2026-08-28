@@ -61,7 +61,7 @@ export default function LoginOtpScreen() {
         router.replace('/(main)/orders');
       }
     } catch (e: any) {
-      const msg = e?.response?.data?.error || "Kod noto'g'ri";
+      const msg = e?.response?.data?.error || t('auth.errBadCode');
       setError(msg);
     } finally {
       setLoading(false);
@@ -72,9 +72,9 @@ export default function LoginOtpScreen() {
     try {
       await requestDriverOtp(phone);
       setResendIn(60);
-      Alert.alert('✅', `Kod ${phone} raqamiga yuborildi`);
+      Alert.alert('✅', t('otp.codeSentTo', { phone }));
     } catch {
-      Alert.alert(t('common.error'), 'Xatolik');
+      Alert.alert(t('common.error'), t('common.error'));
     }
   };
 
@@ -87,8 +87,8 @@ export default function LoginOtpScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Tasdiqlash kodi</Text>
-          <Text style={styles.subtitle}>Kod yuborildi: {phone}</Text>
+          <Text style={styles.title}>{t('otp.title')}</Text>
+          <Text style={styles.subtitle}>{t('otp.sentTo', { phone })}</Text>
         </View>
 
         <View style={styles.body}>
@@ -135,15 +135,15 @@ export default function LoginOtpScreen() {
           >
             <Text style={[styles.resendText, resendIn === 0 && styles.resendActive]}>
               {resendIn > 0
-                ? `Qayta yuborish (${resendIn}s)`
-                : 'Kodni qayta yuborish'}
+                ? t('otp.resendIn', { seconds: resendIn })
+                : t('otp.resend')}
             </Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.footer}>
           <Button
-            title="Tasdiqlash"
+            title={t('common.confirm')}
             onPress={() => handleVerify()}
             loading={loading}
             disabled={code.length !== CODE_LENGTH}
@@ -153,7 +153,7 @@ export default function LoginOtpScreen() {
             style={styles.backLink}
             onPress={() => router.back()}
           >
-            <Text style={styles.backLinkText}>← Orqaga</Text>
+            <Text style={styles.backLinkText}>{`\u2190 ${t('common.back')}`}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

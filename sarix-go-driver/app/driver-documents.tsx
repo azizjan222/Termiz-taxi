@@ -131,7 +131,7 @@ export default function DriverDocumentsScreen() {
       // gates access to the app, so a silent failure strands the driver here.
       setUris((p) => ({ ...p, [key]: null }));
       setUploaded((p) => ({ ...p, [key]: false }));
-      Alert.alert('Xatolik', e?.response?.data?.error || "Rasm yuklanmadi. Qayta urinib ko'ring.");
+      Alert.alert(t('common.error'), e?.response?.data?.error || t('docs.errPhotoUpload'));
     } finally {
       setUploading(null);
     }
@@ -182,10 +182,10 @@ export default function DriverDocumentsScreen() {
       const res = await submitDocuments();
       if (res?.driver) setDriver(res.driver);
       Alert.alert(t('docs.doneTitle'), t('docs.doneBody'), [
-        { text: 'Davom etish', onPress: () => router.replace('/(main)/orders') },
+        { text: t('common.next'), onPress: () => router.replace('/(main)/orders') },
       ]);
     } catch (e: any) {
-      Alert.alert('Xatolik', e?.response?.data?.error || "Hujjatlarni yuborib bo'lmadi.");
+      Alert.alert(t('common.error'), e?.response?.data?.error || t('docs.errSubmit'));
     } finally {
       setSubmitting(false);
     }
@@ -269,10 +269,7 @@ export default function DriverDocumentsScreen() {
         {/* How-to banner */}
         <View style={styles.tipCard}>
           <Icon name="idea" size={18} color="#B45309" />
-          <Text style={styles.tipText}>
-            Hujjatni tekis yuzaga qo'ying, yaxshi yorug'likda, barcha ma'lumotlar aniq
-            o'qiladigan holatda suratga oling. Soya yoki yorqin aks tushmasin.
-          </Text>
+          <Text style={styles.tipText}>{t('docs.photoTip')}</Text>
         </View>
 
         {/* Personal info */}
@@ -330,7 +327,7 @@ export default function DriverDocumentsScreen() {
                   autoFocus
                 />
                 <Button
-                  title="Saqlash"
+                  title={t('common.save')}
                   onPress={saveNewNumber}
                   disabled={!isValidPhone(newPhone)}
                   variant="accent"
@@ -342,9 +339,7 @@ export default function DriverDocumentsScreen() {
               </View>
             ) : (
               <>
-                <Text style={styles.contactQuestion}>
-                  Yo'lovchilar shu raqam orqali bog'lanadi. To'g'ri bo'lsa davom eting, aks holda o'zgartiring.
-                </Text>
+                <Text style={styles.contactQuestion}>{t('docs.contactQuestion')}</Text>
                 <TouchableOpacity style={styles.changeBtn} onPress={startEditingPhone} activeOpacity={0.85}>
                   <Text style={styles.changeBtnText}>{t('docs.changePhone')}</Text>
                 </TouchableOpacity>
@@ -366,7 +361,7 @@ export default function DriverDocumentsScreen() {
             activeOpacity={0.8}
           >
             <Text style={carModel ? styles.inputValue : styles.inputPlaceholder}>
-              {carModel || 'Modelni tanlang'}
+              {carModel || t('docs.selectModel')}
             </Text>
           </TouchableOpacity>
 
@@ -411,7 +406,7 @@ export default function DriverDocumentsScreen() {
           <IconText name="document" size={15} color={colors.text} textStyle={styles.sectionTitle}>
             {t('docs.techPassport')}
           </IconText>
-          <Text style={styles.sectionHint}>Ikkala tomonini ham suratga oling</Text>
+          <Text style={styles.sectionHint}>{t('docs.bothSides')}</Text>
           <View style={styles.slotRow}>
             {renderSlot(DOCS[2])}
             {renderSlot(DOCS[3])}

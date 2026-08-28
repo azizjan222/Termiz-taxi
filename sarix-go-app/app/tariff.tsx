@@ -153,15 +153,15 @@ export default function TariffScreen() {
             <>
               <Text style={styles.tariffName}>{t('tariff.standard')}</Text>
               <Text style={styles.tariffPrice}>
-                {formatPrice(taxiQuote.price_per_person)} so'm
+                {formatPrice(taxiQuote.price_per_person)} {t('common.currency')}
               </Text>
               <Text style={styles.tariffHint}>{t('tariff.info', { persons: 4 })}</Text>
             </>
           ) : isParcel && parcelQuote ? (
             <>
               <Text style={styles.tariffName}>{t('tariff.parcel')}</Text>
-              <Text style={styles.tariffPrice}>Kelishiladi</Text>
-              <Text style={styles.tariffHint}>Pochta narxi haydovchi bilan kelishiladi</Text>
+              <Text style={styles.tariffPrice}>{t('order.negotiable')}</Text>
+              <Text style={styles.tariffHint}>{t('order.parcelNegotiableHint')}</Text>
             </>
           ) : (
             <Text style={styles.tariffHint}>{t('common.loading')}</Text>
@@ -206,7 +206,7 @@ export default function TariffScreen() {
                     </View>
                     <View style={styles.personRight}>
                       <Text style={styles.personPrice}>
-                        {formatPrice(taxiQuote.price_per_person * n)} so'm
+                        {formatPrice(taxiQuote.price_per_person * n)} {t('common.currency')}
                       </Text>
                       <View
                         style={[
@@ -248,7 +248,7 @@ export default function TariffScreen() {
                   </View>
                   <View style={styles.personRight}>
                     <Text style={styles.personPrice}>
-                      {formatPrice(fullCarQuote.price)} so'm
+                      {formatPrice(fullCarQuote.price)} {t('common.currency')}
                     </Text>
                     <View
                       style={[
@@ -274,10 +274,10 @@ export default function TariffScreen() {
           <Text style={styles.footerLabel}>{t('order.price')}</Text>
           <Text style={styles.footerPrice}>
             {isParcel
-              ? 'Kelishiladi'
+              ? t('order.negotiable')
               : quotesFailed || getCurrentPrice() <= 0
               ? '...'
-              : `${formatPrice(getCurrentPrice())} so'm`}
+              : `${formatPrice(getCurrentPrice())} ${t('common.currency')}`}
           </Text>
         </View>
         <Button

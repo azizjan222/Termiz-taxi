@@ -12,6 +12,7 @@ import {
 } from '../src/services/notificationHistory';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
+import { dateLocaleTag } from '../src/utils/dateLocale';
 
 export default function NotificationsScreen() {
   const { t } = useTranslation();
@@ -38,7 +39,7 @@ export default function NotificationsScreen() {
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
-    return d.toLocaleString('uz-UZ', {
+    return d.toLocaleString(dateLocaleTag(), {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     });
   };

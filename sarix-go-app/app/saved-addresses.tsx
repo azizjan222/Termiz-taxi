@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
@@ -17,6 +18,7 @@ import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
 export default function SavedAddressesScreen() {
+  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [items, setItems] = useState<SavedAddress[]>([]);
@@ -38,7 +40,7 @@ export default function SavedAddressesScreen() {
 
   const handleAdd = async () => {
     if (!address.trim()) {
-      Alert.alert('❌', 'Manzil kerak');
+      Alert.alert('❌', t('addresses.addressRequired'));
       return;
     }
     setSaving(true);
@@ -47,30 +49,34 @@ export default function SavedAddressesScreen() {
       setLabel(''); setAddress(''); setModalOpen(false);
       load();
     } catch (e: any) {
-      Alert.alert('❌', e?.response?.data?.error || 'Xatolik');
+      Alert.alert('❌', e?.response?.data?.error || t('common.error'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = (item: SavedAddress) => {
-    Alert.alert("O'chirish", `"${item.label || item.address}" ni o'chirish?`, [
-      { text: 'Bekor qilish', style: 'cancel' },
-      {
-        text: "O'chirish",
-        style: 'destructive',
-        onPress: async () => {
-          // Without try/catch this rejected inside the Alert callback (unhandled
-          // rejection) and the row silently stayed on screen with no error shown.
-          try {
-            await deleteAddress(item.id);
-            load();
-          } catch {
-            Alert.alert('Xatolik', "Manzilni o'chirib bo'lmadi. Qayta urinib ko'ring.");
-          }
+    Alert.alert(
+      t('addresses.delete'),
+      t('addresses.deleteConfirm', { name: item.label || item.address }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('addresses.delete'),
+          style: 'destructive',
+          onPress: async () => {
+            // Without try/catch this rejected inside the Alert callback (unhandled
+            // rejection) and the row silently stayed on screen with no error shown.
+            try {
+              await deleteAddress(item.id);
+              load();
+            } catch {
+              Alert.alert(t('common.error'), t('addresses.deleteFailed'));
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   return (
@@ -79,7 +85,7 @@ export default function SavedAddressesScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Mening manzillarim</Text>
+        <Text style={styles.title}>{t('addresses.title')}</Text>
         <TouchableOpacity onPress={() => setModalOpen(true)} style={styles.addBtn}>
           <Text style={styles.addIcon}>+</Text>
         </TouchableOpacity>
@@ -88,9 +94,9 @@ export default function SavedAddressesScreen() {
       {items.length === 0 && !loading ? (
         <View style={styles.empty}>
           <Icon name="location" size={64} color={colors.textMuted} />
-          <Text style={styles.emptyText}>Saqlangan manzillar yo'q</Text>
+          <Text style={styles.emptyText}>{t('addresses.empty')}</Text>
           <Text style={styles.emptyHint}>
-            Tez-tez ishlatadigan manzillaringizni qo'shing
+            {t('addresses.emptyHint')}
           </Text>
         </View>
       ) : (
@@ -121,24 +127,24 @@ export default function SavedAddressesScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Yangi manzil</Text>
+            <Text style={styles.modalTitle}>{t('addresses.add')}</Text>
 
-            <Text style={styles.fieldLabel}>Nomi (Uy, Ish ...)</Text>
+            <Text style={styles.fieldLabel}>{t('addresses.label')}</Text>
             <TextInput
               style={styles.input}
               value={label}
               onChangeText={setLabel}
-              placeholder="Uy"
+              placeholder={t('addresses.labelPlaceholder')}
               placeholderTextColor={colors.textMuted}
               maxLength={50}
             />
 
-            <Text style={styles.fieldLabel}>Manzil</Text>
+            <Text style={styles.fieldLabel}>{t('addresses.address')}</Text>
             <TextInput
               style={[styles.input, { minHeight: 80 }]}
               value={address}
               onChangeText={setAddress}
-              placeholder="Termiz, ko'cha 1, uy 5"
+              placeholder={t('addresses.addressPlaceholder')}
               placeholderTextColor={colors.textMuted}
               multiline
               maxLength={200}
@@ -146,14 +152,14 @@ export default function SavedAddressesScreen() {
 
             <View style={styles.modalButtons}>
               <Button
-                title="Bekor qilish"
+                title={t('common.cancel')}
                 onPress={() => setModalOpen(false)}
                 variant="outline"
                 fullWidth={false}
                 style={{ flex: 1 }}
               />
               <Button
-                title="Saqlash"
+                title={t('common.save')}
                 onPress={handleAdd}
                 loading={saving}
                 variant="primary"

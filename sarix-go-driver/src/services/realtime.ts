@@ -1,10 +1,12 @@
 import * as Haptics from 'expo-haptics';
 
+import i18n from '../i18n';
+
 import { WS_URL, getAuthToken } from '../api/client';
 import { type DriverOrder } from '../api/driver';
 import { useRealtimeStore } from '../store/realtime';
 import { useDriverStore } from '../store/driver';
-import { playNewOrderAlert, playOrderCancelledAlert } from './notifications';
+import { playNewOrderAlert, playOrderCancelledAlert, newOrderBody } from './notifications';
 import { addNotification } from './notificationHistory';
 
 // ---------------------------------------------------------------------------
@@ -115,8 +117,8 @@ function handleMessage(data: any) {
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addNotification({
-      title: '🚕 Yangi zakas',
-      body: `${order.from_city} → ${order.to_city}${order.price ? ` · ${order.price} so'm` : ''}`,
+      title: i18n.t('notifications.newOrder'),
+      body: newOrderBody({ from: order.from_city, to: order.to_city, price: order.price }),
       type: 'new_order',
       data: { order_id: order.id },
     });
@@ -128,8 +130,8 @@ function handleMessage(data: any) {
     playOrderCancelledAlert();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     addNotification({
-      title: '❌ Zakas bekor qilindi',
-      body: "Yo'lovchi zakasni bekor qildi",
+      title: i18n.t('notifications.orderCancelled'),
+      body: i18n.t('notifications.orderCancelledBody'),
       type: 'order_cancelled',
       data: { order_id: msg.order_id },
     });
