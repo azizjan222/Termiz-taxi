@@ -87,7 +87,7 @@ export default function ProfileScreen() {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert(t('common.error'), 'Galereyaga ruxsat kerak');
+        Alert.alert(t('common.error'), t('profile.galleryPermission'));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -115,7 +115,7 @@ export default function ProfileScreen() {
   const handleSaveProfile = async () => {
     const firstName = nameDraft.trim();
     if (!firstName) {
-      Alert.alert(t('common.error'), 'Ismni kiriting');
+      Alert.alert(t('common.error'), t('profile.enterName'));
       return;
     }
     try {
@@ -177,9 +177,9 @@ export default function ProfileScreen() {
     { icon: 'location', labelKey: 'profile.savedAddresses', onPress: () => router.push('/saved-addresses') },
     // TEMP: invite-a-friend disabled for now — re-enable later (keyin qo'shamiz)
     // { icon: 'gift', labelKey: 'profile.inviteFriends', onPress: () => router.push('/referral') },
-    { icon: 'card', labelKey: 'profile.paymentMethods', onPress: () => Alert.alert('Soon') },
+    { icon: 'card', labelKey: 'profile.paymentMethods', onPress: () => Alert.alert(t('common.comingSoon')) },
     { icon: 'notification', labelKey: 'profile.notifications', onPress: () => router.push('/notifications') },
-    { icon: 'tag', labelKey: 'profile.promoCodes', onPress: () => Alert.alert('Soon') },
+    { icon: 'tag', labelKey: 'profile.promoCodes', onPress: () => Alert.alert(t('common.comingSoon')) },
     { icon: 'robot', labelKey: 'ai.title', onPress: () => router.push('/ai-chat') },
     { icon: 'help', labelKey: 'profile.faq', onPress: () => router.push('/faq') },
     { icon: 'settings', labelKey: 'profile.settings', onPress: () => router.push('/settings') },
@@ -204,7 +204,7 @@ export default function ProfileScreen() {
             activeOpacity={0.8}
           >
             <Icon name="edit" size={13} color={colors.primary} />
-            <Text style={styles.editPillText}>Tahrirlash</Text>
+            <Text style={styles.editPillText}>{t('common.edit')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.85}>
@@ -317,7 +317,7 @@ export default function ProfileScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Profilni to'g'rilash</Text>
+            <Text style={styles.modalTitle}>{t('profile.editTitle')}</Text>
 
             {/* Avatar preview + change photo */}
             <TouchableOpacity
@@ -344,7 +344,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity onPress={pickAndUploadPhoto} disabled={uploading}>
               <Text style={styles.modalPhotoBtn}>
-                {uploading ? '…' : "Rasmni o'zgartirish"}
+                {uploading ? '…' : t('profile.changePhoto')}
               </Text>
             </TouchableOpacity>
 
@@ -354,7 +354,7 @@ export default function ProfileScreen() {
               style={styles.modalInput}
               value={nameDraft}
               onChangeText={setNameDraft}
-              placeholder="Ism"
+              placeholder={t('common.name')}
               placeholderTextColor={colors.textMuted}
               autoCapitalize="words"
             />
@@ -366,7 +366,7 @@ export default function ProfileScreen() {
                 onPress={() => setEditVisible(false)}
                 disabled={saving}
               >
-                <Text style={styles.modalBtnCancelText}>Bekor qilish</Text>
+                <Text style={styles.modalBtnCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, styles.modalBtnSave]}
@@ -376,7 +376,7 @@ export default function ProfileScreen() {
                 {saving ? (
                   <ActivityIndicator color={colors.textOnPrimary} />
                 ) : (
-                  <Text style={styles.modalBtnSaveText}>Saqlash</Text>
+                  <Text style={styles.modalBtnSaveText}>{t('common.save')}</Text>
                 )}
               </TouchableOpacity>
             </View>

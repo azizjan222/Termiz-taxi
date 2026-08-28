@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTranslation } from 'react-i18next';
 
 import { Logo } from '../../src/components/Logo';
 import { Button } from '../../src/components/Button';
@@ -12,6 +13,7 @@ import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
 export default function LanguageScreen() {
+  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [selected, setSelected] = useState<SupportedLanguage>('uz');
@@ -27,7 +29,9 @@ export default function LanguageScreen() {
       <View style={styles.header}>
         <Logo size="lg" />
         <Text style={styles.title}>Sarix Go</Text>
-        <Text style={styles.subtitle}>Tilni tanlang / Choose language</Text>
+        {/* `lng` renders in the language being previewed, so the heading and CTA switch
+            as the user taps an option — before the choice is committed on Next. */}
+        <Text style={styles.subtitle}>{t('language.select', { lng: selected })}</Text>
       </View>
 
       <View style={styles.options}>
@@ -63,7 +67,11 @@ export default function LanguageScreen() {
       </View>
 
       <View style={styles.footer}>
-        <Button title="Davom etish / Next" onPress={handleNext} variant="primary" />
+        <Button
+          title={t('common.next', { lng: selected })}
+          onPress={handleNext}
+          variant="primary"
+        />
       </View>
     </SafeAreaView>
   );

@@ -61,7 +61,7 @@ export async function setupNotificationChannels() {
       await Notifications.deleteNotificationChannelAsync('orders');
     } catch {}
     await Notifications.setNotificationChannelAsync(ORDERS_CHANNEL, {
-      name: 'Buyurtmalar',
+      name: i18n.t('channels.orders'),
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#F4C430',
@@ -70,14 +70,14 @@ export async function setupNotificationChannels() {
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
     await Notifications.setNotificationChannelAsync('balance', {
-      name: 'Balans',
+      name: i18n.t('channels.balance'),
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 200, 100, 200],
       lightColor: '#10B981',
     });
     // Dedicated channel for order cancellations / updates with its own distinct sound.
     await Notifications.setNotificationChannelAsync(ALERTS_CHANNEL, {
-      name: 'Bildirishnomalar',
+      name: i18n.t('channels.alerts'),
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 400, 200, 400],
       sound: 'order_cancelled.wav',

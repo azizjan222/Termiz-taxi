@@ -21,7 +21,7 @@ describe('useOrderStore', () => {
     store.setField('personCount', 4);
     store.setField('maleCount', 2);
     store.setField('femaleCount', 2);
-    store.setField('departureTime', 'Ertaga');
+    store.setField('departureTime', 'tomorrow');
     store.setField('note', 'Test izohi');
     store.setField('paymentMethod', 'card');
     store.setField('promoCode', 'PROMO');
@@ -43,7 +43,7 @@ describe('useOrderStore', () => {
       personCount: 1,
       maleCount: 1,
       femaleCount: 0,
-      departureTime: 'Hozir',
+      departureTime: 'now',
       note: '',
       paymentMethod: 'cash',
       promoCode: '',

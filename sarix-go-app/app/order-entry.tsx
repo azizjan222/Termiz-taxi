@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
 import YandexMap, { YandexMapHandle } from '../src/components/YandexMap';
@@ -65,17 +66,22 @@ function formatDisplayAddress(full: string): string {
   const parts = full.split(',').map((p) => p.trim()).filter(Boolean);
   if (parts.length === 0) return '';
 
+  // The geocoder answers in the user's language (see src/utils/yandexLocale.ts), so every
+  // matcher below has to recognise the Uzbek, Russian AND English spellings — otherwise an
+  // English-speaking passenger gets the raw, unshortened address.
   const isBroad = (p: string) => {
     const l = p.toLowerCase();
     return (
       l.includes('oʻzbekiston') || l.includes("o'zbekiston") || l.includes('uzbekiston') ||
-      l.includes('узбекистан') || l.includes('viloyat') || l.includes('область') ||
-      l.includes('сурхандарь') || l.includes('surxondar')
+      l.includes('узбекистан') || l.includes('uzbekistan') ||
+      l.includes('viloyat') || l.includes('область') || l.includes('region') ||
+      l.includes('сурхандарь') || l.includes('surxondar') || l.includes('surkhandar')
     );
   };
-  const isDistrict = (p: string) => /tuman|shahri|shahar|шаҳар|город|район/i.test(p);
+  const isDistrict = (p: string) =>
+    /tuman|shahri|shahar|шаҳар|город|район|district|\bcity\b/i.test(p);
   const isVillage = (p: string) =>
-    /qishlo|shaharcha|шаҳарча|mahalla|маҳалла|посёл|posyol|aholi punkti|MFY/i.test(p);
+    /qishlo|shaharcha|шаҳарча|mahalla|маҳалла|посёл|posyol|aholi punkti|MFY|village|settlement|urban-type/i.test(p);
 
   const narrow = parts.filter((p) => !isBroad(p));
   const district = narrow.find(isDistrict);
@@ -104,6 +110,7 @@ function formatDisplayAddress(full: string): string {
  *    long-haul districts (>= 70 km away) pulled from the app's route data
  */
 export default function OrderEntryScreen() {
+  const { t } = useTranslation();
   const orderStore = useOrderStore();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -207,14 +214,14 @@ export default function OrderEntryScreen() {
           if (!stillNearby) {
             addressCoordsRef.current = null;
             setFullAddress('');
-            setAddress('Xaritada belgilangan nuqta');
+            setAddress(t('orderEntry.pointOnMap'));
           }
         }
       } finally {
         if (reqId === reqIdRef.current) setResolving(false);
       }
     }, 200); // Fast debounce for responsiveness
-  }, []);
+  }, [t]);
 
   // Once the map's WebView finishes loading, re-resolve the current center via the
   // in-map (Uzbek) geocoder so the initial HTTP (Russian) result is upgraded to a
@@ -365,21 +372,21 @@ export default function OrderEntryScreen() {
   const savePickup = useCallback(() => {
     const displayAddr = address || '';
     const cityBasis = fullAddress || displayAddr;
-    orderStore.setField('fromCity', cityBasis ? deriveCity(cityBasis) : 'Joriy joylashuv');
+    orderStore.setField('fromCity', cityBasis ? deriveCity(cityBasis) : t('orderEntry.currentLocation'));
     orderStore.setField('fromAddress', displayAddr);
     orderStore.setField('fromLat', center.lat);
     orderStore.setField('fromLon', center.lon);
-  }, [address, fullAddress, center, deriveCity, orderStore]);
+  }, [address, fullAddress, center, deriveCity, orderStore, t]);
 
   // Persist the current map center as the destination point.
   const saveDestination = useCallback(() => {
     const displayAddr = address || '';
     const cityBasis = fullAddress || displayAddr;
-    orderStore.setField('toCity', cityBasis ? deriveCity(cityBasis) : 'Tanlangan manzil');
+    orderStore.setField('toCity', cityBasis ? deriveCity(cityBasis) : t('orderEntry.selectedAddress'));
     orderStore.setField('toAddress', displayAddr);
     orderStore.setField('toLat', center.lat);
     orderStore.setField('toLon', center.lon);
-  }, [address, fullAddress, center, deriveCity, orderStore]);
+  }, [address, fullAddress, center, deriveCity, orderStore, t]);
 
   // Destination map mode: confirm the chosen point and continue to the next step.
   const handleConfirmDestination = useCallback(() => {
@@ -422,7 +429,9 @@ export default function OrderEntryScreen() {
 
         {/* Top "Manzilingiz" card */}
         <View style={styles.topCard} pointerEvents="box-none">
-          <Text style={styles.topLabel}>{isDest ? 'Yakuniy manzil ›' : 'Manzilingiz ›'}</Text>
+          <Text style={styles.topLabel}>
+            {isDest ? `${t('orderEntry.finalAddress')} ›` : `${t('orderEntry.yourAddress')} ›`}
+          </Text>
           {address ? (
             // Keep the resolved address visible while a new lookup runs (e.g. when
             // zooming/panning) — show only a small inline spinner, never blank it out.
@@ -441,11 +450,11 @@ export default function OrderEntryScreen() {
           ) : resolving || detecting ? (
             <View style={styles.row}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.topAddrMuted}>Aniqlanmoqda…</Text>
+              <Text style={styles.topAddrMuted}>{t('orderEntry.detecting')}</Text>
             </View>
           ) : (
             <Text style={styles.topAddr} numberOfLines={1}>
-              Xaritani bosing yoki suring
+              {t('orderEntry.tapOrDragMap')}
             </Text>
           )}
         </View>
@@ -477,7 +486,13 @@ export default function OrderEntryScreen() {
         <View style={styles.sheetHeader}>
           <Icon name={isParcel ? 'parcel' : 'taxi'} size={22} color={colors.primary} />
           <Text style={styles.sheetTitle}>
-            {isDest ? (isParcel ? 'Yetkazish manzili' : 'Qayerga borasiz?') : isParcel ? 'Pochta' : 'Taksi'}
+            {isDest
+              ? isParcel
+                ? t('orderEntry.deliveryAddress')
+                : t('orderEntry.whereTo')
+              : isParcel
+              ? t('tariff.parcel')
+              : t('order.taxi')}
           </Text>
         </View>
 
@@ -487,7 +502,7 @@ export default function OrderEntryScreen() {
             <View style={styles.destPreview}>
               <Icon name="flag" size={14} color={colors.textSecondary} style={styles.destPreviewIcon} />
               <Text style={styles.destPreviewText} numberOfLines={2}>
-                {address || 'Manzilni belgilash uchun xaritani suring'}
+                {address || t('orderEntry.dragToPick')}
               </Text>
             </View>
             <TouchableOpacity
@@ -495,14 +510,14 @@ export default function OrderEntryScreen() {
               onPress={handleConfirmDestination}
               activeOpacity={0.9}
             >
-              <Text style={styles.confirmBtnText}>Manzilni tasdiqlash</Text>
+              <Text style={styles.confirmBtnText}>{t('orderEntry.confirmAddress')}</Text>
             </TouchableOpacity>
           </>
         ) : (
           <>
             <TouchableOpacity style={styles.whereToBtn} onPress={handleWhereTo} activeOpacity={0.85}>
               <Text style={styles.whereToText}>
-                {isParcel ? 'Pochtani qayerga yuboramiz?' : 'Qayerga borasiz?'}
+                {isParcel ? t('orderEntry.whereToParcel') : t('orderEntry.whereTo')}
               </Text>
               <View style={styles.whereToArrow}>
                 <Text style={styles.whereToArrowText}>›</Text>
@@ -522,7 +537,7 @@ export default function OrderEntryScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.quickTitle}>{d}</Text>
-                  <Text style={styles.quickSub}>Surxondaryo viloyati</Text>
+                  <Text style={styles.quickSub}>{t('cities.region')}</Text>
                 </View>
               </TouchableOpacity>
             ))}

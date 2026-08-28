@@ -13,6 +13,7 @@ import {
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
+import { formatDateTime } from '../src/utils/dateLocale';
 
 export default function NotificationsScreen() {
   const { t } = useTranslation();
@@ -38,12 +39,7 @@ export default function NotificationsScreen() {
     setItems([]);
   };
 
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleString('uz-UZ', {
-      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-    });
-  };
+  const formatDate = (iso: string) => formatDateTime(iso);
 
   const iconFor = (type?: string): IconName => {
     switch (type) {

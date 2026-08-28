@@ -13,10 +13,10 @@ import { useThemeStore, type ThemeMode } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
-const THEMES: { mode: ThemeMode; label: string; icon: IconName }[] = [
-  { mode: 'auto', label: 'Avtomatik', icon: 'themeAuto' },
-  { mode: 'light', label: 'Yorug\'', icon: 'sun' },
-  { mode: 'dark', label: 'Qorong\'i', icon: 'moon' },
+const THEMES: { mode: ThemeMode; labelKey: string; icon: IconName }[] = [
+  { mode: 'auto', labelKey: 'settings.themeAuto', icon: 'themeAuto' },
+  { mode: 'light', labelKey: 'settings.themeLight', icon: 'sun' },
+  { mode: 'dark', labelKey: 'settings.themeDark', icon: 'moon' },
 ];
 
 export default function SettingsScreen() {
@@ -80,7 +80,7 @@ export default function SettingsScreen() {
 
         {/* Theme */}
         <IconText name="palette" size={15} color={colors.text} textStyle={styles.sectionTitle}>
-          Mavzu
+          {t('settings.theme')}
         </IconText>
         <View style={styles.card}>
           {THEMES.map((theme) => {
@@ -94,7 +94,7 @@ export default function SettingsScreen() {
               >
                 <Icon name={theme.icon} size={22} color={colors.textSecondary} style={styles.optionFlag} />
                 <Text style={[styles.optionLabel, selected && styles.optionLabelSelected]}>
-                  {theme.label}
+                  {t(theme.labelKey)}
                 </Text>
                 {selected && <Icon name="check" size={16} color={colors.primary} />}
               </TouchableOpacity>

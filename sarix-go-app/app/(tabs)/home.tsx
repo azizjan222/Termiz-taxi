@@ -62,8 +62,8 @@ export default function HomeScreen() {
           onPress={() => startOrder('taxi')}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Taksi buyurtma qilish"
-          accessibilityHint="Olish va borish manzillarini tanlash oynasini ochadi"
+          accessibilityLabel={t('home.orderTaxi')}
+          accessibilityHint={t('home.a11yTaxiHint')}
         >
           <View style={[styles.serviceIcon, { backgroundColor: colors.accent }]}>
             <Icon name="taxi" size={28} color={colors.primary} />
@@ -72,13 +72,13 @@ export default function HomeScreen() {
             <Text style={styles.serviceTitle}>{t('home.orderTaxi')}</Text>
             <Text style={styles.serviceSub}>{t('tariff.standard')}</Text>
             <View style={styles.chipsRow}>
-              {['Tez', 'Qulay', 'Ishonchli'].map((label) => (
+              {['home.tagFast', 'home.tagComfortable', 'home.tagReliable'].map((label) => (
                 <View
                   key={label}
                   style={[styles.chip, { backgroundColor: '#FFF3CC' }]}
                 >
                   <Text style={[styles.chipText, { color: colors.accentDark }]}>
-                    {label}
+                    {t(label)}
                   </Text>
                 </View>
               ))}
@@ -95,8 +95,8 @@ export default function HomeScreen() {
           onPress={() => startOrder('parcel')}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Pochta buyurtma qilish"
-          accessibilityHint="Jo‘natmani olish va yetkazish manzillarini tanlash oynasini ochadi"
+          accessibilityLabel={t('home.orderParcel')}
+          accessibilityHint={t('home.a11yParcelHint')}
         >
           <View style={[styles.serviceIcon, { backgroundColor: '#E0E7FF' }]}>
             <Icon name="parcel" size={28} color={colors.primary} />
@@ -105,13 +105,13 @@ export default function HomeScreen() {
             <Text style={styles.serviceTitle}>{t('home.orderParcel')}</Text>
             <Text style={styles.serviceSub}>{t('tariff.parcelHint')}</Text>
             <View style={styles.chipsRow}>
-              {['Xavfsiz', 'Ishonchli', 'Tezkor'].map((label) => (
+              {['home.tagSafe', 'home.tagReliable', 'home.tagQuick'].map((label) => (
                 <View
                   key={label}
                   style={[styles.chip, { backgroundColor: '#E0E7FF' }]}
                 >
                   <Text style={[styles.chipText, { color: colors.primary }]}>
-                    {label}
+                    {t(label)}
                   </Text>
                 </View>
               ))}

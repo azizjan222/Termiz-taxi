@@ -31,24 +31,24 @@ const { width: SCREEN_W } = Dimensions.get('window');
 
 // Promo / info banners shown while the passenger waits. They auto-rotate
 // (right -> left) every 7s and can also be swiped manually.
-type Banner = { icon: IconName; title: string; text: string; bg: string };
+type Banner = { icon: IconName; titleKey: string; textKey: string; bg: string };
 const BANNERS: Banner[] = [
   {
     icon: 'taxi',
-    title: 'Buyurtmangiz qabul qilindi',
-    text: 'Sarix Go yaqin atrofdagi haydovchilarni qidirmoqda — biroz kuting.',
+    titleKey: 'searching.banner1Title',
+    textKey: 'searching.banner1Text',
     bg: '#E0E7FF',
   },
   {
     icon: 'sun',
-    title: 'Issiqda kutib oʻtirmaysiz',
-    text: 'Taksini koʻchada kutmang — haydovchi oʻzi uyingiz oldidan olib ketadi.',
+    titleKey: 'searching.banner2Title',
+    textKey: 'searching.banner2Text',
     bg: '#FFF3CC',
   },
   {
     icon: 'card',
-    title: 'Narx oldindan aniq',
-    text: 'Savdolashish yoʻq — narx buyurtma berishdan oldin koʻrsatiladi. Naqd yoki karta.',
+    titleKey: 'searching.banner3Title',
+    textKey: 'searching.banner3Text',
     bg: '#D1FAE5',
   },
 ];
@@ -200,10 +200,8 @@ export default function SearchingScreen() {
           alerted = true;
           clearInterval(interval);
           Alert.alert(
-            order.status === 'expired' ? 'Vaqt tugadi' : 'Buyurtma bekor qilindi',
-            order.status === 'expired'
-              ? 'Afsuski, hozircha haydovchi topilmadi. Qaytadan urinib koʻring.'
-              : 'Buyurtma bekor qilindi.',
+            t(order.status === 'expired' ? 'searching.expiredTitle' : 'searching.cancelledTitle'),
+            t(order.status === 'expired' ? 'searching.expiredBody' : 'searching.cancelledBody'),
             [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }]
           );
         }
@@ -269,20 +267,20 @@ export default function SearchingScreen() {
           textStyle={styles.sentLabel}
           style={styles.sentLabelRow}
         >
-          Zakas yuborildi
+          {t('searching.orderSent')}
         </IconText>
 
         {found ? (
           <>
-            <Text style={styles.statusTitle}>Holat: Haydovchi topildi</Text>
-            <Text style={styles.statusSub}>Tez orada siz bilan bogʻlanadi…</Text>
+            <Text style={styles.statusTitle}>{t('searching.statusFound')}</Text>
+            <Text style={styles.statusSub}>{t('searching.statusFoundSub')}</Text>
           </>
         ) : (
           <>
-            <Text style={styles.statusTitle}>Holat: Haydovchi qidirilmoqda</Text>
+            <Text style={styles.statusTitle}>{t('searching.statusSearching')}</Text>
             <Text style={styles.timer}>{mmss(elapsed)}</Text>
             <Text style={styles.statusSub}>
-              Haydovchi zakasni qabul qilishi bilan xabar beramiz.
+              {t('searching.statusSearchingSub')}
             </Text>
           </>
         )}
@@ -302,8 +300,8 @@ export default function SearchingScreen() {
             <View key={i} style={styles.bannerPage}>
               <View style={[styles.banner, { backgroundColor: b.bg }]}>
                 <Icon name={b.icon} size={40} color={colors.primary} style={styles.bannerEmoji} />
-                <Text style={styles.bannerTitle}>{b.title}</Text>
-                <Text style={styles.bannerText}>{b.text}</Text>
+                <Text style={styles.bannerTitle}>{t(b.titleKey)}</Text>
+                <Text style={styles.bannerText}>{t(b.textKey)}</Text>
               </View>
             </View>
           ))}
@@ -318,7 +316,7 @@ export default function SearchingScreen() {
 
       <View style={styles.footer}>
         {found ? (
-          <Button title="Buyurtmani koʻrish" onPress={() => router.replace(`/order/${orderId}`)} />
+          <Button title={t('searching.viewOrder')} onPress={() => router.replace(`/order/${orderId}`)} />
         ) : (
           <Button title={t('order.cancelOrder')} onPress={handleCancel} variant="outline" />
         )}

@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { Icon, IconText } from '../src/components/Icon';
 import { getReferralInfo, type ReferralInfo } from '../src/api/promo';
@@ -12,6 +13,7 @@ import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
 export default function ReferralScreen() {
+  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [info, setInfo] = useState<ReferralInfo | null>(null);
@@ -25,14 +27,17 @@ export default function ReferralScreen() {
   const handleShare = async () => {
     if (!info) return;
     await Share.share({
-      message: `🚕 Sarix Go - Termiz Sariosiyo Taxi!\n\nMen sizni taklif qilaman, ilovaga shu kod bilan kiring va 5,000 so'm bonus oling!\n\nKod: ${info.referral_code}\n\n${info.referral_link}`,
+      message: t('referral.shareMessage', {
+        code: info.referral_code,
+        link: info.referral_link,
+      }),
     });
   };
 
   const copyCode = () => {
     if (!info) return;
     Clipboard.setString(info.referral_code);
-    Alert.alert('✅', 'Kod nusxa olindi');
+    Alert.alert('✅', t('referral.codeCopied'));
   };
 
   if (!info) {
@@ -51,21 +56,21 @@ export default function ReferralScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Do'stlarni taklif qiling</Text>
+        <Text style={styles.title}>{t('referral.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <View style={styles.body}>
         <View style={styles.heroBox}>
           <Icon name="gift" size={56} color={colors.accent} style={styles.heroEmoji} />
-          <Text style={styles.heroTitle}>Har do'st = 10,000 so'm</Text>
+          <Text style={styles.heroTitle}>{t('referral.heroTitle')}</Text>
           <Text style={styles.heroSubtitle}>
-            Do'stingiz ham 5,000 so'm bonus oladi
+            {t('referral.heroSubtitle')}
           </Text>
         </View>
 
         <View style={styles.codeBox}>
-          <Text style={styles.codeLabel}>SIZNING KODINGIZ</Text>
+          <Text style={styles.codeLabel}>{t('referral.yourCode')}</Text>
           <TouchableOpacity onPress={copyCode} style={styles.codeRow}>
             <Text style={styles.code}>{info.referral_code}</Text>
             <Icon name="document" size={18} color={colors.primary} />
@@ -75,13 +80,13 @@ export default function ReferralScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
             <Text style={styles.statValue}>{info.referred_count}</Text>
-            <Text style={styles.statLabel}>Do'stlar</Text>
+            <Text style={styles.statLabel}>{t('referral.friends')}</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={[styles.statValue, { color: colors.success }]}>
               {formatPrice(info.bonus_earned)}
             </Text>
-            <Text style={styles.statLabel}>Bonus (so'm)</Text>
+            <Text style={styles.statLabel}>{t('referral.bonus')}</Text>
           </View>
         </View>
 
@@ -92,16 +97,16 @@ export default function ReferralScreen() {
             color={colors.textOnPrimary}
             textStyle={styles.shareBtnText}
           >
-            Ulashish
+            {t('referral.share')}
           </IconText>
         </TouchableOpacity>
 
         <Text style={styles.howItWorks}>
-          <Text style={{ fontWeight: '700' }}>Qanday ishlaydi?</Text>{'\n\n'}
-          1. Kodingizni do'stlaringizga yuboring{'\n'}
-          2. Do'stingiz ilovaga ro'yxatdan o'tadi{'\n'}
-          3. Birinchi safar buyurtma berganda — siz 10,000 so'm{'\n'}
-          4. Do'stingiz ham 5,000 so'm bonus oladi
+          <Text style={{ fontWeight: '700' }}>{t('referral.howItWorks')}</Text>{'\n\n'}
+          {`1. ${t('referral.step1')}`}{'\n'}
+          {`2. ${t('referral.step2')}`}{'\n'}
+          {`3. ${t('referral.step3')}`}{'\n'}
+          {`4. ${t('referral.step4')}`}
         </Text>
       </View>
     </SafeAreaView>

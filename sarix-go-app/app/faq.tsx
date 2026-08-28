@@ -12,41 +12,9 @@ import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
-// Static FAQ content (Uzbek) for passengers.
-const FAQ: { q: string; a: string }[] = [
-  {
-    q: 'Qanday qilib taksi buyurtma qilaman?',
-    a: "Bosh sahifada \"Taksi chaqirish\"ni tanlang, qayerdan-qayergani belgilang, yo'lovchilar sonini kiriting va haydovchi qidirishni boshlang.",
-  },
-  {
-    q: 'Manzilni qanday tanlayman?',
-    a: "Taksi/Pochtani tanlaganingizda joylashuvingiz xaritada avtomatik aniqlanadi. \"Qayerga borasiz?\"ni bosib, manzilni qidiruvdan, saqlangan \"Uy\"/\"Ish\" manzillaringizdan yoki tumanlar ro'yxatidan tanlang.",
-  },
-  {
-    q: 'Haydovchi qayerdaligini ko\'ra olamanmi?',
-    a: "Ha. Haydovchi zakasni qabul qilgach, buyurtma sahifasida uning joylashuvi xaritada real vaqtda ko'rinadi.",
-  },
-  {
-    q: 'To\'lov qanday amalga oshiriladi?',
-    a: "To'lov haydovchi bilan to'g'ridan-to'g'ri (naqd) amalga oshiriladi. Narx buyurtma berishdan oldin ko'rsatiladi.",
-  },
-  {
-    q: 'Buyurtmani qanday bekor qilaman?',
-    a: "Qidiruv yoki buyurtma sahifasida \"Buyurtmani bekor qilish\" tugmasini bosing.",
-  },
-  {
-    q: 'Do\'stimni qanday taklif qilaman?',
-    a: "Profil → \"Do'stlarni taklif qiling\" bo'limidan kodingizni ulashing. Do'stingiz ham, siz ham bonus olasiz.",
-  },
-  {
-    q: 'Haydovchini qanday baholayman?',
-    a: "Sayohat yakunlangach, haydovchini 1-5 yulduz bilan baholash oynasi ochiladi. Izoh ham qoldirishingiz mumkin.",
-  },
-  {
-    q: 'Tilni va mavzuni qanday o\'zgartiraman?',
-    a: "Profil → Sozlamalar bo'limida tilni (O'zbek/Rus/Ingliz) va qorong'i/yorug' rejimni tanlashingiz mumkin.",
-  },
-];
+// FAQ content lives in the locale files (faq.q1..q8 / faq.a1..a8) so it follows the
+// selected language; this is just the list of indices to render.
+const FAQ_COUNT = 8;
 
 export default function FaqScreen() {
   const { t } = useTranslation();
@@ -78,7 +46,7 @@ export default function FaqScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {FAQ.map((item, i) => {
+        {Array.from({ length: FAQ_COUNT }, (_, i) => i).map((i) => {
           const expanded = open === i;
           return (
             <TouchableOpacity
@@ -88,10 +56,10 @@ export default function FaqScreen() {
               activeOpacity={0.8}
             >
               <View style={styles.qRow}>
-                <Text style={styles.q}>{item.q}</Text>
+                <Text style={styles.q}>{t(`faq.q${i + 1}`)}</Text>
                 <Text style={styles.chev}>{expanded ? '−' : '+'}</Text>
               </View>
-              {expanded && <Text style={styles.a}>{item.a}</Text>}
+              {expanded && <Text style={styles.a}>{t(`faq.a${i + 1}`)}</Text>}
             </TouchableOpacity>
           );
         })}

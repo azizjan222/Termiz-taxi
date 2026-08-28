@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ServiceType } from '../api/orders';
+import type { DepartureCode } from '../utils/departureTime';
 
 interface OrderDraft {
   fromCity: string | null;
@@ -14,7 +15,11 @@ interface OrderDraft {
   personCount: number;
   maleCount: number;
   femaleCount: number;
-  departureTime: string;
+  /**
+   * Stable preset code, NOT a display string. Rendered via `departure.<code>` and
+   * converted to the canonical wire value with `DEPARTURE_WIRE` only at submit time.
+   */
+  departureTime: DepartureCode;
   note: string;
   paymentMethod: 'cash' | 'card' | 'balance';
   promoCode: string;
@@ -41,7 +46,7 @@ const initialDraft: OrderDraft = {
   personCount: 1,
   maleCount: 1,
   femaleCount: 0,
-  departureTime: 'Hozir',
+  departureTime: 'now',
   note: '',
   paymentMethod: 'cash',
   promoCode: '',

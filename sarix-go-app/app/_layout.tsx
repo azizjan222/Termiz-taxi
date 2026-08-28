@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { initI18n } from '../src/i18n';
+import i18n, { initI18n } from '../src/i18n';
 import { useAuthStore } from '../src/store/auth';
 import { useThemeStore } from '../src/store/theme';
 import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
@@ -72,7 +72,7 @@ export default function RootLayout() {
       const content = notification?.request?.content;
       if (!content) return;
       addNotification({
-        title: content.title || 'Bildirishnoma',
+        title: content.title || i18n.t('notifHistory.fallbackTitle'),
         body: content.body || '',
         type: (content.data as any)?.type,
         data: (content.data as any) || {},

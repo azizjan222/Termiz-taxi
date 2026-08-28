@@ -19,6 +19,7 @@ import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
+import { DEPARTURE_WIRE, departureKey } from '../src/utils/departureTime';
 
 export default function ConfirmOrderScreen() {
   const { t } = useTranslation();
@@ -78,7 +79,8 @@ export default function ConfirmOrderScreen() {
         person_count: orderStore.personCount,
         male_count: orderStore.maleCount,
         female_count: orderStore.femaleCount,
-        departure_time: orderStore.departureTime,
+        // Canonical wire value, not the localized label the passenger saw.
+        departure_time: DEPARTURE_WIRE[orderStore.departureTime],
         note: note || undefined,
         has_roof_rack: orderStore.hasRoofRack,
         female_only: orderStore.femaleOnly,
@@ -108,13 +110,13 @@ export default function ConfirmOrderScreen() {
     }
   };
 
-  // Real price from backend. Parcel price is negotiated with the driver -> "Kelishiladi".
+  // Real price from backend. Parcel price is negotiated with the driver -> "negotiable".
   const priceText = quoteLoading
     ? '...'
     : isParcel
-    ? 'Kelishiladi'
+    ? t('order.negotiable')
     : quote
-    ? `${formatPrice(quote.price)} so'm`
+    ? `${formatPrice(quote.price)} ${t('common.currency')}`
     : '—';
 
   return (
@@ -166,7 +168,7 @@ export default function ConfirmOrderScreen() {
             <Text style={styles.label}>
               {t(isParcel ? 'order.dispatchTime' : 'order.departureTime')}
             </Text>
-            <Text style={styles.value}>{orderStore.departureTime}</Text>
+            <Text style={styles.value}>{t(departureKey(orderStore.departureTime))}</Text>
           </View>
         </View>
 
@@ -205,7 +207,7 @@ export default function ConfirmOrderScreen() {
             {priceText}
           </Text>
           {isParcel && (
-            <Text style={styles.negotiableHint}>Pochta narxi haydovchi bilan kelishiladi</Text>
+            <Text style={styles.negotiableHint}>{t('order.parcelNegotiableHint')}</Text>
           )}
         </View>
         <Button

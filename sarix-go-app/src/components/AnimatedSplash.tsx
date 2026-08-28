@@ -143,6 +143,8 @@ export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
 
       {/* Tagline */}
       <Animated.View style={{ opacity: titleOpacity, transform: [{ translateY: titleTranslate }], alignItems: 'center' }}>
+        {/* Brand tagline, deliberately NOT translated: this renders before initI18n()
+            resolves, so t() would emit the raw key. It is also proper-noun branding. */}
         <Text style={styles.subtitle}>Termiz Sariosiyo Taxi</Text>
       </Animated.View>
 

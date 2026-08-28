@@ -5,6 +5,8 @@
  */
 import Constants from 'expo-constants';
 
+import { geocoderLang, suggestLang } from '../utils/yandexLocale';
+
 const GEOCODER_KEY =
   process.env.EXPO_PUBLIC_YANDEX_GEOCODER_KEY ||
   (Constants.expoConfig?.extra as any)?.yandexGeocoderKey ||
@@ -38,14 +40,12 @@ const SDK_API_KEY =
 // and makes the request fail with HTTP 400 -> the address never resolves
 // ("Manzil topilmadi"). The interactive JS map (api-maps.yandex.ru) does accept
 // uz_UZ, which is why the map renders but reverse-geocoding used to fail.
-// Russian gives the most complete address coverage for the Termiz/Surxondaryo region.
-const GEO_LANG = 'ru_RU';
-
-// The Geosuggest (autocomplete) API uses a TWO-letter ISO 639-1 code (e.g. "uz"),
-// unlike the HTTP Geocoder which needs the 5-letter "ru_RU" form and does NOT
-// support Uzbek. Geosuggest DOES support Uzbek, so address suggestions come back
-// in Uzbek (e.g. "Mustaqillik koʻchasi") instead of Russian.
-const SUGGEST_LANG = 'uz';
+// Russian gives the most complete address coverage for the Termiz/Surxondaryo region,
+// so both Uzbek scripts fall back to it — see src/utils/yandexLocale.ts.
+//
+// These were previously fixed constants, which meant an English- or Russian-speaking
+// passenger still got Uzbek autocomplete suggestions. They are now resolved per call
+// from the active language.
 
 export interface GeoResult {
   address: string;
@@ -63,7 +63,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string |
     try {
       const url =
         `https://geocode-maps.yandex.ru/1.x/?apikey=${key}` +
-        `&format=json&geocode=${lon},${lat}&lang=${GEO_LANG}&results=1`;
+        `&format=json&geocode=${lon},${lat}&lang=${geocoderLang()}&results=1`;
       const resp = await fetch(url);
       if (!resp.ok) continue; // 403/anything -> try the next key
       const data = await resp.json();
@@ -90,7 +90,7 @@ export async function geocodeAddress(query: string): Promise<GeoResult[]> {
     try {
       const url =
         `https://geocode-maps.yandex.ru/1.x/?apikey=${key}` +
-        `&format=json&geocode=${encodeURIComponent(query)}&lang=${GEO_LANG}&results=5`;
+        `&format=json&geocode=${encodeURIComponent(query)}&lang=${geocoderLang()}&results=5`;
       const resp = await fetch(url);
       if (!resp.ok) continue; // 403/anything -> try the next key
       const data = await resp.json();
@@ -127,7 +127,7 @@ export async function suggestAddress(query: string): Promise<string[]> {
     try {
       const url =
         `https://suggest-maps.yandex.ru/v1/suggest?apikey=${key}` +
-        `&text=${encodeURIComponent(query)}&lang=${SUGGEST_LANG}&results=7` +
+        `&text=${encodeURIComponent(query)}&lang=${suggestLang()}&results=7` +
         // Bias results to the whole Surxondaryo region (centered between Termiz and
         // Denov) so streets, buildings, villages and intersections across the
         // region surface, not just central Termiz.

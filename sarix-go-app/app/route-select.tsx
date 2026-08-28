@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import Constants from 'expo-constants';
+import { useTranslation } from 'react-i18next';
 
 import { Icon, type IconName } from '../src/components/Icon';
 import { listCities } from '../src/api/orders';
@@ -22,6 +23,7 @@ import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
+import { suggestLang } from '../src/utils/yandexLocale';
 
 type Field = 'from' | 'to';
 
@@ -36,6 +38,7 @@ type Field = 'from' | 'to';
  * Identical layout for taxi and parcel; only labels change.
  */
 export default function RouteSelectScreen() {
+  const { t } = useTranslation();
   const { mode } = useLocalSearchParams<{ mode: 'from' | 'to' }>();
   const orderStore = useOrderStore();
   const colors = useThemeStore((s) => s.colors);
@@ -172,17 +175,17 @@ export default function RouteSelectScreen() {
 
   const fromValue = orderStore.fromAddress || orderStore.fromCity || '';
   const toValue = orderStore.toAddress || orderStore.toCity || '';
-  const fromCaption = isParcel ? 'Pochta olinadigan joy' : "Yo'lovchini olish nuqtasi";
-  const toCaption = isParcel ? 'Yetkazish manzili' : 'Yakuniy manzil';
-  const fromPlaceholder = isParcel ? 'Pochtani qayerdan olamiz?' : 'Manzilni kiriting...';
-  const toPlaceholder = isParcel ? 'Pochtani qayerga yuboramiz?' : 'Qayerga borasiz?';
+  const fromCaption = t(isParcel ? 'routeSelect.fromParcel' : 'routeSelect.fromTaxi');
+  const toCaption = t(isParcel ? 'orderEntry.deliveryAddress' : 'orderEntry.finalAddress');
+  const fromPlaceholder = t(isParcel ? 'routeSelect.fromParcelPlaceholder' : 'routeSelect.fromPlaceholder');
+  const toPlaceholder = t(isParcel ? 'orderEntry.whereToParcel' : 'orderEntry.whereTo');
 
   // Filter cities and places based on search
   const filteredCities = cities.filter((c) => c.toLowerCase().includes(search.toLowerCase()));
   const localPlaces = searchSurxondaryoPlaces(search, cities);
 
   type Row =
-    | { type: 'header'; key: string; label: string }
+    | { type: 'header'; key: string; labelKey: string }
     | { type: 'city'; key: string; name: string }
     | { type: 'place'; key: string; place: LocalPlace }
     | { type: 'suggest'; key: string; item: { title: string; subtitle: string; distance?: string } };
@@ -190,11 +193,11 @@ export default function RouteSelectScreen() {
   const rows: Row[] = [];
 
   if (showSuggestions && suggestions.length > 0) {
-    rows.push({ type: 'header', key: 'h-suggest', label: 'TAVSIYA ETILGAN MANZILLAR' });
+    rows.push({ type: 'header', key: 'h-suggest', labelKey: 'routeSelect.suggestedAddresses' });
     suggestions.forEach((s, i) => rows.push({ type: 'suggest', key: `s-${i}`, item: s }));
   } else {
     if (filteredCities.length > 0) {
-      rows.push({ type: 'header', key: 'h-cities', label: 'TAVSIYA ETILGAN MANZILLAR' });
+      rows.push({ type: 'header', key: 'h-cities', labelKey: 'routeSelect.suggestedAddresses' });
       filteredCities.forEach((c) => rows.push({ type: 'city', key: `c-${c}`, name: c }));
     }
     if (localPlaces.length > 0 && search.length >= 2) {
@@ -203,10 +206,25 @@ export default function RouteSelectScreen() {
     }
   }
 
+  // Suggest results come back in the user's language (see src/utils/yandexLocale.ts), so
+  // match the Uzbek, Russian and English wording for each place type — otherwise every
+  // result falls back to the generic pin.
   const getSuggestIcon = (subtitle: string): IconName => {
     const s = subtitle.toLowerCase();
-    if (s.includes('avtovokzal') || s.includes('avtostan') || s.includes('bekat')) return 'bus';
-    if (s.includes('stansiya') || s.includes('temir')) return 'target';
+    if (
+      s.includes('avtovokzal') || s.includes('avtostan') || s.includes('bekat') ||
+      s.includes('автовокзал') || s.includes('автостан') || s.includes('остановк') ||
+      s.includes('bus station') || s.includes('bus stop')
+    ) {
+      return 'bus';
+    }
+    if (
+      s.includes('stansiya') || s.includes('temir') ||
+      s.includes('станция') || s.includes('вокзал') ||
+      s.includes('railway') || s.includes('train station')
+    ) {
+      return 'target';
+    }
     return 'location';
   };
 
@@ -241,7 +259,7 @@ export default function RouteSelectScreen() {
             onPress={() => router.back()}
             activeOpacity={0.85}
           >
-            <Text style={styles.mapPillText}>Xarita</Text>
+            <Text style={styles.mapPillText}>{t('routeSelect.map')}</Text>
           </TouchableOpacity>
         </TouchableOpacity>
 
@@ -274,7 +292,7 @@ export default function RouteSelectScreen() {
             onPress={() => router.push({ pathname: '/order-entry', params: { pick: 'to' } })}
             activeOpacity={0.85}
           >
-            <Text style={styles.mapPillText}>Xarita</Text>
+            <Text style={styles.mapPillText}>{t('routeSelect.map')}</Text>
           </TouchableOpacity>
         </TouchableOpacity>
       </View>
@@ -310,7 +328,7 @@ export default function RouteSelectScreen() {
       {loadingSuggestions && (
         <View style={styles.loadingRow}>
           <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={styles.loadingText}>Qidirilmoqda...</Text>
+          <Text style={styles.loadingText}>{t('routeSelect.searching')}</Text>
         </View>
       )}
     </View>
@@ -334,7 +352,7 @@ export default function RouteSelectScreen() {
         keyExtractor={(item) => item.key}
         renderItem={({ item }) => {
           if (item.type === 'header') {
-            return <Text style={styles.sectionTitle}>{item.label}</Text>;
+            return <Text style={styles.sectionTitle}>{t(item.labelKey)}</Text>;
           }
           if (item.type === 'city') {
             return (
@@ -348,7 +366,7 @@ export default function RouteSelectScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.resultTitle}>{item.name}</Text>
-                  <Text style={styles.resultSub}>Surxondaryo viloyati</Text>
+                  <Text style={styles.resultSub}>{t('cities.region')}</Text>
                 </View>
                 <Text style={styles.resultArrow}>›</Text>
               </TouchableOpacity>
@@ -377,9 +395,13 @@ export default function RouteSelectScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.resultTitle}>{item.place.name}</Text>
                   <Text style={styles.resultSub}>
-                    {item.place.group === 'district' ? 'Tuman' :
-                     item.place.group === 'town' ? 'Shahar' :
-                     item.place.group === 'mahalla' ? 'Mahalla' : 'Joy'}
+                    {item.place.group === 'district'
+                      ? t('routeSelect.groupDistrict')
+                      : item.place.group === 'town'
+                      ? t('routeSelect.groupTown')
+                      : item.place.group === 'mahalla'
+                      ? t('routeSelect.groupMahalla')
+                      : t('routeSelect.groupPlace')}
                   </Text>
                 </View>
                 <Text style={styles.resultArrow}>›</Text>
@@ -458,7 +480,7 @@ async function suggestAddressRich(query: string): Promise<{ title: string; subti
     try {
       const url =
         `https://suggest-maps.yandex.ru/v1/suggest?apikey=${key}` +
-        `&text=${encodeURIComponent(query)}&lang=uz&results=7` +
+        `&text=${encodeURIComponent(query)}&lang=${suggestLang()}&results=7` +
         `&ll=67.6,37.9&spn=1.8,1.6`;
       const resp = await fetch(url);
       if (resp.ok) {

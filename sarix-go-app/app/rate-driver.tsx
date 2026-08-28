@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
@@ -13,15 +14,16 @@ import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
-const STARS_LABELS = [
-  'Juda yomon',
-  'Yomon',
-  "O'rtacha",
-  'Yaxshi',
-  'A\'lo',
-];
+const STAR_LABEL_KEYS = [
+  'rating.veryBad',
+  'rating.bad',
+  'rating.average',
+  'rating.good',
+  'rating.excellent',
+] as const;
 
 export default function RateDriverScreen() {
+  const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { orderId, driverName } = useLocalSearchParams<{
@@ -36,11 +38,11 @@ export default function RateDriverScreen() {
     setLoading(true);
     try {
       await ratePassenger(parseInt(orderId), stars, comment);
-      Alert.alert('✅', 'Rahmat! Sizning bahoyingiz haydovchiga yuborildi.', [
+      Alert.alert('✅', t('rating.success'), [
         { text: 'OK', onPress: () => router.replace('/(tabs)/home') },
       ]);
     } catch (e: any) {
-      Alert.alert('❌', e?.response?.data?.error || 'Xatolik');
+      Alert.alert('❌', e?.response?.data?.error || t('common.error'));
     } finally {
       setLoading(false);
     }
@@ -55,9 +57,9 @@ export default function RateDriverScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Sayohatingiz qanday o'tdi?</Text>
+          <Text style={styles.title}>{t('rating.title')}</Text>
           <Text style={styles.subtitle}>
-            {driverName || 'Haydovchi'} bilan
+            {t('rating.subtitle', { name: driverName || t('common.driver') })}
           </Text>
         </View>
 
@@ -79,15 +81,15 @@ export default function RateDriverScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        <Text style={styles.starsLabel}>{STARS_LABELS[stars - 1]}</Text>
+        <Text style={styles.starsLabel}>{t(STAR_LABEL_KEYS[stars - 1])}</Text>
 
         <View style={styles.commentBox}>
-          <Text style={styles.commentLabel}>Izoh (ixtiyoriy)</Text>
+          <Text style={styles.commentLabel}>{t('rating.commentLabel')}</Text>
           <TextInput
             style={styles.input}
             value={comment}
             onChangeText={setComment}
-            placeholder="Sayohat haqida..."
+            placeholder={t('rating.commentPlaceholder')}
             placeholderTextColor={colors.textMuted}
             multiline
             maxLength={500}
@@ -96,13 +98,13 @@ export default function RateDriverScreen() {
 
         <View style={styles.footer}>
           <Button
-            title="Yuborish"
+            title={t('rating.submit')}
             onPress={handleSubmit}
             loading={loading}
             variant="primary"
           />
           <TouchableOpacity onPress={handleSkip} style={styles.skipBtn}>
-            <Text style={styles.skipText}>Keyinroq</Text>
+            <Text style={styles.skipText}>{t('rating.skip')}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

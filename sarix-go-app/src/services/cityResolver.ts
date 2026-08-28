@@ -25,16 +25,27 @@ export function normalizeCity(s: string): string {
 
 /**
  * District -> alias keywords. `city` is the canonical backend route-city name.
- * Keywords cover Uzbek (Latin/Cyrillic) and Russian forms the geocoder can return.
+ *
+ * Keywords cover Uzbek (Latin/Cyrillic), Russian AND the Latin transliterations Yandex
+ * returns when the geocoder is queried in English (`en_US`) — see
+ * src/utils/yandexLocale.ts. Getting this wrong is not cosmetic: an unresolved district
+ * produces a `from_city`/`to_city` the backend has no Route for, and the passenger is told
+ * the route is unavailable.
  */
 export const DISTRICT_ALIASES: { city: string; keywords: string[] }[] = [
-  { city: 'Termiz', keywords: ['termiz', 'термиз', 'термез'] },
-  { city: 'Sariosiyo', keywords: ['sariosiyo', 'сариосиё', 'сариосиё', 'сариасий', 'сариасия'] },
+  { city: 'Termiz', keywords: ['termiz', 'термиз', 'термез', 'termez'] },
+  { city: 'Sariosiyo', keywords: ['sariosiyo', 'сариосиё', 'сариасий', 'сариасия', 'sariasiy'] },
   { city: 'Uzun', keywords: ['uzun', 'узун'] },
-  { city: 'Denov', keywords: ['denov', 'денов', 'денау'] },
+  { city: 'Denov', keywords: ['denov', 'денов', 'денау', 'denau'] },
   { city: "Sho'rchi", keywords: ["sho'rchi", 'shoʻrchi', 'shurchi', 'шўрчи', 'шурчи'] },
-  { city: "Jarqo'rg'on", keywords: ["jarqo'rg'on", 'jarqorgon', 'жарқўрғон', 'джаркурган', 'джарқўрғон'] },
-  { city: "Qumqo'rg'on", keywords: ["qumqo'rg'on", 'qumqorgon', 'қумқўрғон', 'кумкурган', 'қумқурғон'] },
+  {
+    city: "Jarqo'rg'on",
+    keywords: ["jarqo'rg'on", 'jarqorgon', 'жарқўрғон', 'джаркурган', 'джарқўрғон', 'dzharkurgan', 'jarkurgan'],
+  },
+  {
+    city: "Qumqo'rg'on",
+    keywords: ["qumqo'rg'on", 'qumqorgon', 'қумқўрғон', 'кумкурган', 'қумқурғон', 'kumkurgan'],
+  },
 ];
 
 /** Find a route-city whose alias keyword appears in `fragment`. */
@@ -60,7 +71,7 @@ export function resolveRouteCity(resolved: string, cities: string[], fallback?: 
   const parts = resolved.split(',').map((p) => p.trim()).filter(Boolean);
 
   // 1) Prefer the explicit administrative part ("... tumani" / "... shahar" / "... район").
-  const districtPart = parts.find((p) => /tuman|shahar|шаҳар|район|tumani/i.test(p));
+  const districtPart = parts.find((p) => /tuman|shahar|шаҳар|район|tumani|district/i.test(p));
   if (districtPart) {
     const byDistrict = aliasMatch(districtPart, cities);
     if (byDistrict) return byDistrict;
@@ -77,7 +88,7 @@ export function resolveRouteCity(resolved: string, cities: string[], fallback?: 
 
   // 4) Cleaned district part (e.g. "Boysun tumani" -> "Boysun") even if not a route city.
   if (districtPart) {
-    const cleaned = districtPart.replace(/tumani?|shahar|шаҳар|район/gi, '').trim();
+    const cleaned = districtPart.replace(/tumani?|shahar|шаҳар|район|district/gi, '').trim();
     if (cleaned) return cleaned;
   }
 
