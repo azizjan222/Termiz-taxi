@@ -12,9 +12,9 @@ import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
-// FAQ content lives in the locale files (faq.q1..q8 / faq.a1..a8) so it follows the
+// FAQ content lives in the locale files (faq.q1..q9 / faq.a1..a9) so it follows the
 // selected language; this is just the list of indices to render.
-const FAQ_COUNT = 8;
+const FAQ_COUNT = 9;
 
 export default function FaqScreen() {
   const { t } = useTranslation();
@@ -57,7 +57,11 @@ export default function FaqScreen() {
             >
               <View style={styles.qRow}>
                 <Text style={styles.q}>{t(`faq.q${i + 1}`)}</Text>
-                <Text style={styles.chev}>{expanded ? '−' : '+'}</Text>
+                <Icon
+                  name={expanded ? 'arrowDown' : 'arrowRight'}
+                  size={20}
+                  color={colors.textMuted}
+                />
               </View>
               {expanded && <Text style={styles.a}>{t(`faq.a${i + 1}`)}</Text>}
             </TouchableOpacity>
@@ -118,7 +122,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   qRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   q: { ...typography.bodyBold, color: colors.text, flex: 1, paddingRight: spacing.sm },
-  chev: { fontSize: 24, color: colors.textMuted, fontWeight: '300' },
   a: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 20 },
   supportBtn: {
     flexDirection: 'row',

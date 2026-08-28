@@ -342,7 +342,24 @@ export default function OrderDetailScreen() {
           if (loading) return;
           setLoading(true);
           try {
+            // Captured BEFORE the await: `order` is refreshed by the poll/socket and the
+            // completed ride can drop out of the active list, taking the name with it.
+            const passengerName = order?.passenger_name || '';
+            const canRate = order?.can_rate_passenger === true;
             await completeOrder(parseInt(String(id)));
+
+            // Offer to rate the passenger, then leave. Only when the ride actually has a
+            // passenger account behind it: rate-passenger needs Order.passenger_id, and
+            // bot-placed orders often carry just a Telegram id, so offering a rating there
+            // would open a screen whose only possible outcome is a 400.
+            const done = () =>
+              canRate
+                ? router.replace({
+                    pathname: '/rate-passenger',
+                    params: { orderId: String(id), passengerName },
+                  })
+                : router.replace('/(main)/orders');
+
             // Navigate on dismiss too, not only from the button's onPress: on Android the
             // hardware back button closes the alert WITHOUT invoking onPress, which left
             // the driver on a finished order with `loading` back to false and the button
@@ -350,8 +367,8 @@ export default function OrderDetailScreen() {
             Alert.alert(
               `✅ ${t('more.completedTitle')}`,
               t('more.completedBody'),
-              [{ text: t('more.nextOrder'), onPress: () => router.replace('/(main)/orders') }],
-              { onDismiss: () => router.replace('/(main)/orders') },
+              [{ text: canRate ? t('rating.rateNow') : t('more.nextOrder'), onPress: done }],
+              { onDismiss: done },
             );
           } catch (e: any) {
             Alert.alert(t('common.error'), describeApiError(e, t));

@@ -11,10 +11,10 @@ import { getSupportInfo, type SupportInfo } from '../src/api/ai';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 
-// FAQ entries live in the translation dictionary as faq.q1..q7 / faq.a1..a7 so the
+// FAQ entries live in the translation dictionary as faq.q1..q8 / faq.a1..a8 so the
 // whole list follows the driver's chosen language. Add a new pair to all four
 // dictionaries and bump this count.
-const FAQ_COUNT = 7;
+const FAQ_COUNT = 8;
 const FAQ_INDEXES = Array.from({ length: FAQ_COUNT }, (_, i) => i + 1);
 
 export default function FaqScreen() {
@@ -57,7 +57,11 @@ export default function FaqScreen() {
             >
               <View style={styles.qRow}>
                 <Text style={[styles.q, { color: colors.text }]}>{t(`faq.q${n}`)}</Text>
-                <Text style={[styles.chev, { color: colors.textMuted }]}>{expanded ? '−' : '+'}</Text>
+                <Icon
+                  name={expanded ? 'arrowDown' : 'arrowRight'}
+                  size={20}
+                  color={colors.textMuted}
+                />
               </View>
               {expanded && (
                 <Text style={[styles.a, { color: colors.textSecondary }]}>{t(`faq.a${n}`)}</Text>
@@ -114,7 +118,6 @@ const styles = StyleSheet.create({
   card: { borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1 },
   qRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   q: { ...typography.bodyBold, flex: 1, paddingRight: spacing.sm },
-  chev: { fontSize: 24, fontWeight: '300' },
   a: { ...typography.caption, marginTop: spacing.sm, lineHeight: 20 },
   supportBtn: {
     flexDirection: 'row',

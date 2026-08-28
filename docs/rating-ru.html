@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система рейтинга - Sarix Go</title>
+    <meta name="description" content="Как считается рейтинг в Sarix Go: от 1 до 5 звёзд, среднее значение, кто кого оценивает и на что влияет оценка.">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #1a1a1a; line-height: 1.7; }
+        .header { background: #0E1B3D; color: #fff; padding: 32px 20px; text-align: center; }
+        .header h1 { color: #F4C430; font-size: 24px; }
+        .header p { color: rgba(255,255,255,0.8); margin-top: 4px; font-size: 14px; }
+        .content { max-width: 700px; margin: 0 auto; padding: 32px 20px; }
+        h2 { color: #0E1B3D; margin: 28px 0 12px; font-size: 20px; }
+        p, li { font-size: 15px; margin-bottom: 8px; }
+        ul { padding-left: 20px; }
+        .updated { text-align: center; color: #666; font-size: 13px; margin-bottom: 24px; }
+        .langs { text-align: center; margin-bottom: 24px; font-size: 14px; }
+        .langs a { margin: 0 6px; }
+        .box { background: #F7F8FA; border-left: 3px solid #F4C430; padding: 14px 16px; border-radius: 6px; margin: 16px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 15px; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; }
+        th { color: #0E1B3D; }
+        .footer { text-align: center; padding: 24px; color: #666; font-size: 13px; border-top: 1px solid #eee; margin-top: 40px; }
+        a { color: #0E1B3D; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Система рейтинга</h1>
+        <p>Sarix Go - Termiz Sariosiyo Taxi</p>
+    </div>
+    <div class="content">
+        <p class="updated">Последнее обновление: 28 августа 2026</p>
+        <p class="langs">
+            <a href="./rating.html">O'zbekcha</a> ·
+            <strong>Русский</strong> ·
+            <a href="./rating-en.html">English</a>
+        </p>
+
+        <h2>Коротко</h2>
+        <div class="box">
+            После каждой <strong>завершённой</strong> поездки пассажир оценивает водителя,
+            а водитель - пассажира, от 1 до 5 звёзд. Рейтинг - это простое среднее всех
+            полученных звёзд.
+        </div>
+
+        <h2>1. Кто кого оценивает</h2>
+        <p>Оценка <strong>двусторонняя</strong>:</p>
+        <ul>
+            <li><strong>Пассажир → водитель.</strong> После завершения поездки в приложении пассажира открывается экран оценки.</li>
+            <li><strong>Водитель → пассажир.</strong> Когда водитель завершает поездку, ему показывается такой же экран.</li>
+        </ul>
+        <p>И то и другое <strong>необязательно</strong>. Можно пропустить кнопкой «Позже» - на рейтинг это никак не влияет.</p>
+
+        <h2>2. Что можно оценить</h2>
+        <ul>
+            <li>Оценивается только <strong>завершённая</strong> поездка.</li>
+            <li>Отменённый заказ оценить нельзя.</li>
+            <li>Заказ, на который не нашёлся водитель (истёк срок), оценить нельзя.</li>
+            <li>За одну поездку каждая сторона ставит оценку <strong>один раз</strong>.</li>
+            <li>Отправленную оценку <strong>нельзя изменить или удалить</strong>.</li>
+        </ul>
+
+        <h2>3. Что означают звёзды</h2>
+        <table>
+            <tr><th>Звёзды</th><th>Значение</th></tr>
+            <tr><td>1</td><td>Очень плохо</td></tr>
+            <tr><td>2</td><td>Плохо</td></tr>
+            <tr><td>3</td><td>Средне</td></tr>
+            <tr><td>4</td><td>Хорошо</td></tr>
+            <tr><td>5</td><td>Отлично</td></tr>
+        </table>
+        <p>Принимаются только целые звёзды - значений вида 4.5 не существует.</p>
+
+        <h2>4. Комментарий</h2>
+        <p>Вместе со звёздами можно оставить комментарий, но это тоже необязательно. Длина - <strong>до 500 символов</strong>.</p>
+
+        <h2>5. Как считается рейтинг</h2>
+        <p>Рейтинг - это <strong>простое среднее</strong> всех полученных звёзд. Ни взвешивания по времени, ни отбрасывания старых оценок нет: первая оценка весит столько же, сколько последняя.</p>
+        <div class="box">
+            Например: 5, 4, 5, 5 - среднее <strong>4.75</strong>, на экране показывается <strong>4.8</strong>.
+        </div>
+        <p>На экране рейтинг показан с одним знаком после запятой, а рядом - <strong>на сколько оценок он опирается</strong>, например «Рейтинг · 12 оценок». Это важно: 5.0 (1 оценка) и 4.8 (200 оценок) - совершенно разные вещи.</p>
+
+        <h2>6. Если оценок ещё нет</h2>
+        <p>Если вас пока никто не оценил, вместо числа стоит <strong>«—»</strong> и надпись «Пока нет оценок».</p>
+        <p>Мы намеренно не показываем придуманное начальное значение. Рейтинг «5.0» у нового водителя создаёт ложное доверие, а «4.0» не имеет к реальности вообще никакого отношения. Число появляется только тогда, когда есть настоящая оценка.</p>
+
+        <h2>7. Где виден рейтинг</h2>
+        <ul>
+            <li><strong>Водитель</strong> видит свой рейтинг в профиле и в разделе «Статистика».</li>
+            <li><strong>Пассажир</strong> видит рейтинг водителя в информации о нём.</li>
+        </ul>
+
+        <h2>8. На что влияет рейтинг</h2>
+        <p>На данный момент рейтинг <strong>не влияет на распределение заказов</strong>: заказ отправляется всем подходящим водителям одновременно, и поездка достаётся тому, кто принял первым. Рейтинг служит для прозрачности и контроля качества.</p>
+        <p>Постоянно низкий рейтинг и жалобы рассматриваются администратором и могут привести к блокировке аккаунта (пункт 7 <a href="./terms-ru.html">Условий использования</a>).</p>
+
+        <h2>9. Связь</h2>
+        <p>Если считаете оценку несправедливой, напишите нам:</p>
+        <p>Telegram: <a href="https://t.me/SarixGo_support_bot">@SarixGo_support_bot</a></p>
+        <p>Email: <a href="mailto:sarixgo.support@gmail.com">sarixgo.support@gmail.com</a></p>
+    </div>
+    <div class="footer">
+        <p>Sarix Go &copy; 2026. Все права защищены.</p>
+    </div>
+</body>
+</html>

@@ -325,6 +325,8 @@ export default {
     a7: 'Sayohat yakunlangach, haydovchini 1-5 yulduz bilan baholash oynasi ochiladi. Izoh ham qoldirishingiz mumkin.',
     q8: "Tilni va mavzuni qanday o'zgartiraman?",
     a8: "Profil → Sozlamalar bo'limida tilni (O'zbek/Rus/Ingliz) va qorong'i/yorug' rejimni tanlashingiz mumkin.",
+    q9: 'Reyting qanday hisoblanadi?',
+    a9: "Safar yakunlangach siz haydovchini 1 dan 5 yulduzgacha baholaysiz, haydovchi ham sizni baholaydi. Baho ixtiyoriy — «Keyinroq» tugmasi bilan o'tkazib yuborishingiz mumkin.\n\nReyting — olingan barcha yulduzlarning oddiy o'rtachasi, bir xona aniqlikda ko'rsatiladi (masalan 4.8). Har bir safar uchun faqat bitta baho beriladi va yuborilgandan keyin o'zgartirilmaydi. Faqat yakunlangan safarlar baholanadi — bekor qilingan yoki haydovchi topilmagan buyurtma baholanmaydi.\n\nIzoh yozish ham ixtiyoriy, uzunligi 500 belgigacha.",
   },
   driverMap: {
     driverPin: 'Haydovchi',
