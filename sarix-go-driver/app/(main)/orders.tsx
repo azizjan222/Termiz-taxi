@@ -9,7 +9,10 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
 
-import { listAvailableOrders, acceptOrder, setOnline as apiSetOnline, type DriverOrder } from '../../src/api/driver';
+import {
+  listAvailableOrders, acceptOrder, setOnline as apiSetOnline,
+  MIN_BALANCE_FALLBACK, type DriverOrder,
+} from '../../src/api/driver';
 import { useDriverStore } from '../../src/store/driver';
 import { useRealtimeStore } from '../../src/store/realtime';
 import { useThemeStore } from '../../src/store/theme';
@@ -200,7 +203,8 @@ export default function OrdersScreen() {
 
   const handleAccept = async (order: DriverOrder) => {
     const balance = driver?.balance || 0;
-    const MIN_BALANCE = 20000;
+    // Server-configured floor (admin panel can change it), not a literal.
+    const MIN_BALANCE = driver?.min_balance ?? MIN_BALANCE_FALLBACK;
     const onFreeTrial = !!driver?.has_active_subscription;
 
     // During the free trial the driver pays no commission and needs no balance.

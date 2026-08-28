@@ -94,3 +94,86 @@ async def test_admin_verified_driver_can_go_online(db):
         assert (await response.json())["is_online"] is True
     finally:
         await client.close()
+
+
+
+# ===================== balance floor for accepting orders =====================
+#
+# Policy, set deliberately: a driver whose balance has gone NEGATIVE is not blocked — their
+# account stays usable, they keep their history, and the debt is not forgiven — but they
+# stop receiving work until they top back up to the floor. The floor is one taxi commission
+# (config.MIN_DRIVER_BALANCE, 10 000), not two, so a solvent driver is never left idle.
+
+
+def _funded_driver(balance: int, *, verified: bool = True, telegram_id: int = 88900) -> Driver:
+    """An in-memory driver; driver_can_accept() touches no session."""
+    return Driver(
+        telegram_id=telegram_id,
+        phone=f"+9989000{telegram_id}",
+        first_name="Test",
+        balance=balance,
+        is_verified=verified,
+    )
+
+
+def test_default_balance_floor_is_one_commission():
+    """Pins the policy number itself: 10 000, not the old 20 000."""
+    from app import config
+
+    assert config.MIN_DRIVER_BALANCE == 10000
+
+
+def test_negative_balance_cannot_accept_orders():
+    from app.api.drivers import driver_can_accept
+
+    assert driver_can_accept(_funded_driver(-5000), min_balance=10000) is False
+
+
+def test_zero_balance_cannot_accept_orders():
+    from app.api.drivers import driver_can_accept
+
+    assert driver_can_accept(_funded_driver(0), min_balance=10000) is False
+
+
+def test_balance_below_floor_cannot_accept_orders():
+    from app.api.drivers import driver_can_accept
+
+    assert driver_can_accept(_funded_driver(9999), min_balance=10000) is False
+
+
+def test_balance_at_floor_can_accept_orders():
+    from app.api.drivers import driver_can_accept
+
+    assert driver_can_accept(_funded_driver(10000), min_balance=10000) is True
+
+
+def test_balance_above_floor_can_accept_orders():
+    from app.api.drivers import driver_can_accept
+
+    assert driver_can_accept(_funded_driver(25000), min_balance=10000) is True
+
+
+def test_free_trial_overrides_a_negative_balance():
+    """On the free trial the driver owes no commission, so the floor does not apply."""
+    from datetime import datetime, timedelta
+
+    from app.api.drivers import driver_can_accept
+
+    driver = _funded_driver(-9000)
+    driver.subscription_until = datetime.utcnow() + timedelta(days=3)
+    assert driver_can_accept(driver, min_balance=10000) is True
+
+
+def test_negative_balance_does_not_block_the_account():
+    """Being below the floor must never look like a ban: is_blocked stays untouched."""
+    from app.api.drivers import driver_can_accept
+
+    driver = _funded_driver(-20000)
+    driver_can_accept(driver, min_balance=10000)
+    assert not driver.is_blocked
+
+
+def test_unverified_driver_cannot_accept_however_funded():
+    from app.api.drivers import driver_can_accept
+
+    assert driver_can_accept(_funded_driver(500000, verified=False), min_balance=10000) is False

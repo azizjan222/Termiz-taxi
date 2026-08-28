@@ -12,7 +12,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { Icon } from '../../src/components/Icon';
 import { useDriverStore } from '../../src/store/driver';
 import { getSupportInfo, type SupportInfo } from '../../src/api/ai';
-import { uploadDriverProfilePhoto, updateDriverInfo } from '../../src/api/driver';
+import {
+  uploadDriverProfilePhoto, updateDriverInfo, MIN_BALANCE_FALLBACK,
+} from '../../src/api/driver';
 import { API_URL } from '../../src/api/client';
 import { describeApiError, formatAmount } from '../../src/api/errors';
 import { useThemeStore } from '../../src/store/theme';
@@ -156,7 +158,10 @@ export default function ProfileScreen() {
     }
   };
 
-  const lowBalance = (driver?.balance || 0) < 20000;
+  // Server-configured floor rather than a literal, so the warning and the actual
+  // order-accept rule can never disagree.
+  const minBalance = driver?.min_balance ?? MIN_BALANCE_FALLBACK;
+  const lowBalance = (driver?.balance || 0) < minBalance;
 
   // Driver.rating defaults to 5.0 in the database, so the number alone cannot tell a
   // brand-new driver apart from one who has genuinely earned 5.0. rating_count is the only
@@ -241,7 +246,9 @@ export default function ProfileScreen() {
               {lowBalance && (
                 <View style={styles.balanceWarningRow}>
                   <Icon name="warning" size={13} color={colors.textOnPrimary} />
-                  <Text style={styles.balanceWarning}>{t('more.minBalanceShort')}</Text>
+                  <Text style={styles.balanceWarning}>
+                    {t('more.minBalanceShort', { min: formatAmount(minBalance) })}
+                  </Text>
                 </View>
               )}
             </View>
