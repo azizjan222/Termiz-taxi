@@ -1,5 +1,6 @@
 export default {
   common: {
+    attention: 'Внимание',
     next: 'Далее',
     back: 'Назад',
     cancel: 'Отмена',
@@ -71,6 +72,20 @@ export default {
     parcelHint: 'Документы или вещи',
     perPerson: '{{price}} сум',
     info: 'До {{persons}} пассажиров',
+  },
+  newOrder: {
+    personsStep: 'Количество пассажиров',
+    routeUnavailable: 'Это направление пока недоступно',
+    routeUnavailableHint: 'Пожалуйста, выберите другой адрес или попробуйте позже.',
+    payment: 'Оплата',
+    extras: 'Дополнительно',
+    paymentMethod: 'Способ оплаты',
+    cardSoon: 'Оплата картой появится позже',
+    noteForDriver: 'Комментарий для водителя',
+    notePlaceholder: 'Например: ждите у дома 2',
+    forSomeoneElse: 'Заказ для другого человека',
+    femaleInCabin: 'В салоне женщина',
+    roofRack: 'Багажник на крыше',
   },
   order: {
     serviceType: 'Тип услуги',

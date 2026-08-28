@@ -1,5 +1,6 @@
 export default {
   common: {
+    attention: 'Attention',
     next: 'Next',
     back: 'Back',
     cancel: 'Cancel',
@@ -71,6 +72,20 @@ export default {
     parcelHint: 'Send documents or items',
     perPerson: '{{price}} UZS',
     info: 'Up to {{persons}} passengers',
+  },
+  newOrder: {
+    personsStep: 'Number of passengers',
+    routeUnavailable: 'This route is not available yet',
+    routeUnavailableHint: 'Please pick another address or try again later.',
+    payment: 'Payment',
+    extras: 'Extras',
+    paymentMethod: 'Payment method',
+    cardSoon: 'Card payment is coming later',
+    noteForDriver: 'Note for the driver',
+    notePlaceholder: 'For example: wait by house 2',
+    forSomeoneElse: 'Order for someone else',
+    femaleInCabin: 'Woman in the cabin',
+    roofRack: 'Roof luggage rack',
   },
   order: {
     serviceType: 'Service type',
