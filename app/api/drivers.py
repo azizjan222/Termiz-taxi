@@ -593,6 +593,11 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "note": o.note,
         "passenger_name": o.passenger_name,
         "passenger_photo_url": (o.passenger.profile_photo_url if o.passenger else None),
+        # Whether this ride's passenger can be rated at all. rate-passenger requires
+        # Order.passenger_id, and bot-placed orders frequently carry only a Telegram id
+        # with no User row behind it. A boolean rather than the raw id: the app only needs
+        # to know whether to offer the rating, not who the passenger is internally.
+        "can_rate_passenger": bool(o.passenger_id),
         "has_roof_rack": o.has_roof_rack,
         "female_only": o.female_only,
         "source": o.source,
