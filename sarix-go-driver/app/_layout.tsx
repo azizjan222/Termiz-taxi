@@ -18,6 +18,10 @@ import {
 } from '../src/services/notifications';
 import { addNotification, syncAnnouncements } from '../src/services/notificationHistory';
 import * as realtime from '../src/services/realtime';
+// Imported for its side effect: the background-location task must be registered with
+// TaskManager during startup, in EVERY JS context — including the headless one the OS
+// creates after the app has been killed. Registering it from a screen would be too late.
+import '../src/services/backgroundLocation';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 
 export default function RootLayout() {

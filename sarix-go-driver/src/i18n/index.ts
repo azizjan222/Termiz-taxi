@@ -621,6 +621,10 @@ export const uz = {
       },
     ],
   },
+  tracking: {
+    serviceTitle: 'Safar davom etmoqda',
+    serviceBody: "Yo'lovchi sizni xaritada ko'rib turishi uchun joylashuv yuborilmoqda",
+  },
 };
 
 export const ru = {
@@ -1178,6 +1182,10 @@ export const ru = {
       },
     ],
   },
+  tracking: {
+    serviceTitle: 'Поездка продолжается',
+    serviceBody: 'Местоположение отправляется, чтобы пассажир видел вас на карте',
+  },
 };
 
 export const en = {
@@ -1733,6 +1741,10 @@ export const en = {
       },
     ],
   },
+  tracking: {
+    serviceTitle: 'Trip in progress',
+    serviceBody: 'Sending your location so the passenger can see you on the map',
+  },
 };
 
 export const uzCyrl = {
@@ -2287,6 +2299,10 @@ export const uzCyrl = {
         ],
       },
     ],
+  },
+  tracking: {
+    serviceTitle: 'Сафар давом этмоқда',
+    serviceBody: 'Йўловчи сизни харитада кўриб туриши учун жойлашув юборилмоқда',
   },
 };
 
