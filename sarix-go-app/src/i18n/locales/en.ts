@@ -84,6 +84,7 @@ export default {
     persons: 'Passengers',
     personsCount: '{{count}} pers.',
     departureTime: 'Departure time',
+    dispatchTime: 'Dispatch time',
     now: 'Now',
     price: 'Price',
     paymentMethod: 'Payment',

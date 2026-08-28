@@ -84,6 +84,7 @@ export default {
     persons: 'Пассажиров',
     personsCount: '{{count}} чел.',
     departureTime: 'Время выезда',
+    dispatchTime: 'Время отправки',
     now: 'Сейчас',
     price: 'Стоимость',
     paymentMethod: 'Способ оплаты',
