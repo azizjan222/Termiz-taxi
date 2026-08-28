@@ -377,9 +377,12 @@ export default function OrderDetailScreen() {
     } else {
       const etaHint =
         ETA_HINT_ENABLED && Number.isFinite(distanceMeters)
-          ? ` · ~${formatEta(distanceMeters, ETA_AVG_SPEED_KMH)}`
+          ? ` · ~${formatEta(distanceMeters, ETA_AVG_SPEED_KMH, t('stats.minutes'))}`
           : '';
-      mapDistanceText = `${formatDistance(distanceMeters)}${etaHint}`;
+      mapDistanceText = `${formatDistance(distanceMeters, {
+        km: t('more.unitKm'),
+        m: t('more.unitM'),
+      })}${etaHint}`;
     }
   }
 

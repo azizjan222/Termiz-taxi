@@ -270,14 +270,20 @@ export function haversineMeters(a: Coords | null, b: Coords | null): number {
  *   NaN / negative / non-finite -> "—" (non-empty safe fallback)
  * Never throws.
  */
-export function formatDistance(meters: number): string {
+export function formatDistance(
+  meters: number,
+  // Unit labels are injected so this stays a pure, i18n-free function (it is unit-tested
+  // directly). The defaults are the Latin SI symbols, which is what the old hardcoded
+  // version produced.
+  units: { km: string; m: string } = { km: 'km', m: 'm' }
+): string {
   if (typeof meters !== 'number' || !Number.isFinite(meters) || meters < 0) {
     return '—';
   }
   if (meters >= 1000) {
-    return `${(meters / 1000).toFixed(1)} km`;
+    return `${(meters / 1000).toFixed(1)} ${units.km}`;
   }
-  return `${Math.round(meters)} m`;
+  return `${Math.round(meters)} ${units.m}`;
 }
 
 /**
@@ -288,7 +294,13 @@ export function formatDistance(meters: number): string {
  *   speed) -> "—" (non-empty safe fallback)
  * Non-negative; never throws.
  */
-export function formatEta(meters: number, avgSpeedKmh: number): string {
+export function formatEta(
+  meters: number,
+  avgSpeedKmh: number,
+  // Injected for the same reason as in formatDistance. The default keeps the previous
+  // hardcoded Uzbek wording so the unit tests describe the pure behaviour.
+  minuteLabel = 'daqiqa'
+): string {
   if (typeof meters !== 'number' || !Number.isFinite(meters) || meters < 0) {
     return '—';
   }
@@ -296,5 +308,5 @@ export function formatEta(meters: number, avgSpeedKmh: number): string {
     return '—';
   }
   const minutes = Math.round((meters / 1000) / avgSpeedKmh * 60);
-  return `${minutes} daqiqa`;
+  return `${minutes} ${minuteLabel}`;
 }
