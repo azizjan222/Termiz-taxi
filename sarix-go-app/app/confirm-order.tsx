@@ -162,7 +162,10 @@ export default function ConfirmOrderScreen() {
             )}
           <View style={styles.divider} />
           <View style={styles.row}>
-            <Text style={styles.label}>{t('order.departureTime')}</Text>
+            {/* A parcel is sent, not "departed" — same wording the driver sees. */}
+            <Text style={styles.label}>
+              {t(isParcel ? 'order.dispatchTime' : 'order.departureTime')}
+            </Text>
             <Text style={styles.value}>{orderStore.departureTime}</Text>
           </View>
         </View>
