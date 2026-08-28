@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, Alert,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { describeApiError } from '../src/api/errors';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
@@ -33,17 +34,28 @@ export default function RateDriverScreen() {
   const [stars, setStars] = useState(5);
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
+  const submitInFlightRef = useRef(false);
 
   const handleSubmit = async () => {
+    // Synchronous guard: `loading` only disables the button on the next render, so a
+    // double tap submitted the rating twice.
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setLoading(true);
     try {
       await ratePassenger(parseInt(orderId), stars, comment);
-      Alert.alert('✅', t('rating.success'), [
-        { text: 'OK', onPress: () => router.replace('/(tabs)/home') },
-      ]);
+      Alert.alert(
+        t('common.success'),
+        t('rating.success'),
+        [{ text: t('common.ok'), onPress: () => router.replace('/(tabs)/home') }],
+        // A dismissed Android dialog never fires onPress, which left the passenger on the
+        // rating screen after a rating that HAD been recorded.
+        { cancelable: false }
+      );
     } catch (e: any) {
-      Alert.alert('❌', e?.response?.data?.error || t('common.error'));
+      Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
+      submitInFlightRef.current = false;
       setLoading(false);
     }
   };

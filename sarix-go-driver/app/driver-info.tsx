@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, Alert, ScrollView,
   TextInput, Modal, FlatList, ActivityIndicator,
@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import { API_URL, getAuthToken } from '../src/api/client';
+import { describeApiError } from '../src/api/errors';
 import { useDriverStore } from '../src/store/driver';
 import {
   getMe, updateDriverInfo, uploadTechPassport, uploadLicenseImage, getCarModels,
@@ -65,10 +66,20 @@ export default function DriverInfoScreen() {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
+  // `save` chains a PATCH and up to two multipart uploads, so it is the widest double-tap
+  // window in the app. Two taps meant two PATCHes, up to four uploads racing each other's
+  // file deletes, and two success dialogs — each calling router.back(), popping two screens.
+  // A useState flag cannot prevent this: it only disables the button on the next render.
+  const saveInFlightRef = useRef(false);
+  const pickInFlightRef = useRef(false);
+
   useEffect(() => {
     // Pre-fill from cached driver first, then refresh from /api/driver/me.
     const fill = (d: any) => {
-      if (!d) return;
+      if (!d || !aliveRef.current) return;
       setFirstName(d.first_name || '');
       setLastName(d.last_name || '');
       setPinfl(d.pinfl || '');
@@ -84,59 +95,119 @@ export default function DriverInfoScreen() {
       }
     };
     fill(driver);
-    getAuthToken().then(setDocumentToken).catch(() => setDocumentToken(null));
+    getAuthToken()
+      .then((token) => { if (aliveRef.current) setDocumentToken(token); })
+      .catch(() => { if (aliveRef.current) setDocumentToken(null); });
     getMe().then((d) => { fill(d); setDriver(d); }).catch(() => {});
-    getCarModels().then((r) => setModels(r.models)).catch(() => {});
+    getCarModels()
+      .then((r) => { if (aliveRef.current) setModels(r.models); })
+      .catch(() => {});
     // Prefill from the current driver once on mount, then refresh from the server.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pickImage = async (setter: (uri: string) => void) => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.7,
-      allowsEditing: true,
-    });
-    if (!result.canceled && result.assets[0]) setter(result.assets[0].uri);
+    if (pickInFlightRef.current) return;
+    pickInFlightRef.current = true;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.7,
+        allowsEditing: true,
+      });
+      if (!result.canceled && result.assets?.[0] && aliveRef.current) {
+        setter(result.assets[0].uri);
+      }
+    } catch (e: any) {
+      // Previously uncaught: a native picker rejection produced no UI feedback at all.
+      Alert.alert(t('common.error'), e?.message || String(e));
+    } finally {
+      pickInFlightRef.current = false;
+    }
   };
 
   const save = async () => {
-    if (!firstName.trim()) {
-      Alert.alert('❌', t('driverInfo.errName'));
-      return;
-    }
-    if (pinfl && pinfl.replace(/\D/g, '').length !== 14) {
-      Alert.alert('❌', t('driverInfo.errPinfl'));
-      return;
-    }
-    setSaving(true);
+    // Synchronous guard, set before the first await.
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
     try {
-      // 1) Save text fields.
-      const { driver: updated } = await updateDriverInfo({
-        first_name: firstName,
-        last_name: lastName,
-        ...(contactToSave ? { contact_phone: contactToSave } : {}),
-        pinfl,
-        car_number: carNumber,
-        car_model: carModel,
-        car_year: carYear,
-      });
-      // 2) Upload new local images (skip ones that are already remote http URLs).
-      if (techUri && !techUri.startsWith('http')) {
-        try { await uploadTechPassport(techUri); } catch {}
+      if (!firstName.trim()) {
+        Alert.alert(t('common.error'), t('driverInfo.errName'));
+        return;
       }
-      if (licenseUri && !licenseUri.startsWith('http')) {
-        try { await uploadLicenseImage(licenseUri); } catch {}
+      if (pinfl && pinfl.replace(/\D/g, '').length !== 14) {
+        Alert.alert(t('common.error'), t('driverInfo.errPinfl'));
+        return;
       }
-      // Refresh the store from the server so everything stays in sync.
-      try { const fresh = await getMe(); setDriver(fresh); } catch { setDriver(updated); }
-      Alert.alert('✅', t('driverInfo.saved'), [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    } catch (e: any) {
-      Alert.alert('❌', e?.response?.data?.error || t('driverInfo.errSave'));
+      setSaving(true);
+      try {
+        // 1) Save text fields.
+        const { driver: updated } = await updateDriverInfo({
+          first_name: firstName,
+          last_name: lastName,
+          ...(contactToSave ? { contact_phone: contactToSave } : {}),
+          pinfl,
+          // Normalised here to match driver-documents.tsx, which already uppercases. The
+          // two screens were storing the same plate in two different cases.
+          car_number: carNumber.trim().toUpperCase(),
+          car_model: carModel,
+          car_year: carYear,
+        });
+
+        // 2) Upload new local images (skip ones that are already remote http URLs).
+        //
+        // These used to be wrapped in `try {...} catch {}`. A failed licence or tech-passport
+        // upload — a 413, a timeout on a weak connection, a 5xx — was swallowed whole and the
+        // driver was then shown "✅ Saqlandi". They believed their documents were submitted,
+        // verification never happened, and nothing anywhere recorded why. Collect the failures
+        // and say so instead.
+        const failures: string[] = [];
+        if (techUri && !techUri.startsWith('http')) {
+          try {
+            await uploadTechPassport(techUri);
+          } catch (err) {
+            failures.push(`${t('driverInfo.techLabel')}: ${describeApiError(err, t)}`);
+          }
+        }
+        if (licenseUri && !licenseUri.startsWith('http')) {
+          try {
+            await uploadLicenseImage(licenseUri);
+          } catch (err) {
+            failures.push(`${t('driverInfo.licenseLabel')}: ${describeApiError(err, t)}`);
+          }
+        }
+
+        // Refresh the store from the server so everything stays in sync.
+        try { const fresh = await getMe(); setDriver(fresh); } catch { setDriver(updated); }
+
+        if (!aliveRef.current) return;
+        if (failures.length > 0) {
+          // Text fields DID save; only the photos did not. Stay on the screen with the
+          // picked images intact so retrying does not mean re-shooting them.
+          Alert.alert(
+            t('driverInfo.savedDocsFailedTitle'),
+            `${t('driverInfo.savedDocsFailedBody')}\n\n${failures.join('\n\n')}`,
+            undefined,
+            { cancelable: false }
+          );
+          return;
+        }
+        Alert.alert(
+          t('common.success'),
+          t('driverInfo.saved'),
+          [{ text: t('common.close'), onPress: () => router.back() }],
+          // A dismissed Android dialog never fires onPress, which stranded the driver on
+          // the form with no idea whether the save had gone through.
+          { cancelable: false }
+        );
+      } catch (e: any) {
+        if (!aliveRef.current) return;
+        Alert.alert(t('common.error'), describeApiError(e, t));
+      } finally {
+        if (aliveRef.current) setSaving(false);
+      }
     } finally {
-      setSaving(false);
+      saveInFlightRef.current = false;
     }
   };
 
@@ -158,8 +229,12 @@ export default function DriverInfoScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Icon name="back" size={26} color={colors.primary} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          disabled={saving}
+        >
+          <Icon name="back" size={26} color={saving ? colors.textMuted : colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>{t('driverInfo.title')}</Text>
         <View style={{ width: 40 }} />

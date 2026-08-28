@@ -28,6 +28,8 @@ export default function TelegramLoginScreen() {
   const setUser = useAuthStore((s) => s.setUser);
 
   const [token, setToken] = useState<string | null>(null);
+  // Kept so "open again" can reuse the exact link the server issued.
+  const [deepLink, setDeepLink] = useState<string | null>(null);
   // `waiting` now means "deep link opened, waiting for the user to type the bot's code".
   const [waiting, setWaiting] = useState(false);
   const [code, setCode] = useState('');
@@ -51,18 +53,32 @@ export default function TelegramLoginScreen() {
     setStarting(true);
     setError('');
     setCode('');
+    let res;
     try {
-      const res = await telegramStart();
-      setToken(res.token);
-      await Linking.openURL(res.deep_link);
-      // Switch to the code step. The bot replies with a one-time code once the user
-      // shares their contact; we deliberately do NOT poll /check any more, because the
-      // code is what proves the person completing the login is the account owner.
-      setWaiting(true);
+      res = await telegramStart();
     } catch {
       setError(t('errors.networkError'));
-    } finally {
       setStarting(false);
+      return;
+    }
+
+    setToken(res.token);
+    setDeepLink(res.deep_link);
+    // Switch to the code step. The bot replies with a one-time code once the user
+    // shares their contact; we deliberately do NOT poll /check any more, because the
+    // code is what proves the person completing the login is the account owner.
+    //
+    // Opening Telegram is a SEPARATE step with its own error. It used to sit inside the
+    // same try as telegramStart(), so a device without Telegram installed (or with the
+    // tg:// handler disabled) reported "network error" — factually wrong — and, because
+    // the throw skipped setWaiting(true), the user could never reach the code entry step
+    // even though a perfectly valid login token had just been minted. Dead end.
+    setWaiting(true);
+    setStarting(false);
+    try {
+      await Linking.openURL(res.deep_link);
+    } catch {
+      setError(t('telegramLogin.cannotOpenTelegram'));
     }
   };
 
@@ -175,12 +191,16 @@ export default function TelegramLoginScreen() {
               />
               <Button
                 title={t('telegramLogin.openAgain')}
-                onPress={() =>
-                  token &&
-                  Linking.openURL(
-                    `https://t.me/termizsariosiyotaxi_bot?start=auth_${token}`
-                  )
-                }
+                // Reuse the deep link the server issued instead of rebuilding it from a
+                // hardcoded bot handle: if the bot username ever changes, a hand-built URL
+                // silently sends users to a dead or foreign chat while the primary button
+                // (which uses res.deep_link) still works.
+                onPress={() => {
+                  if (!deepLink) return;
+                  Linking.openURL(deepLink).catch(() =>
+                    setError(t('telegramLogin.cannotOpenTelegram'))
+                  );
+                }}
                 variant="outline"
                 textStyle={{ color: colors.textOnPrimary }}
                 style={{ borderColor: colors.textOnPrimary }}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,9 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 
 import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
@@ -28,13 +27,20 @@ import {
   submitTopupScreenshot,
   type PaymentMethod,
 } from '../src/api/payments';
+import { describeApiError, formatAmount } from '../src/api/errors';
 import { useDriverStore } from '../src/store/driver';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
 const PRESET_AMOUNTS = [10000, 20000, 50000, 100000];
+// Mirrors config.TOPUP_MIN_AMOUNT / config.TOPUP_MAX_AMOUNT on the backend. Checking here
+// too means an out-of-range amount is caught before the driver waits out a multi-megabyte
+// screenshot upload only to get a 400. The server stays authoritative: if an operator
+// changes the env vars, its rejection (code `amount_out_of_range`, which carries the real
+// bounds) is what the driver ends up seeing.
 const MIN_AMOUNT = 1000;
+const MAX_AMOUNT = 5_000_000;
 
 const METHOD_ICONS: Record<PaymentMethod['id'], IconName> = {
   card: 'card',
@@ -50,22 +56,6 @@ const METHOD_COLORS: Record<PaymentMethod['id'], string> = {
   payme: '#00CFC1',
 };
 
-/**
- * Screenshot upload failures used to collapse into a bare "Xatolik yuz berdi",
- * which hid the two cases drivers actually hit: a rejected upload (the server
- * answers with a plain-text 413/502, not our JSON error shape) and a timeout on
- * a slow connection. Name those explicitly and keep the status code visible.
- */
-function describeUploadError(e: any, t: TFunction): string {
-  const status = e?.response?.status;
-  // A message the backend chose is already meant for the driver; pass it through.
-  const serverError = e?.response?.data?.error;
-  if (serverError) return serverError;
-  if (status === 413) return t('topUp.errTooLarge');
-  if (status) return t('topUp.errServer', { status });
-  if (e?.code === 'ECONNABORTED') return t('topUp.errSlowNetwork');
-  return t('topUp.errNetwork', { message: e?.message || t('topUp.unknown') });
-}
 
 export default function TopUpScreen() {
   const { t } = useTranslation();
@@ -75,6 +65,8 @@ export default function TopUpScreen() {
   const loadDriver = useDriverStore((s) => s.loadDriver);
 
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
+  const [methodsLoading, setMethodsLoading] = useState(true);
+  const [methodsError, setMethodsError] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<string>('card');
   const [amount, setAmount] = useState<number>(50000);
   const [customAmount, setCustomAmount] = useState<string>('');
@@ -82,13 +74,70 @@ export default function TopUpScreen() {
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Two different questions, so two different refs.
+  //
+  // `aliveRef` — is the component still mounted? Guards state setters.
+  // `focusedRef` — is this screen the one the driver is actually looking at? Guards the
+  //   Alert and router.back(). Mount is not enough: expo-router keeps a stack screen
+  //   mounted when you navigate FORWARD from it, so an upload that finished after the
+  //   driver moved on would pop a native dialog over an unrelated screen, and its button
+  //   would call router.back() and drop them out of wherever they were.
+  const aliveRef = useRef(true);
+  const focusedRef = useRef(true);
   useEffect(() => {
-    listMethods()
-      .then(setMethods)
-      .catch(() => setMethods([]));
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      focusedRef.current = false;
+    };
   }, []);
 
-  const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  // Synchronous double-tap guard, matching acceptInFlightRef in (main)/orders.tsx. The
+  // `submitting`/`loading` state also disables the Button, but only after a re-render, so
+  // two taps dispatched in the same batch both got through. On the provider path that
+  // meant two Payment rows and two openURL calls — two payable invoices.
+  const inFlightRef = useRef(false);
+
+  const fetchMethods = useCallback(async () => {
+    setMethodsLoading(true);
+    try {
+      const list = await listMethods();
+      if (!aliveRef.current) return;
+      setMethods(list);
+      setMethodsError(false);
+    } catch {
+      if (!aliveRef.current) return;
+      // This used to silently setMethods([]). The card flow renders on the DEFAULT
+      // selection, so the driver was shown a top-up screen with an empty method list and
+      // "—" where the card number belongs, with the Send button still enabled. Anyone who
+      // paid from memory sent money that could not be reconciled. Surface it instead.
+      setMethods([]);
+      setMethodsError(true);
+    } finally {
+      if (aliveRef.current) setMethodsLoading(false);
+    }
+  }, []);
+
+  // Runs on first focus too, so it replaces the old mount-only fetch rather than adding to
+  // it. The provider (Click/Payme) flow leaves the app entirely and a manual request only
+  // moves the balance once an admin approves it, so refetching on focus is what makes the
+  // balance the driver sees on return actually current — otherwise they saw the stale
+  // number and were liable to pay a second time.
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true;
+      loadDriver();
+      fetchMethods();
+      return () => {
+        focusedRef.current = false;
+      };
+    }, [fetchMethods, loadDriver])
+  );
+
+  const cardMethod = methods.find((m) => m.id === 'card');
+  const cardReady = Boolean(cardMethod?.card_number);
+
+  const formatPrice = formatAmount;
 
   const getActualAmount = (): number => {
     if (customAmount) {
@@ -99,11 +148,13 @@ export default function TopUpScreen() {
   };
 
   const copyCard = async () => {
-    const card = methods.find((m) => m.id === 'card');
-    if (card?.card_number) {
-      Clipboard.setString(card.card_number);
-      Alert.alert(t('topUp.copied'));
+    if (!cardMethod?.card_number) {
+      // Silently doing nothing here let the driver believe the number was copied.
+      Alert.alert(t('topUp.noCardTitle'), t('topUp.noCardBody'));
+      return;
     }
+    Clipboard.setString(cardMethod.card_number);
+    Alert.alert(t('topUp.copied'));
   };
 
   const pickScreenshot = async () => {
@@ -133,6 +184,14 @@ export default function TopUpScreen() {
       Alert.alert(t('common.error'), t('topUp.errMinAmount', { amount: formatPrice(MIN_AMOUNT) }));
       return;
     }
+    if (amt > MAX_AMOUNT) {
+      Alert.alert(t('common.error'), t('topUp.errMaxAmount', { amount: formatPrice(MAX_AMOUNT) }));
+      return;
+    }
+    if (!cardReady) {
+      Alert.alert(t('topUp.noCardTitle'), t('topUp.noCardBody'));
+      return;
+    }
     if (!screenshot) {
       Alert.alert(t('topUp.needScreenshot'), t('topUp.needScreenshotBody'));
       return;
@@ -140,63 +199,93 @@ export default function TopUpScreen() {
     setSubmitting(true);
     try {
       const res = await submitTopupScreenshot(amt, screenshot);
-      setScreenshot(null);
-      // Refresh balance after submission.
-      try {
-        await loadDriver();
-      } catch {}
+      // Refresh the balance. A manual request stays `pending` until an admin approves it,
+      // so this will not move yet — which is exactly why the message below has to say so.
+      await loadDriver();
+      if (aliveRef.current) setScreenshot(null);
+      // The request DID succeed; if the driver has already moved on, stay silent rather
+      // than hijacking their current screen.
+      if (!focusedRef.current) return;
       Alert.alert(
         t('topUp.sentTitle'),
-        res.message || t('topUp.sentBody'),
-        [{ text: 'OK', onPress: () => router.back() }]
+        res.message || t('topUp.pendingNotice'),
+        [{ text: t('common.close'), onPress: () => router.back() }],
+        // Android dialogs are dismissible by default, and a dismissal never fires
+        // onPress. The driver was then left on this screen with the preview cleared and
+        // no record of the request, whose natural next move is to submit it again.
+        { cancelable: false }
       );
     } catch (e: any) {
-      Alert.alert(t('common.error'), describeUploadError(e, t));
+      // Keep the screenshot so a retry does not mean re-picking it from the gallery.
+      if (!focusedRef.current) return;
+      Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
-      setSubmitting(false);
+      if (aliveRef.current) setSubmitting(false);
     }
   };
 
   const handleTopUp = async () => {
-    const amt = getActualAmount();
-    if (amt < MIN_AMOUNT) {
-      Alert.alert(t('common.error'), t('topUp.errMinAmount', { amount: formatPrice(MIN_AMOUNT) }));
-      return;
-    }
-
-    if (selectedMethod === 'card') {
-      // In-app manual flow: require a screenshot, then submit for admin approval.
-      await submitCardTopup();
-      return;
-    }
-
-    setLoading(true);
+    // Set before any await, so a second tap in the same frame cannot get through.
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
-      let result;
-      if (selectedMethod === 'click') {
-        result = await createClickPayment(amt);
-      } else if (selectedMethod === 'payme') {
-        result = await createPaymePayment(amt);
-      } else {
+      const amt = getActualAmount();
+      if (amt < MIN_AMOUNT) {
+        Alert.alert(
+          t('common.error'),
+          t('topUp.errMinAmount', { amount: formatPrice(MIN_AMOUNT) })
+        );
+        return;
+      }
+      if (amt > MAX_AMOUNT) {
+        Alert.alert(
+          t('common.error'),
+          t('topUp.errMaxAmount', { amount: formatPrice(MAX_AMOUNT) })
+        );
         return;
       }
 
-      // Open payment URL in browser
-      const supported = await Linking.canOpenURL(result.url);
-      if (supported) {
-        await Linking.openURL(result.url);
-        Alert.alert(
-          t('topUp.providerOpened'),
-          t('topUp.providerOpenedBody')
-        );
-      } else {
-        Alert.alert(t('common.error'), t('topUp.errBrowser'));
+      if (selectedMethod === 'card') {
+        // In-app manual flow: require a screenshot, then submit for admin approval.
+        await submitCardTopup();
+        return;
       }
-    } catch (e: any) {
-      const msg = e?.response?.data?.error || t('topUp.errGeneric');
-      Alert.alert('❌', msg);
+
+      setLoading(true);
+      try {
+        let result;
+        if (selectedMethod === 'click') {
+          result = await createClickPayment(amt);
+        } else if (selectedMethod === 'payme') {
+          result = await createPaymePayment(amt);
+        } else {
+          return;
+        }
+
+        // Open payment URL in browser
+        const supported = await Linking.canOpenURL(result.url);
+        if (supported) {
+          await Linking.openURL(result.url);
+          // Backgrounding the app for the provider page does NOT blur the screen in
+          // navigation terms, so this dialog still greets the driver when they return —
+          // which is the point of it. The guard only matters if they left this screen
+          // entirely while the request was in flight.
+          if (!focusedRef.current) return;
+          Alert.alert(t('topUp.providerOpened'), t('topUp.providerOpenedBody'));
+        } else {
+          Alert.alert(t('common.error'), t('topUp.errBrowser'));
+        }
+      } catch (e: any) {
+        if (!focusedRef.current) return;
+        // Was `Alert.alert('❌', e?.response?.data?.error || errGeneric)`: an untitled
+        // dialog that collapsed airplane mode, a 20s timeout and a rejected amount into
+        // one indistinguishable message. describeUploadError already separates those.
+        Alert.alert(t('common.error'), describeApiError(e, t));
+      } finally {
+        if (aliveRef.current) setLoading(false);
+      }
     } finally {
-      setLoading(false);
+      inFlightRef.current = false;
     }
   };
 
@@ -251,8 +340,17 @@ export default function TopUpScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Icon name="back" size={26} color={colors.primary} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          // Leaving mid-upload orphaned a 60s request whose result landed on another screen.
+          disabled={submitting || loading}
+        >
+          <Icon
+            name="back"
+            size={26}
+            color={submitting || loading ? colors.textMuted : colors.primary}
+          />
         </TouchableOpacity>
         <Text style={styles.title}>{t('topUp.title')}</Text>
         <View style={{ width: 40 }} />
@@ -323,16 +421,35 @@ export default function TopUpScreen() {
             placeholderTextColor={colors.textMuted}
             keyboardType="number-pad"
             value={customAmount}
-            onChangeText={(t) => setCustomAmount(t.replace(/[^\d]/g, ''))}
+            // `text`, not `t` — the old parameter name shadowed the translation function,
+            // so any t() added inside this callback would have been a runtime error.
+            maxLength={String(MAX_AMOUNT).length}
+            onChangeText={(text) => setCustomAmount(text.replace(/[^\d]/g, ''))}
             accessibilityLabel={t('topUp.otherAmount')}
             accessibilityHint={t('topUp.a11yEnterAmount')}
           />
 
           {/* Payment methods */}
           <Text style={styles.sectionTitle}>{t('topUp.paymentType')}</Text>
-          <View style={styles.methods}>
-            {methods.map(renderMethod)}
-          </View>
+          {methodsLoading && methods.length === 0 ? (
+            <Text style={styles.methodsNotice}>{t('topUp.loadingMethods')}</Text>
+          ) : methodsError ? (
+            <View style={styles.methodsErrorBox}>
+              <Text style={styles.methodsErrorText}>{t('topUp.errMethodsLoad')}</Text>
+              <TouchableOpacity
+                onPress={fetchMethods}
+                disabled={methodsLoading}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.retry')}
+              >
+                <Text style={styles.methodsRetry}>{t('common.retry')}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.methods}>
+              {methods.map(renderMethod)}
+            </View>
+          )}
 
           {/* Card manual flow: show card number + screenshot upload */}
           {selectedMethod === 'card' && (
@@ -342,12 +459,10 @@ export default function TopUpScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardNumberLabel}>{t('topUp.cardNumber')}</Text>
                   <Text style={styles.cardNumberValue}>
-                    {methods.find((m) => m.id === 'card')?.card_number || '—'}
+                    {cardMethod?.card_number || '—'}
                   </Text>
-                  {!!methods.find((m) => m.id === 'card')?.card_holder && (
-                    <Text style={styles.cardHolder}>
-                      {methods.find((m) => m.id === 'card')?.card_holder}
-                    </Text>
+                  {!!cardMethod?.card_holder && (
+                    <Text style={styles.cardHolder}>{cardMethod.card_holder}</Text>
                   )}
                 </View>
                 <IconText
@@ -359,6 +474,20 @@ export default function TopUpScreen() {
                   {t('topUp.copy')}
                 </IconText>
               </TouchableOpacity>
+
+              {!cardReady && !methodsLoading && (
+                <View style={styles.noCardBox}>
+                  <Text style={styles.noCardTitle}>{t('topUp.noCardTitle')}</Text>
+                  <Text style={styles.noCardBody}>{t('topUp.noCardBody')}</Text>
+                  <TouchableOpacity
+                    onPress={fetchMethods}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('common.retry')}
+                  >
+                    <Text style={styles.methodsRetry}>{t('common.retry')}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               <Text style={styles.sectionTitle}>{t('topUp.step2')}</Text>
               <Text style={styles.cardHint}>
@@ -396,7 +525,7 @@ export default function TopUpScreen() {
           <View style={styles.footerInfo}>
             <Text style={styles.footerLabel}>{t('topUp.payable')}</Text>
             <Text style={styles.footerAmount}>
-              {formatPrice(getActualAmount())} so'm
+              {formatPrice(getActualAmount())} {t('more.currency')}
             </Text>
           </View>
           <Button
@@ -413,8 +542,10 @@ export default function TopUpScreen() {
             loading={loading || submitting}
             disabled={
               getActualAmount() < MIN_AMOUNT ||
+              getActualAmount() > MAX_AMOUNT ||
               submitting ||
-              (selectedMethod === 'card' && !screenshot)
+              // Never invite a transfer when we cannot show the destination card.
+              (selectedMethod === 'card' && (!screenshot || !cardReady))
             }
             variant="accent"
             fullWidth={false}
@@ -510,6 +641,48 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.border,
   },
   methods: { gap: spacing.sm },
+  methodsNotice: {
+    ...typography.small,
+    color: colors.textSecondary,
+    paddingVertical: spacing.md,
+    textAlign: 'center',
+  },
+  methodsErrorBox: {
+    backgroundColor: colors.white,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: colors.error,
+    gap: spacing.xs,
+  },
+  methodsErrorText: {
+    ...typography.small,
+    color: colors.error,
+  },
+  methodsRetry: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '700',
+    paddingVertical: spacing.xs,
+  },
+  noCardBox: {
+    backgroundColor: colors.white,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: colors.error,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  noCardTitle: {
+    ...typography.small,
+    color: colors.error,
+    fontWeight: '700',
+  },
+  noCardBody: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
   methodCard: {
     flexDirection: 'row',
     alignItems: 'center',

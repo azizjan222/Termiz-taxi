@@ -22,6 +22,7 @@ export default {
     currency: 'UZS',
     sending: 'Sending...',
     comingSoon: 'Coming soon',
+    ok: 'OK',
   },
   language: {
     select: 'Select language',
@@ -184,6 +185,10 @@ export default {
     networkError: 'Connection problem',
     serverError: 'Server error',
     unknownError: 'Unknown error',
+    sessionExpired: 'Your session expired. Please sign in again.',
+    fileTooLarge: 'The file is too large (5 MB maximum).',
+    slowNetwork: 'Your connection is too slow. Please try again.',
+    serverStatus: 'Server error ({{status}}).',
   },
   ai: {
     title: 'AI Assistant',
@@ -225,6 +230,7 @@ export default {
     tooManyAttempts: 'Too many attempts. Please start over.',
     notSharedYet: 'Share your number in Telegram first',
     restart: 'Start over',
+    cannotOpenTelegram: 'Could not open Telegram. Check that it is installed, or enter the code manually.',
   },
   notifHistory: {
     title: 'Notifications',

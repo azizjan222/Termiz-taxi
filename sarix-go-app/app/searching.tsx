@@ -20,7 +20,7 @@ import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import { getOrder, cancelOrder } from '../src/api/orders';
 import { useAuthStore } from '../src/store/auth';
-import { WS_URL, getAuthToken } from '../src/api/client';
+import { connectPassengerSocket } from '../src/services/passengerSocket';
 import { presentLocalNotification } from '../src/services/notifications';
 import { addNotification } from '../src/services/notificationHistory';
 import { useThemeStore } from '../src/store/theme';
@@ -153,34 +153,21 @@ export default function SearchingScreen() {
 
   // Connect to WebSocket — on accept, show the "driver found" status and then
   // move to the live order screen after a short pause (so the message is seen).
+  //
+  // Uses the reconnecting helper: previously a dropped socket was never re-established, so
+  // the passenger silently fell back to the slower 5s poll for the whole wait.
   useEffect(() => {
     if (!user) return;
-    let ws: WebSocket | null = null;
-    let cancelled = false;
-    (async () => {
-      const token = await getAuthToken();
-      if (cancelled) return;
-      ws = new WebSocket(
-        `${WS_URL}?role=passenger&id=${user.id}&token=${encodeURIComponent(token || '')}`
-      );
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'order_accepted' && msg.order_id?.toString() === orderId) {
-            notifyDriverFound();
-            setStatus('accepted');
-          }
-        } catch {}
-      };
-      // Without onerror, a socket failure raised an unhandled error event; the 5s poll
-      // below is the fallback, so failing quietly here is the intended behaviour.
-      ws.onerror = () => {};
-    })();
-
-    return () => {
-      cancelled = true;
-      ws?.close();
-    };
+    const handle = connectPassengerSocket({
+      userId: user.id,
+      onMessage: (msg) => {
+        if (msg.type === 'order_accepted' && msg.order_id?.toString() === orderId) {
+          notifyDriverFound();
+          setStatus('accepted');
+        }
+      },
+    });
+    return () => handle.close();
     // Re-open the socket only when the user/order changes; notifyDriverFound is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, orderId]);
@@ -214,7 +201,7 @@ export default function SearchingScreen() {
           Alert.alert(
             t(order.status === 'expired' ? 'searching.expiredTitle' : 'searching.cancelledTitle'),
             t(order.status === 'expired' ? 'searching.expiredBody' : 'searching.cancelledBody'),
-            [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }]
+            [{ text: t('common.ok'), onPress: () => router.replace('/(tabs)/home') }]
           );
         }
       } catch {

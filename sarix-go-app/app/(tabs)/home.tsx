@@ -20,7 +20,11 @@ import type { ThemeColors } from '../../src/theme/colors-themed';
 export default function HomeScreen() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
-  const orderStore = useOrderStore();
+  // Select only the two actions we need. `useOrderStore()` subscribed to the WHOLE store,
+  // so Home re-rendered on every draft field change made anywhere in the order flow — while
+  // a different screen was editing it.
+  const resetOrder = useOrderStore((s) => s.reset);
+  const setOrderField = useOrderStore((s) => s.setField);
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -28,8 +32,8 @@ export default function HomeScreen() {
     // Start from a clean draft. orderStore.reset() only ran after a SUCCESSFUL order, so
     // an abandoned flow left the previous destination (city, address and coordinates)
     // in the store and it leaked into the next order.
-    orderStore.reset();
-    orderStore.setField('serviceType', type);
+    resetOrder();
+    setOrderField('serviceType', type);
     // Both taxi and parcel use the Yandex-style map order entry (auto-detect
     // location + destination). The labels inside adapt to the service type.
     router.push('/order-entry');

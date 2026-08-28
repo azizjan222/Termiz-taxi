@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { describeApiError } from '../src/api/errors';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '../src/components/Button';
@@ -72,9 +73,11 @@ export default function LoginOtpScreen() {
     try {
       await requestDriverOtp(phone);
       setResendIn(60);
-      Alert.alert('✅', t('otp.codeSentTo', { phone }));
-    } catch {
-      Alert.alert(t('common.error'), t('common.error'));
+      Alert.alert(t('common.success'), t('otp.codeSentTo', { phone }));
+    } catch (e: any) {
+      // Was Alert.alert(t('common.error'), t('common.error')) — the title repeated as the
+      // body, telling the driver nothing about why the code had not been resent.
+      Alert.alert(t('common.error'), describeApiError(e, t));
     }
   };
 

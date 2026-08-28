@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import { Icon, type IconName } from '../../src/components/Icon';
 import { useAuthStore } from '../../src/store/auth';
 import { uploadProfilePhoto, updateProfile } from '../../src/api/auth';
 import { API_URL } from '../../src/api/client';
+import { describeApiError } from '../../src/api/errors';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
 import { gradients } from '../../src/theme/colors';
@@ -79,11 +80,23 @@ export default function ProfileScreen() {
     ? [colors.surface, colors.background]
     : ['#F2EEFF', '#FFFFFF']) as [string, string];
   const [uploading, setUploading] = useState(false);
+
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+  // Synchronous double-tap guards; see the comments in the handlers below.
+  const photoInFlightRef = useRef(false);
+  const saveInFlightRef = useRef(false);
   const [editVisible, setEditVisible] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [saving, setSaving] = useState(false);
 
   const pickAndUploadPhoto = async () => {
+    // Three controls call this (header avatar, modal avatar, modal "change photo" link) and
+    // only one was disabled while uploading. Each upload commit deletes the PREVIOUS
+    // profile_photo_url from disk, so a second one racing the first could unlink the file
+    // the first had just saved. A useState flag is too late: it lands on the next render.
+    if (photoInFlightRef.current) return;
+    photoInFlightRef.current = true;
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
@@ -91,7 +104,12 @@ export default function ProfileScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        // Was `ImagePicker.MediaTypeOptions.Images`, the last use of that deprecated enum
+        // in either app. If it is absent in expo-image-picker 56 the property access throws
+        // and the catch below reported it as a network problem, i.e. avatar upload looked
+        // permanently broken for an unrelated reason. Every other call site already uses
+        // the array form.
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.7,
@@ -99,11 +117,16 @@ export default function ProfileScreen() {
       if (result.canceled || !result.assets?.[0]?.uri) return;
       setUploading(true);
       const { url } = await uploadProfilePhoto(result.assets[0].uri);
-      if (user) setUser({ ...user, profile_photo_url: url });
+      // Read the CURRENT user instead of the render-time closure, so an auth-store update
+      // that lands mid-upload is not rolled back by the spread.
+      const current = useAuthStore.getState().user;
+      if (current) setUser({ ...current, profile_photo_url: url });
     } catch (e: any) {
-      Alert.alert(t('common.error'), e?.response?.data?.error || t('errors.networkError'));
+      if (!aliveRef.current) return;
+      Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
-      setUploading(false);
+      photoInFlightRef.current = false;
+      if (aliveRef.current) setUploading(false);
     }
   };
 
@@ -113,22 +136,30 @@ export default function ProfileScreen() {
   };
 
   const handleSaveProfile = async () => {
-    const firstName = nameDraft.trim();
-    if (!firstName) {
-      Alert.alert(t('common.error'), t('profile.enterName'));
-      return;
-    }
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
     try {
-      setSaving(true);
-      const { user: updated } = await updateProfile({ first_name: firstName });
-      if (user) {
-        setUser({ ...user, ...updated, first_name: updated?.first_name ?? firstName });
+      const firstName = nameDraft.trim();
+      if (!firstName) {
+        Alert.alert(t('common.error'), t('profile.enterName'));
+        return;
       }
-      setEditVisible(false);
-    } catch (e: any) {
-      Alert.alert(t('common.error'), e?.response?.data?.error || t('errors.networkError'));
+      try {
+        setSaving(true);
+        const { user: updated } = await updateProfile({ first_name: firstName });
+        const current = useAuthStore.getState().user;
+        if (current) {
+          setUser({ ...current, ...updated, first_name: updated?.first_name ?? firstName });
+        }
+        if (aliveRef.current) setEditVisible(false);
+      } catch (e: any) {
+        if (!aliveRef.current) return;
+        Alert.alert(t('common.error'), describeApiError(e, t));
+      } finally {
+        if (aliveRef.current) setSaving(false);
+      }
     } finally {
-      setSaving(false);
+      saveInFlightRef.current = false;
     }
   };
 
@@ -207,7 +238,7 @@ export default function ProfileScreen() {
             <Text style={styles.editPillText}>{t('common.edit')}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={pickAndUploadPhoto} activeOpacity={0.85}>
+          <TouchableOpacity onPress={pickAndUploadPhoto} disabled={uploading} activeOpacity={0.85}>
             {user?.profile_photo_url ? (
               <Image
                 source={{
@@ -323,6 +354,7 @@ export default function ProfileScreen() {
             <TouchableOpacity
               style={styles.modalAvatarWrap}
               onPress={pickAndUploadPhoto}
+              disabled={uploading}
               activeOpacity={0.8}
             >
               {user?.profile_photo_url ? (

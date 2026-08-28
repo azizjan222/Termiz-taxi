@@ -24,6 +24,8 @@ import type { ThemeColors } from '../src/theme/colors-themed';
 interface DisplayMessage extends ChatMessage {
   id: string;
   source?: 'ai' | 'faq' | 'default';
+  /** Locally generated failure notice — excluded from the history sent to the model. */
+  isError?: boolean;
 }
 
 export default function AiChatScreen() {
@@ -43,10 +45,24 @@ export default function AiChatScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
+    // Cancel flag: this screen is a modal, so dismissing it during the request used to
+    // set state on an unmounted component.
+    let cancelled = false;
     getSupportInfo()
-      .then((info) => setSupportUrl(info.telegram_url))
+      .then((info) => {
+        if (!cancelled) setSupportUrl(info.telegram_url);
+      })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // Monotonic id source. `a_${Date.now()}` collided whenever two messages were produced
+  // in the same millisecond (an error bubble plus a retry, or fast suggestion taps),
+  // giving duplicate React keys so one bubble was dropped or misplaced.
+  const msgSeq = useRef(0);
+  const nextId = (prefix: string) => `${prefix}_${Date.now()}_${++msgSeq.current}`;
 
   const scrollToBottom = () => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -56,7 +72,7 @@ export default function AiChatScreen() {
     if (!text.trim() || loading) return;
 
     const userMsg: DisplayMessage = {
-      id: `u_${Date.now()}`,
+      id: nextId('u'),
       role: 'user',
       content: text.trim(),
     };
@@ -68,14 +84,16 @@ export default function AiChatScreen() {
     try {
       // Send last 6 messages for context (skip welcome message)
       const history: ChatMessage[] = messages
-        .filter((m) => m.id !== 'welcome')
+        // Skip the welcome bubble AND any error bubble we injected ourselves — feeding our
+        // own "sorry, try again" text back as conversation context only confuses the model.
+        .filter((m) => m.id !== 'welcome' && !m.isError)
         .slice(-5)
         .map((m) => ({ role: m.role, content: m.content }));
       history.push({ role: 'user', content: text.trim() });
 
       const response = await askAi(history);
       const aiMsg: DisplayMessage = {
-        id: `a_${Date.now()}`,
+        id: nextId('a'),
         role: 'assistant',
         content: response.answer,
         source: response.source,
@@ -90,9 +108,10 @@ export default function AiChatScreen() {
           ? t('ai.errSession')
           : t('ai.errRetry');
       const errorMsg: DisplayMessage = {
-        id: `a_${Date.now()}`,
+        id: nextId('a'),
         role: 'assistant',
         content,
+        isError: true,
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
@@ -105,7 +124,13 @@ export default function AiChatScreen() {
     Linking.openURL(supportUrl);
   };
 
-  const suggestions = t('ai.suggestions', { returnObjects: true }) as string[];
+  // Guarded: a blind `as string[]` followed by .map() crashes the whole screen if a locale
+  // ever defines ai.suggestions as a string. The locale parity test would NOT catch that —
+  // it treats arrays as leaves, so it only checks the key exists, never its shape.
+  const rawSuggestions: unknown = t('ai.suggestions', { returnObjects: true });
+  const suggestions = Array.isArray(rawSuggestions)
+    ? rawSuggestions.filter((s): s is string => typeof s === 'string')
+    : [];
   const showSuggestions = messages.length === 1; // only welcome shown
 
   return (

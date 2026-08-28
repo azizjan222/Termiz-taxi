@@ -78,12 +78,18 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
     drawRoute: (from, to) => sendCommand({ type: 'drawRoute', from, to }),
   }));
 
-  // Update markers when props change
+  // Update markers when they actually CHANGE.
+  //
+  // The dep used to be the array identity, and callers build a fresh literal on every
+  // render — so during live driver tracking every WebSocket position frame (and every
+  // unrelated re-render) re-injected setMarkers, which removes and rebuilds every
+  // placemark in the page. The pins visibly blinked while the passenger watched the car
+  // move. Comparing the serialized content makes this fire only on a real change.
+  const markersKey = props.markers ? JSON.stringify(props.markers) : '';
   useEffect(() => {
-    if (props.markers) {
-      sendCommand({ type: 'setMarkers', markers: props.markers });
-    }
-  }, [props.markers]);
+    if (!markersKey) return;
+    sendCommand({ type: 'setMarkers', markers: JSON.parse(markersKey) });
+  }, [markersKey]);
 
   const handleMessage = (event: WebViewMessageEvent) => {
     try {

@@ -37,7 +37,7 @@ export default function ReferralScreen() {
   const copyCode = () => {
     if (!info) return;
     Clipboard.setString(info.referral_code);
-    Alert.alert('✅', t('referral.codeCopied'));
+    Alert.alert(t('common.success'), t('referral.codeCopied'));
   };
 
   if (!info) {

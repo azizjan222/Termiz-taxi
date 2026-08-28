@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
+import { describeApiError } from '../api/errors';
 
 import { Button } from './Button';
 import { triggerSos } from '../api/sos';
@@ -62,7 +63,7 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
       setNote('');
       Alert.alert(`✅ ${t('sos.sentTitle')}`, res.message || t('sos.sent'));
     } catch (e: any) {
-      Alert.alert('❌', e?.response?.data?.error || t('common.error'));
+      Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
       setLoading(false);
     }

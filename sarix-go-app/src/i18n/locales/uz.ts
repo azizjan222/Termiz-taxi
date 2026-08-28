@@ -22,6 +22,7 @@ export default {
     currency: "so'm",
     sending: 'Yuborilmoqda...',
     comingSoon: 'Tez orada',
+    ok: 'OK',
   },
   language: {
     select: 'Tilni tanlang',
@@ -186,6 +187,10 @@ export default {
     networkError: "Internet ulanishida muammo bor",
     serverError: 'Server xatoligi',
     unknownError: "Noma'lum xatolik",
+    sessionExpired: 'Sessiya muddati tugadi. Iltimos, qaytadan kiring.',
+    fileTooLarge: 'Fayl juda katta (maksimal 5 MB).',
+    slowNetwork: "Internet juda sekin. Qayta urinib ko'ring.",
+    serverStatus: 'Server xatosi ({{status}}).',
   },
   ai: {
     title: 'AI Yordamchi',
@@ -227,6 +232,7 @@ export default {
     tooManyAttempts: "Juda ko'p urinish. Qaytadan boshlang.",
     notSharedYet: "Avval Telegram'da raqamingizni ulashing",
     restart: 'Qaytadan boshlash',
+    cannotOpenTelegram: "Telegram ochilmadi. Telegram o'rnatilganini tekshiring yoki kodni qo'lda kiriting.",
   },
   rating: {
     title: 'Sayohatingiz qanday bo\'ldi?',

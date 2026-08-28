@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { describeApiError } from '../../src/api/errors';
 import { useTranslation } from 'react-i18next';
 
 import { Logo } from '../../src/components/Logo';
@@ -51,8 +52,7 @@ export default function PhoneScreen() {
         params: { phone, devCode: res.dev_code || '' },
       });
     } catch (e: any) {
-      const msg = e?.response?.data?.error || t('errors.networkError');
-      Alert.alert(t('common.error'), msg);
+      Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
       setLoading(false);
     }

@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { describeApiError } from '../src/api/errors';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
@@ -40,7 +41,7 @@ export default function SavedAddressesScreen() {
 
   const handleAdd = async () => {
     if (!address.trim()) {
-      Alert.alert('❌', t('addresses.addressRequired'));
+      Alert.alert(t('common.error'), t('addresses.addressRequired'));
       return;
     }
     setSaving(true);
@@ -49,7 +50,7 @@ export default function SavedAddressesScreen() {
       setLabel(''); setAddress(''); setModalOpen(false);
       load();
     } catch (e: any) {
-      Alert.alert('❌', e?.response?.data?.error || t('common.error'));
+      Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
       setSaving(false);
     }
