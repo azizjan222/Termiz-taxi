@@ -388,6 +388,7 @@ export default {
     expiredBody: 'Unfortunately no driver was found yet. Please try again.',
     cancelledTitle: 'Order cancelled',
     cancelledBody: 'The order was cancelled.',
+    connectionLost: 'No connection — check your internet. The search continues.',
     banner1Title: 'Your order has been placed',
     banner1Text: 'Sarix Go is looking for drivers nearby — please wait a moment.',
     banner2Title: 'No waiting in the heat',

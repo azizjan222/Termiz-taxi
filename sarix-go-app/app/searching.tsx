@@ -54,6 +54,8 @@ const BANNERS: Banner[] = [
 ];
 
 const AUTO_ROTATE_MS = 7000;
+// Consecutive failed status polls before we tell the passenger we've lost contact.
+const POLL_FAILURES_BEFORE_WARNING = 3;
 
 export default function SearchingScreen() {
   const { t } = useTranslation();
@@ -63,7 +65,12 @@ export default function SearchingScreen() {
   const user = useAuthStore((s) => s.user);
   const [status, setStatus] = useState<'new' | 'accepted'>('new');
   const [elapsed, setElapsed] = useState(0);
-  const wsRef = useRef<WebSocket | null>(null);
+  // True after several consecutive failed polls, so the passenger is told the app has lost
+  // contact instead of watching the timer climb forever.
+  const [connectionLost, setConnectionLost] = useState(false);
+  // Synchronous guard so two taps can't stack two confirm dialogs and fire two cancels.
+  const cancelInFlightRef = useRef(false);
+  const [cancelling, setCancelling] = useState(false);
   const [pulseAnim] = useState(() => new Animated.Value(0));
   // Fire the "driver found" notification exactly once (WS and polling can both
   // observe the acceptance — this guard prevents a duplicate alert).
@@ -156,7 +163,6 @@ export default function SearchingScreen() {
       ws = new WebSocket(
         `${WS_URL}?role=passenger&id=${user.id}&token=${encodeURIComponent(token || '')}`
       );
-      wsRef.current = ws;
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
@@ -187,9 +193,15 @@ export default function SearchingScreen() {
     // let two polls overlap and both reach the terminal branch -> two stacked Alerts,
     // each navigating home on OK.
     let alerted = false;
+    // Consecutive poll failures. The poll used to swallow every error, so during a backend
+    // or network outage the passenger sat here with the timer climbing forever and nothing
+    // on screen suggesting anything was wrong. After a few failures we surface it.
+    let failures = 0;
     const poll = async () => {
       try {
         const order = await getOrder(id);
+        failures = 0;
+        setConnectionLost(false);
         if (order.status === 'accepted' || order.status === 'in_progress') {
           notifyDriverFound();
           setStatus('accepted');
@@ -205,8 +217,14 @@ export default function SearchingScreen() {
             [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }]
           );
         }
-      } catch {}
+      } catch {
+        failures += 1;
+        if (failures >= POLL_FAILURES_BEFORE_WARNING) setConnectionLost(true);
+      }
     };
+    // Poll immediately as well as on the interval: an order that was already terminal when
+    // this screen mounted used to take a full 5s to be noticed.
+    poll();
     const interval = setInterval(poll, 5000);
     return () => clearInterval(interval);
     // Poll keyed on the order id only; notifyDriverFound is stable.
@@ -227,10 +245,18 @@ export default function SearchingScreen() {
         text: t('common.yes'),
         style: 'destructive',
         onPress: async () => {
+          // See the same guard on the order screen: without it two taps stacked two
+          // dialogs, the second cancel failed because the order was already cancelled, and
+          // the passenger got a bogus "no internet" alert on the home screen.
+          if (cancelInFlightRef.current) return;
+          cancelInFlightRef.current = true;
+          setCancelling(true);
           try {
             await cancelOrder(parseInt(orderId));
             router.replace('/(tabs)/home');
           } catch {
+            cancelInFlightRef.current = false;
+            setCancelling(false);
             Alert.alert(t('common.error'), t('errors.networkError'));
           }
         },
@@ -279,8 +305,10 @@ export default function SearchingScreen() {
           <>
             <Text style={styles.statusTitle}>{t('searching.statusSearching')}</Text>
             <Text style={styles.timer}>{mmss(elapsed)}</Text>
-            <Text style={styles.statusSub}>
-              {t('searching.statusSearchingSub')}
+            <Text style={[styles.statusSub, connectionLost && { color: colors.error }]}>
+              {connectionLost
+                ? t('searching.connectionLost')
+                : t('searching.statusSearchingSub')}
             </Text>
           </>
         )}
@@ -318,7 +346,13 @@ export default function SearchingScreen() {
         {found ? (
           <Button title={t('searching.viewOrder')} onPress={() => router.replace(`/order/${orderId}`)} />
         ) : (
-          <Button title={t('order.cancelOrder')} onPress={handleCancel} variant="outline" />
+          <Button
+            title={t('order.cancelOrder')}
+            onPress={handleCancel}
+            variant="outline"
+            loading={cancelling}
+            disabled={cancelling}
+          />
         )}
       </View>
     </SafeAreaView>

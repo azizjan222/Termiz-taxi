@@ -3,9 +3,10 @@ import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppState } from 'react-native';
+import { Alert, AppState } from 'react-native';
 
 import i18n, { initI18n } from '../src/i18n';
+import { setUnauthorizedHandler } from '../src/api/client';
 import { useDriverStore } from '../src/store/driver';
 import { useThemeStore } from '../src/store/theme';
 import {
@@ -82,6 +83,22 @@ export default function RootLayout() {
     });
     return () => sub.remove();
   }, [isAuth, ready]);
+
+  // Session expiry: the server rejected our token (HTTP 401, or the realtime socket's
+  // "unauthorized" frame). Sign the driver out locally and send them to login.
+  //
+  // Without this the app stayed on the orders screen showing the green "Onlayn" pill while
+  // every request failed and the socket reconnect-looped — the driver received no orders
+  // and nothing on screen said why.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      realtime.disconnect();
+      useDriverStore.getState().expireSession();
+      Alert.alert(i18n.t('common.error'), i18n.t('more.sessionExpired'));
+      router.replace('/login');
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   // App-wide realtime order socket: connect once the driver is authenticated,
   // disconnect on logout / id loss. The manager is a singleton, so this lives

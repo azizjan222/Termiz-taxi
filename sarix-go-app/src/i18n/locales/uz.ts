@@ -390,6 +390,7 @@ export default {
     expiredBody: "Afsuski, hozircha haydovchi topilmadi. Qaytadan urinib ko'ring.",
     cancelledTitle: 'Buyurtma bekor qilindi',
     cancelledBody: 'Buyurtma bekor qilindi.',
+    connectionLost: "Aloqa yo'q — internetni tekshiring. Qidiruv davom etmoqda.",
     banner1Title: 'Buyurtmangiz qabul qilindi',
     banner1Text: 'Sarix Go yaqin atrofdagi haydovchilarni qidirmoqda — biroz kuting.',
     banner2Title: "Issiqda kutib o'tirmaysiz",

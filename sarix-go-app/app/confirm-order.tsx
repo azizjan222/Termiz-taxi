@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ export default function ConfirmOrderScreen() {
   const [note, setNote] = useState('');
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
+  const submitInFlightRef = useRef(false);
 
   const formatPrice = (p: number) =>
     p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -64,6 +65,14 @@ export default function ConfirmOrderScreen() {
 
   const handleConfirm = async () => {
     if (!orderStore.fromCity || !orderStore.toCity) return;
+    // Synchronous guard. The Button's `loading` prop only disables it after a re-render,
+    // which is a full React commit behind a fast second tap — and with a 20s axios timeout
+    // there is a long window in which both taps passed the check and created TWO identical
+    // orders. The passenger then went to /searching for the second one while the first
+    // stayed open, got accepted by another driver, and produced a call about a ride they
+    // had no record of. The driver app already guards its accept the same way.
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setLoading(true);
     try {
       const result = await createOrder({
@@ -92,10 +101,12 @@ export default function ConfirmOrderScreen() {
         params: { orderId: result.order.id.toString() },
       });
     } catch (e: any) {
+      // Only release the guard on failure. On success we navigate away, and re-enabling
+      // the button during the replace animation would just reopen the double-submit window.
+      submitInFlightRef.current = false;
+      setLoading(false);
       const msg = e?.response?.data?.error || t('errors.networkError');
       Alert.alert(t('common.error'), msg);
-    } finally {
-      setLoading(false);
     }
   };
 

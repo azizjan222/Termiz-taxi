@@ -15,6 +15,12 @@ interface DriverState {
   setOnline: (online: boolean) => void;
   loadDriver: () => Promise<void>;
   logout: () => Promise<void>;
+  /**
+   * Drop the session locally after the server rejected our token.
+   * Deliberately performs NO network call — `logout()` unregisters the push token, which
+   * would 401 again and re-enter the same handler.
+   */
+  expireSession: () => void;
 }
 
 export const useDriverStore = create<DriverState>((set) => ({
@@ -79,6 +85,12 @@ export const useDriverStore = create<DriverState>((set) => ({
       isOnline: cached?.is_online || false,
       isLoading: false,
     });
+  },
+
+  expireSession: () => {
+    set({ driver: null, isAuthenticated: false, isOnline: false, isLoading: false });
+    clearAuthToken().catch(() => {});
+    SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
   },
 
   logout: async () => {
