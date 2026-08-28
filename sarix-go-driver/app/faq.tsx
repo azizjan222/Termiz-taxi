@@ -11,43 +11,18 @@ import { getSupportInfo, type SupportInfo } from '../src/api/ai';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 
-// Static FAQ content (Uzbek) for drivers.
-const FAQ: { q: string; a: string }[] = [
-  {
-    q: 'Ilovaga qanday kiraman?',
-    a: "\"Telegram orqali kirish\" tugmasini bosing, botda raqamingizni ulashing — avtomatik kirasiz. So'ng ilovaning o'zida hujjatlaringizni (guvohnoma va texpasportning ikkala tomoni) yuklaysiz.",
-  },
-  {
-    q: 'Birinchi oy haqiqatan ham bepulmi?',
-    a: "Ha. Birinchi haydovchilar uchun 1 oy mutlaqo bepul — bu davrda komissiya olinmaydi va minimal balans talab qilinmaydi.",
-  },
-  {
-    q: 'Komissiya qancha?',
-    a: "Bepul davr tugagach, har bir qabul qilingan zakas uchun narxning 10% komissiya balansingizdan olinadi.",
-  },
-  {
-    q: 'Nega yangi zakaslar kelmayapti?',
-    a: "Balansingizda mablag' yetarli bo'lmasa (kamida 20 000 so'm) yangi zakaslar ko'rsatilmaydi. Balansni to'ldiring va \"Onlayn\" rejimini yoqing.",
-  },
-  {
-    q: "Balansni qanday to'ldiraman?",
-    a: "Profil → Balansni to'ldirish bo'limidan karta, Click yoki Payme orqali to'ldirasiz. To'lov cheki admin tomonidan tasdiqlanadi.",
-  },
-  {
-    q: 'Zakasni qabul qilgach nima qilaman?',
-    a: "Yo'lovchining telefon raqami ochiladi — 15 daqiqa ichida bog'laning. \"Yo'l ko'rsatish\" tugmasi orqali xaritada yo'lovchi oldiga yo'lni ochishingiz mumkin.",
-  },
-  {
-    q: 'Onlayn vaqt qanday hisoblanadi?',
-    a: "\"Onlayn\" rejimini yoqsangiz, bugungi onlayn vaqtingiz hisoblanadi va Statistika bo'limida ko'rinadi.",
-  },
-];
+// FAQ entries live in the translation dictionary as faq.q1..q7 / faq.a1..a7 so the
+// whole list follows the driver's chosen language. Add a new pair to all four
+// dictionaries and bump this count.
+const FAQ_COUNT = 7;
+const FAQ_INDEXES = Array.from({ length: FAQ_COUNT }, (_, i) => i + 1);
 
 export default function FaqScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const [support, setSupport] = useState<SupportInfo | null>(null);
-  const [open, setOpen] = useState<number | null>(0);
+  // FAQ keys are 1-based, so the first entry expanded by default is 1 (not 0).
+  const [open, setOpen] = useState<number | null>(1);
 
   useEffect(() => {
     getSupportInfo().then(setSupport).catch(() => {});
@@ -71,20 +46,22 @@ export default function FaqScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {FAQ.map((item, i) => {
-          const expanded = open === i;
+        {FAQ_INDEXES.map((n) => {
+          const expanded = open === n;
           return (
             <TouchableOpacity
-              key={i}
+              key={n}
               style={[styles.card, { backgroundColor: colors.background, borderColor: colors.divider }]}
-              onPress={() => setOpen(expanded ? null : i)}
+              onPress={() => setOpen(expanded ? null : n)}
               activeOpacity={0.8}
             >
               <View style={styles.qRow}>
-                <Text style={[styles.q, { color: colors.text }]}>{item.q}</Text>
+                <Text style={[styles.q, { color: colors.text }]}>{t(`faq.q${n}`)}</Text>
                 <Text style={[styles.chev, { color: colors.textMuted }]}>{expanded ? '−' : '+'}</Text>
               </View>
-              {expanded && <Text style={[styles.a, { color: colors.textSecondary }]}>{item.a}</Text>}
+              {expanded && (
+                <Text style={[styles.a, { color: colors.textSecondary }]}>{t(`faq.a${n}`)}</Text>
+              )}
             </TouchableOpacity>
           );
         })}
