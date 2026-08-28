@@ -39,7 +39,7 @@ export default function FaqScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.surface }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={[styles.backIcon, { color: colors.primary }]}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>{t('faq.title')}</Text>
         <View style={{ width: 40 }} />
@@ -78,7 +78,7 @@ export default function FaqScreen() {
               {support ? `@${support.telegram_username}` : t('faq.contactHint')}
             </Text>
           </View>
-          <Text style={styles.supportArrow}>›</Text>
+          <Icon name="arrowRight" size={20} color="#FFFFFF" />
         </TouchableOpacity>
 
         {/* Email — questions & suggestions */}
@@ -92,7 +92,7 @@ export default function FaqScreen() {
             <Text style={[styles.emailTitle, { color: colors.primary }]}>{t('faq.emailSupport')}</Text>
             <Text style={[styles.emailSub, { color: colors.textSecondary }]}>{supportEmail}</Text>
           </View>
-          <Text style={[styles.emailArrow, { color: colors.primary }]}>›</Text>
+          <Icon name="arrowRight" size={20} color={colors.primary} />
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -109,7 +109,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28 },
   title: { ...typography.h3 },
   scroll: { padding: spacing.lg },
   card: { borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1 },
@@ -126,7 +125,6 @@ const styles = StyleSheet.create({
   },
   supportTitle: { ...typography.bodyBold, color: '#FFFFFF' },
   supportSub: { ...typography.small, color: '#FFFFFF', opacity: 0.8, marginTop: 2 },
-  supportArrow: { fontSize: 24, color: '#FFFFFF' },
   emailBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -137,5 +135,4 @@ const styles = StyleSheet.create({
   },
   emailTitle: { ...typography.bodyBold },
   emailSub: { ...typography.small, marginTop: 2 },
-  emailArrow: { fontSize: 24 },
 });

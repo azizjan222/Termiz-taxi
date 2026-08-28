@@ -23,6 +23,9 @@ export interface Driver {
   seats?: number;
   balance: number;
   rating: number;
+  // Optional because an app updated over the air can reach a driver before the backend
+  // that serves this field has rolled out. Treat `undefined` as "unknown", not as zero.
+  rating_count?: number;
   total_orders: number;
   is_online: boolean;
   documents_submitted?: boolean;

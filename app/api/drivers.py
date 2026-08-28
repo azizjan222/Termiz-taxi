@@ -506,6 +506,10 @@ def _serialize_driver(d: Driver) -> dict:
         "seats": d.seats or 4,
         "balance": d.balance,
         "rating": d.rating,
+        # How many passengers have actually rated this driver. Without it the app cannot
+        # tell "5.0 because nobody has rated yet" (the DB default) from "5.0 earned across
+        # 40 rides", so the profile screen had no honest way to show a rating at all.
+        "rating_count": d.rating_count or 0,
         "total_orders": d.total_orders,
         "is_online": d.is_online,
         "documents_submitted": bool(d.documents_submitted),

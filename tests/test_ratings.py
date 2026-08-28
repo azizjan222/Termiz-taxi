@@ -203,3 +203,42 @@ async def test_dict_comment_does_not_crash(db):
     # stored as NULL (the handler's existing `comment if comment else None`) so the column
     # never holds a meaningless empty string.
     assert db.query(Rating).one().comment is None
+
+
+
+# ===================== rating exposed to the driver app =====================
+
+def test_driver_payload_exposes_rating_and_count(db):
+    """The driver profile screen needs BOTH numbers to show an honest rating.
+
+    Driver.rating defaults to 5.0, so the average alone cannot distinguish a brand-new
+    driver from one who earned 5.0 across 40 rides. The profile screen used to sidestep
+    that by hardcoding "4.0" for everyone; it now relies on rating_count being served
+    here, so this pins the field in place.
+    """
+    from app.api.drivers import _serialize_driver
+
+    driver = _driver(db)
+    payload = _serialize_driver(driver)
+
+    assert payload["rating_count"] == 0
+    assert "rating" in payload
+
+    driver.rating = 4.75
+    driver.rating_count = 12
+    db.commit()
+
+    payload = _serialize_driver(driver)
+    assert payload["rating"] == 4.75
+    assert payload["rating_count"] == 12
+
+
+def test_driver_payload_rating_count_is_zero_not_null_for_legacy_rows(db):
+    """Legacy rows predate the column and read back as NULL; the app expects a number."""
+    from app.api.drivers import _serialize_driver
+
+    driver = _driver(db)
+    driver.rating_count = None
+    db.commit()
+
+    assert _serialize_driver(driver)["rating_count"] == 0

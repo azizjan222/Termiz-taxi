@@ -298,7 +298,7 @@ export default function ProfileScreen() {
                 <Text style={styles.driverTitle}>{t(becomeDriver.labelKey)}</Text>
                 <Text style={styles.driverSubtitle}>{t('becomeDriver.subtitle')}</Text>
               </View>
-              <Text style={styles.driverArrow}>›</Text>
+              <Icon name="arrowRight" size={22} color={colors.textOnAccent} />
             </LinearGradient>
           </TouchableOpacity>
         )}
@@ -325,7 +325,7 @@ export default function ProfileScreen() {
                 />
               </View>
               <Text style={styles.menuLabel}>{t(item.labelKey)}</Text>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           ))}
         </View>
@@ -512,7 +512,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     opacity: 0.8,
     marginTop: 2,
   },
-  driverArrow: { fontSize: 26, color: colors.textOnAccent, fontWeight: '700' },
   menu: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
@@ -540,7 +539,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginRight: spacing.md,
   },
   menuLabel: { ...typography.body, color: colors.text, flex: 1 },
-  menuArrow: { fontSize: 24, color: colors.textMuted, fontWeight: '300' },
   logoutButton: {
     marginTop: spacing.lg,
     padding: spacing.md,

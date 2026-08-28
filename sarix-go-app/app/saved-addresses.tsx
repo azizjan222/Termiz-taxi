@@ -84,7 +84,7 @@ export default function SavedAddressesScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>{t('addresses.title')}</Text>
         <TouchableOpacity onPress={() => setModalOpen(true)} style={styles.addBtn}>
@@ -186,7 +186,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.white,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   title: { ...typography.h3, color: colors.primary },
   addBtn: {
     width: 40, height: 40, borderRadius: 20,

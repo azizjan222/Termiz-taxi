@@ -158,6 +158,21 @@ export default function ProfileScreen() {
 
   const lowBalance = (driver?.balance || 0) < 20000;
 
+  // Driver.rating defaults to 5.0 in the database, so the number alone cannot tell a
+  // brand-new driver apart from one who has genuinely earned 5.0. rating_count is the only
+  // honest signal, and it is optional here because an over-the-air update can reach the
+  // driver before the backend that returns it. The rules, in order:
+  //   * count is a number and > 0            -> show the real average and the count
+  //   * count is a number and 0              -> show "—" and "no ratings yet"
+  //   * count is missing (older backend)     -> fall back to total_orders: a driver with no
+  //                                             completed rides certainly has no ratings
+  const ratingCount = typeof driver?.rating_count === 'number' ? driver.rating_count : null;
+  const ratingValue = typeof driver?.rating === 'number' ? driver.rating : 0;
+  const hasRatings =
+    ratingCount != null
+      ? ratingCount > 0
+      : ratingValue > 0 && (driver?.total_orders || 0) > 0;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -250,12 +265,28 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <View style={styles.statBox}>
               <View style={[styles.statIconTile, { backgroundColor: colors.accent }]}>
-                <Icon name="star" size={20} color={TILE_FG_DARK} />
+                <Icon
+                  name={hasRatings ? 'star' : 'starOutline'}
+                  size={20}
+                  color={TILE_FG_DARK}
+                />
               </View>
-              {/* TEMP: ratings are not in use yet — show a fixed 4.0 for every driver.
-                  When ratings go live, restore: driver?.rating?.toFixed(1) || '5.0' */}
-              <Text style={styles.statValue}>4.0</Text>
-              <Text style={styles.statLabel}>{t('profile.rating')}</Text>
+              {/* Was a hardcoded 4.0 for EVERY driver, behind a "ratings are not in use
+                  yet" comment that had gone stale: passenger_rate_driver recomputes
+                  Driver.rating and rating_count on every rating, and /api/driver/me
+                  returns them. So the app was showing a made-up number while the real one
+                  sat unused one field away. */}
+              <Text style={styles.statValue}>
+                {hasRatings ? ratingValue.toFixed(1) : '—'}
+              </Text>
+              <Text style={styles.statLabel}>
+                {hasRatings
+                  ? // "Reyting · 12 baho" — the count is what makes the number meaningful.
+                    ratingCount != null
+                    ? `${t('profile.rating')} · ${ratingCount} ${t('more.ratingsCount')}`
+                    : t('profile.rating')
+                  : t('more.noRatingsYet')}
+              </Text>
             </View>
           </View>
 
@@ -287,7 +318,7 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.topUp')}</Text>
                 <Text style={styles.menuSub}>{t('more.topUpSub')}</Text>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -302,7 +333,7 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('stats.title')}</Text>
                 <Text style={styles.menuSub}>{t('more.statsSub')}</Text>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -317,7 +348,7 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.orderHistory')}</Text>
                 <Text style={styles.menuSub}>{t('more.historySub')}</Text>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -332,7 +363,7 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.notifications')}</Text>
                 <Text style={styles.menuSub}>{t('more.notificationsSub')}</Text>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -347,7 +378,7 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('more.myInfo')}</Text>
                 <Text style={styles.menuSub}>{t('more.myInfoSub')}</Text>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -362,7 +393,7 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('more.carPhoto')}</Text>
                 <Text style={styles.menuSub}>{t('more.carPhotoSub')}</Text>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -377,7 +408,7 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.aiAssistant')}</Text>
                 <Text style={styles.menuSub}>{t('profile.aiAssistantHint')}</Text>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -394,7 +425,7 @@ export default function ProfileScreen() {
                   {support ? `@${support.telegram_username}` : t('profile.supportHint')}
                 </Text>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -409,7 +440,7 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.faq')}</Text>
                 <Text style={styles.menuSub}>{t('more.faqSub')}</Text>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -424,7 +455,7 @@ export default function ProfileScreen() {
                 <Text style={styles.menuTitle}>{t('profile.settings')}</Text>
                 <Text style={styles.menuSub}>{t('more.settingsSub')}</Text>
               </View>
-              <Text style={styles.menuArrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -679,7 +710,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   menuText: { flex: 1 },
   menuTitle: { ...typography.bodyBold, color: colors.text },
   menuSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
-  menuArrow: { fontSize: 24, color: colors.textMuted, fontWeight: '300' },
   logoutBtn: {
     padding: spacing.md,
     flexDirection: 'row',

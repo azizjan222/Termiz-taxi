@@ -466,6 +466,7 @@ export const uz = {
     a11yCompleteOrder: 'Buyurtmani yakunlash',
     a11yCompleteOrderHint: 'Tasdiqlangandan keyin buyurtmani tugallangan deb belgilaydi',
     a11yStartTripHint: 'Tasdiqlangandan keyin safarni boshlaydi',
+    noRatingsYet: 'Hali baho yo‘q',
   },
   departure: {
     now: 'Hozir',
@@ -959,6 +960,7 @@ export const ru = {
     a11yCompleteOrder: 'Завершить заказ',
     a11yCompleteOrderHint: 'После подтверждения отметит заказ как выполненный',
     a11yStartTripHint: 'После подтверждения начнёт поездку',
+    noRatingsYet: 'Пока нет оценок',
   },
   departure: {
     now: 'Сейчас',
@@ -1450,6 +1452,7 @@ export const en = {
     a11yCompleteOrder: 'Complete the order',
     a11yCompleteOrderHint: 'Marks the order as completed once confirmed',
     a11yStartTripHint: 'Starts the trip once confirmed',
+    noRatingsYet: 'No ratings yet',
   },
   departure: {
     now: 'Now',
@@ -1941,6 +1944,7 @@ export const uzCyrl = {
     a11yCompleteOrder: 'Буюртмани якунлаш',
     a11yCompleteOrderHint: 'Тасдиқлангандан кейин буюртмани тугалланган деб белгилайди',
     a11yStartTripHint: 'Тасдиқлангандан кейин сафарни бошлайди',
+    noRatingsYet: 'Ҳали баҳо йўқ',
   },
   departure: {
     now: 'Ҳозир',

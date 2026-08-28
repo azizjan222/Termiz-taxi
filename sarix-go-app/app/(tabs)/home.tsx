@@ -89,7 +89,7 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={styles.chevronCircle}>
-            <Text style={styles.serviceArrow}>›</Text>
+            <Icon name="arrowRight" size={20} color={colors.textMuted} />
           </View>
         </TouchableOpacity>
 
@@ -122,7 +122,7 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={styles.chevronCircle}>
-            <Text style={styles.serviceArrow}>›</Text>
+            <Icon name="arrowRight" size={20} color={colors.textMuted} />
           </View>
         </TouchableOpacity>
 
@@ -213,11 +213,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: spacing.sm,
-  },
-  serviceArrow: {
-    fontSize: 22,
-    color: colors.textMuted,
-    fontWeight: '400',
-    lineHeight: 24,
   },
 });

@@ -520,7 +520,7 @@ export default function OrderEntryScreen() {
                 {isParcel ? t('orderEntry.whereToParcel') : t('orderEntry.whereTo')}
               </Text>
               <View style={styles.whereToArrow}>
-                <Text style={styles.whereToArrowText}>›</Text>
+                <Icon name="arrowRight" size={16} color={colors.textSecondary} />
               </View>
             </TouchableOpacity>
 
@@ -653,7 +653,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  whereToArrowText: { fontSize: 18, color: colors.textSecondary },
   quickRow: {
     flexDirection: 'row',
     alignItems: 'center',
