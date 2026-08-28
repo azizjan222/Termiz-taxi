@@ -566,7 +566,8 @@ export default function OrderDetailScreen() {
           <View style={styles.divider} />
           <View style={styles.row}>
             <IconText name="clock" size={12} color={colors.textSecondary} textStyle={styles.label}>
-              {t('more.departureTime')}
+              {/* A parcel is sent, not "departed". */}
+              {t(isParcel ? 'more.dispatchTime' : 'more.departureTime')}
             </IconText>
             <Text style={styles.value}>{order.departure_time || t('more.now')}</Text>
           </View>

@@ -248,6 +248,8 @@ export default {
     emailSupport: 'Email orqali yozish',
   },
   driverMap: {
+    driverPin: 'Haydovchi',
+    pickupPin: 'Olib ketish',
     title: 'Haydovchi joylashuvi',
     waiting: 'Haydovchi joylashuvi kutilmoqda...',
   },

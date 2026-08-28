@@ -193,6 +193,8 @@ export default {
     emailSupport: 'Написать на email',
   },
   driverMap: {
+    driverPin: 'Водитель',
+    pickupPin: 'Посадка',
     title: 'Местоположение водителя',
     waiting: 'Ожидание местоположения водителя...',
   },

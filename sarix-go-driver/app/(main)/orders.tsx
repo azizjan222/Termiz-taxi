@@ -314,7 +314,9 @@ export default function OrdersScreen() {
             {item.passenger_name || t('more.passenger')}
           </IconText>
           <IconText name="clock" size={13} color={colors.textSecondary} textStyle={styles.cardInfoText}>
-            {t('more.departure')}: {item.departure_time || t('more.now')}
+            {/* A parcel is sent, not "departed" — same distinction the passenger app makes. */}
+            {t(item.service_type === 'parcel' ? 'more.dispatch' : 'more.departure')}
+            : {item.departure_time || t('more.now')}
           </IconText>
           <IconText
             name={item.service_type === 'parcel' ? 'parcel' : 'people'}
