@@ -107,7 +107,6 @@ export default function SettingsScreen() {
           >
             <Icon name="document" size={20} color={colors.textSecondary} style={styles.optionFlag} />
             <Text style={[styles.optionLabel, { color: colors.text }]}>{t('settings.terms')}</Text>
-            <Icon name="arrowRight" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </ScrollView>

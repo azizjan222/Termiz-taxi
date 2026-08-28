@@ -368,7 +368,6 @@ export default function RouteSelectScreen() {
                   <Text style={styles.resultTitle}>{item.name}</Text>
                   <Text style={styles.resultSub}>{t('cities.region')}</Text>
                 </View>
-                <Icon name="arrowRight" size={20} color={colors.textMuted} style={styles.resultArrow} />
               </TouchableOpacity>
             );
           }
@@ -404,7 +403,6 @@ export default function RouteSelectScreen() {
                       : t('routeSelect.groupPlace')}
                   </Text>
                 </View>
-                <Icon name="arrowRight" size={20} color={colors.textMuted} style={styles.resultArrow} />
               </TouchableOpacity>
             );
           }
@@ -435,7 +433,6 @@ export default function RouteSelectScreen() {
               {item.item.distance && (
                 <Text style={styles.resultDistance}>{item.item.distance}</Text>
               )}
-              <Icon name="arrowRight" size={20} color={colors.textMuted} style={styles.resultArrow} />
             </TouchableOpacity>
           );
         }}
@@ -649,5 +646,4 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: 'right',
   },
   // Spacing only: Icon takes its size and colour from props.
-  resultArrow: { marginLeft: spacing.sm },
 });

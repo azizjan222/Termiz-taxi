@@ -298,7 +298,6 @@ export default function ProfileScreen() {
                 <Text style={styles.driverTitle}>{t(becomeDriver.labelKey)}</Text>
                 <Text style={styles.driverSubtitle}>{t('becomeDriver.subtitle')}</Text>
               </View>
-              <Icon name="arrowRight" size={22} color={colors.textOnAccent} />
             </LinearGradient>
           </TouchableOpacity>
         )}
@@ -325,7 +324,6 @@ export default function ProfileScreen() {
                 />
               </View>
               <Text style={styles.menuLabel}>{t(item.labelKey)}</Text>
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           ))}
         </View>

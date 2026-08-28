@@ -55,10 +55,8 @@ export default function DriverLanguageScreen() {
           >
             <Text style={styles.flag}>{lang.flag}</Text>
             <Text style={styles.langLabel}>{lang.label}</Text>
-            {busy === lang.code ? (
+            {busy === lang.code && (
               <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             )}
           </TouchableOpacity>
         ))}

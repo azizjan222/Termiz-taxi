@@ -26,6 +26,7 @@ const GLYPHS = {
   logout: 'logout',
   arrowRight: 'arrow-right',
   arrowDown: 'arrow-down',
+  arrowUp: 'arrow-up',
   swap: 'swap-vertical',
   send: 'send',
   search: 'magnify',
