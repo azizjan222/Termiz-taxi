@@ -369,6 +369,7 @@ export default {
     fromPlaceholder: 'Манзилни киритинг...',
     fromParcelPlaceholder: 'Почтани қаердан оламиз?',
     suggestedAddresses: 'ТАВСИЯ ЭТИЛГАН МАНЗИЛЛАР',
+    places: 'ЖОЙЛАР',
     searching: 'Қидирилмоқда...',
     map: 'Харита',
     groupDistrict: 'Туман',

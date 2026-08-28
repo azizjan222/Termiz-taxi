@@ -371,6 +371,7 @@ export default {
     fromPlaceholder: 'Manzilni kiriting...',
     fromParcelPlaceholder: 'Pochtani qayerdan olamiz?',
     suggestedAddresses: 'TAVSIYA ETILGAN MANZILLAR',
+    places: 'JOYLAR',
     searching: 'Qidirilmoqda...',
     map: 'Xarita',
     groupDistrict: 'Tuman',

@@ -369,6 +369,7 @@ export default {
     fromPlaceholder: 'Введите адрес...',
     fromParcelPlaceholder: 'Откуда забираем посылку?',
     suggestedAddresses: 'РЕКОМЕНДУЕМЫЕ АДРЕСА',
+    places: 'МЕСТА',
     searching: 'Поиск...',
     map: 'Карта',
     groupDistrict: 'Район',

@@ -369,6 +369,7 @@ export default {
     fromPlaceholder: 'Enter an address...',
     fromParcelPlaceholder: 'Where do we collect the parcel?',
     suggestedAddresses: 'SUGGESTED ADDRESSES',
+    places: 'PLACES',
     searching: 'Searching...',
     map: 'Map',
     groupDistrict: 'District',

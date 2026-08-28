@@ -21,8 +21,10 @@ export default function TermsScreen() {
   // `returnObjects` hands back the raw array from the active resource bundle. Guard the
   // type: if the key were ever missing, i18next returns the key STRING and .map() below
   // would throw and blank out this legally required screen.
-  const rawSections = t('terms.sections', { returnObjects: true });
-  const sections: TermsSection[] = Array.isArray(rawSections) ? (rawSections as TermsSection[]) : [];
+  const rawSections: unknown = t('terms.sections', { returnObjects: true });
+  const sections: TermsSection[] = Array.isArray(rawSections)
+    ? (rawSections as TermsSection[])
+    : [];
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

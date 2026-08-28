@@ -201,7 +201,7 @@ export default function RouteSelectScreen() {
       filteredCities.forEach((c) => rows.push({ type: 'city', key: `c-${c}`, name: c }));
     }
     if (localPlaces.length > 0 && search.length >= 2) {
-      rows.push({ type: 'header', key: 'h-places', label: 'JOYLAR' });
+      rows.push({ type: 'header', key: 'h-places', labelKey: 'routeSelect.places' });
       localPlaces.slice(0, 8).forEach((p) => rows.push({ type: 'place', key: `p-${p.name}`, place: p }));
     }
   }

@@ -12,6 +12,7 @@ import {
 } from '../src/services/notificationHistory';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
+import { dateLocaleTag } from '../src/utils/dateLocale';
 
 export default function NotificationsScreen() {
   const { t } = useTranslation();

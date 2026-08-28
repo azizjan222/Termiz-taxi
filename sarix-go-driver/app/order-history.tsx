@@ -10,6 +10,7 @@ import { Icon, IconText } from '../src/components/Icon';
 import { getOrdersHistory, type DriverHistoryOrder } from '../src/api/driver';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
+import { dateLocaleTag } from '../src/utils/dateLocale';
 
 type Filter = 'all' | 'completed' | 'cancelled';
 
