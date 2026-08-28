@@ -28,6 +28,7 @@ import {
   type PaymentMethod,
 } from '../src/api/payments';
 import { describeApiError, formatAmount } from '../src/api/errors';
+import { MIN_BALANCE_FALLBACK } from '../src/api/driver';
 import { useDriverStore } from '../src/store/driver';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -136,6 +137,8 @@ export default function TopUpScreen() {
 
   const cardMethod = methods.find((m) => m.id === 'card');
   const cardReady = Boolean(cardMethod?.card_number);
+  // Server-configured order-accept floor, so the hint here matches the actual rule.
+  const minBalance = driver?.min_balance ?? MIN_BALANCE_FALLBACK;
 
   const formatPrice = formatAmount;
 
@@ -367,9 +370,9 @@ export default function TopUpScreen() {
             <Text style={styles.balanceValue}>
               {formatPrice(driver?.balance || 0)} {t('more.currency')}
             </Text>
-            {(driver?.balance || 0) < 20000 && (
+            {(driver?.balance || 0) < minBalance && (
               <Text style={styles.balanceWarning}>
-                {t('topUp.minBalanceHint')}
+                {t('topUp.minBalanceHint', { min: formatAmount(minBalance) })}
               </Text>
             )}
           </View>

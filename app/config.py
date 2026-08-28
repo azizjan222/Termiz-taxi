@@ -270,7 +270,17 @@ FULL_CAR_PRICE = _get_int("FULL_CAR_PRICE", 400000)
 # caps how many orders one passenger may create per rolling 60s (stops create+cancel loops).
 MAX_ACTIVE_ORDERS_PER_USER = _get_int("MAX_ACTIVE_ORDERS_PER_USER", 2)
 ORDER_RATE_LIMIT_PER_MINUTE = _get_int("ORDER_RATE_LIMIT_PER_MINUTE", 4)
-MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 20000)  # Minimum balance to accept any order
+# Minimum balance to accept any order.
+#
+# Set to one taxi commission (10 000) rather than two: the point of the floor is that the
+# driver can cover the ride they are about to take, and requiring 20 000 kept solvent
+# drivers idle. A driver whose balance has gone NEGATIVE is therefore below the floor and
+# stops receiving work until they top back up above it — but their account is never
+# blocked, and the debt is never silently forgiven.
+#
+# The admin panel's `min_balance` setting overrides this at runtime
+# (see app/services/dynamic_settings.py::get_min_driver_balance).
+MIN_DRIVER_BALANCE = _get_int("MIN_DRIVER_BALANCE", 10000)
 
 # ============= LOYALTY & REFERRAL (single bonus wallet) =============
 # Loyalty: a passenger earns LOYALTY_POINTS_PER_RIDE points for every COMPLETED ride

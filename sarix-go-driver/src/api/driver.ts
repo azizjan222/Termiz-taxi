@@ -1,5 +1,13 @@
 import { api, setAuthToken } from './client';
 
+/**
+ * Used only until /api/driver/me answers with the real `min_balance`.
+ *
+ * Matches config.MIN_DRIVER_BALANCE's default (one taxi commission). Deliberately NOT the
+ * source of truth: the admin panel can change the floor, and every screen must follow it.
+ */
+export const MIN_BALANCE_FALLBACK = 10000;
+
 export interface Driver {
   id: number;
   telegram_id: number;
@@ -22,6 +30,14 @@ export interface Driver {
   has_tech_passport_doc?: boolean;
   seats?: number;
   balance: number;
+  /**
+   * Balance required to accept an order, as configured on the server.
+   *
+   * Optional because an over-the-air update can reach the driver before the backend that
+   * serves it; callers fall back to MIN_BALANCE_FALLBACK. Never hardcode the number in a
+   * screen — the admin panel can change it.
+   */
+  min_balance?: number;
   rating: number;
   // Optional because an app updated over the air can reach a driver before the backend
   // that serves this field has rolled out. Treat `undefined` as "unknown", not as zero.

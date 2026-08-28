@@ -614,7 +614,14 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
 @require_driver
 async def driver_me(request: web.Request) -> web.Response:
     driver: Driver = request["driver"]
-    return web.json_response(_serialize_driver(driver))
+    payload = _serialize_driver(driver)
+    # The order-accept floor, so the app stops hardcoding it. Three screens had their own
+    # `20000` literal, which meant changing the threshold — here or in the admin panel's
+    # `min_balance` setting — left the app enforcing and displaying the old number.
+    # Added here rather than in _serialize_driver because that serializer is also used for
+    # admin driver LISTS, where this would cost one settings query per row.
+    payload["min_balance"] = get_min_driver_balance()
+    return web.json_response(payload)
 
 
 @require_driver
