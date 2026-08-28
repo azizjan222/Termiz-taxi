@@ -9,6 +9,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { describeApiError } from '../../src/api/errors';
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
+import {
+  startBackgroundLocation,
+  stopBackgroundLocation,
+  isBackgroundSending,
+} from '../../src/services/backgroundLocation';
 
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { listMyActive, completeOrder, startTrip, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
@@ -190,6 +195,10 @@ export default function OrderDetailScreen() {
         const lon = pos.coords.longitude;
         // Always refresh the local display (distance, marker, route).
         setDriverCoords({ lat, lon });
+        // Skip our POST while the OS task owns reporting, otherwise a foregrounded app
+        // would send the same position twice. While the app is alive the task runs in this
+        // same JS context, so the flag it sets is visible here.
+        if (isBackgroundSending()) return;
         // Throttle the backend broadcast to preserve the ~10s cadence.
         const now = Date.now();
         if (now - lastSentAtRef.current >= BACKEND_MIN_INTERVAL_MS) {
@@ -203,6 +212,15 @@ export default function OrderDetailScreen() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted' || torndown) return;
+
+        // Hand reporting to the OS so it survives the app being backgrounded or killed.
+        // Best-effort: if the driver declines the background permission this returns false
+        // and the foreground watcher below keeps reporting, exactly as it used to.
+        startBackgroundLocation({
+          title: t('tracking.serviceTitle'),
+          body: t('tracking.serviceBody'),
+        }).catch(() => {});
+
         const sub = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,
@@ -224,6 +242,9 @@ export default function OrderDetailScreen() {
       torndown = true;
       subscriptionRef.current?.remove();
       subscriptionRef.current = null;
+      // The OS task outlives this screen, so leaving it running would keep the
+      // foreground-service notification up and keep reporting after the trip ended.
+      stopBackgroundLocation().catch(() => {});
     };
     // Re-subscribe only on the fields that matter; the full order object changes on
     // every poll, which would needlessly tear down/re-create the location watcher.

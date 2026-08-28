@@ -4,7 +4,12 @@ const path = require('path');
 const staticConfig = require('./app.json');
 
 /**
- * RUNTIME VERSION IS SET BY HAND -- app.json holds `"runtimeVersion": "2"`.
+ * RUNTIME VERSION IS SET BY HAND -- app.json holds `"runtimeVersion": "3"`.
+ *
+ * "3" (was "2") because background location landed: expo-task-manager, the
+ * ACCESS_BACKGROUND_LOCATION / FOREGROUND_SERVICE permissions and an Android foreground
+ * service are all native. Builds carrying runtimeVersion "2" must never receive this JS —
+ * it imports a native module they do not contain.
  *
  * BUMP IT whenever the native side changes: adding/removing/upgrading a native dependency,
  * an Expo SDK upgrade, a new config plugin, or an app.json change that affects the native

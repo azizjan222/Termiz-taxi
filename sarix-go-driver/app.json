@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "sarixgodriver",
     "userInterfaceStyle": "light",
-    "runtimeVersion": "2",
+    "runtimeVersion": "3",
     "updates": {
       "fallbackToCacheTimeout": 0
     },
@@ -19,7 +19,14 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uz.sarixgo.driver",
-      "buildNumber": "1.0.0"
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location"
+        ],
+        "NSLocationWhenInUseUsageDescription": "Safar davomida yo'lovchi sizni xaritada ko'rib turishi uchun joylashuv kerak.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Ilova yopiq bo'lsa ham yo'lovchi sizni xaritada kuzatib turishi uchun joylashuv kerak."
+      }
     },
     "android": {
       "package": "uz.sarixgo.driver",
@@ -36,7 +43,10 @@
         "VIBRATE",
         "WAKE_LOCK",
         "RECEIVE_BOOT_COMPLETED",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "plugins": [
@@ -61,7 +71,10 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Sarix Go Driver joylashuvni kuzatadi"
+          "locationAlwaysAndWhenInUsePermission": "Ilova yopiq bo'lsa ham yo'lovchi sizni xaritada kuzatib turishi uchun joylashuv kerak.",
+          "locationWhenInUsePermission": "Safar davomida yo'lovchi sizni xaritada ko'rib turishi uchun joylashuv kerak.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [
@@ -82,7 +95,9 @@
       ],
       "./plugins/withAndroidR8Optimization"
     ],
-    "experiments": { "typedRoutes": true },
+    "experiments": {
+      "typedRoutes": true
+    },
     "extra": {
       "apiBaseUrl": "https://termiz-taxi-production.up.railway.app",
       "eas": {

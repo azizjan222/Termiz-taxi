@@ -108,6 +108,13 @@ export const useDriverStore = create<DriverState>((set) => ({
       const { resetNotificationHistory } = await import('../services/notificationHistory');
       await resetNotificationHistory();
     } catch {}
+    // Stop OS-driven location updates. They outlive the app process, so without this a
+    // signed-out driver would keep a foreground-service notification and keep reporting
+    // their position under the account that just logged out.
+    try {
+      const { stopBackgroundLocation } = await import('../services/backgroundLocation');
+      await stopBackgroundLocation();
+    } catch {}
     await clearAuthToken();
     await SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
     set({ driver: null, isAuthenticated: false, isOnline: false });

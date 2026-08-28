@@ -35,6 +35,7 @@
     "expo-speech": "~56.0.3",
     "expo-splash-screen": "~56.0.14",
     "expo-status-bar": "~56.0.4",
+    "expo-task-manager": "~56.0.0",
     "expo-updates": "~56.0.25",
     "i18next": "^23.16.0",
     "react": "19.2.3",
