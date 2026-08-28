@@ -54,7 +54,7 @@ export default function ReferralScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>{t('referral.title')}</Text>
         <View style={{ width: 40 }} />
@@ -124,7 +124,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.white,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   title: { ...typography.h3, color: colors.primary },
   body: { flex: 1, padding: spacing.lg },
   heroBox: {

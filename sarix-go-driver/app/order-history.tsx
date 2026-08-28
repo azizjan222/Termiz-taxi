@@ -98,7 +98,7 @@ export default function OrderHistoryScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.surface }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={[styles.backIcon, { color: colors.primary }]}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <IconText
           name="history"
@@ -158,7 +158,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28 },
   title: { ...typography.h3 },
   tabs: { flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm },
   tab: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.md, alignItems: 'center' },

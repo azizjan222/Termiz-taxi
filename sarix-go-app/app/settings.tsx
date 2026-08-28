@@ -111,7 +111,7 @@ export default function SettingsScreen() {
           >
             <Icon name="idea" size={20} color={colors.textSecondary} style={styles.optionFlag} />
             <Text style={styles.optionLabel}>{t('profile.feedback')}</Text>
-            <Text style={styles.chevron}>›</Text>
+            <Icon name="arrowRight" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -124,7 +124,7 @@ export default function SettingsScreen() {
           >
             <Icon name="document" size={20} color={colors.textSecondary} style={styles.optionFlag} />
             <Text style={styles.optionLabel}>{t('settings.terms')}</Text>
-            <Text style={styles.chevron}>›</Text>
+            <Icon name="arrowRight" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -170,5 +170,4 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   optionLabel: { flex: 1, ...typography.body, color: colors.text },
   optionLabelSelected: { fontWeight: '600' },
   optionCheck: { ...typography.h3, color: colors.success, fontWeight: '700' },
-  chevron: { fontSize: 24, color: colors.textSecondary },
 });

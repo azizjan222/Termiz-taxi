@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { Icon } from '../src/components/Icon';
 import { useTranslation } from 'react-i18next';
 
 import { useThemeStore } from '../src/store/theme';
@@ -29,7 +30,7 @@ export default function TermsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.surface }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={[styles.backIcon, { color: colors.primary }]}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>{t('terms.title')}</Text>
         <View style={{ width: 40 }} />
@@ -70,7 +71,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28 },
   title: { ...typography.h3 },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
   docTitle: { ...typography.h3, marginBottom: spacing.xs },

@@ -39,7 +39,7 @@ export default function FaqScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Icon name="back" size={26} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>{t('faq.title')}</Text>
         <View style={{ width: 40 }} />
@@ -74,7 +74,7 @@ export default function FaqScreen() {
             <Text style={styles.supportTitle}>{t('faq.contactSupport')}</Text>
             <Text style={styles.supportSub}>@{supportUsername}</Text>
           </View>
-          <Text style={styles.supportArrow}>›</Text>
+          <Icon name="arrowRight" size={20} color={colors.textOnPrimary} />
         </TouchableOpacity>
 
         {/* Email — questions & suggestions */}
@@ -88,7 +88,7 @@ export default function FaqScreen() {
             <Text style={styles.emailTitle}>{t('faq.emailSupport')}</Text>
             <Text style={styles.emailSub}>{supportEmail}</Text>
           </View>
-          <Text style={styles.emailArrow}>›</Text>
+          <Icon name="arrowRight" size={20} color={colors.primary} />
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -106,7 +106,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.white,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: colors.primary },
   title: { ...typography.h3, color: colors.primary },
   scroll: { padding: spacing.lg },
   card: {
@@ -131,7 +130,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   supportTitle: { ...typography.bodyBold, color: colors.textOnPrimary },
   supportSub: { ...typography.small, color: colors.textOnPrimary, opacity: 0.8, marginTop: 2 },
-  supportArrow: { fontSize: 24, color: colors.textOnPrimary },
   emailBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -144,5 +142,4 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   emailTitle: { ...typography.bodyBold, color: colors.primary },
   emailSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
-  emailArrow: { fontSize: 24, color: colors.primary },
 });

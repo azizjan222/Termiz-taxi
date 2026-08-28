@@ -58,7 +58,7 @@ export default function DriverLanguageScreen() {
             {busy === lang.code ? (
               <ActivityIndicator size="small" color={colors.primary} />
             ) : (
-              <Text style={styles.arrow}>›</Text>
+              <Icon name="arrowRight" size={20} color={colors.textMuted} />
             )}
           </TouchableOpacity>
         ))}
@@ -95,5 +95,4 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   flag: { fontSize: 28, marginRight: spacing.md },
   langLabel: { flex: 1, ...typography.h3, color: colors.text },
-  arrow: { fontSize: 24, color: colors.textMuted },
 });
