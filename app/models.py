@@ -640,8 +640,10 @@ class TelegramAuthSession(Base):
     3. Bot links phone <-> telegram_id, marks session verified and sends a one-time code
     4. App asks the user to type that code -> POST .../telegram/verify-code -> JWT
 
-    The older polling path (GET .../telegram/check) still works so app versions already
-    installed keep logging in; it is superseded by the code path above.
+    Step 4 is the ONLY way to redeem a session. The older polling path
+    (GET .../telegram/check) minted a JWT from the token alone — i.e. for whoever
+    generated the deep link rather than whoever received the bot's code — and is now a
+    410. See ``app.api.auth.telegram_check``.
     """
     __tablename__ = "telegram_auth_sessions"
 

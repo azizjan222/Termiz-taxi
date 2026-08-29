@@ -1580,28 +1580,25 @@ async def driver_telegram_start(request: web.Request) -> web.Response:
 
 
 async def driver_telegram_check(request: web.Request) -> web.Response:
-    """GET /api/driver/telegram/check?token=... - poll; returns driver JWT when verified."""
-    token = request.query.get("token", "").strip()
-    if not token:
-        return web.json_response({"error": "token kerak"}, status=400)
+    """Reject the removed token-minting poll endpoint.
 
-    db = get_session()
-    try:
-        # Re-checks expiry, enforces role="driver" (a passenger-role session must not
-        # mint driver credentials), and consumes the row to prevent replay.
-        sess, claim_status = _tg.claim_verified_session(db, token, "driver")
-        if claim_status == "not_found":
-            return web.json_response({"status": "not_found"}, status=404)
-        if claim_status == "pending":
-            return web.json_response({"status": "pending"})
-        if claim_status == "role_mismatch":
-            return web.json_response({"status": "role_mismatch"}, status=403)
-        if claim_status != "ok" or not sess:
-            return web.json_response({"status": "expired"})
+    This used to mint a full 30-day driver JWT for anyone holding the auth session token,
+    with no proof of control over the Telegram account — so a deep link the attacker
+    generated and tricked a driver into opening became a driver-account takeover (balance,
+    order history, the passenger phone numbers on active orders).
 
-        return _issue_driver_login(db, sess)
-    finally:
-        db.close()
+    ``/api/driver/telegram/verify-code`` is the only login path now; see
+    ``app.api.auth.telegram_check`` for the full rationale. Kept as an explicit 410 so old
+    builds get an upgrade message rather than a silent failure.
+    """
+    return web.json_response(
+        {
+            "status": "gone",
+            "error": "Bu kirish usuli xavfsizlik sababli o'chirilgan. Ilovani yangilang.",
+            "code": "telegram_check_removed",
+        },
+        status=410,
+    )
 
 
 async def driver_telegram_verify_code(request: web.Request) -> web.Response:
@@ -1662,8 +1659,8 @@ async def driver_telegram_verify_code(request: web.Request) -> web.Response:
 def _issue_driver_login(db, sess) -> web.Response:
     """Create/link the Driver for a consumed auth session and return its JWT.
 
-    Shared by the polling path (``driver_telegram_check``) and the code path
-    (``driver_telegram_verify_code``) so the two can never drift apart.
+    Only ``driver_telegram_verify_code`` reaches this: the session must already have been
+    consumed by a correct one-time code.
     """
     # verified -> driver must already be registered (via bot)
     tg_id = sess.telegram_id

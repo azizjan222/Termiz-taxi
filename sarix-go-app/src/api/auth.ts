@@ -103,15 +103,10 @@ export async function telegramStart(): Promise<TelegramStartResponse> {
   return response.data;
 }
 
-export async function telegramCheck(token: string): Promise<TelegramCheckResponse> {
-  const response = await api.get<TelegramCheckResponse>('/api/auth/telegram/check', {
-    params: { token },
-  });
-  if (response.data.status === 'verified' && response.data.token) {
-    await setAuthToken(response.data.token);
-  }
-  return response.data;
-}
+// NOTE: there is deliberately no `telegramCheck()` poll helper. `/api/auth/telegram/check`
+// minted a full JWT from the session token alone, so a deep link the attacker generated
+// and got a victim to open returned the victim's token. The endpoint is now a 410 and the
+// login screen has used the code flow below since 82994e5 — do not reintroduce a poll.
 
 /**
  * Finish a Telegram login with the one-time code the bot sent into the user's chat.

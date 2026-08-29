@@ -33,51 +33,6 @@ def get_session(db: Session, token: str) -> TelegramAuthSession | None:
     )
 
 
-def claim_verified_session(
-    db: Session, token: str, role: str
-) -> tuple[TelegramAuthSession | None, str]:
-    """Atomically consume one verified session and return it with a status string.
-
-    A verified row used to stay ``status="verified"`` forever, and the redeem endpoints
-    re-checked neither ``expires_at`` nor ``role``. That let a single deep-link token be
-    replayed indefinitely for fresh 30-day JWTs, and let a passenger-role session be
-    redeemed for a driver token. Consuming the row here closes both.
-
-    Returns ``(session, status)`` where status is one of ``ok``, ``not_found``,
-    ``pending``, ``expired`` or ``role_mismatch``. Only ``ok`` carries a session.
-    """
-    session = get_session(db, token)
-    if not session:
-        return None, "not_found"
-    if session.status == "pending":
-        return None, "pending"
-    if session.status != "verified":
-        # Already consumed ("used"), or explicitly expired earlier.
-        return None, "expired"
-    if session.expires_at and session.expires_at < datetime.utcnow():
-        session.status = "expired"
-        db.commit()
-        return None, "expired"
-    if (session.role or "passenger") != role:
-        return None, "role_mismatch"
-
-    # Single-use: only the caller that flips verified -> used may mint a token.
-    claimed = (
-        db.query(TelegramAuthSession)
-        .filter(
-            TelegramAuthSession.id == session.id,
-            TelegramAuthSession.status == "verified",
-        )
-        .update({TelegramAuthSession.status: "used"}, synchronize_session=False)
-    )
-    if claimed != 1:
-        db.rollback()
-        return None, "expired"
-    db.commit()
-    db.refresh(session)
-    return session, "ok"
-
-
 #: Digits in the one-time login code the bot sends into the user's Telegram chat.
 LOGIN_CODE_LENGTH = 6
 #: Wrong-code attempts allowed before the session is burnt.
@@ -127,11 +82,24 @@ def claim_by_login_code(
 ) -> tuple[TelegramAuthSession | None, str]:
     """Consume one verified session by matching the code the bot sent.
 
-    Same single-use / expiry / role guarantees as ``claim_verified_session``, plus a
-    constant-time code comparison and a wrong-attempt cap.
+    This is the ONLY way to redeem an auth session. A code-free sibling
+    (``claim_verified_session``) used to back the ``/telegram/check`` poll endpoints and
+    was removed: holding the session token alone was enough to mint a 30-day JWT, so a
+    deep link the attacker generated and got a victim to open became an account takeover.
+    Requiring the code binds redemption to whoever actually receives the bot's message.
+
+    Guarantees, all of which earlier revisions got wrong at least once:
+
+    - **Single-use** — a verified row used to stay ``verified`` forever, so one deep link
+      could be replayed indefinitely for fresh tokens. Only the caller that atomically
+      flips ``verified -> used`` gets a session back.
+    - **Expiry re-checked at redeem time**, not just when the bot marks the row verified.
+    - **Role-bound** — a passenger-role session must never mint a driver token.
+    - **Constant-time code comparison** plus a wrong-attempt cap that burns the session.
 
     Returns ``(session, status)`` where status is one of ``ok``, ``not_found``,
     ``pending``, ``expired``, ``role_mismatch``, ``bad_code`` or ``too_many_attempts``.
+    Only ``ok`` carries a session.
     """
     code = (code or "").strip()
     session = get_session(db, token)

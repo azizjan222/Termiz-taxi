@@ -233,37 +233,39 @@ async def telegram_start(request: web.Request) -> web.Response:
 
 
 async def telegram_check(request: web.Request) -> web.Response:
-    """GET /api/auth/telegram/check?token=...
-    Polled by the app. When verified, creates/links user and returns JWT.
+    """Reject the removed token-minting poll endpoint.
+
+    This used to mint a full 30-day JWT for anyone who knew the auth session token, with
+    no proof that they controlled the Telegram account. That made deep-link phishing an
+    account takeover: the attacker calls ``/telegram/start``, sends the victim the
+    resulting ``t.me/<bot>?start=auth_<attacker_token>`` link (it looks like an ordinary
+    login link), the victim taps it and shares their contact with the real bot, and the
+    attacker's poll returns the victim's JWT and phone number.
+
+    ``/telegram/verify-code`` is the only login path now: the token proves the request
+    comes from the device that started the login, and the one-time code — which is only
+    ever delivered into the real account's Telegram chat — proves account control. Both
+    app login screens moved to it in 82994e5 and nothing calls this endpoint any more.
+
+    Kept as an explicit 410 (mirroring ``drivers.driver_login``) so any old build that
+    still polls gets a clear upgrade message instead of a confusing 404, and so the
+    insecure handler cannot be reintroduced by accident.
     """
-    token = request.query.get("token", "").strip()
-    if not token:
-        return web.json_response({"error": "token kerak"}, status=400)
-
-    db = get_session()
-    try:
-        # Re-checks expiry, enforces the session's role, and consumes the row so one
-        # deep link cannot be replayed for further tokens.
-        sess, claim_status = _tg.claim_verified_session(db, token, "passenger")
-        if claim_status == "not_found":
-            return web.json_response({"status": "not_found"}, status=404)
-        if claim_status == "pending":
-            return web.json_response({"status": "pending"})
-        if claim_status == "role_mismatch":
-            return web.json_response({"status": "role_mismatch"}, status=403)
-        if claim_status != "ok" or not sess:
-            return web.json_response({"status": "expired"})
-
-        return _issue_passenger_login(db, sess)
-    finally:
-        db.close()
+    return web.json_response(
+        {
+            "status": "gone",
+            "error": "Bu kirish usuli xavfsizlik sababli o'chirilgan. Ilovani yangilang.",
+            "code": "telegram_check_removed",
+        },
+        status=410,
+    )
 
 
 def _issue_passenger_login(db, sess) -> web.Response:
     """Create/link the User for a consumed auth session and return its JWT.
 
-    Shared by the polling path (``telegram_check``) and the code path
-    (``telegram_verify_code``) so the two can never drift apart.
+    Only ``telegram_verify_code`` reaches this: the session must already have been
+    consumed by a correct one-time code.
     """
     phone = _normalize(sess.phone) if sess.phone else None
     if not phone:
