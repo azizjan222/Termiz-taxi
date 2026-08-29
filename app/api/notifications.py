@@ -203,8 +203,9 @@ async def list_notifications(request: web.Request) -> web.Response:
         if not me:
             return web.json_response({"error": "Foydalanuvchi topilmadi"}, status=404)
 
-        # One stored row serves all four languages: the title is localized per reader.
-        title = nt.admin_title(nt.norm_lang(me.language))
+        # One stored row serves both apps: the title is the reading app's own name
+        # ("Sarix Go" / "Sarix Driver"), matching what the push itself showed.
+        title = nt.app_title(kind)
         rows = _visible_announcements(session, kind, recipient_id, me.created_at, limit)
         seen = _read_ids(session, kind, recipient_id, [a.id for a in rows])
 

@@ -589,11 +589,13 @@ async def api_push(request: web.Request) -> web.Response:
     # the last users getting it minutes late.
     items = []
     telegram_of = {}      # (kind, id) -> telegram_id, for the fallback
-    titles = {}           # (kind, id) -> localized notification title
+    titles = {}           # (kind, id) -> notification title (the recipient app's name)
     no_route = 0          # neither a push token nor a Telegram chat
-    for kind, rid, lang, token, tg_id in candidates:
+    for kind, rid, _lang, token, tg_id in candidates:
         key = (kind, rid)
-        titles[key] = nt.admin_title(nt.norm_lang(lang))
+        # Title = the receiving app's own name ("Sarix Go" / "Sarix Driver"), not a
+        # generic "Admin xabari", so the shade shows where the message came from.
+        titles[key] = nt.app_title(kind)
         if tg_id:
             telegram_of[key] = tg_id
         if token:

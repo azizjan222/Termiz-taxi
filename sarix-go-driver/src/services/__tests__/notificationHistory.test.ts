@@ -51,7 +51,7 @@ const mem = () => (AsyncStorage as any).__mem as Map<string, string>;
 function announcement(id: number, over: Partial<Record<string, any>> = {}) {
   return {
     id,
-    title: '📢 Admin xabari',
+    title: 'Sarix Driver',
     body: `Xabar ${id}`,
     type: 'admin',
     read: false,
@@ -103,7 +103,7 @@ describe('syncAnnouncements', () => {
   it('does not duplicate a message that also arrived as a push', async () => {
     // The push carries announcement_id, so both copies resolve to the same local id.
     await addNotification({
-      title: '📢 Admin xabari',
+      title: 'Sarix Driver',
       body: 'Xabar 7',
       type: 'admin',
       data: { type: 'admin', announcement_id: 7 },
@@ -120,7 +120,7 @@ describe('syncAnnouncements', () => {
   it('matches a push whose announcement_id arrived as a string', async () => {
     // Push payload values are not guaranteed to keep their JSON type.
     await addNotification({
-      title: '📢 Admin xabari',
+      title: 'Sarix Driver',
       body: 'Xabar 8',
       type: 'admin',
       data: { type: 'admin', announcement_id: '8' },
@@ -153,7 +153,7 @@ describe('syncAnnouncements', () => {
 
   it('prefers the server timestamp over when the push landed', async () => {
     await addNotification({
-      title: '📢 Admin xabari',
+      title: 'Sarix Driver',
       body: 'Xabar 9',
       data: { announcement_id: 9 },
     });
