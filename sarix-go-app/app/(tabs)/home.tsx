@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,66 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { LinearGradient } from 'expo-linear-gradient';
 
-import { Icon, IconText } from '../../src/components/Icon';
+import { Icon, type IconName } from '../../src/components/Icon';
+import { getUnreadCount } from '../../src/services/notificationHistory';
 import { useAuthStore } from '../../src/store/auth';
 import { useOrderStore } from '../../src/store/order';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
+import { TAB_BAR_CONTENT_INSET } from '../../src/theme/tabBar';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
+/**
+ * Soft card washes.
+ *
+ * Not in the shared `gradients` export: those are saturated fills for buttons and headers
+ * (white text on top), while these are pale backgrounds that carry body text, so they need
+ * the opposite contrast. The dark-mode pairs keep the warm/cool hue but sit at navy
+ * lightness — the light creams would otherwise glare on a dark background.
+ */
+const CARD_WASH = {
+  taxi: {
+    light: ['#FFF8E1', '#FFE9A8'] as const,
+    dark: ['#2C2617', '#3E3419'] as const,
+  },
+  parcel: {
+    light: ['#F1F1FF', '#DEDBFF'] as const,
+    dark: ['#1E1F3D', '#272856'] as const,
+  },
+};
+
+/** A quality tag on a service card: an icon plus one word. */
+interface Tag {
+  icon: IconName;
+  labelKey: string;
+}
+
+const TAXI_TAGS: Tag[] = [
+  { icon: 'flash', labelKey: 'home.tagFast' },
+  { icon: 'shield', labelKey: 'home.tagComfortable' },
+  { icon: 'star', labelKey: 'home.tagReliable' },
+];
+
+const PARCEL_TAGS: Tag[] = [
+  { icon: 'shield', labelKey: 'home.tagSafe' },
+  { icon: 'flash', labelKey: 'home.tagReliable' },
+  { icon: 'clock', labelKey: 'home.tagQuick' },
+];
+
+/**
+ * Home.
+ *
+ * The one job of this screen is to get the passenger into the order flow, so it is built
+ * around the two service cards and nothing else. Previously it greeted the user, then
+ * printed "Qayerga ketamiz?" as a subtitle, then printed the very same sentence again as
+ * the section heading — the same question twice, which reads as a glitch — and the cards
+ * themselves were flat grey rows that looked more like list items than the main action.
+ */
 export default function HomeScreen() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
@@ -26,7 +75,27 @@ export default function HomeScreen() {
   const resetOrder = useOrderStore((s) => s.reset);
   const setOrderField = useOrderStore((s) => s.setField);
   const colors = useThemeStore((s) => s.colors);
+  const isDark = useThemeStore((s) => s.isDark);
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+
+  const [unread, setUnread] = useState(0);
+
+  // On focus, not on mount: a push can arrive while the app is open, and the passenger
+  // returns here after reading the inbox, so a mount-only read would show a stale badge.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getUnreadCount()
+        .then((n) => {
+          if (active) setUnread(n);
+        })
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
 
   const startOrder = (type: 'taxi' | 'parcel') => {
     // Start from a clean draft. orderStore.reset() only ran after a SUCCESSFUL order, so
@@ -39,95 +108,135 @@ export default function HomeScreen() {
     router.push('/order-entry');
   };
 
+  /** One service card: wash, icon tile, copy, arrow and quality tags. */
+  const renderServiceCard = (opts: {
+    service: 'taxi' | 'parcel';
+    titleKey: string;
+    subtitleKey: string;
+    hintKey: string;
+    icon: IconName;
+    tags: Tag[];
+  }) => {
+    const isTaxi = opts.service === 'taxi';
+    const wash = CARD_WASH[opts.service][isDark ? 'dark' : 'light'];
+    const accentColor = isTaxi ? colors.accentDark : colors.primary;
+
+    return (
+      <TouchableOpacity
+        onPress={() => startOrder(opts.service)}
+        activeOpacity={0.9}
+        accessibilityRole="button"
+        accessibilityLabel={t(opts.titleKey)}
+        accessibilityHint={t(opts.hintKey)}
+        style={styles.cardShadow}
+      >
+        <LinearGradient
+          colors={wash}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.card}
+        >
+          {/* Decorative watermark: the service's own glyph, oversized and faded, bleeding
+              off the bottom-right corner so the card reads as illustrated rather than as
+              another form row. Purely visual, hence aria-hidden to screen readers. */}
+          <View style={styles.watermark} pointerEvents="none" aria-hidden>
+            <Icon name={opts.icon} size={150} color={accentColor} />
+          </View>
+
+          <View style={styles.cardTop}>
+            <View
+              style={[
+                styles.cardIcon,
+                { backgroundColor: isTaxi ? colors.accent : colors.primary },
+              ]}
+            >
+              <Icon
+                name={opts.icon}
+                size={30}
+                color={isTaxi ? colors.textOnAccent : colors.textOnPrimary}
+              />
+            </View>
+
+            <View style={styles.cardCopy}>
+              <Text style={styles.cardTitle}>{t(opts.titleKey)}</Text>
+              <Text style={styles.cardSubtitle}>{t(opts.subtitleKey)}</Text>
+            </View>
+
+            <View style={styles.cardArrow}>
+              <Icon name="arrowRight" size={20} color={colors.text} />
+            </View>
+          </View>
+
+          <View style={styles.tagRow}>
+            {opts.tags.map((tag) => (
+              <View key={tag.labelKey} style={styles.tag}>
+                <Icon name={tag.icon} size={13} color={accentColor} />
+                <Text style={styles.tagText}>{t(tag.labelKey)}</Text>
+              </View>
+            ))}
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>
-            {t('home.greeting', {
-              name: user?.first_name || t('auth.namePlaceholder'),
-            })}
-          </Text>
-          <Text style={styles.subtitle}>{t('home.whereToGo')}</Text>
-        </View>
-      </View>
-
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + TAB_BAR_CONTENT_INSET },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Section heading */}
-        <Text style={styles.sectionTitle}>{t('home.whereToGo')}</Text>
-
-        {/* Taxi service card */}
-        <TouchableOpacity
-          style={styles.serviceCard}
-          onPress={() => startOrder('taxi')}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel={t('home.orderTaxi')}
-          accessibilityHint={t('home.a11yTaxiHint')}
-        >
-          <View style={[styles.serviceIcon, { backgroundColor: colors.accent }]}>
-            <Icon name="taxi" size={28} color={colors.primary} />
-          </View>
-          <View style={styles.serviceText}>
-            <Text style={styles.serviceTitle}>{t('home.orderTaxi')}</Text>
-            <Text style={styles.serviceSub}>{t('tariff.standard')}</Text>
-            <View style={styles.chipsRow}>
-              {['home.tagFast', 'home.tagComfortable', 'home.tagReliable'].map((label) => (
-                <View
-                  key={label}
-                  style={[styles.chip, { backgroundColor: '#FFF3CC' }]}
-                >
-                  <Text style={[styles.chipText, { color: colors.accentDark }]}>
-                    {t(label)}
-                  </Text>
-                </View>
-              ))}
+        {/* Greeting + inbox */}
+        <View style={styles.header}>
+          <View style={styles.greetingCol}>
+            <Text style={styles.hello}>{t('home.hello')}</Text>
+            <Text style={styles.name} numberOfLines={1}>
+              {t('home.greetingName', {
+                name: user?.first_name || t('auth.namePlaceholder'),
+              })}
+            </Text>
+            <View style={styles.niceDayRow}>
+              <Text style={styles.niceDay}>{t('home.niceDay')}</Text>
+              <Icon name="handWave" size={16} color={colors.accentDark} />
             </View>
           </View>
-        </TouchableOpacity>
 
-        {/* Parcel service card */}
-        <TouchableOpacity
-          style={styles.serviceCard}
-          onPress={() => startOrder('parcel')}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel={t('home.orderParcel')}
-          accessibilityHint={t('home.a11yParcelHint')}
-        >
-          <View style={[styles.serviceIcon, { backgroundColor: '#E0E7FF' }]}>
-            <Icon name="parcel" size={28} color={colors.primary} />
-          </View>
-          <View style={styles.serviceText}>
-            <Text style={styles.serviceTitle}>{t('home.orderParcel')}</Text>
-            <Text style={styles.serviceSub}>{t('tariff.parcelHint')}</Text>
-            <View style={styles.chipsRow}>
-              {['home.tagSafe', 'home.tagReliable', 'home.tagQuick'].map((label) => (
-                <View
-                  key={label}
-                  style={[styles.chip, { backgroundColor: '#E0E7FF' }]}
-                >
-                  <Text style={[styles.chipText, { color: colors.primary }]}>
-                    {t(label)}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {/* TEMP: invite-a-friend promo hidden on home — re-enable later (keyin qo'shamiz) */}
-        {/*
-        <View style={styles.promoCard}>
-          <IconText name="gift" size={14} color={colors.accent} textStyle={styles.promoText}>
-            {t('profile.inviteFriends')}
-          </IconText>
+          <TouchableOpacity
+            style={styles.bell}
+            onPress={() => router.push('/notifications')}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('profile.notifications')}
+          >
+            <Icon name="notification" size={22} color={colors.primary} />
+            {unread > 0 && <View style={styles.bellDot} />}
+          </TouchableOpacity>
         </View>
-        */}
+
+        {/* The actual question, asked once */}
+        <Text style={styles.sectionTitle}>{t('home.whereToGo')}</Text>
+        <Text style={styles.sectionSubtitle}>{t('home.chooseService')}</Text>
+
+        {renderServiceCard({
+          service: 'taxi',
+          titleKey: 'home.orderTaxi',
+          subtitleKey: 'home.taxiSub',
+          hintKey: 'home.a11yTaxiHint',
+          icon: 'taxi',
+          tags: TAXI_TAGS,
+        })}
+
+        {renderServiceCard({
+          service: 'parcel',
+          titleKey: 'home.orderParcel',
+          subtitleKey: 'home.parcelSub',
+          hintKey: 'home.a11yParcelHint',
+          icon: 'parcel',
+          tags: PARCEL_TAGS,
+        })}
       </ScrollView>
     </SafeAreaView>
   );
@@ -135,68 +244,107 @@ export default function HomeScreen() {
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+
+  // Greeting
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.xl,
+  },
+  greetingCol: { flex: 1, marginRight: spacing.md },
+  hello: { ...typography.h1, color: colors.text },
+  // The name is the personal half of the greeting, so it carries the brand colour and
+  // gets its own line — a long name used to push "Salom," off the edge of the screen.
+  name: { ...typography.h1, color: colors.primary, marginTop: -4 },
+  niceDayRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.xs },
+  niceDay: { ...typography.body, color: colors.textSecondary },
+  bell: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.surface,
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    justifyContent: 'center',
   },
-  greeting: { ...typography.h2, color: colors.primary },
-  subtitle: {
+  bellDot: {
+    position: 'absolute',
+    top: 9,
+    right: 11,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.error,
+    // Ring in the screen background so the dot stays legible on top of the bell glyph.
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+
+  // Section
+  sectionTitle: { ...typography.h1, color: colors.text },
+  sectionSubtitle: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     marginTop: 2,
-  },
-  scroll: { padding: spacing.lg, paddingTop: spacing.sm },
-  sectionTitle: {
-    ...typography.h2,
-    color: colors.text,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
 
   // Service cards
-  serviceCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
+  cardShadow: {
     borderRadius: radius.xl,
-    padding: spacing.md,
     marginBottom: spacing.md,
     shadowColor: '#1A1240',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    elevation: 4,
   },
-  serviceIcon: {
-    width: 56,
-    height: 56,
+  card: {
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    // Clips the oversized watermark glyph to the card's rounded corners.
+    overflow: 'hidden',
+  },
+  watermark: {
+    position: 'absolute',
+    right: -28,
+    bottom: -34,
+    opacity: 0.14,
+  },
+  cardTop: { flexDirection: 'row', alignItems: 'center' },
+  cardIcon: {
+    width: 58,
+    height: 58,
     borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  serviceText: { flex: 1 },
-  serviceTitle: { ...typography.bodyBold, color: colors.text },
-  serviceSub: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
+  cardCopy: { flex: 1, marginRight: spacing.sm },
+  cardTitle: { ...typography.h3, color: colors.text, fontWeight: '800' },
+  cardSubtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  cardArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  chipsRow: {
+  tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginTop: spacing.sm,
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
-  chip: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radius.pill,
+    backgroundColor: colors.card,
   },
-  chipText: {
-    ...typography.small,
-    fontWeight: '600',
-  },
+  tagText: { ...typography.small, color: colors.text, fontWeight: '700' },
 });

@@ -13,7 +13,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +26,7 @@ import { API_URL } from '../../src/api/client';
 import { describeApiError } from '../../src/api/errors';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
+import { TAB_BAR_CONTENT_INSET } from '../../src/theme/tabBar';
 import { gradients } from '../../src/theme/colors';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
@@ -76,6 +77,7 @@ export default function ProfileScreen() {
   const colors = useThemeStore((s) => s.colors);
   const isDark = useThemeStore((s) => s.isDark);
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const headerGradient = (isDark
     ? [colors.surface, colors.background]
     : ['#F2EEFF', '#FFFFFF']) as [string, string];
@@ -221,7 +223,15 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      {/* The floating tab bar overlays the content, so the last menu row needs room
+          under it — see src/theme/tabBar.ts. */}
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + TAB_BAR_CONTENT_INSET },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Header band */}
         <LinearGradient
           colors={headerGradient}

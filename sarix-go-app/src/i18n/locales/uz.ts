@@ -54,10 +54,17 @@ export default {
     invalidCode: "Kod noto'g'ri",
   },
   home: {
-    greeting: 'Salom, {{name}}!',
+    // Split from the name so the two halves can sit on their own lines in their own
+    // colours; a long name used to push the whole greeting off the screen.
+    hello: 'Salom,',
+    greetingName: '{{name}}!',
+    niceDay: 'Bugun ham ajoyib kun!',
     whereToGo: 'Qayerga ketamiz?',
+    chooseService: "Xizmat turini tanlang va yo'lga chiqing",
     orderTaxi: 'Taksi chaqirish',
     orderParcel: 'Pochta yuborish',
+    taxiSub: 'Manzilingizga tez va qulay yetib boring',
+    parcelSub: 'Hujjat yoki dokument yuborish xizmati',
     fromCity: 'Qayerdan',
     toCity: 'Qayerga',
     a11yTaxiHint: 'Olish va borish manzillarini tanlash oynasini ochadi',
