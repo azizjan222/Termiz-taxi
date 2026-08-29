@@ -103,8 +103,10 @@ export default {
     femaleInCabin: 'В салоне женщина',
     roofRack: 'Багажник на крыше',
     title: 'Заказ',
-    extrasValue: 'Настройки',
+    extrasNone: 'Не выбрано',
+    extrasCount: 'Выбрано: {{count}}',
     a11ySubmitHint: 'Начнёт поиск водителя по выбранному маршруту',
+    a11ySwap: 'Поменять направление на обратное',
   },
   order: {
     serviceType: 'Тип услуги',
