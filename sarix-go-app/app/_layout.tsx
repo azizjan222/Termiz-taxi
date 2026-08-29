@@ -94,9 +94,11 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
-  // Show animated splash until both app is ready AND animation finished
+  // Show animated splash until both app is ready AND the exit animation finished.
+  // `ready` is forwarded so the splash only starts fading out once bootstrap is
+  // done — otherwise a slow boot would leave an empty screen after the fade.
   if (!ready || !splashDone) {
-    return <AnimatedSplash onFinish={() => setSplashDone(true)} />;
+    return <AnimatedSplash ready={ready} onFinish={() => setSplashDone(true)} />;
   }
 
   return (
