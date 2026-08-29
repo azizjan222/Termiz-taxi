@@ -13,7 +13,7 @@ import { describeApiError } from '../src/api/errors';
 import { useTranslation } from 'react-i18next';
 
 import { Icon, IconText } from '../src/components/Icon';
-import { Button } from '../src/components/Button';
+import { OrderCtaButton } from '../src/components/OrderCtaButton';
 import { Input } from '../src/components/Input';
 import { createOrder, getPriceQuote, type PriceQuote } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
@@ -68,7 +68,7 @@ export default function ConfirmOrderScreen() {
 
   const handleConfirm = async () => {
     if (!orderStore.fromCity || !orderStore.toCity) return;
-    // Synchronous guard. The Button's `loading` prop only disables it after a re-render,
+    // Synchronous guard. The button's `loading` prop only disables it after a re-render,
     // which is a full React commit behind a fast second tap — and with a 20s axios timeout
     // there is a long window in which both taps passed the check and created TWO identical
     // orders. The passenger then went to /searching for the second one while the first
@@ -223,12 +223,12 @@ export default function ConfirmOrderScreen() {
             <Text style={styles.negotiableHint}>{t('order.parcelNegotiableHint')}</Text>
           )}
         </View>
-        <Button
+        {/* Gold, like the other "Buyurtma berish": this is the tap that actually creates
+            the order, and it should look the same wherever the passenger meets it. */}
+        <OrderCtaButton
           title={t('order.confirm')}
           onPress={handleConfirm}
           loading={loading}
-          variant="primary"
-          fullWidth={false}
           // Confirm used to stay enabled while the price read '...' or '—', so a passenger
           // could commit to a ride whose fare had never loaded — and then be quoted a
           // number they never agreed to. A parcel is genuinely negotiated with the driver,

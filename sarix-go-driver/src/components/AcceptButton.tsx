@@ -40,6 +40,13 @@ export interface AcceptButtonProps {
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
+  /**
+   * Stretch to the container's width.
+   *
+   * Off by default: in an order card the button shares a row with the commission figure and
+   * must stay at its content width. The incoming-order sheet gives it the whole row.
+   */
+  fullWidth?: boolean;
   accessibilityLabel?: string;
   accessibilityHint?: string;
 }
@@ -52,6 +59,7 @@ export function AcceptButton({
   onPress,
   loading = false,
   disabled = false,
+  fullWidth = false,
   accessibilityLabel,
   accessibilityHint,
 }: AcceptButtonProps) {
@@ -151,7 +159,7 @@ export function AcceptButton({
   });
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, fullWidth && styles.wrapFullWidth]}>
       {alive && (
         <Animated.View
           pointerEvents="none"
@@ -217,6 +225,7 @@ export function AcceptButton({
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   wrap: { position: 'relative' },
+  wrapFullWidth: { alignSelf: 'stretch' },
   ring: {
     position: 'absolute',
     left: 0,

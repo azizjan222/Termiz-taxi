@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 
 import { Logo } from '../../src/components/Logo';
-import { Button } from '../../src/components/Button';
+import { OrderCtaButton } from '../../src/components/OrderCtaButton';
 import { changeLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from '../../src/i18n';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
@@ -67,7 +67,8 @@ export default function LanguageScreen() {
       </View>
 
       <View style={styles.footer}>
-        <Button
+        {/* The very first tap a new user makes in the app — worth making it obvious. */}
+        <OrderCtaButton
           title={t('common.next', { lng: selected })}
           onPress={handleNext}
           variant="primary"
