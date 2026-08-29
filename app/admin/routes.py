@@ -36,10 +36,29 @@ from app.admin.templates import (
     SETTINGS_JS,
     STATISTICS_HTML,
     STATISTICS_JS,
+    render_csrf_error,
     render_login,
     render_page,
 )
 from app.database import get_session
+
+
+def _page(request: web.Request, title: str, content: str, extra_js: str, active: str):
+    """Render an admin page with the sidebar item marked and the logout token embedded."""
+    return web.Response(
+        text=render_page(
+            title,
+            content,
+            extra_js,
+            active=active,
+            csrf_token=request.cookies.get("admin_csrf", ""),
+        ),
+        content_type="text/html",
+    )
+
+
+def _csrf_failed() -> web.Response:
+    return web.Response(text=render_csrf_error(), content_type="text/html", status=403)
 
 
 def _record_auth_audit(request: web.Request, action: str, details=None) -> None:
@@ -67,7 +86,7 @@ async def login_page(request: web.Request) -> web.Response:
 async def login_post(request: web.Request) -> web.Response:
     """POST /admin/login - validate CSRF, rate limit, and credentials."""
     if not await check_csrf(request):
-        return web.Response(text="CSRF validation failed", status=403)
+        return _csrf_failed()
 
     data = await request.post()
     username = str(data.get("username", ""))
@@ -116,7 +135,7 @@ async def login_post(request: web.Request) -> web.Response:
 async def logout(request: web.Request) -> web.Response:
     """POST /admin/logout - require CSRF, then clear the session."""
     if not await check_csrf(request):
-        return web.Response(text="CSRF validation failed", status=403)
+        return _csrf_failed()
     _record_auth_audit(request, "auth.logout")
     # Invalidate the signed value server-side, not just in the browser: deleting the
     # cookie alone left a captured copy usable until it aged out.
@@ -129,85 +148,69 @@ async def logout(request: web.Request) -> web.Response:
 @require_admin
 async def dashboard(request: web.Request) -> web.Response:
     """GET /admin/ - main dashboard page."""
-    return web.Response(
-        text=render_page("Dashboard", DASHBOARD_HTML, DASHBOARD_JS),
-        content_type="text/html",
-    )
+    return _page(request, "Dashboard", DASHBOARD_HTML, DASHBOARD_JS, "/admin/")
 
 
 @require_admin
 async def statistics_page(request: web.Request) -> web.Response:
     """GET /admin/statistics - analytics page (growth, activity, districts)."""
-    return web.Response(
-        text=render_page("Statistika", STATISTICS_HTML, STATISTICS_JS),
-        content_type="text/html",
-    )
+    return _page(request, "Statistika", STATISTICS_HTML, STATISTICS_JS, "/admin/statistics")
 
 
 @require_admin
 async def drivers_page(request: web.Request) -> web.Response:
     """GET /admin/drivers - drivers table."""
-    return web.Response(
-        text=render_page("Haydovchilar", DRIVERS_HTML, DRIVERS_JS),
-        content_type="text/html",
-    )
+    return _page(request, "Haydovchilar", DRIVERS_HTML, DRIVERS_JS, "/admin/drivers")
+
 
 @require_admin
 async def passengers_page(request: web.Request) -> web.Response:
     """GET /admin/passengers - passengers table."""
-    return web.Response(
-        text=render_page("Yo'lovchilar", PASSENGERS_HTML, PASSENGERS_JS),
-        content_type="text/html",
-    )
+    return _page(request, "Yo'lovchilar", PASSENGERS_HTML, PASSENGERS_JS, "/admin/passengers")
 
 
 @require_admin
 async def orders_page(request: web.Request) -> web.Response:
     """GET /admin/orders - orders table."""
-    return web.Response(
-        text=render_page("Buyurtmalar", ORDERS_HTML, ORDERS_JS),
-        content_type="text/html",
-    )
+    return _page(request, "Buyurtmalar", ORDERS_HTML, ORDERS_JS, "/admin/orders")
 
 
 @require_admin
 async def push_page(request: web.Request) -> web.Response:
     """GET /admin/push - push notification form."""
-    return web.Response(
-        text=render_page("Push xabar", PUSH_HTML, PUSH_JS),
-        content_type="text/html",
-    )
+    return _page(request, "Push xabar", PUSH_HTML, PUSH_JS, "/admin/push")
 
 
 @require_admin
 async def push_log_page(request: web.Request) -> web.Response:
     """GET /admin/push-log - why push notifications are or are not arriving."""
-    return web.Response(
-        text=render_page("Push diagnostika", PUSH_LOG_HTML, PUSH_LOG_JS),
-        content_type="text/html",
-    )
+    return _page(request, "Push diagnostika", PUSH_LOG_HTML, PUSH_LOG_JS, "/admin/push-log")
 
 
 @require_admin
 async def routes_page(request: web.Request) -> web.Response:
     """GET /admin/routes - routes/prices editor."""
-    return web.Response(
-        text=render_page("Yo'nalishlar", ROUTES_HTML, ROUTES_JS),
-        content_type="text/html",
-    )
+    return _page(request, "Yo'nalishlar", ROUTES_HTML, ROUTES_JS, "/admin/routes")
 
 
 @require_admin
 async def settings_page(request: web.Request) -> web.Response:
     """GET /admin/settings - settings page."""
-    return web.Response(
-        text=render_page("Sozlamalar", SETTINGS_HTML, SETTINGS_JS),
-        content_type="text/html",
-    )
+    return _page(request, "Sozlamalar", SETTINGS_HTML, SETTINGS_JS, "/admin/settings")
+
+
+async def admin_root_redirect(request: web.Request) -> web.Response:
+    """GET /admin -> /admin/.
+
+    aiohttp does no automatic trailing-slash matching, so the URL an operator actually
+    types ("<host>/admin") answered 404 instead of showing the panel.
+    """
+    raise web.HTTPFound("/admin/")
 
 
 def setup_page_routes(app: web.Application):
     """Register all admin page routes."""
+    app.router.add_get("/admin", admin_root_redirect)
     app.router.add_get("/admin/login", login_page)
     app.router.add_post("/admin/login", login_post)
     app.router.add_post("/admin/logout", logout)

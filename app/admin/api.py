@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 
 from aiohttp import web
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 
 from app import config
 from app.admin.audit import add_admin_audit
@@ -42,6 +44,34 @@ logger = logging.getLogger(__name__)
 
 # Sanity ceiling for a single route fare, well inside the int4 column range.
 MAX_ROUTE_PRICE = 100_000_000
+
+# Audiences the broadcast endpoint accepts. Anything else used to fall through, match no
+# recipients, and still commit an Announcement row that no audience filter can ever read.
+PUSH_TARGETS = ("all", "drivers", "passengers", "specific")
+
+# Every admin mutation ends in a blanket `except Exception`. Returning `str(e)` from there
+# put raw SQLAlchemy text — which stringifies the DSN, credentials included — into the
+# browser. The real cause goes to the log; the client gets a stable Uzbek message.
+INTERNAL_ERROR = "Ichki xatolik. Iltimos qayta urinib ko'ring."
+
+
+def _server_error(where: str) -> web.Response:
+    """Log the real exception and return a message that leaks nothing."""
+    logger.exception("admin: %s failed", where)
+    return web.json_response({"error": INTERNAL_ERROR}, status=500)
+
+
+def _parse_int_field(data: dict, key: str) -> int:
+    """Parse `data[key]` as an int or raise ValueError.
+
+    JSON null (which is what `JSON.stringify` turns `parseInt("")` -> NaN into) and
+    booleans are rejected: `int(None)` used to raise TypeError inside the blanket
+    handler and surface as a 500 with the raw Python error in the alert box.
+    """
+    value = data[key]
+    if value is None or isinstance(value, bool) or isinstance(value, (list, dict)):
+        raise ValueError(key)
+    return int(value)
 
 
 # Telegram is rate-limited to ~30 messages/second, so a broadcast to a large audience
@@ -217,7 +247,9 @@ async def api_passengers(request: web.Request) -> web.Response:
                 "last_name": u.last_name,
                 "language": u.language,
                 "bonus_balance": u.bonus_balance or 0,
-                "rating": u.rating,
+                # `or 0`: a legacy row with rating IS NULL printed the literal "null"
+                # in the passengers table.
+                "rating": u.rating or 0,
                 "is_blocked": u.is_blocked,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
             })
@@ -232,7 +264,9 @@ async def api_orders(request: web.Request) -> web.Response:
     status_filter = request.query.get("status", "all")
     session = get_session()
     try:
-        query = session.query(Order)
+        # joinedload: the driver of every row is rendered in the table, and a lazy
+        # relationship inside the loop below meant up to 200 extra SELECTs per page load.
+        query = session.query(Order).options(joinedload(Order.driver))
         if status_filter == "active":
             query = query.filter(
                 Order.status.in_(["new", "accepted", "in_progress"])
@@ -242,8 +276,7 @@ async def api_orders(request: web.Request) -> web.Response:
         orders = query.order_by(Order.id.desc()).limit(200).all()
         result = []
         for o in orders:
-            # Driver who took the order (if any). The relationship is loaded lazily;
-            # 200 rows is small enough that the extra lookups are negligible.
+            # Driver who took the order (if any) — eager-loaded by the query above.
             drv = o.driver if o.driver_id else None
             driver_name = None
             if drv:
@@ -293,6 +326,12 @@ async def api_push(request: web.Request) -> web.Response:
 
     if not message:
         return web.json_response({"error": "Xabar matni bo'sh"}, status=400)
+
+    # Validate the audience. An unknown target matched nobody yet still committed an
+    # Announcement row with audience="user" and no recipient — permanently orphaned,
+    # readable by no one, and the response still claimed success.
+    if target not in PUSH_TARGETS:
+        return web.json_response({"error": "target noto'g'ri"}, status=400)
 
     # Reach bot-only recipients over Telegram (default on). Without this the broadcast is
     # limited to people who installed the mobile app, which in practice was almost nobody.
@@ -472,9 +511,9 @@ async def api_verify_driver(request: web.Request) -> web.Response:
         add_admin_audit(session, request, "driver.verify", target_type="driver", target_id=driver.id)
         session.commit()
         return web.json_response({"ok": True, "detail": "Tasdiqlandi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("driver.verify")
     finally:
         session.close()
 
@@ -495,9 +534,9 @@ async def api_reject_driver(request: web.Request) -> web.Response:
         add_admin_audit(session, request, "driver.reject", target_type="driver", target_id=driver.id)
         session.commit()
         return web.json_response({"ok": True, "detail": "Rad etildi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("driver.reject")
     finally:
         session.close()
 
@@ -528,9 +567,9 @@ async def api_block_driver(request: web.Request) -> web.Response:
         except Exception:
             pass
         return web.json_response({"ok": True, "detail": "Haydovchi bloklandi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("driver.block")
     finally:
         session.close()
 
@@ -559,9 +598,9 @@ async def api_unblock_driver(request: web.Request) -> web.Response:
         except Exception:
             pass
         return web.json_response({"ok": True, "detail": "Blok bekor qilindi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("driver.unblock")
     finally:
         session.close()
 
@@ -701,7 +740,7 @@ async def api_topup_driver_balance(request: web.Request) -> web.Response:
             "balance": new_balance,
             "replayed": False,
         })
-    except Exception as e:
+    except Exception:
         session.rollback()
         # A concurrent retry may win the unique key race. Report the committed result
         # instead of turning a successful one-time adjustment into a 500 response.
@@ -723,8 +762,7 @@ async def api_topup_driver_balance(request: web.Request) -> web.Response:
                 {"error": "Bu idempotency_key boshqa o'zgarish uchun ishlatilgan"},
                 status=409,
             )
-        logger.exception("Admin balance adjustment failed")
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("driver.balance_adjust")
     finally:
         session.close()
 
@@ -776,7 +814,7 @@ async def api_update_route(request: web.Request) -> web.Response:
                 # Parse defensively: a non-numeric value used to fall through to the generic
                 # `except Exception` below and return the raw exception text as a 500.
                 try:
-                    value = int(data[field])
+                    value = _parse_int_field(data, field)
                 except (TypeError, ValueError):
                     return web.json_response(
                         {"error": f"'{field}' butun son bo'lishi kerak"}, status=400
@@ -813,9 +851,9 @@ async def api_update_route(request: web.Request) -> web.Response:
         )
         session.commit()
         return web.json_response({"ok": True, "detail": "Saqlandi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("route.update")
     finally:
         session.close()
 
@@ -885,7 +923,15 @@ async def api_update_settings(request: web.Request) -> web.Response:
         for key, (minimum, maximum) in limits.items():
             if key not in data:
                 continue
-            value = int(data[key])
+            # Parse defensively. Clearing a field in the form sends `null`
+            # (JSON.stringify(NaN) === "null"), and int(None) raised TypeError inside the
+            # blanket handler below — the admin got a 500 with the raw Python error.
+            try:
+                value = _parse_int_field(data, key)
+            except (TypeError, ValueError):
+                return web.json_response(
+                    {"error": f"'{key}' butun son bo'lishi kerak"}, status=400
+                )
             if not minimum <= value <= maximum:
                 return web.json_response({"error": f"{key} diapazondan tashqarida"}, status=400)
             existing = session.query(Setting).filter_by(key=key).first()
@@ -905,9 +951,9 @@ async def api_update_settings(request: web.Request) -> web.Response:
         )
         session.commit()
         return web.json_response({"ok": True, "detail": "Sozlamalar saqlandi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("settings.update")
     finally:
         session.close()
 
@@ -1140,8 +1186,11 @@ async def api_create_driver(request: web.Request) -> web.Response:
                 return web.json_response(
                     {"error": "Bu Telegram ID bilan haydovchi mavjud"}, status=409
                 )
-        for existing in session.query(Driver).all():
-            if _norm_phone_admin(existing.phone) == phone:
+        # Two columns instead of whole ORM objects: the phone has to be normalised in
+        # Python (it is stored in whatever shape it was entered), but loading every
+        # Driver row with all its columns to do it was needlessly heavy.
+        for _existing_id, existing_phone in session.query(Driver.id, Driver.phone).all():
+            if _norm_phone_admin(existing_phone) == phone:
                 return web.json_response(
                     {"error": "Bu telefon raqam bilan haydovchi mavjud"}, status=409
                 )
@@ -1149,6 +1198,19 @@ async def api_create_driver(request: web.Request) -> web.Response:
         # telegram_id is NOT NULL & unique in the model; synthesize one from the phone
         # digits when the admin didn't supply a real Telegram id.
         tg = telegram_id or int(phone.lstrip("+") or "0")
+        # A synthesized id can collide with a real Telegram id (or with an earlier
+        # synthetic one after a phone edit). That surfaced as an IntegrityError inside the
+        # blanket handler and returned the raw unique-constraint text as a 500.
+        if not telegram_id and session.query(Driver.id).filter_by(telegram_id=tg).first():
+            return web.json_response(
+                {
+                    "error": (
+                        "Bu telefon raqamdan yasalgan Telegram ID band. "
+                        "Haydovchining haqiqiy Telegram ID sini kiriting."
+                    )
+                },
+                status=409,
+            )
         driver = Driver(
             telegram_id=tg,
             phone=phone,
@@ -1178,9 +1240,18 @@ async def api_create_driver(request: web.Request) -> web.Response:
             "detail": "Haydovchi qo'shildi",
             "id": driver.id,
         }, status=201)
-    except Exception as e:
+    except IntegrityError:
+        # Lost a race against another admin (or the bot) inserting the same phone /
+        # telegram_id. A duplicate is a client-side conflict, not a server fault.
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        logger.warning("admin: driver.create hit a uniqueness conflict for %s", phone)
+        return web.json_response(
+            {"error": "Bu haydovchi allaqachon mavjud (telefon yoki Telegram ID band)"},
+            status=409,
+        )
+    except Exception:
+        session.rollback()
+        return _server_error("driver.create")
     finally:
         session.close()
 
@@ -1451,7 +1522,9 @@ async def api_push_log(request: web.Request) -> web.Response:
         ]
 
         query = session.query(NotificationLog)
-        if status_filter in ("sent", "failed"):
+        # "delivered" belongs here too: Expo receipts and the Telegram fan-out both write
+        # that status, so those rows were invisible under every filter except "Barchasi".
+        if status_filter in ("sent", "failed", "delivered"):
             query = query.filter(NotificationLog.status == status_filter)
         logs = query.order_by(NotificationLog.id.desc()).limit(200).all()
 
@@ -1508,9 +1581,8 @@ async def api_push_receipts(request: web.Request) -> web.Response:
     try:
         result = await check_push_receipts(session)
         return web.json_response(result)
-    except Exception as e:
-        logger.error(f"Receipt check failed: {e}")
-        return web.json_response({"error": str(e)}, status=500)
+    except Exception:
+        return _server_error("push.receipts")
     finally:
         session.close()
 
