@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon, type IconName } from '../../src/components/Icon';
 import { useThemeStore } from '../../src/store/theme';
 import { radius } from '../../src/theme';
-import { TAB_BAR_HEIGHT, TAB_BAR_MARGIN } from '../../src/theme/tabBar';
+import { TAB_BAR_HEIGHT } from '../../src/theme/tabBar';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
 /** Route name -> icon. Keyed by file name, which is what the navigator reports. */
@@ -24,7 +24,7 @@ const TAB_ICONS: Record<string, IconName> = {
  * fields this bar actually reads are described, and `navigation` is kept loose so the
  * navigator's generic helpers stay assignable to it.
  */
-interface FloatingTabBarProps {
+interface AppTabBarProps {
   state: { index: number; routes: { key: string; name: string }[] };
   descriptors: Record<string, { options: { title?: string } }>;
   navigation: {
@@ -37,7 +37,7 @@ interface FloatingTabBarProps {
 }
 
 /**
- * The floating tab bar.
+ * The app's bottom tab bar.
  *
  * Rendered from scratch instead of styling the built-in one. The design needs three things
  * stacked in each tab — icon, label and an active-state underline — and the built-in item
@@ -47,16 +47,31 @@ interface FloatingTabBarProps {
  * it. Fitting a third element into that meant guessing at numbers that are not ours, and
  * the stack kept spilling out of the card on real devices — twice.
  *
- * Owning the layout removes the guesswork: the card's height is fixed here, the contents
- * are centred inside it, and the stack is ~48px in a 72px card, so it cannot overflow no
- * matter what the system font does to the label.
+ * Owning the layout removes the guesswork: the height is fixed here, the contents are
+ * centred inside it, and the stack is ~48px in a 64px row, so it cannot overflow no matter
+ * what the system font does to the label.
+ *
+ * The bar is docked to the bottom edge rather than floating. Floating left a strip of
+ * screen below it, and rows of the profile menu showed through that strip as they scrolled
+ * past — visible content in a place the user cannot reach. Docked, the bar also sits in the
+ * normal layout flow, so the navigator reserves its room and no screen has to pad its own
+ * scroll content to stay clear of it.
+ *
+ * `paddingBottom: insets.bottom` covers the Android navigation bar / iOS home indicator:
+ * the bar spans to the physical bottom edge, but its contents stay above the system UI.
  */
-function FloatingTabBar({ state, descriptors, navigation, insets }: FloatingTabBarProps) {
+function AppTabBar({ state, descriptors, navigation, insets }: AppTabBarProps) {
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <View style={[styles.bar, { bottom: insets.bottom + TAB_BAR_MARGIN }]} role="tablist">
+    <View
+      style={[
+        styles.bar,
+        { height: TAB_BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom },
+      ]}
+      role="tablist"
+    >
       {state.routes.map((route, index) => {
         const focused = index === state.index;
         const label = descriptors[route.key]?.options.title ?? route.name;
@@ -107,7 +122,7 @@ export default function TabsLayout() {
     <Tabs
       // `props` is contextually typed by the navigator, so no internal type import is
       // needed for the renderer itself.
-      tabBar={(props) => <FloatingTabBar {...props} />}
+      tabBar={(props) => <AppTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen name="home" options={{ title: t('home.orderTaxi') }} />
@@ -119,20 +134,17 @@ export default function TabsLayout() {
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   bar: {
-    // Absolute so the screen background shows through the gaps around the card. The
-    // navigator therefore reserves no room for it, and each tab screen insets its own
-    // scroll content instead — see src/theme/tabBar.ts.
-    position: 'absolute',
-    left: TAB_BAR_MARGIN,
-    right: TAB_BAR_MARGIN,
-    height: TAB_BAR_HEIGHT,
     flexDirection: 'row',
-    borderRadius: radius.xl,
+    // Rounded on top only — the bar meets the bottom edge, so rounding there would just
+    // show the screen behind it in the corners.
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
     backgroundColor: colors.card,
+    // Upward shadow: lifts the bar off the content scrolling underneath it.
     shadowColor: '#0E1730',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
     elevation: 12,
   },
   item: {
