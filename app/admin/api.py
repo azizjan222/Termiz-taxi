@@ -16,6 +16,7 @@ from app.admin.audit import add_admin_audit
 from app.admin.middleware import require_admin_api
 from app.database import get_session
 from app.models import (
+    AdminAuditLog,
     Announcement,
     BalanceTransaction,
     Driver,
@@ -144,9 +145,7 @@ def _spawn_background(coro) -> None:
     task.add_done_callback(_background_tasks.discard)
 
 
-@require_admin_api
-async def api_stats(request: web.Request) -> web.Response:
-    """GET /admin/api/stats - dashboard statistics."""
+def _stats_payload() -> dict:
     session = get_session()
     try:
         drivers_count = session.query(Driver).count()
@@ -182,7 +181,7 @@ async def api_stats(request: web.Request) -> web.Response:
         ).all()
         revenue_month = sum(effective_commission(o) for o in rev_month_result)
 
-        return web.json_response({
+        return {
             "drivers_count": drivers_count,
             "passengers_count": passengers_count,
             "orders_count": orders_count,
@@ -190,14 +189,18 @@ async def api_stats(request: web.Request) -> web.Response:
             "online_drivers": online_drivers,
             "revenue_today": revenue_today,
             "revenue_month": revenue_month,
-        })
+        }
     finally:
         session.close()
 
 
 @require_admin_api
-async def api_drivers(request: web.Request) -> web.Response:
-    """GET /admin/api/drivers - list all drivers."""
+async def api_stats(request: web.Request) -> web.Response:
+    """GET /admin/api/stats - dashboard statistics."""
+    return web.json_response(await asyncio.to_thread(_stats_payload))
+
+
+def _drivers_payload() -> list:
     session = get_session()
     try:
         drivers = session.query(Driver).order_by(Driver.id.desc()).all()
@@ -227,14 +230,18 @@ async def api_drivers(request: web.Request) -> web.Response:
                 "has_tech_passport": bool(d.tech_passport_file_id or d.tech_passport_url),
                 "has_car_photo": bool(d.car_photo_file_id or d.car_photo_url),
             })
-        return web.json_response(result)
+        return result
     finally:
         session.close()
 
 
 @require_admin_api
-async def api_passengers(request: web.Request) -> web.Response:
-    """GET /admin/api/passengers - list all users."""
+async def api_drivers(request: web.Request) -> web.Response:
+    """GET /admin/api/drivers - list all drivers."""
+    return web.json_response(await asyncio.to_thread(_drivers_payload))
+
+
+def _passengers_payload() -> list:
     session = get_session()
     try:
         users = session.query(User).order_by(User.id.desc()).all()
@@ -253,15 +260,18 @@ async def api_passengers(request: web.Request) -> web.Response:
                 "is_blocked": u.is_blocked,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
             })
-        return web.json_response(result)
+        return result
     finally:
         session.close()
 
 
 @require_admin_api
-async def api_orders(request: web.Request) -> web.Response:
-    """GET /admin/api/orders?status=all|new|accepted|completed|cancelled."""
-    status_filter = request.query.get("status", "all")
+async def api_passengers(request: web.Request) -> web.Response:
+    """GET /admin/api/passengers - list all users."""
+    return web.json_response(await asyncio.to_thread(_passengers_payload))
+
+
+def _orders_payload(status_filter: str) -> list:
     session = get_session()
     try:
         # joinedload: the driver of every row is rendered in the table, and a lazy
@@ -305,9 +315,16 @@ async def api_orders(request: web.Request) -> web.Response:
                 "accepted_at": o.accepted_at.isoformat() if o.accepted_at else None,
                 "created_at": o.created_at.isoformat() if o.created_at else None,
             })
-        return web.json_response(result)
+        return result
     finally:
         session.close()
+
+
+@require_admin_api
+async def api_orders(request: web.Request) -> web.Response:
+    """GET /admin/api/orders?status=all|new|accepted|completed|cancelled."""
+    status_filter = request.query.get("status", "all")
+    return web.json_response(await asyncio.to_thread(_orders_payload, status_filter))
 
 
 @require_admin_api
@@ -603,6 +620,103 @@ async def api_unblock_driver(request: web.Request) -> web.Response:
         return _server_error("driver.unblock")
     finally:
         session.close()
+
+
+async def _set_passenger_blocked(request: web.Request, blocked: bool) -> web.Response:
+    """Block or unblock a passenger.
+
+    `User.is_blocked` is already enforced at the authentication layer
+    (`app/utils/auth.py`: a blocked user never resolves), but the panel had no way to set
+    it — the flag could only be flipped straight in the database.
+    """
+    user_id = int(request.match_info["id"])
+    action = "user.block" if blocked else "user.unblock"
+    session = get_session()
+    try:
+        user = session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return web.json_response({"error": "Yo'lovchi topilmadi"}, status=404)
+        user.is_blocked = blocked
+        user_db_id = user.id
+        add_admin_audit(session, request, action, target_type="user", target_id=user.id)
+        session.commit()
+        # Best-effort notice; never let a push failure undo a committed block.
+        try:
+            await send_push(
+                session,
+                recipient_type="user",
+                recipient_id=user_db_id,
+                title="Akkaunt bloklandi" if blocked else "Blok bekor qilindi",
+                body=(
+                    "Akkauntingiz administrator tomonidan bloklandi. "
+                    "Savollar uchun qo'llab-quvvatlashga murojaat qiling."
+                    if blocked
+                    else "Akkauntingiz blokdan chiqarildi. Endi buyurtma berishingiz mumkin."
+                ),
+            )
+        except Exception:
+            pass
+        return web.json_response({
+            "ok": True,
+            "detail": "Yo'lovchi bloklandi" if blocked else "Blok bekor qilindi",
+        })
+    except Exception:
+        session.rollback()
+        return _server_error(action)
+    finally:
+        session.close()
+
+
+@require_admin_api
+async def api_block_passenger(request: web.Request) -> web.Response:
+    """POST /admin/api/passengers/{id}/block - block a passenger."""
+    return await _set_passenger_blocked(request, True)
+
+
+@require_admin_api
+async def api_unblock_passenger(request: web.Request) -> web.Response:
+    """POST /admin/api/passengers/{id}/unblock - lift a passenger's block."""
+    return await _set_passenger_blocked(request, False)
+
+
+def _audit_payload(limit: int, action_filter: str) -> list:
+    session = get_session()
+    try:
+        query = session.query(AdminAuditLog)
+        if action_filter:
+            # Prefix match so "driver." shows every driver action.
+            query = query.filter(AdminAuditLog.action.like(f"{action_filter}%"))
+        rows = query.order_by(AdminAuditLog.id.desc()).limit(limit).all()
+        return [
+            {
+                "id": r.id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "admin_username": r.admin_username,
+                "action": r.action,
+                "target_type": r.target_type,
+                "target_id": r.target_id,
+                "details": r.details,
+                "remote_ip": r.remote_ip,
+            }
+            for r in rows
+        ]
+    finally:
+        session.close()
+
+
+@require_admin_api
+async def api_audit(request: web.Request) -> web.Response:
+    """GET /admin/api/audit?action=&limit= - read the admin audit trail.
+
+    The panel wrote AdminAuditLog rows from day one but had no way to read them back, so
+    the trail was only reachable with database access.
+    """
+    try:
+        limit = min(max(int(request.query.get("limit", 200)), 1), 500)
+    except (TypeError, ValueError):
+        limit = 200
+    action_filter = (request.query.get("action") or "").strip()[:50]
+    return web.json_response(await asyncio.to_thread(_audit_payload, limit, action_filter))
 
 
 @require_admin_api
@@ -1256,18 +1370,7 @@ async def api_create_driver(request: web.Request) -> web.Response:
         session.close()
 
 
-@require_admin_api
-async def api_statistics(request: web.Request) -> web.Response:
-    """GET /admin/api/statistics - rich analytics for the statistics page.
-
-    Returns: new users/drivers over rolling windows (24h / 7d / 30d / 1y), active
-    users (DAU/WAU/MAU/yearly via last_active), district usage (by order from_city),
-    daily growth (30 days), monthly growth (12 months), peak hours, order-status and
-    service-type breakdown, top routes, completion/cancellation rates and avg rating.
-
-    All aggregation is done in Python (not SQL date functions) so it works identically
-    on SQLite and Postgres.
-    """
+def _statistics_payload() -> dict:
     session = get_session()
     try:
         now = datetime.utcnow()
@@ -1416,7 +1519,7 @@ async def api_statistics(request: web.Request) -> web.Response:
 
         avg_driver_rating = round(session.query(func.avg(Driver.rating)).scalar() or 0, 2)
 
-        return web.json_response({
+        return {
             "new_users": new_users,
             "new_drivers": new_drivers,
             "active": active,
@@ -1440,14 +1543,33 @@ async def api_statistics(request: web.Request) -> web.Response:
             "repeat_rate": repeat_rate,
             "avg_order_value": avg_order_value,
             "total_gmv": gmv,
-        })
+        }
     finally:
         session.close()
 
 
 @require_admin_api
-async def api_push_log(request: web.Request) -> web.Response:
-    """GET /admin/api/push-log?status=all|sent|failed - push delivery diagnostics.
+async def api_statistics(request: web.Request) -> web.Response:
+    """GET /admin/api/statistics - rich analytics for the statistics page.
+
+    Returns: new users/drivers over rolling windows (24h / 7d / 30d / 1y), active
+    users (DAU/WAU/MAU/yearly via last_active), district usage (by order from_city),
+    daily growth (30 days), monthly growth (12 months), peak hours, order-status and
+    service-type breakdown, top routes, completion/cancellation rates and avg rating.
+
+    All aggregation is done in Python (not SQL date functions) so it works identically
+    on SQLite and Postgres.
+
+    Runs in a worker thread: this is by far the heaviest query in the panel (a full pass
+    over `orders` plus ~20 COUNTs), the DB driver is synchronous, and this event loop is
+    shared with the Telegram bot — so loading this page used to freeze the bot for its
+    whole duration.
+    """
+    return web.json_response(await asyncio.to_thread(_statistics_payload))
+
+
+def _push_log_payload(status_filter: str) -> dict:
+    """GET /admin/api/push-log?status=all|sent|failed|delivered - push diagnostics.
 
     Every push already records its outcome in ``notification_log``, including the error
     string Expo returned, but nothing ever read that table back. When drivers reported
@@ -1456,7 +1578,6 @@ async def api_push_log(request: web.Request) -> web.Response:
     credential is missing all look identical from the outside. This surfaces the three
     apart.
     """
-    status_filter = request.query.get("status", "all")
     session = get_session()
     try:
         now = datetime.utcnow()
@@ -1557,7 +1678,7 @@ async def api_push_log(request: web.Request) -> web.Response:
                 "error": log.error,
             })
 
-        return web.json_response({
+        return {
             "summary": {
                 "drivers_verified": drivers_verified,
                 "drivers_online": drivers_online,
@@ -1569,9 +1690,16 @@ async def api_push_log(request: web.Request) -> web.Response:
             },
             "online_without_token": online_without_token,
             "rows": rows,
-        })
+        }
     finally:
         session.close()
+
+
+@require_admin_api
+async def api_push_log(request: web.Request) -> web.Response:
+    """GET /admin/api/push-log - see _push_log_payload (runs in a worker thread)."""
+    status_filter = request.query.get("status", "all")
+    return web.json_response(await asyncio.to_thread(_push_log_payload, status_filter))
 
 
 @require_admin_api
@@ -1604,6 +1732,9 @@ def setup_api_routes(app: web.Application):
     app.router.add_post(r"/admin/api/drivers/{id:\d+}/reject", api_reject_driver)
     app.router.add_post(r"/admin/api/drivers/{id:\d+}/block", api_block_driver)
     app.router.add_post(r"/admin/api/drivers/{id:\d+}/unblock", api_unblock_driver)
+    app.router.add_post(r"/admin/api/passengers/{id:\d+}/block", api_block_passenger)
+    app.router.add_post(r"/admin/api/passengers/{id:\d+}/unblock", api_unblock_passenger)
+    app.router.add_get("/admin/api/audit", api_audit)
     app.router.add_post(r"/admin/api/drivers/{id:\d+}/balance", api_topup_driver_balance)
     app.router.add_get(r"/admin/api/drivers/{id:\d+}/pdf", api_driver_pdf)
     app.router.add_get("/admin/api/routes", api_routes)

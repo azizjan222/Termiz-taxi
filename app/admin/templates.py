@@ -582,7 +582,7 @@ PASSENGERS_HTML = """<h2>Yo'lovchilar</h2>
 </div>
 <div class="table-responsive">
 <table class="table table-striped table-sm" id="passengers-table">
-<thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Til</th><th>Bonus</th><th>Reyting</th><th>Holat</th><th>Ro'yxatdan o'tgan</th></tr></thead>
+<thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Til</th><th>Bonus</th><th>Reyting</th><th>Holat</th><th>Ro'yxatdan o'tgan</th><th>Amal</th></tr></thead>
 <tbody></tbody>
 </table>
 </div>"""
@@ -602,19 +602,33 @@ const cnt=document.getElementById('passenger-count');
 if(cnt)cnt.textContent=data.length+' ta';
 const tb=document.querySelector('#passengers-table tbody');
 tb.innerHTML='';
-if(!data.length){tb.innerHTML='<tr><td colspan="8" class="text-muted">Yo\\'lovchi yo\\'q</td></tr>';}
+if(!data.length){tb.innerHTML='<tr><td colspan="9" class="text-muted">Yo\\'lovchi yo\\'q</td></tr>';}
 data.forEach(u=>{
 // `is_blocked` was returned by the API but had no column, so a blocked passenger looked
 // identical to an active one.
 const state=u.is_blocked?'<span class="badge bg-danger">🚫 Bloklangan</span>':'<span class="badge bg-success">Faol</span>';
-tb.innerHTML+=`<tr><td>${u.id}</td><td>${esc(u.first_name||'')} ${esc(u.last_name||'')}</td><td>${esc(u.phone)}</td><td>${esc(u.language||'uz')}</td><td>${(u.bonus_balance||0).toLocaleString()}</td><td>${Number(u.rating||0).toFixed(1)}</td><td>${state}</td><td>${esc(u.created_at||'')}</td></tr>`;
+const act=u.is_blocked
+  ?`<button class="btn btn-sm btn-success" onclick="unblockPassenger(${u.id})">Blokdan chiqarish</button>`
+  :`<button class="btn btn-sm btn-outline-danger" onclick="blockPassenger(${u.id})">Bloklash</button>`;
+tb.innerHTML+=`<tr><td>${u.id}</td><td>${esc(u.first_name||'')} ${esc(u.last_name||'')}</td><td>${esc(u.phone)}</td><td>${esc(u.language||'uz')}</td><td>${(u.bonus_balance||0).toLocaleString()}</td><td>${Number(u.rating||0).toFixed(1)}</td><td>${state}</td><td>${esc(u.created_at||'')}</td><td>${act}</td></tr>`;
 });
 }
+function loadPassengers(){
 fetch('/admin/api/passengers').then(r=>r.json()).then(data=>{
 if(!Array.isArray(data))adminError(data&&data.error?data.error:'Yo\\'lovchilarni yuklab bo\\'lmadi');
 allPassengers=Array.isArray(data)?data:[];
 renderPassengers();
 }).catch(()=>adminError('Yo\\'lovchilarni yuklab bo\\'lmadi'));
+}
+function blockPassenger(id){
+if(!confirm('Yo\\'lovchini bloklaysizmi? U ilovaga kira olmaydi va buyurtma bera olmaydi.'))return;
+fetch('/admin/api/passengers/'+id+'/block',{method:'POST'}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'OK');loadPassengers();}).catch(()=>alert('Xatolik'));
+}
+function unblockPassenger(id){
+if(!confirm('Yo\\'lovchini blokdan chiqaramizmi?'))return;
+fetch('/admin/api/passengers/'+id+'/unblock',{method:'POST'}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'OK');loadPassengers();}).catch(()=>alert('Xatolik'));
+}
+loadPassengers();
 </script>"""
 
 ORDERS_HTML = """<h2>Buyurtmalar</h2>
@@ -984,6 +998,7 @@ NAV_ITEMS = (
     ("/admin/push-log", "🔔 Push diagnostika"),
     ("/admin/routes", "Yo'nalishlar"),
     ("/admin/settings", "Sozlamalar"),
+    ("/admin/audit", "🧾 Audit jurnali"),
 )
 
 
@@ -1015,6 +1030,52 @@ def render_page(title, content, extra_js="", active="", csrf_token=""):
         extra_js=extra_js,
     )
 
+
+AUDIT_HTML = """<h2>🧾 Audit jurnali</h2>
+<p class="text-muted">Panelda bajarilgan har bir muhim amal shu yerda yozib boriladi:
+kim, qachon, qaysi IP dan. Bu jurnal faqat o'qish uchun — o'zgartirilmaydi va o'chirilmaydi.</p>
+<div class="mb-3">
+<select class="form-select w-auto d-inline" id="audit-action" onchange="loadAudit()">
+<option value="">Barcha amallar</option>
+<option value="auth.">Kirish / chiqish</option>
+<option value="driver.">Haydovchi amallari</option>
+<option value="driver.balance_adjust">Balans o'zgarishi</option>
+<option value="user.">Yo'lovchi amallari</option>
+<option value="route.">Narx o'zgarishi</option>
+<option value="settings.">Sozlama o'zgarishi</option>
+<option value="push.">Push xabarlar</option>
+</select>
+<span class="ms-2 text-muted" id="audit-count"></span>
+</div>
+<div class="table-responsive">
+<table class="table table-striped table-sm" id="audit-table">
+<thead><tr><th>ID</th><th>Sana</th><th>Kim</th><th>Amal</th><th>Obyekt</th><th>IP</th><th>Tafsilot</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>"""
+
+AUDIT_JS = """<script>
+const AUDIT_LABELS={'auth.login_success':'Kirdi','auth.login_failure':'Kirish xato','auth.logout':'Chiqdi','auth.rate_limited':'Cheklandi','driver.verify':'Haydovchi tasdiqlandi','driver.reject':'Haydovchi rad etildi','driver.block':'Haydovchi bloklandi','driver.unblock':'Haydovchi blokdan chiqdi','driver.create':'Haydovchi qo\\'shildi','driver.balance_adjust':'Balans o\\'zgardi','user.block':'Yo\\'lovchi bloklandi','user.unblock':'Yo\\'lovchi blokdan chiqdi','route.update':'Narx o\\'zgardi','settings.update':'Sozlama o\\'zgardi','push.send':'Push yuborildi'};
+function loadAudit(){
+const act=document.getElementById('audit-action').value;
+fetch('/admin/api/audit?action='+encodeURIComponent(act)).then(r=>r.json()).then(payload=>{
+const tb=document.querySelector('#audit-table tbody');
+tb.innerHTML='';
+const data=Array.isArray(payload)?payload:[];
+if(!Array.isArray(payload))adminError(payload&&payload.error?payload.error:'Jurnalni yuklab bo\\'lmadi');
+document.getElementById('audit-count').textContent=data.length+' ta yozuv';
+if(!data.length)tb.innerHTML='<tr><td colspan="7" class="text-muted">Yozuv yo\\'q</td></tr>';
+data.forEach(r=>{
+const when=r.created_at?String(r.created_at).replace('T',' ').split('.')[0]:'';
+const label=AUDIT_LABELS[r.action]||r.action;
+const money=r.action==='driver.balance_adjust';
+const target=r.target_type?esc(r.target_type)+(r.target_id?' #'+esc(r.target_id):''):'-';
+tb.innerHTML+=`<tr${money?' class="table-warning"':''}><td>${r.id}</td><td>${esc(when)}</td><td>${esc(r.admin_username||'')}</td><td>${esc(label)}</td><td>${target}</td><td class="small">${esc(r.remote_ip||'-')}</td><td class="small text-muted" style="max-width:380px;word-break:break-all">${esc(r.details||'')}</td></tr>`;
+});
+}).catch(()=>adminError('Jurnalni yuklab bo\\'lmadi'));
+}
+loadAudit();
+</script>"""
 
 CSRF_ERROR_HTML = """<!DOCTYPE html>
 <html lang="en">
