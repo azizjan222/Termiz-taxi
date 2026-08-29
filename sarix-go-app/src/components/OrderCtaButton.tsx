@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -71,11 +71,14 @@ export function OrderCtaButton({
   // The gloss sweep has to travel the real button width, which is only known after layout.
   const [width, setWidth] = useState(0);
 
-  const breathe = useRef(new Animated.Value(0)).current;
-  const sheen = useRef(new Animated.Value(0)).current;
-  const ring = useRef(new Animated.Value(0)).current;
-  const nudge = useRef(new Animated.Value(0)).current;
-  const press = useRef(new Animated.Value(0)).current;
+  // `useState(() => new Animated.Value(...))`, not `useRef(...).current`: the React
+  // Compiler lint rules this repo enables (react-hooks/refs) forbid reading `.current`
+  // during render. Same pattern as the pulse on the searching screen.
+  const [breathe] = useState(() => new Animated.Value(0));
+  const [sheen] = useState(() => new Animated.Value(0));
+  const [ring] = useState(() => new Animated.Value(0));
+  const [nudge] = useState(() => new Animated.Value(0));
+  const [press] = useState(() => new Animated.Value(0));
 
   const alive = !loading && !disabled;
 

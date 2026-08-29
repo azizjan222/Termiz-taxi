@@ -92,7 +92,8 @@ export default function NewOrderScreen() {
   // --- Passenger-count segmented control ---
   // The sliding indicator needs the real track width, which is only known after layout.
   const [segWidth, setSegWidth] = useState(0);
-  const segAnim = useRef(new Animated.Value(persons - 1)).current;
+  // useState, not useRef().current — react-hooks/refs forbids reading a ref during render.
+  const [segAnim] = useState(() => new Animated.Value(persons - 1));
   const cell = segWidth > 0 ? (segWidth - SEG_PAD * 2) / PERSON_OPTIONS.length : 0;
 
   useEffect(() => {
