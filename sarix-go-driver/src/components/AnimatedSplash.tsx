@@ -1,7 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Image,
-  Text,
   StyleSheet,
   Animated,
   Easing,
@@ -10,159 +8,222 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { typography, spacing } from '../theme';
+import { colors } from '../theme';
 
 const { width } = Dimensions.get('window');
-const LOGO_SIZE = width * 0.38;
 
-// Driver app entry palette — vivid BLUE ("ko'k").
-const GRADIENT: [string, string, string] = ['#2E8BFF', '#1565E0', '#0B3FA8'];
-const RING_COLOR = 'rgba(255,255,255,0.18)';
-const ACCENT = '#FFFFFF';
+// Driver app entry palette — royal BLUE ("ko'k").
+// The middle stop matches the native splash backgroundColor (#194083 in app.json)
+// so there is no visible colour jump when the JS splash takes over.
+const GRADIENT: [string, string, string] = ['#2E7BF0', '#194083', '#0B2A5E'];
+
+// Wordmark: "Sarix" in white + "Driver" in the brand gold. Nothing else on screen.
+const WORD_MAIN = 'Sarix';
+const WORD_ACCENT = 'Driver';
+
+const FONT_SIZE = Math.min(Math.round(width * 0.105), 44);
+const GLOW_SIZE = width * 0.95;
+
+/** Minimum time the wordmark stays on screen before it may fade out. */
+const MIN_VISIBLE_MS = 1800;
+/** Duration of the exit fade. */
+const EXIT_MS = 420;
+
+type Char = { ch: string; accent: boolean };
+
+const CHARS: Char[] = [
+  ...WORD_MAIN.split('').map((ch) => ({ ch, accent: false })),
+  { ch: ' ', accent: false },
+  ...WORD_ACCENT.split('').map((ch) => ({ ch, accent: true })),
+];
 
 interface Props {
+  /**
+   * When false the splash keeps showing (app bootstrap still running).
+   * The exit animation only starts once this is true AND the minimum
+   * visible time has elapsed — so the user never sees a blank frame.
+   */
+  ready?: boolean;
   onFinish: () => void;
 }
 
 /**
- * Modern animated splash (driver app).
- * - Blue gradient background fades in
- * - Two staggered ripple rings expand behind the logo
- * - Logo springs in; tagline fades up
- * - A slim progress bar fills
- * - "Yuklanmoqda... iltimos kuting" with bouncing dots + pulsing text
- * - Then the screen fades out
+ * Minimal animated splash (driver app).
+ * Royal-blue gradient, a soft breathing glow, a light sweep, and the
+ * "Sarix Driver" wordmark revealed letter by letter. No logo, no tagline,
+ * no progress bar — the wordmark is the only content.
  */
-export const AnimatedSplash: React.FC<Props> = ({ onFinish }) => {
+export const AnimatedSplash: React.FC<Props> = ({ ready = true, onFinish }) => {
   const [bgOpacity] = useState(() => new Animated.Value(0));
-  const [logoScale] = useState(() => new Animated.Value(0.4));
-  const [logoOpacity] = useState(() => new Animated.Value(0));
-  const [titleOpacity] = useState(() => new Animated.Value(0));
-  const [titleTranslate] = useState(() => new Animated.Value(24));
-  const [ring1] = useState(() => new Animated.Value(0));
-  const [ring2] = useState(() => new Animated.Value(0));
-  const [progress] = useState(() => new Animated.Value(0));
   const [screenOpacity] = useState(() => new Animated.Value(1));
+  const [screenScale] = useState(() => new Animated.Value(1));
+  const [glow] = useState(() => new Animated.Value(0));
+  const [sheen] = useState(() => new Animated.Value(0));
+  const [letters] = useState(() => CHARS.map(() => new Animated.Value(0)));
 
-  // Loading indicator animations
-  const [loadingPulse] = useState(() => new Animated.Value(0.45));
-  const [dot1] = useState(() => new Animated.Value(0));
-  const [dot2] = useState(() => new Animated.Value(0));
-  const [dot3] = useState(() => new Animated.Value(0));
+  const [minElapsed, setMinElapsed] = useState(false);
+  const exitStarted = useRef(false);
 
   useEffect(() => {
-    Animated.timing(bgOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-
-    Animated.parallel([
-      Animated.spring(logoScale, { toValue: 1, friction: 6, tension: 45, useNativeDriver: true }),
-      Animated.timing(logoOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
-    ]).start();
-
-    Animated.parallel([
-      Animated.timing(titleOpacity, { toValue: 1, duration: 500, delay: 500, useNativeDriver: true }),
-      Animated.timing(titleTranslate, {
-        toValue: 0, duration: 500, delay: 500,
-        easing: Easing.out(Easing.cubic), useNativeDriver: true,
-      }),
-    ]).start();
-
-    const ripple = (val: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.timing(val, {
-          toValue: 1, duration: 2200, delay,
-          easing: Easing.out(Easing.ease), useNativeDriver: true,
-        })
-      );
-    ripple(ring1, 0).start();
-    ripple(ring2, 1100).start();
-
-    Animated.timing(progress, {
-      toValue: 1, duration: 2000, delay: 300,
-      easing: Easing.inOut(Easing.ease), useNativeDriver: false,
+    Animated.timing(bgOpacity, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
     }).start();
 
-    // Pulsing "Yuklanmoqda..." text
+    // Soft glow breathing behind the wordmark.
     Animated.loop(
       Animated.sequence([
-        Animated.timing(loadingPulse, { toValue: 1, duration: 650, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(loadingPulse, { toValue: 0.45, duration: 650, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(glow, {
+          toValue: 1,
+          duration: 1600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glow, {
+          toValue: 0,
+          duration: 1600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
       ])
     ).start();
 
-    // Bouncing dots — staggered
-    const bounce = (val: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(val, { toValue: 1, duration: 400, delay, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-          Animated.timing(val, { toValue: 0, duration: 400, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-          Animated.delay(300),
-        ])
-      );
-    bounce(dot1, 0).start();
-    bounce(dot2, 150).start();
-    bounce(dot3, 300).start();
+    // Letters rise into place one after another.
+    Animated.stagger(
+      55,
+      letters.map((value) =>
+        Animated.spring(value, {
+          toValue: 1,
+          friction: 7,
+          tension: 65,
+          useNativeDriver: true,
+        })
+      )
+    ).start();
 
-    const timer = setTimeout(() => {
-      Animated.timing(screenOpacity, { toValue: 0, duration: 450, useNativeDriver: true })
-        .start(() => onFinish());
-    }, 2800);
+    // Light sweep across the wordmark band.
+    Animated.loop(
+      Animated.sequence([
+        Animated.delay(700),
+        Animated.timing(sheen, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheen, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ])
+    ).start();
 
+    const timer = setTimeout(() => setMinElapsed(true), MIN_VISIBLE_MS);
     return () => clearTimeout(timer);
-    // All animated values are stable refs; run the intro sequence once on mount.
+    // Animated values are stable refs; run the intro sequence once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ringStyle = (val: Animated.Value) => ({
-    transform: [{ scale: val.interpolate({ inputRange: [0, 1], outputRange: [0.6, 2.2] }) }],
-    opacity: val.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.4, 0] }),
+  useEffect(() => {
+    if (!ready || !minElapsed || exitStarted.current) return;
+    exitStarted.current = true;
+    Animated.parallel([
+      Animated.timing(screenOpacity, {
+        toValue: 0,
+        duration: EXIT_MS,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(screenScale, {
+        toValue: 1.06,
+        duration: EXIT_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => onFinish());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, minElapsed]);
+
+  const letterStyle = (value: Animated.Value) => ({
+    opacity: value.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 1],
+      extrapolate: 'clamp' as const,
+    }),
+    transform: [
+      { translateY: value.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) },
+      { scale: value.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) },
+    ],
   });
 
-  const dotStyle = (val: Animated.Value) => ({
-    opacity: val.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
-    transform: [{ translateY: val.interpolate({ inputRange: [0, 1], outputRange: [0, -7] }) }],
-  });
+  const glowStyle = {
+    opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }),
+    transform: [{ scale: glow.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1.1] }) }],
+  };
 
-  const progressWidth = progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
+  const sheenStyle = {
+    opacity: sheen.interpolate({ inputRange: [0, 0.15, 0.85, 1], outputRange: [0, 1, 1, 0] }),
+    transform: [
+      {
+        translateX: sheen.interpolate({
+          inputRange: [0, 1],
+          outputRange: [-width * 0.75, width * 0.75],
+        }),
+      },
+      { rotate: '18deg' },
+    ],
+  };
 
   return (
-    <Animated.View style={[styles.container, { opacity: screenOpacity }]}>
+    <Animated.View
+      style={[styles.container, { opacity: screenOpacity, transform: [{ scale: screenScale }] }]}
+    >
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: bgOpacity }]}>
-        <LinearGradient colors={GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+        <LinearGradient
+          colors={GRADIENT}
+          start={{ x: 0.1, y: 0 }}
+          end={{ x: 0.9, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
       </Animated.View>
 
-      {/* Ripple rings */}
-      <Animated.View style={[styles.ring, ringStyle(ring1)]} />
-      <Animated.View style={[styles.ring, ringStyle(ring2)]} />
-
-      {/* Logo */}
-      <Animated.View style={{ transform: [{ scale: logoScale }], opacity: logoOpacity }}>
-        <View style={styles.logoCard}>
-          <Image source={require('../../assets/splash-logo.png')} style={styles.logo} resizeMode="cover" />
-        </View>
+      {/* Soft radial-ish glow (stacked faint circles) behind the wordmark */}
+      <Animated.View style={[styles.glowWrap, glowStyle]} pointerEvents="none">
+        <View style={[styles.glowCircle, styles.glowOuter]} />
+        <View style={[styles.glowCircle, styles.glowMid]} />
+        <View style={[styles.glowCircle, styles.glowInner]} />
       </Animated.View>
 
-      {/* Tagline */}
-      <Animated.View style={{ opacity: titleOpacity, transform: [{ translateY: titleTranslate }], alignItems: 'center' }}>
-        {/* Deliberately NOT translated: this renders before initI18n() resolves, so
-            t() would emit the raw key instead of text. */}
-        <Text style={styles.subtitle}>Haydovchi uchun</Text>
-      </Animated.View>
-
-      {/* Progress bar */}
-      <View style={styles.progressTrack}>
-        <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+      {/* Light sweep, clipped to a band around the wordmark */}
+      <View style={styles.sheenBand} pointerEvents="none">
+        <Animated.View style={sheenStyle}>
+          <LinearGradient
+            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.18)', 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.sheen}
+          />
+        </Animated.View>
       </View>
 
-      {/* Loading indicator with animation */}
-      <View style={styles.loadingWrap}>
-        <View style={styles.dotsRow}>
-          <Animated.View style={[styles.dot, dotStyle(dot1)]} />
-          <Animated.View style={[styles.dot, dotStyle(dot2)]} />
-          <Animated.View style={[styles.dot, dotStyle(dot3)]} />
-        </View>
-        <Animated.Text style={[styles.loadingText, { opacity: loadingPulse }]}>
-          Yuklanmoqda... iltimos kuting
-        </Animated.Text>
+      {/* Wordmark — the only content on screen.
+          Deliberately NOT translated: it is the brand name, and this renders
+          before initI18n() resolves so t() would emit the raw key. */}
+      <View style={styles.wordRow}>
+        {CHARS.map((item, index) =>
+          item.ch === ' ' ? (
+            <View key={`gap-${index}`} style={styles.wordGap} />
+          ) : (
+            <Animated.Text
+              key={`${item.ch}-${index}`}
+              style={[
+                styles.letter,
+                item.accent && styles.letterAccent,
+                letterStyle(letters[index]),
+              ]}
+            >
+              {item.ch}
+            </Animated.Text>
+          )
+        )}
       </View>
     </Animated.View>
   );
@@ -173,73 +234,64 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: GRADIENT[1],
     zIndex: 999,
   },
-  ring: {
+  glowWrap: {
     position: 'absolute',
-    width: LOGO_SIZE * 1.6,
-    height: LOGO_SIZE * 1.6,
-    borderRadius: LOGO_SIZE,
-    borderWidth: 2,
-    borderColor: RING_COLOR,
-    marginTop: -60,
-  },
-  logoCard: {
-    width: LOGO_SIZE + 24,
-    height: LOGO_SIZE + 24,
-    borderRadius: (LOGO_SIZE + 24) * 0.26,
-    backgroundColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
   },
-  logo: {
-    width: LOGO_SIZE,
-    height: LOGO_SIZE,
-    borderRadius: LOGO_SIZE * 0.24,
-  },
-  subtitle: {
-    ...typography.body,
-    color: 'rgba(255,255,255,0.9)',
-    textAlign: 'center',
-    marginTop: spacing.xl,
-    letterSpacing: 1.5,
-    fontWeight: '600',
-  },
-  progressTrack: {
+  glowCircle: {
     position: 'absolute',
-    bottom: 104,
-    width: width * 0.5,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.055)',
+  },
+  glowOuter: {
+    width: GLOW_SIZE,
+    height: GLOW_SIZE,
+    borderRadius: GLOW_SIZE / 2,
+  },
+  glowMid: {
+    width: GLOW_SIZE * 0.72,
+    height: GLOW_SIZE * 0.72,
+    borderRadius: (GLOW_SIZE * 0.72) / 2,
+  },
+  glowInner: {
+    width: GLOW_SIZE * 0.46,
+    height: GLOW_SIZE * 0.46,
+    borderRadius: (GLOW_SIZE * 0.46) / 2,
+  },
+  sheenBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: FONT_SIZE * 2.6,
+    alignItems: 'center',
+    justifyContent: 'center',
     overflow: 'hidden',
   },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-    backgroundColor: ACCENT,
+  sheen: {
+    width: width * 0.34,
+    height: FONT_SIZE * 4,
   },
-  loadingWrap: {
-    position: 'absolute',
-    bottom: 52,
-    alignItems: 'center',
-  },
-  dotsRow: {
+  wordRow: {
     flexDirection: 'row',
-    marginBottom: 10,
+    alignItems: 'flex-end',
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginHorizontal: 4,
-    backgroundColor: ACCENT,
-  },
-  loadingText: {
-    ...typography.caption,
-    color: 'rgba(255,255,255,0.92)',
-    textAlign: 'center',
+  letter: {
+    fontSize: FONT_SIZE,
+    lineHeight: Math.round(FONT_SIZE * 1.2),
+    fontWeight: '800',
+    color: colors.white,
     letterSpacing: 0.5,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 10,
+  },
+  letterAccent: {
+    color: colors.accent,
+  },
+  wordGap: {
+    width: FONT_SIZE * 0.3,
   },
 });
