@@ -75,7 +75,26 @@ document.addEventListener('DOMContentLoaded',()=>{{
 }});
 // `if(!s)` also swallowed 0 and false, so any numeric column routed through esc()
 // rendered blank for a legitimate zero.
-function esc(s){{if(s===null||s===undefined)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}}
+// Single quote and backtick are escaped too: every attribute here is double-quoted today,
+// so they were not strictly needed — but that made the escaper silently useless the moment
+// anyone wrote value='${{esc(x)}}'.
+function esc(s){{if(s===null||s===undefined)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');}}
+// Every timestamp from the API is now an explicit UTC instant (…+00:00). Render it in
+// Tashkent time, not the raw ISO string: the panel used to print UTC with microseconds,
+// i.e. 5 hours behind, with nothing saying so.
+function fmtDt(v){{
+  if(!v)return '';
+  const d=new Date(v);
+  if(isNaN(d.getTime()))return String(v).replace('T',' ').split('.')[0];
+  const p=new Intl.DateTimeFormat('ru-RU',{{timeZone:'Asia/Tashkent',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}}).formatToParts(d);
+  const g=t=>(p.find(x=>x.type===t)||{{}}).value||'';
+  return `${{g('year')}}-${{g('month')}}-${{g('day')}} ${{g('hour')}}:${{g('minute')}}`;
+}}
+// Money/quantity formatter shared by every page.
+function fmtNum(n){{return (Number(n)||0).toLocaleString('ru-RU').replace(/\\u00a0/g,' ');}}
+// A rating only means something once somebody has rated. `d.rating||5` reported an
+// unrated driver as a perfect 5.
+function fmtRating(rating,count){{return (count>0&&rating!=null)?Number(rating).toFixed(1):'—';}}
 // Shared error banner: every page used to fail silently in the console.
 function adminError(msg){{
   const main=document.querySelector('.main-content');
@@ -158,8 +177,8 @@ document.getElementById('s-passengers').textContent=d.passengers_count;
 document.getElementById('s-orders').textContent=d.orders_count;
 document.getElementById('s-active').textContent=d.active_orders;
 document.getElementById('s-online').textContent=d.online_drivers;
-document.getElementById('s-rev-today').textContent=(d.revenue_today||0).toLocaleString()+" so'm";
-document.getElementById('s-rev-month').textContent=(d.revenue_month||0).toLocaleString()+" so'm";
+document.getElementById('s-rev-today').textContent=fmtNum(d.revenue_today)+" so'm";
+document.getElementById('s-rev-month').textContent=fmtNum(d.revenue_month)+" so'm";
 }).catch(e=>{console.error(e);adminError('Statistikani yuklab bo\\'lmadi');});
 fetch('/admin/api/top-drivers').then(r=>r.json()).then(data=>{
 const tb=document.querySelector('#top-drivers-table tbody');
@@ -167,9 +186,10 @@ tb.innerHTML='';
 if(!(Array.isArray(data)&&data.length))tb.innerHTML='<tr><td colspan="6" class="text-muted">Ma\\'lumot yo\\'q</td></tr>';
 (Array.isArray(data)?data:[]).forEach((d,i)=>{
 const online=d.is_online?'<span class="badge bg-info">Online</span>':'<span class="badge bg-secondary">Oflayn</span>';
-tb.innerHTML+=`<tr><td>${i+1}</td><td>${esc((d.first_name||'')+' '+(d.last_name||''))}</td><td>${esc(d.phone||'')}</td><td>${d.total_orders||0}</td><td>${(d.rating||5).toFixed(1)}</td><td>${online}</td></tr>`;
+const flags=(d.is_blocked?'<span class="badge bg-danger">🚫</span> ':'')+(d.is_verified?'':'<span class="badge bg-warning">tasdiqlanmagan</span> ');
+tb.innerHTML+=`<tr><td>${i+1}</td><td>${flags}${esc((d.first_name||'')+' '+(d.last_name||''))}</td><td>${esc(d.phone||'')}</td><td>${fmtNum(d.total_orders)}</td><td>${fmtRating(d.rating,d.rating_count)}</td><td>${online}</td></tr>`;
 });
-}).catch(e=>console.error(e));
+}).catch(e=>{console.error(e);adminError('Top haydovchilarni yuklab bo\\'lmadi');});
 </script>"""
 
 STATISTICS_HTML = """<h2>📊 Statistika</h2>
@@ -268,7 +288,7 @@ STATISTICS_HTML = """<h2>📊 Statistika</h2>
 <div class="row g-3 mb-4">
 <div class="col-md-3"><div class="stat-card bg-success"><h6>Yakunlangan buyurtmalar</h6><h3 id="sum-completed">...</h3><small id="sum-completion-rate"></small></div></div>
 <div class="col-md-3"><div class="stat-card bg-danger"><h6>Bekor qilingan</h6><h3 id="sum-cancelled">...</h3><small id="sum-cancel-rate"></small></div></div>
-<div class="col-md-3"><div class="stat-card bg-warning"><h6>O'rtacha haydovchi reytingi</h6><h3 id="sum-rating">...</h3><small>5 yulduzdan</small></div></div>
+<div class="col-md-3"><div class="stat-card bg-warning"><h6>O'rtacha haydovchi reytingi</h6><h3 id="sum-rating">...</h3><small id="sum-rating-note">5 yulduzdan</small></div></div>
 <div class="col-md-3"><div class="stat-card bg-secondary"><h6>Yangi haydovchilar (30 kun)</h6><h3 id="sum-new-drivers">...</h3></div></div>
 </div>"""
 
@@ -307,14 +327,20 @@ fetch('/admin/api/statistics').then(r=>r.json()).then(d=>{
   document.getElementById('ad-month').textContent=_fmt(d.active.driver_mau);
   // ----- Summary cards -----
   document.getElementById('sum-completed').textContent=_fmt(d.completed_orders);
-  document.getElementById('sum-completion-rate').textContent='Konversiya: '+d.completion_rate+'%';
+  document.getElementById('sum-completion-rate').textContent='Konversiya: '+(d.completion_rate??0)+'%';
   document.getElementById('sum-cancelled').textContent=_fmt(d.cancelled_orders);
-  document.getElementById('sum-cancel-rate').textContent=d.cancellation_rate+'% bekor';
-  document.getElementById('sum-rating').textContent=(d.avg_driver_rating||0).toFixed(2);
+  document.getElementById('sum-cancel-rate').textContent=(d.cancellation_rate??0)+'% bekor';
+  // Averaged over rated drivers only — the old number averaged the 5.0 default too.
+  document.getElementById('sum-rating').textContent=d.rated_drivers>0?Number(d.avg_driver_rating||0).toFixed(2):'—';
+  const ratedNote=document.getElementById('sum-rating-note');
+  if(ratedNote)ratedNote.textContent=d.rated_drivers>0?(_fmt(d.rated_drivers)+' ta baholangan haydovchi'):'hali baholanmagan';
   document.getElementById('sum-new-drivers').textContent=_fmt(d.new_drivers.month);
 
   // ----- Daily new users (line) -----
-  _mkChart('chart-daily',{type:'line',data:{labels:d.daily_new_users.map(x=>x.date.slice(5)),datasets:[{label:'Yangi foydalanuvchilar',data:d.daily_new_users.map(x=>x.count),borderColor:'#0d6efd',backgroundColor:'rgba(13,110,253,.15)',fill:true,tension:.3,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+  // `||[]` on every series: a partial payload used to throw here and leave the rest of
+  // the page frozen on "...".
+  d.daily_new_users=d.daily_new_users||[];d.monthly_new_users=d.monthly_new_users||[];d.orders_by_hour=d.orders_by_hour||[];
+  _mkChart('chart-daily',{type:'line',data:{labels:d.daily_new_users.map(x=>String(x.date||'').slice(5)),datasets:[{label:'Yangi foydalanuvchilar',data:d.daily_new_users.map(x=>x.count),borderColor:'#0d6efd',backgroundColor:'rgba(13,110,253,.15)',fill:true,tension:.3,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
 
   // ----- Monthly growth (bar) -----
   _mkChart('chart-monthly',{type:'bar',data:{labels:d.monthly_new_users.map(x=>x.month),datasets:[{label:'Yangi foydalanuvchilar',data:d.monthly_new_users.map(x=>x.count),backgroundColor:'#198754'}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
@@ -379,7 +405,9 @@ DRIVERS_HTML = """<h2>Haydovchilar</h2>
 <button class="btn btn-success" onclick="createDriver()">Saqlash</button>
 <span class="ms-2" id="nd-result"></span>
 </div>
-<small class="text-muted mt-1">Haydovchi kutilmoqda holatida yaratiladi. U ilovada to'liq hujjatlarni yuklagach, alohida tasdiqlang.</small>
+<small class="text-muted mt-1">Haydovchi <b>hujjat yubormagan</b> holatida yaratiladi va
+"Hujjat yubormagan" filtrida ko'rinadi. U ilovada hujjatlarni yuklagach "Kutilmoqda"ga o'tadi —
+shundan keyin tasdiqlashingiz mumkin.</small>
 </div>
 </div>
 <div class="mb-3">
@@ -388,7 +416,9 @@ DRIVERS_HTML = """<h2>Haydovchilar</h2>
 <option value="all">Barchasi</option>
 <option value="online">Onlayn</option>
 <option value="verified">Tasdiqlangan</option>
-<option value="pending">Kutilmoqda</option>
+<option value="pending">Kutilmoqda (hujjat yuborgan)</option>
+<option value="nodocs">Hujjat yubormagan</option>
+<option value="blocked">Bloklangan</option>
 </select>
 <span class="ms-2 text-muted" id="driver-count"></span>
 </div>
@@ -438,6 +468,10 @@ let data=allDrivers;
 if(f==='online')data=allDrivers.filter(d=>d.is_online);
 else if(f==='verified')data=allDrivers.filter(d=>d.is_verified);
 else if(f==='pending')data=allDrivers.filter(d=>!d.is_verified&&d.documents_submitted);
+// A driver created from this panel starts with documents_submitted=false, so they matched
+// NO filter except "Barchasi" — right after "Haydovchi qo'shildi" they seemed to vanish.
+else if(f==='nodocs')data=allDrivers.filter(d=>!d.is_verified&&!d.documents_submitted);
+else if(f==='blocked')data=allDrivers.filter(d=>d.is_blocked);
 const qEl=document.getElementById('driver-search');
 const q=qEl?qEl.value.trim().toLowerCase():'';
 if(q){data=data.filter(d=>{
@@ -480,20 +514,23 @@ const modal=new bootstrap.Modal(modalEl);modal.show();
 fetch('/admin/api/drivers/'+id).then(r=>r.json()).then(d=>{
 if(d.error){body.innerHTML='<div class="alert alert-danger">'+esc(d.error)+'</div>';return;}
 let photos='';
-const kinds=[['license','Haydovchilik guvohnomasi',d.has_license],['tech_passport','Texnik pasport',d.has_tech_passport],['car','Mashina surati',d.has_car_photo]];
+// The back sides were stored and printed into the PDF but had no viewer here.
+const kinds=[['license','Guvohnoma (old)',d.has_license],['license_back','Guvohnoma (orqa)',d.has_license_back],['tech_passport','Texpasport (old)',d.has_tech_passport],['tech_passport_back','Texpasport (orqa)',d.has_tech_passport_back],['car','Mashina surati',d.has_car_photo]];
 kinds.forEach(([k,label,has])=>{
-if(has){photos+=`<div class="col-md-4 text-center mb-2"><div class="small text-muted">${esc(label)}</div>`+
+if(has){photos+=`<div class="col-md-4 text-center mb-3"><div class="small text-muted">${esc(label)}</div>`+
 `<a href="/admin/api/drivers/${id}/photo/${k}" target="_blank" rel="noopener"><img src="/admin/api/drivers/${id}/photo/${k}" style="max-width:100%;max-height:160px;border:1px solid #ddd;border-radius:6px" loading="lazy" onerror="imgFallback(this)"></a></div>`;}
-else{photos+=`<div class="col-md-4 text-center mb-2"><div class="small text-muted">${esc(label)}</div><div class="text-muted">Yuborilmagan</div></div>`;}
+else{photos+=`<div class="col-md-4 text-center mb-3"><div class="small text-muted">${esc(label)}</div><div class="text-muted">Yuborilmagan</div></div>`;}
 });
 body.innerHTML=`<table class="table table-sm table-bordered">
 ${row('ID',d.id)}${row('Telegram ID',d.telegram_id)}${row('Ism',d.first_name)}${row('Familiya',d.last_name)}
-${row('JSHSHIR',d.pinfl)}${row('Telefon',d.phone)}${row('Mashina modeli',d.car_model)}${row('Mashina raqami',d.car_number)}
+${row('JSHSHIR',d.pinfl)}${row('Telefon',d.phone)}${row('Aloqa telefoni',d.contact_phone)}
+${row('Mashina modeli',d.car_model)}${row('Mashina raqami',d.car_number)}
 ${row('Yili',d.car_year)}${row('Rangi',d.car_color)}${row('O\\'rindiqlar',d.seats)}
-${row('Balans',(d.balance||0).toLocaleString()+" so'm")}${row('Reyting',(d.rating||5).toFixed(1)+' ('+(d.rating_count||0)+')')}
+${row('Balans',fmtNum(d.balance)+" so'm")}${row('Reyting',fmtRating(d.rating,d.rating_count)+' ('+fmtNum(d.rating_count)+' baho)')}
 ${row('Zakaslar',d.total_orders)}${row('Tasdiqlangan',d.is_verified?'Ha':'Yo\\'q')}${row('Hujjatlar yuborilgan',d.documents_submitted?'Ha':'Yo\\'q')}
 ${row('Online',d.is_online?'Ha':'Yo\\'q')}${row('Bloklangan',d.is_blocked?'Ha':'Yo\\'q')}
-${row('Obuna tugashi',d.subscription_until||'-')}${row('Ro\\'yxatdan o\\'tgan',d.created_at)}
+${row('Obuna tugashi',fmtDt(d.subscription_until))}${row('Ro\\'yxatdan o\\'tgan',fmtDt(d.created_at))}
+${row('Oxirgi faollik',fmtDt(d.last_active))}
 </table>
 <h6>Hujjatlar</h6><div class="row">${photos}</div>
 <a class="btn btn-sm btn-outline-secondary mt-2" href="/admin/api/drivers/${id}/pdf" target="_blank" rel="noopener">📄 PDF yuklab olish</a>`;
@@ -610,7 +647,8 @@ const state=u.is_blocked?'<span class="badge bg-danger">🚫 Bloklangan</span>':
 const act=u.is_blocked
   ?`<button class="btn btn-sm btn-success" onclick="unblockPassenger(${u.id})">Blokdan chiqarish</button>`
   :`<button class="btn btn-sm btn-outline-danger" onclick="blockPassenger(${u.id})">Bloklash</button>`;
-tb.innerHTML+=`<tr><td>${u.id}</td><td>${esc(u.first_name||'')} ${esc(u.last_name||'')}</td><td>${esc(u.phone)}</td><td>${esc(u.language||'uz')}</td><td>${(u.bonus_balance||0).toLocaleString()}</td><td>${Number(u.rating||0).toFixed(1)}</td><td>${state}</td><td>${esc(u.created_at||'')}</td><td>${act}</td></tr>`;
+const LANGS={uz:"O'zbek",ru:'Rus',en:'Ingliz'};
+tb.innerHTML+=`<tr><td>${Number(u.id)}</td><td>${esc(u.first_name||'')} ${esc(u.last_name||'')}</td><td>${esc(u.phone)}</td><td>${esc(LANGS[u.language]||u.language||"O'zbek")}</td><td>${fmtNum(u.bonus_balance)}</td><td>${Number(u.rating||0)>0?Number(u.rating).toFixed(1):'—'}</td><td>${state}</td><td class="small">${esc(fmtDt(u.created_at))}</td><td>${act}</td></tr>`;
 });
 }
 function loadPassengers(){
@@ -641,16 +679,23 @@ ORDERS_HTML = """<h2>Buyurtmalar</h2>
 <option value="in_progress">Jarayonda</option>
 <option value="completed">Yakunlangan</option>
 <option value="cancelled">Bekor qilingan</option>
+<option value="expired">Muddati o'tgan (hech kim olmagan)</option>
 </select>
+<span class="ms-2 text-muted small">Oxirgi 200 ta buyurtma ko'rsatiladi</span>
 </div>
 <div class="table-responsive">
 <table class="table table-striped table-sm" id="orders-table">
-<thead><tr><th>ID</th><th>Yo'lovchi</th><th>Telefon</th><th>Yo'nalish</th><th>Narx</th><th>Komissiya</th><th>Holat</th><th>Haydovchi</th><th>Sana</th></tr></thead>
+<thead><tr><th>ID</th><th>Yo'lovchi</th><th>Telefon</th><th>Yo'nalish</th><th>Xizmat</th><th>Narx</th><th>Komissiya</th><th>Holat</th><th>Haydovchi</th><th>Sana</th></tr></thead>
 <tbody></tbody>
 </table>
 </div>"""
 
 ORDERS_JS = """<script>
+// The table used to print the raw English snake_case status, and both `in_progress` and
+// `expired` fell through to the same grey badge — an active ride looked like a dead one.
+const ORDER_STATUS={'new':{l:'Yangi',c:'bg-primary'},'accepted':{l:'Qabul qilingan',c:'bg-info'},'in_progress':{l:'Jarayonda',c:'bg-warning text-dark'},'completed':{l:'Yakunlangan',c:'bg-success'},'cancelled':{l:'Bekor qilingan',c:'bg-danger'},'expired':{l:"Muddati o'tgan",c:'bg-dark'}};
+const SERVICE_NAMES={taxi:'Taksi',parcel:'Pochta',full_car:"To'liq mashina"};
+const CANCELLED_BY={passenger:"yo'lovchi",driver:'haydovchi',system:'tizim',admin:'admin'};
 function loadOrders(){
 const st=document.getElementById('status-filter').value;
 fetch('/admin/api/orders?status='+st).then(r=>r.json()).then(payload=>{
@@ -660,21 +705,27 @@ tb.innerHTML='';
 // stopped updating with nothing shown to the admin.
 const data=Array.isArray(payload)?payload:[];
 if(!Array.isArray(payload)){adminError(payload&&payload.error?payload.error:'Buyurtmalarni yuklab bo\\'lmadi');}
-if(!data.length){tb.innerHTML='<tr><td colspan="9" class="text-muted">Buyurtma yo\\'q</td></tr>';}
+if(!data.length){tb.innerHTML='<tr><td colspan="10" class="text-muted">Buyurtma yo\\'q</td></tr>';}
 data.forEach(o=>{
-const badge={'new':'bg-primary','accepted':'bg-info','completed':'bg-success','cancelled':'bg-danger'}[o.status]||'bg-secondary';
+const st=ORDER_STATUS[o.status]||{l:o.status,c:'bg-secondary'};
 const comm=(o.commission_effective||0);
-const commHtml=comm>0?comm.toLocaleString():'<span class="text-muted">0</span>';
-// Driver column: name, phone and the time the order was accepted.
-const fmt=(s)=>s?String(s).replace('T',' ').split('.')[0]:'';
+const commHtml=comm>0?fmtNum(comm):'<span class="text-muted">0</span>';
 let driverHtml='<span class="text-muted">-</span>';
 if(o.driver_name||o.driver_phone){
 const carPart=o.driver_car_number?' · '+esc(o.driver_car_number):'';
 driverHtml=`<div>${esc(o.driver_name||'-')}${carPart}</div>`+
 `<div class="text-muted small">${esc(o.driver_phone||'')}</div>`+
-(o.accepted_at?`<div class="text-muted small">${esc(fmt(o.accepted_at))}</div>`:'');
+(o.accepted_at?`<div class="text-muted small">${esc(fmtDt(o.accepted_at))}</div>`:'');
 }
-tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${esc(o.passenger_phone)}</td><td>${esc(o.from_city)} - ${esc(o.to_city)}</td><td>${(o.price||0).toLocaleString()}</td><td>${commHtml}</td><td><span class="badge ${badge}">${esc(o.status)}</span></td><td>${driverHtml}</td><td>${esc(o.created_at||'')}</td></tr>`;
+// Who ended it and why — a passenger cancellation and a system reap both used to read
+// simply "cancelled".
+let stHtml=`<span class="badge ${st.c}">${esc(st.l)}</span>`;
+if(o.cancelled_by||o.cancel_reason){
+const by=CANCELLED_BY[o.cancelled_by]||o.cancelled_by||'';
+stHtml+=`<div class="text-muted small">${esc(by)}${o.cancel_reason?': '+esc(o.cancel_reason):''}</div>`;
+}
+const svc=esc(SERVICE_NAMES[o.service_type]||o.service_type||'-')+(o.person_count?` <span class="text-muted">· ${o.person_count} kishi</span>`:'');
+tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${esc(o.passenger_phone)}</td><td>${esc(o.from_city)} - ${esc(o.to_city)}</td><td class="small">${svc}</td><td>${fmtNum(o.price)}</td><td>${commHtml}</td><td>${stHtml}</td><td>${driverHtml}</td><td class="small">${esc(fmtDt(o.created_at))}</td></tr>`;
 });
 }).catch(()=>adminError('Buyurtmalarni yuklab bo\\'lmadi'));
 }
@@ -721,6 +772,7 @@ Ilovani ochib, bildirishnoma ruxsatini berishlari kerak — yoki ilovaning yangi
 <table class="table table-sm" id="pl-errors"><thead><tr><th>Xato</th><th>Soni</th></tr></thead><tbody></tbody></table>
 </div>
 <h5>Oxirgi push'lar</h5>
+<p class="text-muted small mb-2">Oxirgi 200 ta yozuv ko'rsatiladi.</p>
 <div class="mb-3">
 <select class="form-select w-auto d-inline" id="pl-status" onchange="loadPushLog()">
 <option value="all">Barchasi</option>
@@ -737,6 +789,10 @@ Ilovani ochib, bildirishnoma ruxsatini berishlari kerak — yoki ilovaning yangi
 </div>"""
 
 PUSH_LOG_JS = """<script>
+// Human labels instead of raw keys/statuses in the table.
+const PUSH_STATUS={sent:'Yuborildi',delivered:'Yetkazildi',failed:'Xato'};
+const PUSH_TYPES={admin:'Admin xabari',new_order:'Yangi zakas',order_accepted:'Zakas qabul qilindi',order_cancelled:'Zakas bekor qilindi',balance:'Balans',promo:'Aksiya'};
+const PUSH_RECIPIENTS={driver:'Haydovchi',user:"Yo'lovchi"};
 function loadPushLog(){
 const st=document.getElementById('pl-status').value;
 fetch('/admin/api/push-log?status='+st).then(r=>r.json()).then(d=>{
@@ -798,9 +854,8 @@ if(!(s.top_errors||[]).length)et.innerHTML='<tr><td colspan="2" class="text-mute
 const tb=document.querySelector('#pl-table tbody');tb.innerHTML='';
 (d.rows||[]).forEach(r=>{
 const badge=r.status==='delivered'?'bg-success':(r.status==='sent'?'bg-primary':(r.status==='failed'?'bg-danger':'bg-secondary'));
-const who=r.recipient_name?esc(r.recipient_name):(esc(r.recipient_type||'')+' #'+r.recipient_id);
-const when=r.created_at?String(r.created_at).replace('T',' ').split('.')[0]:'';
-tb.innerHTML+=`<tr><td>${r.id}</td><td>${esc(when)}</td><td>${who}</td><td>${esc(r.type||'-')}</td><td>${esc(r.title||'')}</td><td><span class="badge ${badge}">${esc(r.status||'?')}</span></td><td class="small text-danger">${esc(r.error||'')}</td></tr>`;
+const who=r.recipient_name?esc(r.recipient_name):(esc(PUSH_RECIPIENTS[r.recipient_type]||r.recipient_type||'')+' #'+Number(r.recipient_id||0));
+tb.innerHTML+=`<tr><td>${Number(r.id)}</td><td class="small">${esc(fmtDt(r.created_at))}</td><td>${who}</td><td>${esc(PUSH_TYPES[r.type]||r.type||'-')}</td><td>${esc(r.title||'')}</td><td><span class="badge ${badge}">${esc(PUSH_STATUS[r.status]||r.status||'?')}</span></td><td class="small text-danger">${esc(r.error||'')}</td></tr>`;
 });
 if(!(d.rows||[]).length)tb.innerHTML='<tr><td colspan="7" class="text-muted">Yozuv yo\\'q</td></tr>';
 }).catch(()=>adminError('Push diagnostikani yuklab bo\\'lmadi'));
@@ -811,7 +866,7 @@ btn.disabled=true;out.textContent='Tekshirilyapti...';
 fetch('/admin/api/push-receipts',{method:'POST'}).then(r=>r.json()).then(d=>{
 btn.disabled=false;
 if(d.error){out.innerHTML='<span class="text-danger">'+esc(d.error)+'</span>';return;}
-out.innerHTML='<span class="text-muted">'+d.checked+' ta tekshirildi: '+d.delivered+' yetkazildi, '+d.failed+' xato, '+d.pending+' hali navbatda</span>';
+out.innerHTML='<span class="text-muted">'+fmtNum(d.checked)+' ta tekshirildi: '+fmtNum(d.delivered)+' yetkazildi, '+fmtNum(d.failed)+' xato, '+fmtNum(d.pending)+' hali navbatda</span>';
 loadPushLog();
 }).catch(e=>{btn.disabled=false;out.innerHTML='<span class="text-danger">'+esc(String(e))+'</span>';});
 }
@@ -863,11 +918,13 @@ document.getElementById('recipient-row').classList.toggle('d-none',v!=='specific
 function pushStatsHtml(s){
 if(!s)return '';
 let h='<hr class="my-2"><div class="small">';
-h+='<div>Qabul qiluvchilar: <b>'+s.recipients+'</b></div>';
-h+='<div>Push token bor: <b>'+s.with_token+'</b> — yuborildi: <b>'+s.push_sent+'</b>'+(s.push_failed?', xato: <b>'+s.push_failed+'</b>':'')+'</div>';
-if(s.telegram_queued)h+='<div>Telegram: <b>'+s.telegram_queued+'</b> ta xabar fonda yuborilmoqda</div>';
-else if(s.telegram_attempted)h+='<div>Telegram: <b>'+s.telegram_sent+'</b> yuborildi'+(s.telegram_failed?', <b>'+s.telegram_failed+'</b> xato':'')+' ('+s.telegram_attempted+' ta urinish)</div>';
-if(s.unreached)h+='<div class="text-warning">Darhol yetib bormadi: <b>'+s.unreached+'</b></div>';
+// fmtNum() everywhere: these came straight from the response and printed "undefined"
+// whenever a field was absent.
+h+='<div>Qabul qiluvchilar: <b>'+fmtNum(s.recipients)+'</b></div>';
+h+='<div>Push token bor: <b>'+fmtNum(s.with_token)+'</b> — yuborildi: <b>'+fmtNum(s.push_sent)+'</b>'+(s.push_failed?', xato: <b>'+fmtNum(s.push_failed)+'</b>':'')+'</div>';
+if(s.telegram_queued)h+='<div>Telegram: <b>'+fmtNum(s.telegram_queued)+'</b> ta xabar fonda yuborilmoqda</div>';
+else if(s.telegram_attempted)h+='<div>Telegram: <b>'+fmtNum(s.telegram_sent)+'</b> yuborildi'+(s.telegram_failed?', <b>'+fmtNum(s.telegram_failed)+'</b> xato':'')+' ('+fmtNum(s.telegram_attempted)+' ta urinish)</div>';
+if(s.unreached)h+='<div class="text-warning">Darhol yetib bormadi: <b>'+fmtNum(s.unreached)+'</b></div>';
 if(s.inbox_saved)h+='<div class="text-success">Xabar ilovada saqlandi — hamma ilovani ochganda ko\\'radi</div>';
 if(s.errors&&s.errors.length){
 h+='<div class="mt-2">Sabablari:<ul class="mb-0">';
@@ -901,7 +958,7 @@ box.innerHTML='<div class="alert alert-'+level+'">'+esc(d.detail||d.error||'Yubo
 ROUTES_HTML = """<h2>Yo'nalishlar va narxlar</h2>
 <div class="table-responsive">
 <table class="table table-striped table-sm" id="routes-table">
-<thead><tr><th>ID</th><th>Qayerdan</th><th>Qayerga</th><th>Narx (1 kishi)</th><th>To'liq mashina</th><th>Pochta</th><th>Amal</th></tr></thead>
+<thead><tr><th>ID</th><th>Qayerdan</th><th>Qayerga</th><th>Narx (1 kishi)</th><th>To'liq mashina</th><th>Pochta</th><th>Faol</th><th>Amal</th></tr></thead>
 <tbody></tbody>
 </table>
 </div>"""
@@ -913,14 +970,17 @@ const tb=document.querySelector('#routes-table tbody');
 tb.innerHTML='';
 const data=Array.isArray(payload)?payload:[];
 if(!Array.isArray(payload))adminError(payload&&payload.error?payload.error:'Yo\\'nalishlarni yuklab bo\\'lmadi');
-if(!data.length)tb.innerHTML='<tr><td colspan="7" class="text-muted">Yo\\'nalish yo\\'q</td></tr>';
+if(!data.length)tb.innerHTML='<tr><td colspan="8" class="text-muted">Yo\\'nalish yo\\'q</td></tr>';
 data.forEach(rt=>{
-tb.innerHTML+=`<tr>
-<td>${rt.id}</td><td>${esc(rt.from_city)}</td><td>${esc(rt.to_city)}</td>
-<td><input type="number" class="form-control form-control-sm" value="${rt.price_per_person}" id="pp-${rt.id}" style="width:100px"></td>
-<td><input type="number" class="form-control form-control-sm" value="${rt.full_car_price}" id="fc-${rt.id}" style="width:100px"></td>
-<td><input type="number" class="form-control form-control-sm" value="${rt.parcel_price}" id="pr-${rt.id}" style="width:100px"></td>
-<td><button class="btn btn-sm btn-success" onclick="saveRoute(${rt.id})">Saqlash</button></td>
+// `is_active` was returned by the API but had neither a column nor a control, so a
+// route taken out of service looked identical to a live one.
+tb.innerHTML+=`<tr${rt.is_active?'':' class="table-secondary"'}>
+<td>${Number(rt.id)}</td><td>${esc(rt.from_city)}</td><td>${esc(rt.to_city)}</td>
+<td><input type="number" class="form-control form-control-sm" value="${Number(rt.price_per_person)||0}" id="pp-${Number(rt.id)}" style="width:100px"></td>
+<td><input type="number" class="form-control form-control-sm" value="${Number(rt.full_car_price)||0}" id="fc-${Number(rt.id)}" style="width:100px"></td>
+<td><input type="number" class="form-control form-control-sm" value="${Number(rt.parcel_price)||0}" id="pr-${Number(rt.id)}" style="width:100px"></td>
+<td><input type="checkbox" class="form-check-input" id="ac-${Number(rt.id)}" ${rt.is_active?'checked':''}></td>
+<td><button class="btn btn-sm btn-success" onclick="saveRoute(${Number(rt.id)})">Saqlash</button></td>
 </tr>`;
 });
 }).catch(()=>adminError('Yo\\'nalishlarni yuklab bo\\'lmadi'));
@@ -933,18 +993,33 @@ const raw=String(document.getElementById(prefix+id).value).trim();
 if(!/^\\d+$/.test(raw)){alert('Narxlar butun son bo\\'lishi kerak (bo\\'sh qoldirmang)');return;}
 body[key]=parseInt(raw,10);
 }
-fetch('/admin/api/routes/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{if(d.ok)alert('Saqlandi');else alert(d.error||'Xato');}).catch(()=>alert('Saqlashda xatolik'));
+const ac=document.getElementById('ac-'+id);
+if(ac)body.is_active=ac.checked;
+fetch('/admin/api/routes/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{if(d.ok){loadRoutes();alert('Saqlandi');}else alert(d.error||'Xato');}).catch(()=>alert('Saqlashda xatolik'));
 }
 loadRoutes();
 </script>"""
 
 SETTINGS_HTML = """<h2>Sozlamalar</h2>
-<div class="card" style="max-width:500px;">
-<div class="card-body">
+<p class="text-muted">Bu qiymatlar darhol kuchga kiradi — ilova va bot ularni bazadan
+o'qiydi. Bo'sh qoldirmang.</p>
+<div class="row">
+<div class="col-lg-6">
+<div class="card mb-3"><div class="card-body">
+<h6 class="mb-3">💰 Komissiya va balans</h6>
 <div class="mb-3">
-<label class="form-label">Komissiya (%) - har bir zakazdan</label>
+<label class="form-label">Komissiya (%) — har bir zakazdan</label>
 <input type="number" class="form-control" id="set-commission">
 </div>
+<div class="mb-3">
+<label class="form-label">Minimal balans (so'm)</label>
+<input type="number" class="form-control" id="set-min-balance">
+<div class="form-text">Haydovchi zakas olishi uchun kerakli eng kam balans.</div>
+</div>
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+<h6 class="mb-3">🎁 Bepul sinov</h6>
 <div class="mb-3">
 <label class="form-label">Bepul sinov muddati (kun)</label>
 <input type="number" class="form-control" id="set-trial-days">
@@ -952,37 +1027,120 @@ SETTINGS_HTML = """<h2>Sozlamalar</h2>
 <div class="mb-3">
 <label class="form-label">Bepul haydovchilar limiti</label>
 <input type="number" class="form-control" id="set-trial-limit">
+<div class="form-text">Hozirgacha berilgan: <b id="set-trial-used">-</b> ta</div>
+</div>
+</div></div>
+
+<div class="card mb-3 border-warning"><div class="card-body">
+<h6 class="mb-3">🛠 Texnik xizmat rejimi</h6>
+<div class="form-check">
+<input class="form-check-input" type="checkbox" id="set-maintenance">
+<label class="form-check-label" for="set-maintenance">
+Texnik xizmat rejimi yoqilgan
+</label>
+</div>
+<div class="form-text text-danger">Yoqilsa bot foydalanuvchilarga xizmat vaqtincha
+to'xtatilgani haqida xabar beradi. Ehtiyot bo'ling.</div>
+</div></div>
+</div>
+
+<div class="col-lg-6">
+<div class="card mb-3"><div class="card-body">
+<h6 class="mb-3">⭐ Sodiqlik (loyalty)</h6>
+<div class="mb-3">
+<label class="form-label">Bir safar uchun ball</label>
+<input type="number" class="form-control" id="set-loyalty-points">
 </div>
 <div class="mb-3">
-<label class="form-label">Minimal balans (sum)</label>
-<input type="number" class="form-control" id="set-min-balance">
+<label class="form-label">Bonusga aylanish chegarasi (ball)</label>
+<input type="number" class="form-control" id="set-loyalty-threshold">
+</div>
+<div class="mb-3">
+<label class="form-label">Chegaraga yetganda beriladigan bonus (so'm)</label>
+<input type="number" class="form-control" id="set-loyalty-reward">
+</div>
+<div class="mb-3">
+<label class="form-label">Bir safarga ishlatilishi mumkin bo'lgan maksimal bonus (so'm)</label>
+<input type="number" class="form-control" id="set-bonus-max">
+</div>
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+<h6 class="mb-3">👥 Taklif (referral)</h6>
+<div class="mb-3">
+<label class="form-label">Taklif qilgan uchun bonus (so'm)</label>
+<input type="number" class="form-control" id="set-ref-referrer">
+</div>
+<div class="mb-3">
+<label class="form-label">Taklif qilingan uchun bonus (so'm)</label>
+<input type="number" class="form-control" id="set-ref-new">
+</div>
+<div class="mb-3">
+<label class="form-label">Taklif qilingan necha safarda bonus oladi</label>
+<input type="number" class="form-control" id="set-ref-rides">
+</div>
+<div class="mb-3">
+<label class="form-label">Bir foydalanuvchi uchun maksimal taklif soni (0 = cheksiz)</label>
+<input type="number" class="form-control" id="set-ref-max">
+</div>
+</div></div>
+</div>
 </div>
 <button class="btn btn-primary" onclick="saveSettings()">Saqlash</button>
-<div id="settings-result" class="mt-2"></div>
-</div>
-</div>"""
+<div id="settings-result" class="mt-2"></div>"""
 
 SETTINGS_JS = """<script>
-const SETTING_FIELDS=[['set-commission','commission_percent'],['set-trial-days','free_trial_days'],['set-trial-limit','free_trial_limit'],['set-min-balance','min_balance']];
+// Every key the backend reads live. The page used to expose only the first four, so the
+// eight loyalty/referral values — which decide how much bonus money is paid out — could
+// be changed only with direct database access.
+const SETTING_FIELDS=[
+['set-commission','commission_percent'],
+['set-trial-days','free_trial_days'],
+['set-trial-limit','free_trial_limit'],
+['set-min-balance','min_balance'],
+['set-loyalty-points','loyalty_points_per_ride'],
+['set-loyalty-threshold','loyalty_reward_threshold'],
+['set-loyalty-reward','loyalty_reward_bonus'],
+['set-bonus-max','bonus_max_per_ride'],
+['set-ref-referrer','referral_referrer_bonus'],
+['set-ref-new','referral_new_user_bonus'],
+['set-ref-rides','referral_new_user_max_rides'],
+['set-ref-max','referral_max_rewarded']
+];
+function loadSettings(){
 fetch('/admin/api/settings').then(r=>r.json()).then(d=>{
 if(!d||d.error){adminError(d&&d.error?d.error:'Sozlamalarni yuklab bo\\'lmadi');return;}
-// `??`, not `||`: 0 is a legal value for all four settings (the API allows it), and `||`
-// displayed a saved 0% commission as 10% — then the next Save wrote that 10% back.
+// `??`, not `||`: 0 is a legal value for these settings, and `||` displayed a saved
+// 0% commission as 10% — then the next Save wrote that 10% back.
 SETTING_FIELDS.forEach(([id,key])=>{const el=document.getElementById(id);if(el)el.value=d[key]??'';});
+const used=document.getElementById('set-trial-used');
+if(used)used.textContent=fmtNum(d.free_trial_granted_count);
+const mt=document.getElementById('set-maintenance');
+if(mt)mt.checked=!!d.maintenance_mode;
 }).catch(()=>adminError('Sozlamalarni yuklab bo\\'lmadi'));
+}
 function saveSettings(){
 const out=document.getElementById('settings-result');
 const body={};
 for(const [id,key] of SETTING_FIELDS){
-const raw=String(document.getElementById(id).value).trim();
+const el=document.getElementById(id);
+if(!el)continue;
+const raw=String(el.value).trim();
 // Validate here instead of shipping NaN -> JSON null to the server.
-if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger">Barcha maydonlar butun son bo\\'lishi kerak (bo\\'sh qoldirmang)</div>';return;}
+if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger">"'+esc(el.previousElementSibling?el.previousElementSibling.textContent:key)+'" butun son bo\\'lishi kerak (bo\\'sh qoldirmang)</div>';el.focus();return;}
 body[key]=parseInt(raw,10);
+}
+const mt=document.getElementById('set-maintenance');
+if(mt){
+if(mt.checked&&!confirm('Texnik xizmat rejimini YOQMOQCHIMISIZ? Bot foydalanuvchilarga xizmat to\\'xtatilgani haqida xabar beradi.'))return;
+body.maintenance_mode=mt.checked;
 }
 fetch('/admin/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{
 out.innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+'">'+esc(d.detail||d.error||'Saqlandi')+'</div>';
+if(!d.error)loadSettings();
 }).catch(()=>{out.innerHTML='<div class="alert alert-danger">Saqlashda xatolik</div>';});
 }
+loadSettings();
 </script>"""
 
 
@@ -1045,6 +1203,11 @@ kim, qachon, qaysi IP dan. Bu jurnal faqat o'qish uchun — o'zgartirilmaydi va 
 <option value="settings.">Sozlama o'zgarishi</option>
 <option value="push.">Push xabarlar</option>
 </select>
+<select class="form-select w-auto d-inline ms-1" id="audit-limit" onchange="loadAudit()">
+<option value="200">Oxirgi 200</option>
+<option value="500">Oxirgi 500</option>
+<option value="50">Oxirgi 50</option>
+</select>
 <span class="ms-2 text-muted" id="audit-count"></span>
 </div>
 <div class="table-responsive">
@@ -1056,21 +1219,37 @@ kim, qachon, qaysi IP dan. Bu jurnal faqat o'qish uchun — o'zgartirilmaydi va 
 
 AUDIT_JS = """<script>
 const AUDIT_LABELS={'auth.login_success':'Kirdi','auth.login_failure':'Kirish xato','auth.logout':'Chiqdi','auth.rate_limited':'Cheklandi','driver.verify':'Haydovchi tasdiqlandi','driver.reject':'Haydovchi rad etildi','driver.block':'Haydovchi bloklandi','driver.unblock':'Haydovchi blokdan chiqdi','driver.create':'Haydovchi qo\\'shildi','driver.balance_adjust':'Balans o\\'zgardi','user.block':'Yo\\'lovchi bloklandi','user.unblock':'Yo\\'lovchi blokdan chiqdi','route.update':'Narx o\\'zgardi','settings.update':'Sozlama o\\'zgardi','push.send':'Push yuborildi'};
+// Turn the stored JSON detail blob into something readable instead of dumping it raw.
+function auditDetails(raw){
+if(!raw)return '';
+let o;
+try{o=JSON.parse(raw);}catch(e){return esc(String(raw));}
+if(!o||typeof o!=='object')return esc(String(raw));
+const label={amount:'summa',balance_after:'yangi balans',idempotency_key:'kalit',phone:'telefon',username:'login',recipients:'qabul qiluvchilar',sent_count:'yuborildi',push_sent:'push',telegram_sent:'telegram',unreached:'yetmadi',announcement_id:'xabar ID',before:'oldin',after:'keyin',changes:"o'zgarishlar",recipient_type:'turi',is_verified:'tasdiqlangan',telegram_queued:'telegram navbatda'};
+const parts=[];
+for(const [k,v] of Object.entries(o)){
+if(v===null||v===''||(typeof v==='object'&&!Object.keys(v||{}).length))continue;
+const name=label[k]||k;
+const val=(typeof v==='object')?JSON.stringify(v):String(v);
+parts.push(esc(name)+': '+esc(typeof v==='number'?fmtNum(v):val));
+}
+return parts.join(' · ');
+}
 function loadAudit(){
 const act=document.getElementById('audit-action').value;
-fetch('/admin/api/audit?action='+encodeURIComponent(act)).then(r=>r.json()).then(payload=>{
+const lim=document.getElementById('audit-limit').value;
+fetch('/admin/api/audit?action='+encodeURIComponent(act)+'&limit='+encodeURIComponent(lim)).then(r=>r.json()).then(payload=>{
 const tb=document.querySelector('#audit-table tbody');
 tb.innerHTML='';
 const data=Array.isArray(payload)?payload:[];
 if(!Array.isArray(payload))adminError(payload&&payload.error?payload.error:'Jurnalni yuklab bo\\'lmadi');
-document.getElementById('audit-count').textContent=data.length+' ta yozuv';
+document.getElementById('audit-count').textContent=data.length+' ta yozuv'+(data.length>=Number(lim)?' (eng yangilari — cheklov '+lim+')':'');
 if(!data.length)tb.innerHTML='<tr><td colspan="7" class="text-muted">Yozuv yo\\'q</td></tr>';
 data.forEach(r=>{
-const when=r.created_at?String(r.created_at).replace('T',' ').split('.')[0]:'';
 const label=AUDIT_LABELS[r.action]||r.action;
 const money=r.action==='driver.balance_adjust';
 const target=r.target_type?esc(r.target_type)+(r.target_id?' #'+esc(r.target_id):''):'-';
-tb.innerHTML+=`<tr${money?' class="table-warning"':''}><td>${r.id}</td><td>${esc(when)}</td><td>${esc(r.admin_username||'')}</td><td>${esc(label)}</td><td>${target}</td><td class="small">${esc(r.remote_ip||'-')}</td><td class="small text-muted" style="max-width:380px;word-break:break-all">${esc(r.details||'')}</td></tr>`;
+tb.innerHTML+=`<tr${money?' class="table-warning"':''}><td>${Number(r.id)}</td><td class="small">${esc(fmtDt(r.created_at))}</td><td>${esc(r.admin_username||'')}</td><td>${esc(label)}</td><td>${target}</td><td class="small">${esc(r.remote_ip||'-')}</td><td class="small text-muted" style="max-width:380px;word-break:break-word">${auditDetails(r.details)}</td></tr>`;
 });
 }).catch(()=>adminError('Jurnalni yuklab bo\\'lmadi'));
 }
