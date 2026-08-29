@@ -28,12 +28,13 @@ import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
+import { longHaulDestinations } from '../src/utils/longHaul';
 
 // Termiz, Surxondaryo (default center)
 const DEFAULT_LAT = 37.224;
 const DEFAULT_LON = 67.278;
 const DETECT_ZOOM = 18; // building-level (very close) zoom for precise pickup pin
-const LONG_HAUL_MIN_KM = 70; // "masofasi 70 km kam bo'lmagan tumanlar"
+
 
 /**
  * How far the pin may move away from the point an address was resolved for before that
@@ -380,27 +381,12 @@ export default function OrderEntryScreen() {
    * Sorted nearest-first among the qualifying routes: the closest long-haul option is the
    * one a passenger is most likely to want.
    */
-  const longHaul = useMemo(() => {
-    const pickupCity = fullAddress ? deriveCity(fullAddress) : null;
-    if (!pickupCity) return [];
-    const seen = new Set<string>();
-    return allRoutes
-      .filter(
-        (r) =>
-          (r.distance_km ?? 0) >= LONG_HAUL_MIN_KM &&
-          r.from_city.toLowerCase() === pickupCity.toLowerCase() &&
-          r.to_city.toLowerCase() !== pickupCity.toLowerCase()
-      )
-      .sort((a, b) => (a.distance_km ?? 0) - (b.distance_km ?? 0))
-      .filter((r) => {
-        const key = r.to_city.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .slice(0, 3)
-      .map((r) => ({ city: r.to_city, km: r.distance_km ?? 0 }));
-  }, [allRoutes, fullAddress, deriveCity]);
+  const longHaul = useMemo(
+    // Shared with route-select.tsx's destination list, so the two pickers cannot drift apart
+    // on what "long haul" means. Only the cap differs: this is a three-row quick pick.
+    () => longHaulDestinations(allRoutes, fullAddress ? deriveCity(fullAddress) : null).slice(0, 3),
+    [allRoutes, fullAddress, deriveCity]
+  );
 
   // ---------------------------------------------------------------- saved addresses
   useEffect(() => {
