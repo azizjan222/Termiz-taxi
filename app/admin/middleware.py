@@ -265,6 +265,71 @@ def clear_login_failures(request: web.Request, username: str) -> None:
 def reset_login_limiter() -> None:
     """Clear in-memory limiter state (used by tests and controlled maintenance)."""
     _LOGIN_FAILURES.clear()
+    _API_CALLS.clear()
+
+
+# --- Rate limiting for the authenticated JSON API -------------------------------------
+#
+# Only the login form was throttled. Everything behind the session was unlimited, and two
+# endpoints make that expensive: GET /admin/api/statistics reads the whole `orders` table
+# on every call, and POST /admin/api/push broadcasts to every driver and every user. One
+# session (or one stolen cookie) could hammer either. These are per-(ip, bucket) sliding
+# windows, in-process like the login limiter — see the note above about single-worker.
+_API_CALLS: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+_MAX_API_BUCKETS = 10_000
+
+#: bucket -> (max calls, window seconds). `_api_bucket()` maps a path onto one of these.
+_API_LIMITS: dict[str, tuple[int, int]] = {
+    # Broadcasts: irreversible and user-visible, so keep this tight.
+    "push": (10, 300),
+    # Whole-table analytics.
+    "heavy": (30, 60),
+    # Money movement.
+    "balance": (60, 300),
+    # Everything else behind the session: generous, just stops a runaway loop.
+    "default": (600, 60),
+}
+
+
+def _api_bucket(request: web.Request) -> str:
+    path = request.path
+    if path == "/admin/api/push":
+        return "push"
+    if path in ("/admin/api/statistics", "/admin/api/push-log", "/admin/api/audit"):
+        return "heavy"
+    if path.endswith("/balance"):
+        return "balance"
+    return "default"
+
+
+def api_retry_after(request: web.Request) -> int:
+    """Seconds to wait before this admin API call is allowed, or 0 when permitted.
+
+    Records the call when it is allowed, so a single helper both checks and accounts.
+    """
+    bucket = _api_bucket(request)
+    limit, window = _API_LIMITS[bucket]
+    key = (_client_ip(request), bucket)
+    now = time.monotonic()
+
+    calls = _API_CALLS[key]
+    while calls and now - calls[0] > window:
+        calls.popleft()
+    if len(calls) >= limit:
+        return max(1, int(window - (now - calls[0])) + 1)
+
+    calls.append(now)
+    if not calls:
+        _API_CALLS.pop(key, None)
+    elif len(_API_CALLS) > _MAX_API_BUCKETS:
+        # Same unbounded-growth guard as the login limiter: drop buckets whose whole
+        # window has elapsed rather than letting a scanner grow the dict forever.
+        for stale_key in [
+            k for k, v in _API_CALLS.items()
+            if not v or now - v[-1] > _API_LIMITS[k[1]][1]
+        ]:
+            _API_CALLS.pop(stale_key, None)
+    return 0
 
 
 def require_admin(handler):
@@ -278,12 +343,20 @@ def require_admin(handler):
 
 
 def require_admin_api(handler):
-    """Require a session and double-submit CSRF on mutating API requests."""
+    """Require a session, a rate-limit slot, and double-submit CSRF on mutations."""
     @wraps(handler)
     async def wrapper(request: web.Request):
         if not check_session(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
         if request.method in _UNSAFE_METHODS and not await check_csrf(request):
             return web.json_response({"error": "CSRF validation failed"}, status=403)
+        # After auth so an unauthenticated scanner cannot consume an operator's budget.
+        retry_after = api_retry_after(request)
+        if retry_after:
+            return web.json_response(
+                {"error": f"Juda tez-tez so'rov. {retry_after} soniyadan keyin urinib ko'ring."},
+                status=429,
+                headers={"Retry-After": str(retry_after)},
+            )
         return await handler(request)
     return wrapper

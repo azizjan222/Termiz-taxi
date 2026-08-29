@@ -12,8 +12,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from app import config
-from app.admin.audit import add_admin_audit
-from app.admin.middleware import require_admin_api
+from app.admin.audit import add_actor_audit, add_admin_audit
+from app.admin.middleware import client_ip, require_admin_api
 from app.database import get_session
 from app.models import (
     AdminAuditLog,
@@ -39,7 +39,12 @@ from app.services.push_report import (
     summarize_broadcast,
 )
 from app.services.rewards import effective_commission
-from app.utils.timefmt import local_day_start_utc, local_day_str, local_month_start_utc
+from app.utils.timefmt import (
+    iso_utc,
+    local_day_start_utc,
+    local_day_str,
+    local_month_start_utc,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +65,16 @@ def _server_error(where: str) -> web.Response:
     """Log the real exception and return a message that leaks nothing."""
     logger.exception("admin: %s failed", where)
     return web.json_response({"error": INTERNAL_ERROR}, status=500)
+
+
+def _iso(dt) -> str | None:
+    """Serialise a naive-UTC datetime as an explicit UTC instant.
+
+    A bare `.isoformat()` produced "2026-08-29T09:15:00.123456" with no zone, so the
+    browser had to guess — every time in the panel read 5 hours behind Tashkent with
+    nothing saying it was UTC. `iso_utc` tags it, and the UI formats it (see fmtDt()).
+    """
+    return iso_utc(dt)
 
 
 def _parse_int_field(data: dict, key: str) -> int:
@@ -103,10 +118,13 @@ async def _telegram_fanout(items: list, *, log: bool = True) -> dict:
     try:
         from app.bot.notifications import broadcast_telegram
         result = await broadcast_telegram([it["telegram_id"] for it in items], body)
-    except Exception as e:
-        logger.error("Telegram broadcast failed: %s", e)
+    except Exception:
+        # The reason string is shown in the panel AND persisted to notification_log, so it
+        # must not be raw exception text: aiogram/aiohttp messages can embed the bot token
+        # in a URL. The detail stays in the log.
+        logger.exception("Telegram broadcast failed")
         result = {"sent": 0, "failed": len(items), "sent_ids": [],
-                  "errors": {f"Telegram: {str(e)[:120]}": len(items)}}
+                  "errors": {"Telegram: yuborilmadi (batafsil server log'ida)": len(items)}}
 
     if not log:
         return result
@@ -224,7 +242,7 @@ def _drivers_payload() -> list:
                 "documents_submitted": d.documents_submitted,
                 "rating": d.rating,
                 "total_orders": d.total_orders or 0,
-                "created_at": d.created_at.isoformat() if d.created_at else None,
+                "created_at": _iso(d.created_at),
                 # Document availability (Telegram file or uploaded image) for the details view.
                 "has_license": bool(d.license_file_id or d.license_photo_url),
                 "has_tech_passport": bool(d.tech_passport_file_id or d.tech_passport_url),
@@ -258,7 +276,7 @@ def _passengers_payload() -> list:
                 # in the passengers table.
                 "rating": u.rating or 0,
                 "is_blocked": u.is_blocked,
-                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "created_at": _iso(u.created_at),
             })
         return result
     finally:
@@ -312,8 +330,12 @@ def _orders_payload(status_filter: str) -> list:
                 "driver_name": driver_name,
                 "driver_phone": drv.phone if drv else None,
                 "driver_car_number": drv.car_number if drv else None,
-                "accepted_at": o.accepted_at.isoformat() if o.accepted_at else None,
-                "created_at": o.created_at.isoformat() if o.created_at else None,
+                "accepted_at": _iso(o.accepted_at),
+                "created_at": _iso(o.created_at),
+                # Who ended the order and why. Without these a passenger cancellation
+                # and a system reap (order_expiry) both just read "cancelled".
+                "cancelled_by": o.cancelled_by,
+                "cancel_reason": o.cancel_reason,
             })
         return result
     finally:
@@ -325,6 +347,79 @@ async def api_orders(request: web.Request) -> web.Response:
     """GET /admin/api/orders?status=all|new|accepted|completed|cancelled."""
     status_filter = request.query.get("status", "all")
     return web.json_response(await asyncio.to_thread(_orders_payload, status_filter))
+
+
+def _push_prepare(target: str, recipient_type: str, recipient_id_int, message: str) -> dict:
+    """Resolve broadcast recipients and commit the Announcement inbox row.
+
+    Returns either {"error": str, "status": int} or
+    {"candidates": [(kind, id, lang, token, telegram_id)], "announcement_id": int}.
+    """
+    session = get_session()
+    try:
+        candidates = []
+        if target == "specific":
+            model = Driver if recipient_type == "driver" else User
+            kind = "driver" if recipient_type == "driver" else "user"
+            row = session.query(model).filter_by(id=recipient_id_int).first()
+            if not row:
+                label = "Haydovchi" if kind == "driver" else "Yo'lovchi"
+                return {"error": f"{label} #{recipient_id_int} topilmadi", "status": 404}
+            candidates.append((kind, row.id, row.language, row.push_token, row.telegram_id))
+        else:
+            # Load every candidate, not only the ones holding a push token: a missing token
+            # is the normal case, and those recipients are still reachable over Telegram.
+            if target in ("drivers", "all"):
+                for d in session.query(
+                    Driver.id, Driver.language, Driver.push_token, Driver.telegram_id
+                ).all():
+                    candidates.append(("driver", d.id, d.language, d.push_token, d.telegram_id))
+            if target in ("passengers", "all"):
+                for u in session.query(
+                    User.id, User.language, User.push_token, User.telegram_id
+                ).all():
+                    candidates.append(("user", u.id, u.language, u.push_token, u.telegram_id))
+
+        # Record the broadcast BEFORE sending. Push and Telegram are both fire-and-forget,
+        # so this row is the only thing that lets a recipient who was offline — or who has
+        # no push token and no Telegram chat — still read the message in the app later.
+        announcement = Announcement(
+            audience=target if target in ("all", "drivers", "passengers") else "user",
+            recipient_type=candidates[0][0] if target == "specific" else None,
+            recipient_id=candidates[0][1] if target == "specific" else None,
+            body=message,
+            created_by=config.ADMIN_USERNAME,
+        )
+        session.add(announcement)
+        session.commit()
+        return {"candidates": candidates, "announcement_id": announcement.id}
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def _write_audit(ip, user_agent, action, target_type, target_id, details) -> None:
+    """Write one audit row in its own transaction. Never raises."""
+    session = get_session()
+    try:
+        add_actor_audit(
+            session,
+            actor=config.ADMIN_USERNAME,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=details,
+            remote_ip=ip,
+            user_agent=user_agent,
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("admin: could not write audit row for %s", action)
+    finally:
+        session.close()
 
 
 @require_admin_api
@@ -354,157 +449,142 @@ async def api_push(request: web.Request) -> web.Response:
     # limited to people who installed the mobile app, which in practice was almost nobody.
     use_telegram = data.get("telegram", True) is not False
 
+    recipient_id_int = None
+    if target == "specific":
+        if not recipient_id:
+            return web.json_response({"error": "recipient_id kerak"}, status=400)
+        # Validate instead of letting int()/an unknown label raise a generic 500.
+        # An unrecognised recipient_type used to fall through to "passenger", which
+        # would have pushed to the wrong person.
+        if recipient_type not in ("driver", "user", "passenger"):
+            return web.json_response({"error": "recipient_type noto'g'ri"}, status=400)
+        try:
+            recipient_id_int = int(recipient_id)
+        except (TypeError, ValueError):
+            return web.json_response(
+                {"error": "recipient_id raqam bo'lishi kerak"}, status=400
+            )
+
+    # Phase 1 — resolve recipients and persist the inbox record, in a worker thread and in
+    # ONE SHORT COMMITTED transaction.
+    #
+    # This used to run on the event loop and keep the transaction open across the whole
+    # push + Telegram fan-out (up to ~10 s for 300 Telegram sends): the bot could not
+    # process a single update in that window, the row stayed idle-in-transaction, and if
+    # anything failed mid-send the Announcement was rolled back even though notifications
+    # had already gone out — recipients got a push for a message that existed nowhere.
+    prepared = await asyncio.to_thread(
+        _push_prepare, target, recipient_type, recipient_id_int, message
+    )
+    if prepared.get("error"):
+        return web.json_response({"error": prepared["error"]}, status=prepared["status"])
+
+    candidates = prepared["candidates"]
+    announcement_id = prepared["announcement_id"]
+
+    # Build a localized message per recipient and send them in batched Expo requests
+    # (instead of one-by-one) so a large broadcast reaches everyone at once instead of
+    # the last users getting it minutes late.
+    items = []
+    telegram_of = {}      # (kind, id) -> telegram_id, for the fallback
+    titles = {}           # (kind, id) -> localized notification title
+    no_route = 0          # neither a push token nor a Telegram chat
+    for kind, rid, lang, token, tg_id in candidates:
+        key = (kind, rid)
+        titles[key] = nt.admin_title(nt.norm_lang(lang))
+        if tg_id:
+            telegram_of[key] = tg_id
+        if token:
+            items.append({
+                "recipient_type": kind,
+                "recipient_id": rid,
+                "token": token,
+                "title": titles[key],
+                "body": message,
+                # The id lets the app recognise the pushed message as the same one it
+                # syncs from the inbox, instead of listing it twice.
+                "data": {"type": "admin", "announcement_id": announcement_id},
+            })
+        elif not tg_id:
+            no_route += 1
+
+    # Phase 2 — deliver. Its own session, opened after phase 1 committed.
     session = get_session()
     try:
-        # (recipient_type, id, language, push_token, telegram_id) per candidate.
-        candidates = []
-        if target == "specific":
-            if not recipient_id:
-                return web.json_response({"error": "recipient_id kerak"}, status=400)
-            # Validate instead of letting int()/an unknown label raise a generic 500.
-            # An unrecognised recipient_type used to fall through to "passenger", which
-            # would have pushed to the wrong person.
-            if recipient_type not in ("driver", "user", "passenger"):
-                return web.json_response({"error": "recipient_type noto'g'ri"}, status=400)
-            try:
-                recipient_id_int = int(recipient_id)
-            except (TypeError, ValueError):
-                return web.json_response({"error": "recipient_id raqam bo'lishi kerak"},
-                                         status=400)
-            model = Driver if recipient_type == "driver" else User
-            kind = "driver" if recipient_type == "driver" else "user"
-            row = session.query(model).filter_by(id=recipient_id_int).first()
-            if not row:
-                label = "Haydovchi" if kind == "driver" else "Yo'lovchi"
-                return web.json_response(
-                    {"error": f"{label} #{recipient_id_int} topilmadi"}, status=404)
-            candidates.append((kind, row.id, row.language, row.push_token, row.telegram_id))
-        else:
-            # Load every candidate, not only the ones holding a push token: a missing token
-            # is the normal case, and those recipients are still reachable over Telegram.
-            if target in ("drivers", "all"):
-                for d in session.query(
-                    Driver.id, Driver.language, Driver.push_token, Driver.telegram_id
-                ).all():
-                    candidates.append(("driver", d.id, d.language, d.push_token, d.telegram_id))
-            if target in ("passengers", "all"):
-                for u in session.query(
-                    User.id, User.language, User.push_token, User.telegram_id
-                ).all():
-                    candidates.append(("user", u.id, u.language, u.push_token, u.telegram_id))
-
-        # Record the broadcast BEFORE sending. Push and Telegram are both fire-and-forget,
-        # so this row is the only thing that lets a recipient who was offline — or who has
-        # no push token and no Telegram chat — still read the message in the app later.
-        # Stored once with an audience filter rather than once per recipient.
-        announcement = Announcement(
-            audience=target if target in ("all", "drivers", "passengers") else "user",
-            recipient_type=candidates[0][0] if target == "specific" else None,
-            recipient_id=candidates[0][1] if target == "specific" else None,
-            body=message,
-            created_by=config.ADMIN_USERNAME,
-        )
-        session.add(announcement)
-        session.flush()  # assign the id so the push payload can carry it
-
-        # Build a localized message per recipient and send them in batched Expo requests
-        # (instead of one-by-one) so a large broadcast reaches everyone at once instead of
-        # the last users getting it minutes late.
-        items = []
-        telegram_of = {}      # (kind, id) -> telegram_id, for the fallback
-        titles = {}           # (kind, id) -> localized notification title
-        no_route = 0          # neither a push token nor a Telegram chat
-        for kind, rid, lang, token, tg_id in candidates:
-            key = (kind, rid)
-            titles[key] = nt.admin_title(nt.norm_lang(lang))
-            if tg_id:
-                telegram_of[key] = tg_id
-            if token:
-                items.append({
-                    "recipient_type": kind,
-                    "recipient_id": rid,
-                    "token": token,
-                    "title": titles[key],
-                    "body": message,
-                    # The id lets the app recognise the pushed message as the same one it
-                    # syncs from the inbox, instead of listing it twice.
-                    "data": {"type": "admin", "announcement_id": announcement.id},
-                })
-            elif not tg_id:
-                no_route += 1
-
         push = await send_push_bulk_stats(session, items) if items else {
             "total": 0, "sent": 0, "failed": 0, "errors": {}, "failed_recipients": [],
         }
-
-        # Telegram gets everyone push could not serve: recipients with no token at all,
-        # plus the ones Expo rejected — otherwise a bad FCM credential still means silence.
-        all_keys = [(kind, rid) for kind, rid, _lang, _tok, _tg in candidates]
-        reached = reached_by_push(
-            [(it["recipient_type"], it["recipient_id"]) for it in items], push
-        )
-
-        tg_items = []
-        if use_telegram:
-            for key in pending_telegram_keys(all_keys, reached, telegram_of):
-                tg_items.append({
-                    "recipient_type": key[0],
-                    "recipient_id": key[1],
-                    "telegram_id": telegram_of[key],
-                    "title": titles[key],
-                    "body": message,
-                })
-
-        queued = 0
-        if len(tg_items) > _TELEGRAM_SYNC_LIMIT:
-            # Too many to finish inside this request; report the push result now and let
-            # the bot work through the rest.
-            queued = len(tg_items)
-            _spawn_background(_telegram_fanout(tg_items))
-            telegram = {"sent": 0, "failed": 0, "errors": {}, "sent_ids": []}
-        else:
-            telegram = await _telegram_fanout(tg_items)
-
-        report = summarize_broadcast(
-            all_keys,
-            reached,
-            telegram_of,
-            telegram,
-            token_count=len(items),
-            telegram_attempted=len(tg_items),
-            queued=queued,
-            use_telegram=use_telegram,
-            no_route=no_route,
-            push_stats=push,
-            inbox_saved=True,
-        )
-
-        add_admin_audit(
-            session,
-            request,
-            "push.send",
-            target_type=target,
-            target_id=recipient_id if target == "specific" else None,
-            details={
-                "recipient_type": recipient_type,
-                "sent_count": report["total_sent"],
-                "push_sent": push["sent"],
-                "telegram_sent": telegram["sent"],
-                "telegram_queued": queued,
-                "recipients": len(candidates),
-                "unreached": report["unreached"],
-                "announcement_id": announcement.id,
-            },
-        )
-        session.commit()
-        return web.json_response({
-            "ok": True,
-            "level": report["level"],
-            "detail": report["detail"],
-            "stats": report["stats"],
-        })
     finally:
         session.close()
+
+    # Telegram gets everyone push could not serve: recipients with no token at all,
+    # plus the ones Expo rejected — otherwise a bad FCM credential still means silence.
+    all_keys = [(kind, rid) for kind, rid, _lang, _tok, _tg in candidates]
+    reached = reached_by_push(
+        [(it["recipient_type"], it["recipient_id"]) for it in items], push
+    )
+
+    tg_items = []
+    if use_telegram:
+        for key in pending_telegram_keys(all_keys, reached, telegram_of):
+            tg_items.append({
+                "recipient_type": key[0],
+                "recipient_id": key[1],
+                "telegram_id": telegram_of[key],
+                "title": titles[key],
+                "body": message,
+            })
+
+    queued = 0
+    if len(tg_items) > _TELEGRAM_SYNC_LIMIT:
+        # Too many to finish inside this request; report the push result now and let
+        # the bot work through the rest.
+        queued = len(tg_items)
+        _spawn_background(_telegram_fanout(tg_items))
+        telegram = {"sent": 0, "failed": 0, "errors": {}, "sent_ids": []}
+    else:
+        telegram = await _telegram_fanout(tg_items)
+
+    report = summarize_broadcast(
+        all_keys,
+        reached,
+        telegram_of,
+        telegram,
+        token_count=len(items),
+        telegram_attempted=len(tg_items),
+        queued=queued,
+        use_telegram=use_telegram,
+        no_route=no_route,
+        push_stats=push,
+        inbox_saved=True,
+    )
+
+    # Phase 3 — audit, in its own short transaction. Best-effort: the broadcast has
+    # already happened, so a failure here must not turn a delivered message into a 500.
+    await asyncio.to_thread(
+        _write_audit,
+        client_ip(request),
+        request.headers.get("User-Agent", ""),
+        "push.send",
+        target,
+        recipient_id if target == "specific" else None,
+        {
+            "recipient_type": recipient_type,
+            "sent_count": report["total_sent"],
+            "push_sent": push["sent"],
+            "telegram_sent": telegram["sent"],
+            "telegram_queued": queued,
+            "recipients": len(candidates),
+            "unreached": report["unreached"],
+            "announcement_id": announcement_id,
+        },
+    )
+    return web.json_response({
+        "ok": True,
+        "level": report["level"],
+        "detail": report["detail"],
+        "stats": report["stats"],
+    })
 
 
 @require_admin_api
@@ -690,7 +770,7 @@ def _audit_payload(limit: int, action_filter: str) -> list:
         return [
             {
                 "id": r.id,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "created_at": _iso(r.created_at),
                 "admin_username": r.admin_username,
                 "action": r.action,
                 "target_type": r.target_type,
@@ -881,9 +961,7 @@ async def api_topup_driver_balance(request: web.Request) -> web.Response:
         session.close()
 
 
-@require_admin_api
-async def api_routes(request: web.Request) -> web.Response:
-    """GET /admin/api/routes - list all routes."""
+def _routes_payload() -> list:
     session = get_session()
     try:
         routes = session.query(Route).order_by(Route.id).all()
@@ -896,11 +974,17 @@ async def api_routes(request: web.Request) -> web.Response:
                 "price_per_person": r.price_per_person,
                 "full_car_price": r.full_car_price or 0,
                 "parcel_price": r.parcel_price or 0,
-                "is_active": r.is_active,
+                "is_active": bool(r.is_active),
             })
-        return web.json_response(result)
+        return result
     finally:
         session.close()
+
+
+@require_admin_api
+async def api_routes(request: web.Request) -> web.Response:
+    """GET /admin/api/routes - list all routes."""
+    return web.json_response(await asyncio.to_thread(_routes_payload))
 
 
 @require_admin_api
@@ -921,8 +1005,14 @@ async def api_update_route(request: web.Request) -> web.Response:
             "price_per_person": route.price_per_person,
             "full_car_price": route.full_car_price,
             "parcel_price": route.parcel_price,
+            "is_active": bool(route.is_active),
         }
         new_values = dict(old_values)
+        # `is_active` was returned by the list endpoint but could not be changed, so a
+        # route could only be taken out of service from the database.
+        if "is_active" in data:
+            route.is_active = bool(data["is_active"])
+            new_values["is_active"] = bool(data["is_active"])
         for field in ("price_per_person", "full_car_price", "parcel_price"):
             if field in data:
                 # Parse defensively: a non-numeric value used to fall through to the generic
@@ -972,9 +1062,47 @@ async def api_update_route(request: web.Request) -> web.Response:
         session.close()
 
 
-@require_admin_api
-async def api_settings(request: web.Request) -> web.Response:
-    """GET /admin/api/settings - get current settings."""
+#: Every Setting key the panel may read/write, with its accepted range.
+#
+# The page used to expose only the first four. The eight loyalty/referral keys below are
+# read live by app/services/dynamic_settings.py and decide how much bonus money is paid
+# out — they could only be changed with direct database access, which is exactly the kind
+# of value an operator needs to be able to see and adjust.
+SETTING_LIMITS: dict[str, tuple[int, int]] = {
+    "commission_percent": (0, 100),
+    "free_trial_days": (0, 3650),
+    "free_trial_limit": (0, 1_000_000),
+    "min_balance": (0, 1_000_000_000),
+    "loyalty_points_per_ride": (0, 10_000),
+    "loyalty_reward_threshold": (1, 1_000_000),
+    "loyalty_reward_bonus": (0, 10_000_000),
+    "referral_referrer_bonus": (0, 10_000_000),
+    "referral_new_user_bonus": (0, 10_000_000),
+    "referral_new_user_max_rides": (0, 1_000),
+    "referral_max_rewarded": (0, 100_000),
+    "bonus_max_per_ride": (0, 10_000_000),
+}
+
+
+def _setting_defaults() -> dict[str, int]:
+    """Env-level fallback for every editable key (mirrors dynamic_settings)."""
+    return {
+        "commission_percent": 10,
+        "free_trial_days": getattr(config, "FREE_TRIAL_DAYS", 30),
+        "free_trial_limit": getattr(config, "FREE_TRIAL_DRIVER_LIMIT", 100),
+        "min_balance": getattr(config, "MIN_DRIVER_BALANCE", 20000),
+        "loyalty_points_per_ride": getattr(config, "LOYALTY_POINTS_PER_RIDE", 1),
+        "loyalty_reward_threshold": getattr(config, "LOYALTY_REWARD_THRESHOLD", 10),
+        "loyalty_reward_bonus": getattr(config, "LOYALTY_REWARD_BONUS", 5000),
+        "referral_referrer_bonus": getattr(config, "REFERRAL_REFERRER_BONUS", 5000),
+        "referral_new_user_bonus": getattr(config, "REFERRAL_NEW_USER_BONUS", 3000),
+        "referral_new_user_max_rides": getattr(config, "REFERRAL_NEW_USER_MAX_RIDES", 3),
+        "referral_max_rewarded": getattr(config, "REFERRAL_MAX_REWARDED", 0),
+        "bonus_max_per_ride": getattr(config, "BONUS_MAX_PER_RIDE", 10000),
+    }
+
+
+def _settings_payload() -> dict:
     session = get_session()
     try:
         settings_map = {}
@@ -992,12 +1120,7 @@ async def api_settings(request: web.Request) -> web.Response:
         # scheduler charges. Now a bad individual value degrades to that key's default and
         # is logged, while a real DB failure surfaces as a 500 instead of masquerading as
         # valid configuration.
-        defaults = {
-            "commission_percent": 10,
-            "free_trial_days": 30,
-            "free_trial_limit": 100,
-            "min_balance": 20000,
-        }
+        defaults = _setting_defaults()
         payload = {}
         for key, default in defaults.items():
             raw = settings_map.get(key)
@@ -1012,9 +1135,29 @@ async def api_settings(request: web.Request) -> web.Response:
                     key, raw, default,
                 )
                 payload[key] = default
-        return web.json_response(payload)
+
+        # Read-only context so `free_trial_limit` is actionable: the limit alone told the
+        # operator nothing about how many trials had already been handed out.
+        try:
+            payload["free_trial_granted_count"] = int(
+                settings_map.get("free_trial_granted_count") or 0
+            )
+        except (TypeError, ValueError):
+            payload["free_trial_granted_count"] = 0
+        # Maintenance switch (bot-side flag, app/bot/store.py). Surfaced here because the
+        # panel could neither see nor change it.
+        payload["maintenance_mode"] = str(
+            settings_map.get("maintenance_mode") or ""
+        ).strip().lower() in ("1", "true", "yes", "on")
+        return payload
     finally:
         session.close()
+
+
+@require_admin_api
+async def api_settings(request: web.Request) -> web.Response:
+    """GET /admin/api/settings - current values of every panel-editable setting."""
+    return web.json_response(await asyncio.to_thread(_settings_payload))
 
 
 @require_admin_api
@@ -1025,15 +1168,31 @@ async def api_update_settings(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
+    # Reject unknown keys instead of answering "Sozlamalar saqlandi" without saving
+    # anything — a client sending e.g. loyalty_reward_bonus used to get a success message
+    # and no change at all.
+    known = set(SETTING_LIMITS) | {"maintenance_mode"}
+    unknown = sorted(set(data) - known)
+    if unknown:
+        return web.json_response(
+            {"error": "Noma'lum sozlama: " + ", ".join(unknown)}, status=400
+        )
+
     session = get_session()
     try:
-        limits = {
-            "commission_percent": (0, 100),
-            "free_trial_days": (0, 3650),
-            "free_trial_limit": (0, 1_000_000),
-            "min_balance": (0, 1_000_000_000),
-        }
+        limits = SETTING_LIMITS
         changes = {}
+        # Maintenance mode is a boolean flag, stored as "1"/"0" for the bot.
+        if "maintenance_mode" in data:
+            enabled = bool(data["maintenance_mode"])
+            existing = session.query(Setting).filter_by(key="maintenance_mode").first()
+            previous = existing.value if existing else None
+            if existing:
+                existing.value = "1" if enabled else "0"
+                existing.updated_at = datetime.utcnow()
+            else:
+                session.add(Setting(key="maintenance_mode", value="1" if enabled else "0"))
+            changes["maintenance_mode"] = {"before": previous, "after": enabled}
         for key, (minimum, maximum) in limits.items():
             if key not in data:
                 continue
@@ -1118,11 +1277,12 @@ async def api_driver_pdf(request: web.Request) -> web.Response:
     bot = request.app.get("bot")
     try:
         pdf_bytes = await build_driver_pdf(bot, driver_data)
-    except Exception as e:
-        logger.exception("PDF build failed for driver %s: %s", driver_id, e)
-        return web.json_response(
-            {"error": f"PDF yaratishda xatolik: {e}"}, status=500
-        )
+    except Exception:
+        # Never echo the exception: build_driver_pdf talks to Telegram and the filesystem,
+        # so its text can carry bot-token URLs and absolute paths — and this response is
+        # rendered in a browser tab.
+        logger.exception("PDF build failed for driver %s", driver_id)
+        return web.json_response({"error": INTERNAL_ERROR}, status=500)
 
     return web.Response(
         body=pdf_bytes,
@@ -1133,9 +1293,7 @@ async def api_driver_pdf(request: web.Request) -> web.Response:
     )
 
 
-@require_admin_api
-async def api_top_drivers(request: web.Request) -> web.Response:
-    """GET /admin/api/top-drivers - top 10 drivers by total_orders."""
+def _top_drivers_payload() -> list:
     session = get_session()
     try:
         drivers = (
@@ -1144,18 +1302,73 @@ async def api_top_drivers(request: web.Request) -> web.Response:
             .limit(10)
             .all()
         )
-        result = []
-        for d in drivers:
-            result.append({
+        return [
+            {
                 "id": d.id,
                 "first_name": d.first_name,
                 "last_name": d.last_name,
                 "phone": d.phone,
                 "total_orders": d.total_orders or 0,
-                "rating": d.rating or 5.0,
+                # NOT `or 5.0`: an unrated driver (rating 0/NULL) was reported as a
+                # perfect 5. `rating_count` lets the UI print "—" instead of inventing
+                # a score.
+                "rating": d.rating,
+                "rating_count": d.rating_count or 0,
                 "is_online": d.is_online,
-            })
-        return web.json_response(result)
+                "is_verified": d.is_verified,
+                "is_blocked": d.is_blocked,
+            }
+            for d in drivers
+        ]
+    finally:
+        session.close()
+
+
+@require_admin_api
+async def api_top_drivers(request: web.Request) -> web.Response:
+    """GET /admin/api/top-drivers - top 10 drivers by total_orders."""
+    return web.json_response(await asyncio.to_thread(_top_drivers_payload))
+
+
+def _driver_detail_payload(driver_id: int) -> dict | None:
+    session = get_session()
+    try:
+        d = session.query(Driver).filter_by(id=driver_id).first()
+        if not d:
+            return None
+        return {
+            "id": d.id,
+            "telegram_id": d.telegram_id,
+            "phone": d.phone,
+            "contact_phone": d.contact_phone,
+            "first_name": d.first_name,
+            "last_name": d.last_name,
+            "pinfl": d.pinfl,
+            "car_model": d.car_model,
+            "car_number": d.car_number,
+            "car_color": d.car_color,
+            "car_year": d.car_year,
+            # Report what is stored. `or 4` / `or 5.0` invented a value for a real 0.
+            "seats": d.seats,
+            "balance": d.balance or 0,
+            "rating": d.rating,
+            "rating_count": d.rating_count or 0,
+            "total_orders": d.total_orders or 0,
+            "is_online": d.is_online,
+            "is_verified": d.is_verified,
+            "is_blocked": d.is_blocked,
+            "documents_submitted": d.documents_submitted,
+            "subscription_until": _iso(d.subscription_until),
+            "profile_photo_url": d.profile_photo_url,
+            "created_at": _iso(d.created_at),
+            "last_active": _iso(d.last_active),
+            "has_license": bool(d.license_file_id or d.license_photo_url),
+            "has_tech_passport": bool(d.tech_passport_file_id or d.tech_passport_url),
+            "has_car_photo": bool(d.car_photo_file_id or d.car_photo_url),
+            # The back sides are stored and included in the PDF but had no viewer.
+            "has_license_back": bool(d.license_back_url),
+            "has_tech_passport_back": bool(d.tech_passport_back_url),
+        }
     finally:
         session.close()
 
@@ -1167,42 +1380,10 @@ async def api_driver_detail(request: web.Request) -> web.Response:
         driver_id = int(request.match_info["id"])
     except (ValueError, KeyError):
         return web.json_response({"error": "Noto'g'ri ID"}, status=400)
-
-    session = get_session()
-    try:
-        d = session.query(Driver).filter_by(id=driver_id).first()
-        if not d:
-            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
-        return web.json_response({
-            "id": d.id,
-            "telegram_id": d.telegram_id,
-            "phone": d.phone,
-            "first_name": d.first_name,
-            "last_name": d.last_name,
-            "pinfl": d.pinfl,
-            "car_model": d.car_model,
-            "car_number": d.car_number,
-            "car_color": d.car_color,
-            "car_year": d.car_year,
-            "seats": d.seats or 4,
-            "balance": d.balance or 0,
-            "rating": d.rating or 5.0,
-            "rating_count": d.rating_count or 0,
-            "total_orders": d.total_orders or 0,
-            "is_online": d.is_online,
-            "is_verified": d.is_verified,
-            "is_blocked": d.is_blocked,
-            "documents_submitted": d.documents_submitted,
-            "subscription_until": d.subscription_until.isoformat() if d.subscription_until else None,
-            "profile_photo_url": d.profile_photo_url,
-            "created_at": d.created_at.isoformat() if d.created_at else None,
-            "last_active": d.last_active.isoformat() if d.last_active else None,
-            "has_license": bool(d.license_file_id or d.license_photo_url),
-            "has_tech_passport": bool(d.tech_passport_file_id or d.tech_passport_url),
-            "has_car_photo": bool(d.car_photo_file_id or d.car_photo_url),
-        })
-    finally:
-        session.close()
+    payload = await asyncio.to_thread(_driver_detail_payload, driver_id)
+    if payload is None:
+        return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+    return web.json_response(payload)
 
 
 @require_admin_api
@@ -1217,28 +1398,40 @@ async def api_driver_photo(request: web.Request) -> web.Response:
     except (ValueError, KeyError):
         return web.json_response({"error": "Noto'g'ri ID"}, status=400)
     kind = request.match_info.get("kind", "")
-    if kind not in ("license", "tech_passport", "car"):
+    # Whitelist, so `kind` can only ever be a dict key — it never reaches the filesystem.
+    # `license_back` / `tech_passport_back` are stored and printed into the PDF but had no
+    # viewer at all until now.
+    if kind not in (
+        "license", "license_back", "tech_passport", "tech_passport_back", "car",
+    ):
         return web.json_response({"error": "Noto'g'ri turi"}, status=400)
 
-    session = get_session()
-    try:
-        d = session.query(Driver).filter_by(id=driver_id).first()
-        if not d:
-            return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
-        url_map = {
-            "license": d.license_photo_url,
-            "tech_passport": d.tech_passport_url,
-            "car": d.car_photo_url,
-        }
-        file_id_map = {
-            "license": d.license_file_id,
-            "tech_passport": d.tech_passport_file_id,
-            "car": d.car_photo_file_id,
-        }
-        uploaded_url = url_map.get(kind)
-        file_id = file_id_map.get(kind)
-    finally:
-        session.close()
+    def _lookup() -> tuple[str | None, str | None] | None:
+        session = get_session()
+        try:
+            d = session.query(Driver).filter_by(id=driver_id).first()
+            if not d:
+                return None
+            url_map = {
+                "license": d.license_photo_url,
+                "license_back": d.license_back_url,
+                "tech_passport": d.tech_passport_url,
+                "tech_passport_back": d.tech_passport_back_url,
+                "car": d.car_photo_url,
+            }
+            file_id_map = {
+                "license": d.license_file_id,
+                "tech_passport": d.tech_passport_file_id,
+                "car": d.car_photo_file_id,
+            }
+            return url_map.get(kind), file_id_map.get(kind)
+        finally:
+            session.close()
+
+    found = await asyncio.to_thread(_lookup)
+    if found is None:
+        return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+    uploaded_url, file_id = found
 
     # 1) App-uploaded image on local/private disk.
     if uploaded_url:
@@ -1248,6 +1441,8 @@ async def api_driver_photo(request: web.Request) -> web.Response:
             return web.FileResponse(fpath, headers={
                 "Cache-Control": "private, no-store",
                 "X-Content-Type-Options": "nosniff",
+                # Never let a stored document render as an inline page.
+                "Content-Disposition": f'inline; filename="{kind}_{driver_id}"',
             })
 
     # 2) Telegram file stored by the bot at registration.
@@ -1257,11 +1452,29 @@ async def api_driver_photo(request: web.Request) -> web.Response:
             try:
                 tg_file = await bot.get_file(file_id)
                 data = await tg_file.download_as_bytearray()
-                return web.Response(body=bytes(data), content_type="image/jpeg")
+                return web.Response(
+                    body=bytes(data),
+                    content_type="image/jpeg",
+                    headers={
+                        "Cache-Control": "private, no-store",
+                        # The bytes come from Telegram and are labelled image/jpeg
+                        # optimistically; nosniff stops the browser treating a
+                        # mislabelled document as HTML.
+                        "X-Content-Type-Options": "nosniff",
+                        "Content-Disposition": f'inline; filename="{kind}_{driver_id}.jpg"',
+                    },
+                )
             except Exception as e:
                 logger.warning("Could not download driver photo %s: %s", file_id, e)
+        else:
+            # API-only deployment: the file lives in Telegram and there is no bot here.
+            # A bare 404 gave the UI nothing to explain.
+            logger.info("driver photo %s needs the Telegram bot, which is not attached", kind)
+            return web.json_response(
+                {"error": "Bu hujjat Telegram'da saqlangan, bot ulanmagan"}, status=404
+            )
 
-    return web.Response(status=404)
+    return web.json_response({"error": "Hujjat topilmadi"}, status=404)
 
 
 def _norm_phone_admin(phone) -> str:
@@ -1292,22 +1505,38 @@ async def api_create_driver(request: web.Request) -> web.Response:
     except (ValueError, TypeError):
         telegram_id = None
 
+    # The duplicate check has to normalise every stored phone in Python, so this is an
+    # O(all drivers) scan — it belongs in a worker thread, not on the loop the bot shares.
+    result = await asyncio.to_thread(
+        _create_driver_in_db,
+        data,
+        phone,
+        telegram_id,
+        client_ip(request),
+        request.headers.get("User-Agent", ""),
+    )
+    return web.json_response(result["body"], status=result["status"])
+
+
+def _create_driver_in_db(data: dict, phone: str, telegram_id, ip, user_agent) -> dict:
     session = get_session()
     try:
         # Duplicate check by telegram_id or normalized phone.
         if telegram_id:
-            if session.query(Driver).filter_by(telegram_id=telegram_id).first():
-                return web.json_response(
-                    {"error": "Bu Telegram ID bilan haydovchi mavjud"}, status=409
-                )
+            if session.query(Driver.id).filter_by(telegram_id=telegram_id).first():
+                return {
+                    "body": {"error": "Bu Telegram ID bilan haydovchi mavjud"},
+                    "status": 409,
+                }
         # Two columns instead of whole ORM objects: the phone has to be normalised in
         # Python (it is stored in whatever shape it was entered), but loading every
         # Driver row with all its columns to do it was needlessly heavy.
         for _existing_id, existing_phone in session.query(Driver.id, Driver.phone).all():
             if _norm_phone_admin(existing_phone) == phone:
-                return web.json_response(
-                    {"error": "Bu telefon raqam bilan haydovchi mavjud"}, status=409
-                )
+                return {
+                    "body": {"error": "Bu telefon raqam bilan haydovchi mavjud"},
+                    "status": 409,
+                }
 
         # telegram_id is NOT NULL & unique in the model; synthesize one from the phone
         # digits when the admin didn't supply a real Telegram id.
@@ -1316,15 +1545,15 @@ async def api_create_driver(request: web.Request) -> web.Response:
         # synthetic one after a phone edit). That surfaced as an IntegrityError inside the
         # blanket handler and returned the raw unique-constraint text as a 500.
         if not telegram_id and session.query(Driver.id).filter_by(telegram_id=tg).first():
-            return web.json_response(
-                {
+            return {
+                "body": {
                     "error": (
                         "Bu telefon raqamdan yasalgan Telegram ID band. "
                         "Haydovchining haqiqiy Telegram ID sini kiriting."
                     )
                 },
-                status=409,
-            )
+                "status": 409,
+            }
         driver = Driver(
             telegram_id=tg,
             phone=phone,
@@ -1339,33 +1568,37 @@ async def api_create_driver(request: web.Request) -> web.Response:
         )
         session.add(driver)
         session.flush()
-        add_admin_audit(
+        add_actor_audit(
             session,
-            request,
-            "driver.create",
+            actor=config.ADMIN_USERNAME,
+            action="driver.create",
             target_type="driver",
             target_id=driver.id,
             details={"phone": phone, "is_verified": False},
+            remote_ip=ip,
+            user_agent=user_agent,
         )
         session.commit()
         session.refresh(driver)
-        return web.json_response({
-            "ok": True,
-            "detail": "Haydovchi qo'shildi",
-            "id": driver.id,
-        }, status=201)
+        return {
+            "body": {"ok": True, "detail": "Haydovchi qo'shildi", "id": driver.id},
+            "status": 201,
+        }
     except IntegrityError:
         # Lost a race against another admin (or the bot) inserting the same phone /
         # telegram_id. A duplicate is a client-side conflict, not a server fault.
         session.rollback()
         logger.warning("admin: driver.create hit a uniqueness conflict for %s", phone)
-        return web.json_response(
-            {"error": "Bu haydovchi allaqachon mavjud (telefon yoki Telegram ID band)"},
-            status=409,
-        )
+        return {
+            "body": {
+                "error": "Bu haydovchi allaqachon mavjud (telefon yoki Telegram ID band)"
+            },
+            "status": 409,
+        }
     except Exception:
         session.rollback()
-        return _server_error("driver.create")
+        logger.exception("admin: driver.create failed")
+        return {"body": {"error": INTERNAL_ERROR}, "status": 500}
     finally:
         session.close()
 
@@ -1512,12 +1745,23 @@ def _statistics_payload() -> dict:
             User.created_at >= now - timedelta(days=366)
         ).all():
             if created_at is not None:
-                key = created_at.strftime("%Y-%m")
+                # Local month, matching the daily chart. Using UTC here while `daily`
+                # used local time made the two charts disagree at month boundaries.
+                key = (local_day_str(created_at) or "")[:7]
                 if key in monthly:
                     monthly[key] += 1
         monthly_new_users = [{"month": k, "count": v} for k, v in monthly.items()]
 
-        avg_driver_rating = round(session.query(func.avg(Driver.rating)).scalar() or 0, 2)
+        # Average only drivers who have actually been rated. Driver.rating defaults to
+        # 5.0, so averaging every row pulled the fleet score toward 5 and the number was
+        # meaningless — a brand-new fleet with zero ratings reported "5.00".
+        avg_driver_rating = round(
+            session.query(func.avg(Driver.rating))
+            .filter(Driver.rating_count > 0)
+            .scalar() or 0,
+            2,
+        )
+        rated_drivers = session.query(Driver).filter(Driver.rating_count > 0).count()
 
         return {
             "new_users": new_users,
@@ -1536,6 +1780,7 @@ def _statistics_payload() -> dict:
             "completion_rate": completion_rate,
             "cancellation_rate": cancellation_rate,
             "avg_driver_rating": avg_driver_rating,
+            "rated_drivers": rated_drivers,
             "orders_by_weekday": orders_by_weekday,
             "repeat_customers": repeat_customers,
             "one_time_customers": one_time_customers,
@@ -1668,7 +1913,7 @@ def _push_log_payload(status_filter: str) -> dict:
                     push_type = None
             rows.append({
                 "id": log.id,
-                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "created_at": _iso(log.created_at),
                 "recipient_type": log.recipient_type,
                 "recipient_id": log.recipient_id,
                 "recipient_name": names.get(log.recipient_id),
@@ -1710,6 +1955,9 @@ async def api_push_receipts(request: web.Request) -> web.Response:
         result = await check_push_receipts(session)
         return web.json_response(result)
     except Exception:
+        # check_push_receipts writes NotificationLog rows; roll back explicitly so a
+        # mid-flight failure cannot leave a half-applied transaction on the session.
+        session.rollback()
         return _server_error("push.receipts")
     finally:
         session.close()
