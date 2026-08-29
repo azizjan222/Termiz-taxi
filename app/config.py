@@ -113,6 +113,21 @@ def _resolve_database_url() -> str:
 DATABASE_URL = _resolve_database_url()
 LEGACY_JSON_PATH = _get("LEGACY_JSON_PATH", "/data/taksi_baza.json")
 
+# --- Connection pool (applied to networked databases only; see app/database.py) ---
+#
+# Defaults are sized for one single-process deployment: the API handlers, both Telegram
+# bots and the four background schedulers all share this pool. A request costs up to two
+# connections (the auth lookup opens its own session before the handler's), and each
+# WebSocket handshake plus each scheduler tick takes one more, so the floor has to sit
+# comfortably above "one per concurrent request".
+DB_POOL_SIZE = _get_int("DB_POOL_SIZE", 10)
+DB_MAX_OVERFLOW = _get_int("DB_MAX_OVERFLOW", 20)
+#: Seconds to wait for a free connection before failing instead of hanging forever.
+DB_POOL_TIMEOUT = _get_int("DB_POOL_TIMEOUT", 30)
+#: Recycle below the provider's idle cutoff. Railway/PgBouncer drop idle connections at
+#: ~30 min; 25 min keeps us under that without churning healthy connections.
+DB_POOL_RECYCLE = _get_int("DB_POOL_RECYCLE", 1500)
+
 
 def _resolve_upload_dir() -> str:
     """Where uploaded files (profile photos, car/license docs, topup receipts) live.
