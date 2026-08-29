@@ -5,6 +5,7 @@ from typing import Any
 from aiohttp import web
 
 from app import config
+from app.admin.middleware import client_ip
 from app.models import AdminAuditLog
 
 
@@ -50,6 +51,10 @@ def add_admin_audit(
         target_type=target_type,
         target_id=target_id,
         details=details,
-        remote_ip=request.remote,
+        # client_ip(), not request.remote: behind the platform's proxy `request.remote` is
+        # the load balancer for every caller, so every audit row — including
+        # auth.login_failure and driver.balance_adjust — recorded the same useless IP and
+        # the trail could not attribute a money movement to a source.
+        remote_ip=client_ip(request),
         user_agent=request.headers.get("User-Agent", ""),
     )

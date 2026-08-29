@@ -8,12 +8,15 @@ from datetime import datetime, timedelta
 
 from aiohttp import web
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 
 from app import config
 from app.admin.audit import add_admin_audit
 from app.admin.middleware import require_admin_api
 from app.database import get_session
 from app.models import (
+    AdminAuditLog,
     Announcement,
     BalanceTransaction,
     Driver,
@@ -42,6 +45,34 @@ logger = logging.getLogger(__name__)
 
 # Sanity ceiling for a single route fare, well inside the int4 column range.
 MAX_ROUTE_PRICE = 100_000_000
+
+# Audiences the broadcast endpoint accepts. Anything else used to fall through, match no
+# recipients, and still commit an Announcement row that no audience filter can ever read.
+PUSH_TARGETS = ("all", "drivers", "passengers", "specific")
+
+# Every admin mutation ends in a blanket `except Exception`. Returning `str(e)` from there
+# put raw SQLAlchemy text — which stringifies the DSN, credentials included — into the
+# browser. The real cause goes to the log; the client gets a stable Uzbek message.
+INTERNAL_ERROR = "Ichki xatolik. Iltimos qayta urinib ko'ring."
+
+
+def _server_error(where: str) -> web.Response:
+    """Log the real exception and return a message that leaks nothing."""
+    logger.exception("admin: %s failed", where)
+    return web.json_response({"error": INTERNAL_ERROR}, status=500)
+
+
+def _parse_int_field(data: dict, key: str) -> int:
+    """Parse `data[key]` as an int or raise ValueError.
+
+    JSON null (which is what `JSON.stringify` turns `parseInt("")` -> NaN into) and
+    booleans are rejected: `int(None)` used to raise TypeError inside the blanket
+    handler and surface as a 500 with the raw Python error in the alert box.
+    """
+    value = data[key]
+    if value is None or isinstance(value, bool) or isinstance(value, (list, dict)):
+        raise ValueError(key)
+    return int(value)
 
 
 # Telegram is rate-limited to ~30 messages/second, so a broadcast to a large audience
@@ -114,9 +145,7 @@ def _spawn_background(coro) -> None:
     task.add_done_callback(_background_tasks.discard)
 
 
-@require_admin_api
-async def api_stats(request: web.Request) -> web.Response:
-    """GET /admin/api/stats - dashboard statistics."""
+def _stats_payload() -> dict:
     session = get_session()
     try:
         drivers_count = session.query(Driver).count()
@@ -152,7 +181,7 @@ async def api_stats(request: web.Request) -> web.Response:
         ).all()
         revenue_month = sum(effective_commission(o) for o in rev_month_result)
 
-        return web.json_response({
+        return {
             "drivers_count": drivers_count,
             "passengers_count": passengers_count,
             "orders_count": orders_count,
@@ -160,14 +189,18 @@ async def api_stats(request: web.Request) -> web.Response:
             "online_drivers": online_drivers,
             "revenue_today": revenue_today,
             "revenue_month": revenue_month,
-        })
+        }
     finally:
         session.close()
 
 
 @require_admin_api
-async def api_drivers(request: web.Request) -> web.Response:
-    """GET /admin/api/drivers - list all drivers."""
+async def api_stats(request: web.Request) -> web.Response:
+    """GET /admin/api/stats - dashboard statistics."""
+    return web.json_response(await asyncio.to_thread(_stats_payload))
+
+
+def _drivers_payload() -> list:
     session = get_session()
     try:
         drivers = session.query(Driver).order_by(Driver.id.desc()).all()
@@ -197,14 +230,18 @@ async def api_drivers(request: web.Request) -> web.Response:
                 "has_tech_passport": bool(d.tech_passport_file_id or d.tech_passport_url),
                 "has_car_photo": bool(d.car_photo_file_id or d.car_photo_url),
             })
-        return web.json_response(result)
+        return result
     finally:
         session.close()
 
 
 @require_admin_api
-async def api_passengers(request: web.Request) -> web.Response:
-    """GET /admin/api/passengers - list all users."""
+async def api_drivers(request: web.Request) -> web.Response:
+    """GET /admin/api/drivers - list all drivers."""
+    return web.json_response(await asyncio.to_thread(_drivers_payload))
+
+
+def _passengers_payload() -> list:
     session = get_session()
     try:
         users = session.query(User).order_by(User.id.desc()).all()
@@ -217,22 +254,29 @@ async def api_passengers(request: web.Request) -> web.Response:
                 "last_name": u.last_name,
                 "language": u.language,
                 "bonus_balance": u.bonus_balance or 0,
-                "rating": u.rating,
+                # `or 0`: a legacy row with rating IS NULL printed the literal "null"
+                # in the passengers table.
+                "rating": u.rating or 0,
                 "is_blocked": u.is_blocked,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
             })
-        return web.json_response(result)
+        return result
     finally:
         session.close()
 
 
 @require_admin_api
-async def api_orders(request: web.Request) -> web.Response:
-    """GET /admin/api/orders?status=all|new|accepted|completed|cancelled."""
-    status_filter = request.query.get("status", "all")
+async def api_passengers(request: web.Request) -> web.Response:
+    """GET /admin/api/passengers - list all users."""
+    return web.json_response(await asyncio.to_thread(_passengers_payload))
+
+
+def _orders_payload(status_filter: str) -> list:
     session = get_session()
     try:
-        query = session.query(Order)
+        # joinedload: the driver of every row is rendered in the table, and a lazy
+        # relationship inside the loop below meant up to 200 extra SELECTs per page load.
+        query = session.query(Order).options(joinedload(Order.driver))
         if status_filter == "active":
             query = query.filter(
                 Order.status.in_(["new", "accepted", "in_progress"])
@@ -242,8 +286,7 @@ async def api_orders(request: web.Request) -> web.Response:
         orders = query.order_by(Order.id.desc()).limit(200).all()
         result = []
         for o in orders:
-            # Driver who took the order (if any). The relationship is loaded lazily;
-            # 200 rows is small enough that the extra lookups are negligible.
+            # Driver who took the order (if any) — eager-loaded by the query above.
             drv = o.driver if o.driver_id else None
             driver_name = None
             if drv:
@@ -272,9 +315,16 @@ async def api_orders(request: web.Request) -> web.Response:
                 "accepted_at": o.accepted_at.isoformat() if o.accepted_at else None,
                 "created_at": o.created_at.isoformat() if o.created_at else None,
             })
-        return web.json_response(result)
+        return result
     finally:
         session.close()
+
+
+@require_admin_api
+async def api_orders(request: web.Request) -> web.Response:
+    """GET /admin/api/orders?status=all|new|accepted|completed|cancelled."""
+    status_filter = request.query.get("status", "all")
+    return web.json_response(await asyncio.to_thread(_orders_payload, status_filter))
 
 
 @require_admin_api
@@ -293,6 +343,12 @@ async def api_push(request: web.Request) -> web.Response:
 
     if not message:
         return web.json_response({"error": "Xabar matni bo'sh"}, status=400)
+
+    # Validate the audience. An unknown target matched nobody yet still committed an
+    # Announcement row with audience="user" and no recipient — permanently orphaned,
+    # readable by no one, and the response still claimed success.
+    if target not in PUSH_TARGETS:
+        return web.json_response({"error": "target noto'g'ri"}, status=400)
 
     # Reach bot-only recipients over Telegram (default on). Without this the broadcast is
     # limited to people who installed the mobile app, which in practice was almost nobody.
@@ -472,9 +528,9 @@ async def api_verify_driver(request: web.Request) -> web.Response:
         add_admin_audit(session, request, "driver.verify", target_type="driver", target_id=driver.id)
         session.commit()
         return web.json_response({"ok": True, "detail": "Tasdiqlandi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("driver.verify")
     finally:
         session.close()
 
@@ -495,9 +551,9 @@ async def api_reject_driver(request: web.Request) -> web.Response:
         add_admin_audit(session, request, "driver.reject", target_type="driver", target_id=driver.id)
         session.commit()
         return web.json_response({"ok": True, "detail": "Rad etildi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("driver.reject")
     finally:
         session.close()
 
@@ -528,9 +584,9 @@ async def api_block_driver(request: web.Request) -> web.Response:
         except Exception:
             pass
         return web.json_response({"ok": True, "detail": "Haydovchi bloklandi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("driver.block")
     finally:
         session.close()
 
@@ -559,11 +615,108 @@ async def api_unblock_driver(request: web.Request) -> web.Response:
         except Exception:
             pass
         return web.json_response({"ok": True, "detail": "Blok bekor qilindi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("driver.unblock")
     finally:
         session.close()
+
+
+async def _set_passenger_blocked(request: web.Request, blocked: bool) -> web.Response:
+    """Block or unblock a passenger.
+
+    `User.is_blocked` is already enforced at the authentication layer
+    (`app/utils/auth.py`: a blocked user never resolves), but the panel had no way to set
+    it — the flag could only be flipped straight in the database.
+    """
+    user_id = int(request.match_info["id"])
+    action = "user.block" if blocked else "user.unblock"
+    session = get_session()
+    try:
+        user = session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return web.json_response({"error": "Yo'lovchi topilmadi"}, status=404)
+        user.is_blocked = blocked
+        user_db_id = user.id
+        add_admin_audit(session, request, action, target_type="user", target_id=user.id)
+        session.commit()
+        # Best-effort notice; never let a push failure undo a committed block.
+        try:
+            await send_push(
+                session,
+                recipient_type="user",
+                recipient_id=user_db_id,
+                title="Akkaunt bloklandi" if blocked else "Blok bekor qilindi",
+                body=(
+                    "Akkauntingiz administrator tomonidan bloklandi. "
+                    "Savollar uchun qo'llab-quvvatlashga murojaat qiling."
+                    if blocked
+                    else "Akkauntingiz blokdan chiqarildi. Endi buyurtma berishingiz mumkin."
+                ),
+            )
+        except Exception:
+            pass
+        return web.json_response({
+            "ok": True,
+            "detail": "Yo'lovchi bloklandi" if blocked else "Blok bekor qilindi",
+        })
+    except Exception:
+        session.rollback()
+        return _server_error(action)
+    finally:
+        session.close()
+
+
+@require_admin_api
+async def api_block_passenger(request: web.Request) -> web.Response:
+    """POST /admin/api/passengers/{id}/block - block a passenger."""
+    return await _set_passenger_blocked(request, True)
+
+
+@require_admin_api
+async def api_unblock_passenger(request: web.Request) -> web.Response:
+    """POST /admin/api/passengers/{id}/unblock - lift a passenger's block."""
+    return await _set_passenger_blocked(request, False)
+
+
+def _audit_payload(limit: int, action_filter: str) -> list:
+    session = get_session()
+    try:
+        query = session.query(AdminAuditLog)
+        if action_filter:
+            # Prefix match so "driver." shows every driver action.
+            query = query.filter(AdminAuditLog.action.like(f"{action_filter}%"))
+        rows = query.order_by(AdminAuditLog.id.desc()).limit(limit).all()
+        return [
+            {
+                "id": r.id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "admin_username": r.admin_username,
+                "action": r.action,
+                "target_type": r.target_type,
+                "target_id": r.target_id,
+                "details": r.details,
+                "remote_ip": r.remote_ip,
+            }
+            for r in rows
+        ]
+    finally:
+        session.close()
+
+
+@require_admin_api
+async def api_audit(request: web.Request) -> web.Response:
+    """GET /admin/api/audit?action=&limit= - read the admin audit trail.
+
+    The panel wrote AdminAuditLog rows from day one but had no way to read them back, so
+    the trail was only reachable with database access.
+    """
+    try:
+        limit = min(max(int(request.query.get("limit", 200)), 1), 500)
+    except (TypeError, ValueError):
+        limit = 200
+    action_filter = (request.query.get("action") or "").strip()[:50]
+    return web.json_response(await asyncio.to_thread(_audit_payload, limit, action_filter))
 
 
 @require_admin_api
@@ -701,7 +854,7 @@ async def api_topup_driver_balance(request: web.Request) -> web.Response:
             "balance": new_balance,
             "replayed": False,
         })
-    except Exception as e:
+    except Exception:
         session.rollback()
         # A concurrent retry may win the unique key race. Report the committed result
         # instead of turning a successful one-time adjustment into a 500 response.
@@ -723,8 +876,7 @@ async def api_topup_driver_balance(request: web.Request) -> web.Response:
                 {"error": "Bu idempotency_key boshqa o'zgarish uchun ishlatilgan"},
                 status=409,
             )
-        logger.exception("Admin balance adjustment failed")
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("driver.balance_adjust")
     finally:
         session.close()
 
@@ -776,7 +928,7 @@ async def api_update_route(request: web.Request) -> web.Response:
                 # Parse defensively: a non-numeric value used to fall through to the generic
                 # `except Exception` below and return the raw exception text as a 500.
                 try:
-                    value = int(data[field])
+                    value = _parse_int_field(data, field)
                 except (TypeError, ValueError):
                     return web.json_response(
                         {"error": f"'{field}' butun son bo'lishi kerak"}, status=400
@@ -813,9 +965,9 @@ async def api_update_route(request: web.Request) -> web.Response:
         )
         session.commit()
         return web.json_response({"ok": True, "detail": "Saqlandi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("route.update")
     finally:
         session.close()
 
@@ -885,7 +1037,15 @@ async def api_update_settings(request: web.Request) -> web.Response:
         for key, (minimum, maximum) in limits.items():
             if key not in data:
                 continue
-            value = int(data[key])
+            # Parse defensively. Clearing a field in the form sends `null`
+            # (JSON.stringify(NaN) === "null"), and int(None) raised TypeError inside the
+            # blanket handler below — the admin got a 500 with the raw Python error.
+            try:
+                value = _parse_int_field(data, key)
+            except (TypeError, ValueError):
+                return web.json_response(
+                    {"error": f"'{key}' butun son bo'lishi kerak"}, status=400
+                )
             if not minimum <= value <= maximum:
                 return web.json_response({"error": f"{key} diapazondan tashqarida"}, status=400)
             existing = session.query(Setting).filter_by(key=key).first()
@@ -905,9 +1065,9 @@ async def api_update_settings(request: web.Request) -> web.Response:
         )
         session.commit()
         return web.json_response({"ok": True, "detail": "Sozlamalar saqlandi"})
-    except Exception as e:
+    except Exception:
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        return _server_error("settings.update")
     finally:
         session.close()
 
@@ -1140,8 +1300,11 @@ async def api_create_driver(request: web.Request) -> web.Response:
                 return web.json_response(
                     {"error": "Bu Telegram ID bilan haydovchi mavjud"}, status=409
                 )
-        for existing in session.query(Driver).all():
-            if _norm_phone_admin(existing.phone) == phone:
+        # Two columns instead of whole ORM objects: the phone has to be normalised in
+        # Python (it is stored in whatever shape it was entered), but loading every
+        # Driver row with all its columns to do it was needlessly heavy.
+        for _existing_id, existing_phone in session.query(Driver.id, Driver.phone).all():
+            if _norm_phone_admin(existing_phone) == phone:
                 return web.json_response(
                     {"error": "Bu telefon raqam bilan haydovchi mavjud"}, status=409
                 )
@@ -1149,6 +1312,19 @@ async def api_create_driver(request: web.Request) -> web.Response:
         # telegram_id is NOT NULL & unique in the model; synthesize one from the phone
         # digits when the admin didn't supply a real Telegram id.
         tg = telegram_id or int(phone.lstrip("+") or "0")
+        # A synthesized id can collide with a real Telegram id (or with an earlier
+        # synthetic one after a phone edit). That surfaced as an IntegrityError inside the
+        # blanket handler and returned the raw unique-constraint text as a 500.
+        if not telegram_id and session.query(Driver.id).filter_by(telegram_id=tg).first():
+            return web.json_response(
+                {
+                    "error": (
+                        "Bu telefon raqamdan yasalgan Telegram ID band. "
+                        "Haydovchining haqiqiy Telegram ID sini kiriting."
+                    )
+                },
+                status=409,
+            )
         driver = Driver(
             telegram_id=tg,
             phone=phone,
@@ -1178,25 +1354,23 @@ async def api_create_driver(request: web.Request) -> web.Response:
             "detail": "Haydovchi qo'shildi",
             "id": driver.id,
         }, status=201)
-    except Exception as e:
+    except IntegrityError:
+        # Lost a race against another admin (or the bot) inserting the same phone /
+        # telegram_id. A duplicate is a client-side conflict, not a server fault.
         session.rollback()
-        return web.json_response({"error": str(e)}, status=500)
+        logger.warning("admin: driver.create hit a uniqueness conflict for %s", phone)
+        return web.json_response(
+            {"error": "Bu haydovchi allaqachon mavjud (telefon yoki Telegram ID band)"},
+            status=409,
+        )
+    except Exception:
+        session.rollback()
+        return _server_error("driver.create")
     finally:
         session.close()
 
 
-@require_admin_api
-async def api_statistics(request: web.Request) -> web.Response:
-    """GET /admin/api/statistics - rich analytics for the statistics page.
-
-    Returns: new users/drivers over rolling windows (24h / 7d / 30d / 1y), active
-    users (DAU/WAU/MAU/yearly via last_active), district usage (by order from_city),
-    daily growth (30 days), monthly growth (12 months), peak hours, order-status and
-    service-type breakdown, top routes, completion/cancellation rates and avg rating.
-
-    All aggregation is done in Python (not SQL date functions) so it works identically
-    on SQLite and Postgres.
-    """
+def _statistics_payload() -> dict:
     session = get_session()
     try:
         now = datetime.utcnow()
@@ -1345,7 +1519,7 @@ async def api_statistics(request: web.Request) -> web.Response:
 
         avg_driver_rating = round(session.query(func.avg(Driver.rating)).scalar() or 0, 2)
 
-        return web.json_response({
+        return {
             "new_users": new_users,
             "new_drivers": new_drivers,
             "active": active,
@@ -1369,14 +1543,33 @@ async def api_statistics(request: web.Request) -> web.Response:
             "repeat_rate": repeat_rate,
             "avg_order_value": avg_order_value,
             "total_gmv": gmv,
-        })
+        }
     finally:
         session.close()
 
 
 @require_admin_api
-async def api_push_log(request: web.Request) -> web.Response:
-    """GET /admin/api/push-log?status=all|sent|failed - push delivery diagnostics.
+async def api_statistics(request: web.Request) -> web.Response:
+    """GET /admin/api/statistics - rich analytics for the statistics page.
+
+    Returns: new users/drivers over rolling windows (24h / 7d / 30d / 1y), active
+    users (DAU/WAU/MAU/yearly via last_active), district usage (by order from_city),
+    daily growth (30 days), monthly growth (12 months), peak hours, order-status and
+    service-type breakdown, top routes, completion/cancellation rates and avg rating.
+
+    All aggregation is done in Python (not SQL date functions) so it works identically
+    on SQLite and Postgres.
+
+    Runs in a worker thread: this is by far the heaviest query in the panel (a full pass
+    over `orders` plus ~20 COUNTs), the DB driver is synchronous, and this event loop is
+    shared with the Telegram bot — so loading this page used to freeze the bot for its
+    whole duration.
+    """
+    return web.json_response(await asyncio.to_thread(_statistics_payload))
+
+
+def _push_log_payload(status_filter: str) -> dict:
+    """GET /admin/api/push-log?status=all|sent|failed|delivered - push diagnostics.
 
     Every push already records its outcome in ``notification_log``, including the error
     string Expo returned, but nothing ever read that table back. When drivers reported
@@ -1385,7 +1578,6 @@ async def api_push_log(request: web.Request) -> web.Response:
     credential is missing all look identical from the outside. This surfaces the three
     apart.
     """
-    status_filter = request.query.get("status", "all")
     session = get_session()
     try:
         now = datetime.utcnow()
@@ -1451,7 +1643,9 @@ async def api_push_log(request: web.Request) -> web.Response:
         ]
 
         query = session.query(NotificationLog)
-        if status_filter in ("sent", "failed"):
+        # "delivered" belongs here too: Expo receipts and the Telegram fan-out both write
+        # that status, so those rows were invisible under every filter except "Barchasi".
+        if status_filter in ("sent", "failed", "delivered"):
             query = query.filter(NotificationLog.status == status_filter)
         logs = query.order_by(NotificationLog.id.desc()).limit(200).all()
 
@@ -1484,7 +1678,7 @@ async def api_push_log(request: web.Request) -> web.Response:
                 "error": log.error,
             })
 
-        return web.json_response({
+        return {
             "summary": {
                 "drivers_verified": drivers_verified,
                 "drivers_online": drivers_online,
@@ -1496,9 +1690,16 @@ async def api_push_log(request: web.Request) -> web.Response:
             },
             "online_without_token": online_without_token,
             "rows": rows,
-        })
+        }
     finally:
         session.close()
+
+
+@require_admin_api
+async def api_push_log(request: web.Request) -> web.Response:
+    """GET /admin/api/push-log - see _push_log_payload (runs in a worker thread)."""
+    status_filter = request.query.get("status", "all")
+    return web.json_response(await asyncio.to_thread(_push_log_payload, status_filter))
 
 
 @require_admin_api
@@ -1508,9 +1709,8 @@ async def api_push_receipts(request: web.Request) -> web.Response:
     try:
         result = await check_push_receipts(session)
         return web.json_response(result)
-    except Exception as e:
-        logger.error(f"Receipt check failed: {e}")
-        return web.json_response({"error": str(e)}, status=500)
+    except Exception:
+        return _server_error("push.receipts")
     finally:
         session.close()
 
@@ -1532,6 +1732,9 @@ def setup_api_routes(app: web.Application):
     app.router.add_post(r"/admin/api/drivers/{id:\d+}/reject", api_reject_driver)
     app.router.add_post(r"/admin/api/drivers/{id:\d+}/block", api_block_driver)
     app.router.add_post(r"/admin/api/drivers/{id:\d+}/unblock", api_unblock_driver)
+    app.router.add_post(r"/admin/api/passengers/{id:\d+}/block", api_block_passenger)
+    app.router.add_post(r"/admin/api/passengers/{id:\d+}/unblock", api_unblock_passenger)
+    app.router.add_get("/admin/api/audit", api_audit)
     app.router.add_post(r"/admin/api/drivers/{id:\d+}/balance", api_topup_driver_balance)
     app.router.add_get(r"/admin/api/drivers/{id:\d+}/pdf", api_driver_pdf)
     app.router.add_get("/admin/api/routes", api_routes)

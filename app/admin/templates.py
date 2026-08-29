@@ -26,18 +26,10 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans
 <div class="row">
 <nav class="col-md-2 sidebar p-0">
 <div class="p-3 text-white fw-bold">Sarix Go Admin</div>
-<a href="/admin/">Dashboard</a>
-<a href="/admin/statistics">📊 Statistika</a>
-<a href="/admin/drivers">Haydovchilar</a>
-<a href="/admin/passengers">Yo'lovchilar</a>
-<a href="/admin/orders">Buyurtmalar</a>
-<a href="/admin/push">Push xabar</a>
-<a href="/admin/push-log">🔔 Push diagnostika</a>
-<a href="/admin/routes">Yo'nalishlar</a>
-<a href="/admin/settings">Sozlamalar</a>
+{nav}
 <hr class="text-secondary">
 <form method="POST" action="/admin/logout" id="logout-form">
-<input type="hidden" name="csrf_token" value="">
+<input type="hidden" name="csrf_token" value="{csrf_token}">
 <button type="submit" class="logout-button">Chiqish</button>
 </form>
 </nav>
@@ -58,18 +50,45 @@ window.fetch=function(input,init){{
   const opts=Object.assign({{}},init||{{}});
   const method=String(opts.method||(input instanceof Request?input.method:'GET')).toUpperCase();
   const url=new URL(input instanceof Request?input.url:String(input),window.location.href);
-  if(!['GET','HEAD','OPTIONS'].includes(method)&&url.origin===window.location.origin){{
+  const sameOrigin=url.origin===window.location.origin;
+  if(!['GET','HEAD','OPTIONS'].includes(method)&&sameOrigin){{
     const headers=new Headers(opts.headers||(input instanceof Request?input.headers:undefined));
     headers.set('X-CSRF-Token',adminCookie('admin_csrf'));
     opts.headers=headers;
   }}
-  return originalFetch(input,opts);
+  // An expired session answers every API call with 401 JSON. Each page then tried to
+  // iterate that error object, threw, and left the table stuck on "..." with no hint that
+  // the admin had simply been logged out. Send them back to the login form instead.
+  return originalFetch(input,opts).then(function(res){{
+    if(res.status===401&&sameOrigin&&url.pathname.indexOf('/admin/')===0){{
+      window.location.href='/admin/login';
+    }}
+    return res;
+  }});
 }};
 document.addEventListener('DOMContentLoaded',()=>{{
+  // The token is rendered server-side; this only refreshes it if the cookie was rotated
+  // after the page was served. Logout must not depend on JS running at all.
   const field=document.querySelector('#logout-form input[name="csrf_token"]');
-  if(field)field.value=adminCookie('admin_csrf');
+  const cookie=adminCookie('admin_csrf');
+  if(field&&cookie)field.value=cookie;
 }});
-function esc(s){{if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}}
+// `if(!s)` also swallowed 0 and false, so any numeric column routed through esc()
+// rendered blank for a legitimate zero.
+function esc(s){{if(s===null||s===undefined)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}}
+// Shared error banner: every page used to fail silently in the console.
+function adminError(msg){{
+  const main=document.querySelector('.main-content');
+  if(!main)return;
+  let box=document.getElementById('admin-error-box');
+  if(!box){{
+    box=document.createElement('div');
+    box.id='admin-error-box';
+    box.className='alert alert-danger';
+    main.prepend(box);
+  }}
+  box.textContent=msg||'Ma\\'lumotni yuklashda xatolik. Sahifani yangilang.';
+}}
 </script>
 {extra_js}
 </body>
@@ -133,17 +152,19 @@ DASHBOARD_HTML = """<h2>Dashboard</h2>
 
 DASHBOARD_JS = """<script>
 fetch('/admin/api/stats').then(r=>r.json()).then(d=>{
+if(!d||d.error||d.drivers_count===undefined){adminError(d&&d.error?d.error:'Statistikani yuklab bo\\'lmadi');return;}
 document.getElementById('s-drivers').textContent=d.drivers_count;
 document.getElementById('s-passengers').textContent=d.passengers_count;
 document.getElementById('s-orders').textContent=d.orders_count;
 document.getElementById('s-active').textContent=d.active_orders;
 document.getElementById('s-online').textContent=d.online_drivers;
-document.getElementById('s-rev-today').textContent=d.revenue_today.toLocaleString()+' sum';
-document.getElementById('s-rev-month').textContent=d.revenue_month.toLocaleString()+' sum';
-}).catch(e=>console.error(e));
+document.getElementById('s-rev-today').textContent=(d.revenue_today||0).toLocaleString()+" so'm";
+document.getElementById('s-rev-month').textContent=(d.revenue_month||0).toLocaleString()+" so'm";
+}).catch(e=>{console.error(e);adminError('Statistikani yuklab bo\\'lmadi');});
 fetch('/admin/api/top-drivers').then(r=>r.json()).then(data=>{
 const tb=document.querySelector('#top-drivers-table tbody');
 tb.innerHTML='';
+if(!(Array.isArray(data)&&data.length))tb.innerHTML='<tr><td colspan="6" class="text-muted">Ma\\'lumot yo\\'q</td></tr>';
 (Array.isArray(data)?data:[]).forEach((d,i)=>{
 const online=d.is_online?'<span class="badge bg-info">Online</span>':'<span class="badge bg-secondary">Oflayn</span>';
 tb.innerHTML+=`<tr><td>${i+1}</td><td>${esc((d.first_name||'')+' '+(d.last_name||''))}</td><td>${esc(d.phone||'')}</td><td>${d.total_orders||0}</td><td>${(d.rating||5).toFixed(1)}</td><td>${online}</td></tr>`;
@@ -265,6 +286,10 @@ function _mkChart(id,cfg){
   _charts[id]=new Chart(el,cfg);
 }
 fetch('/admin/api/statistics').then(r=>r.json()).then(d=>{
+  // Guard the shape before touching nested fields: on an error payload the very first
+  // `d.new_users.day` threw, every card stayed on "..." and the only trace was in the
+  // browser console.
+  if(!d||d.error||!d.new_users){adminError(d&&d.error?d.error:'Statistikani yuklab bo\\'lmadi');return;}
   // ----- New users cards -----
   document.getElementById('nu-day').textContent=_fmt(d.new_users.day);
   document.getElementById('nu-week').textContent=_fmt(d.new_users.week);
@@ -319,6 +344,7 @@ fetch('/admin/api/statistics').then(r=>r.json()).then(d=>{
   _mkChart('chart-services',{type:'doughnut',data:{labels:svK.map(k=>SERVICE_LABELS[k]||k),datasets:[{data:svK.map(k=>d.service_types[k]),backgroundColor:PALETTE}]},options:{plugins:{legend:{position:'bottom'}}}});
 
   // ----- Districts (horizontal bar + table) -----
+  d.districts=d.districts||[];d.top_routes=d.top_routes||[];
   _mkChart('chart-districts',{type:'bar',data:{labels:d.districts.map(x=>x.name),datasets:[{label:'Buyurtmalar',data:d.districts.map(x=>x.count),backgroundColor:'#6610f2'}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}}});
   const dtb=document.querySelector('#districts-table tbody');dtb.innerHTML='';
   if(!d.districts.length)dtb.innerHTML='<tr><td colspan="3" class="text-muted">Hozircha ma\\'lumot yo\\'q</td></tr>';
@@ -328,7 +354,7 @@ fetch('/admin/api/statistics').then(r=>r.json()).then(d=>{
   const rtb=document.querySelector('#routes-stat-table tbody');rtb.innerHTML='';
   if(!d.top_routes.length)rtb.innerHTML='<tr><td colspan="3" class="text-muted">Hozircha ma\\'lumot yo\\'q</td></tr>';
   d.top_routes.forEach((x,i)=>{rtb.innerHTML+=`<tr><td>${i+1}</td><td>${esc(x.route)}</td><td>${_fmt(x.count)}</td></tr>`;});
-}).catch(e=>console.error(e));
+}).catch(e=>{console.error(e);adminError('Statistikani yuklab bo\\'lmadi');});
 </script>"""
 
 DRIVERS_HTML = """<h2>Haydovchilar</h2>
@@ -386,7 +412,20 @@ DRIVERS_HTML = """<h2>Haydovchilar</h2>
 DRIVERS_JS = """<script>
 let allDrivers=[];
 function loadDrivers(){
-fetch('/admin/api/drivers').then(r=>r.json()).then(data=>{allDrivers=Array.isArray(data)?data:[];renderDrivers();});
+fetch('/admin/api/drivers').then(r=>r.json()).then(data=>{
+if(!Array.isArray(data))adminError(data&&data.error?data.error:'Haydovchilarni yuklab bo\\'lmadi');
+allDrivers=Array.isArray(data)?data:[];renderDrivers();
+}).catch(()=>adminError('Haydovchilarni yuklab bo\\'lmadi'));
+}
+// A document can be recorded on the driver row while the file itself is unreachable (a
+// legacy Telegram file_id with no bot attached to this process). The <img> then rendered
+// as a broken-image icon with no explanation.
+function imgFallback(el){
+el.style.display='none';
+const note=document.createElement('div');
+note.className='text-danger small';
+note.textContent='Rasm yuklanmadi';
+el.parentNode.appendChild(note);
 }
 // Populate the car-model datalist (same list as the bot/app) for the new-driver form.
 fetch('/api/car-models').then(r=>r.json()).then(d=>{
@@ -409,13 +448,14 @@ return name.includes(q)||phone.includes(q);
 document.getElementById('driver-count').textContent=data.length+' ta';
 const tb=document.querySelector('#drivers-table tbody');
 tb.innerHTML='';
+if(!data.length)tb.innerHTML='<tr><td colspan="9" class="text-muted">Haydovchi topilmadi</td></tr>';
 data.forEach(d=>{
 const status=d.is_verified?'<span class="badge bg-success">Tasdiqlangan</span>':
 (d.documents_submitted?'<span class="badge bg-warning">Kutilmoqda</span>':'<span class="badge bg-secondary">Tasdiqlanmagan</span>');
 const online=d.is_online?'<span class="badge bg-info">Online</span>':'';
 tb.innerHTML+=`<tr>
 <td>${d.id}</td><td>${esc(d.first_name||'')} ${esc(d.last_name||'')} ${d.is_blocked?'<span class="badge bg-danger">🚫 Bloklangan</span>':''}</td><td>${esc(d.phone)}</td>
-<td>${esc(d.car_model||'-')}</td><td>${esc(d.car_number||'-')}</td><td>${d.balance.toLocaleString()}</td>
+<td>${esc(d.car_model||'-')}</td><td>${esc(d.car_number||'-')}</td><td>${(d.balance||0).toLocaleString()}</td>
 <td>${d.total_orders||0}</td>
 <td>${status} ${online}</td>
 <td>
@@ -443,7 +483,7 @@ let photos='';
 const kinds=[['license','Haydovchilik guvohnomasi',d.has_license],['tech_passport','Texnik pasport',d.has_tech_passport],['car','Mashina surati',d.has_car_photo]];
 kinds.forEach(([k,label,has])=>{
 if(has){photos+=`<div class="col-md-4 text-center mb-2"><div class="small text-muted">${esc(label)}</div>`+
-`<a href="/admin/api/drivers/${id}/photo/${k}" target="_blank" rel="noopener"><img src="/admin/api/drivers/${id}/photo/${k}" style="max-width:100%;max-height:160px;border:1px solid #ddd;border-radius:6px" loading="lazy"></a></div>`;}
+`<a href="/admin/api/drivers/${id}/photo/${k}" target="_blank" rel="noopener"><img src="/admin/api/drivers/${id}/photo/${k}" style="max-width:100%;max-height:160px;border:1px solid #ddd;border-radius:6px" loading="lazy" onerror="imgFallback(this)"></a></div>`;}
 else{photos+=`<div class="col-md-4 text-center mb-2"><div class="small text-muted">${esc(label)}</div><div class="text-muted">Yuborilmagan</div></div>`;}
 });
 body.innerHTML=`<table class="table table-sm table-bordered">
@@ -479,8 +519,22 @@ res.innerHTML='<span class="text-'+(ok?'success':'danger')+'">'+esc(d.detail||d.
 if(ok){['nd-phone','nd-first','nd-last','nd-pinfl','nd-carnum','nd-model','nd-year','nd-tgid'].forEach(i=>document.getElementById(i).value='');loadDrivers();}
 }).catch(()=>{res.innerHTML='<span class="text-danger">Xato</span>';});
 }
-function verifyDriver(id){fetch('/admin/api/drivers/'+id+'/verify',{method:'POST'}).then(()=>loadDrivers());}
-function rejectDriver(id){fetch('/admin/api/drivers/'+id+'/reject',{method:'POST'}).then(()=>loadDrivers());}
+// Both used to ignore the response completely: approving a driver with incomplete
+// documents returns 400 with the list of what is missing, and the admin saw nothing
+// happen at all.
+function verifyDriver(id){
+fetch('/admin/api/drivers/'+id+'/verify',{method:'POST'}).then(r=>r.json()).then(d=>{
+if(d.error)alert(d.error);
+loadDrivers();
+}).catch(()=>alert('Xatolik'));
+}
+function rejectDriver(id){
+if(!confirm('Haydovchini rad etamizmi? Tasdiq va hujjatlar holati bekor qilinadi.'))return;
+fetch('/admin/api/drivers/'+id+'/reject',{method:'POST'}).then(r=>r.json()).then(d=>{
+if(d.error)alert(d.error);
+loadDrivers();
+}).catch(()=>alert('Xatolik'));
+}
 const _topUpInFlight={};
 function topUpDriver(id){
 // Guard against a double-click / second tab: the idempotency key below is minted per
@@ -504,7 +558,7 @@ fetch('/admin/api/drivers/'+id+'/balance',{method:'POST',headers:{'Content-Type'
 }
 function pushDriver(id){
 const msg=prompt('Xabar matni:');
-if(msg)fetch('/admin/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:'specific',recipient_id:id,recipient_type:'driver',message:msg})}).then(r=>r.json()).then(d=>alert(d.detail||'Yuborildi'));
+if(msg)fetch('/admin/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:'specific',recipient_id:id,recipient_type:'driver',message:msg})}).then(r=>r.json()).then(d=>alert(d.detail||d.error||'Yuborildi')).catch(()=>alert('Xatolik'));
 }
 function blockDriver(id){
   if(!confirm('Haydovchini bloklashni tasdiqlaysizmi? U zakas ola olmaydi va ilovaga kira olmaydi.'))return;
@@ -528,7 +582,7 @@ PASSENGERS_HTML = """<h2>Yo'lovchilar</h2>
 </div>
 <div class="table-responsive">
 <table class="table table-striped table-sm" id="passengers-table">
-<thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Til</th><th>Bonus</th><th>Reyting</th><th>Ro'yxatdan o'tgan</th></tr></thead>
+<thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Til</th><th>Bonus</th><th>Reyting</th><th>Holat</th><th>Ro'yxatdan o'tgan</th><th>Amal</th></tr></thead>
 <tbody></tbody>
 </table>
 </div>"""
@@ -548,14 +602,33 @@ const cnt=document.getElementById('passenger-count');
 if(cnt)cnt.textContent=data.length+' ta';
 const tb=document.querySelector('#passengers-table tbody');
 tb.innerHTML='';
+if(!data.length){tb.innerHTML='<tr><td colspan="9" class="text-muted">Yo\\'lovchi yo\\'q</td></tr>';}
 data.forEach(u=>{
-tb.innerHTML+=`<tr><td>${u.id}</td><td>${esc(u.first_name||'')} ${esc(u.last_name||'')}</td><td>${esc(u.phone)}</td><td>${esc(u.language||'uz')}</td><td>${u.bonus_balance}</td><td>${u.rating}</td><td>${esc(u.created_at||'')}</td></tr>`;
+// `is_blocked` was returned by the API but had no column, so a blocked passenger looked
+// identical to an active one.
+const state=u.is_blocked?'<span class="badge bg-danger">🚫 Bloklangan</span>':'<span class="badge bg-success">Faol</span>';
+const act=u.is_blocked
+  ?`<button class="btn btn-sm btn-success" onclick="unblockPassenger(${u.id})">Blokdan chiqarish</button>`
+  :`<button class="btn btn-sm btn-outline-danger" onclick="blockPassenger(${u.id})">Bloklash</button>`;
+tb.innerHTML+=`<tr><td>${u.id}</td><td>${esc(u.first_name||'')} ${esc(u.last_name||'')}</td><td>${esc(u.phone)}</td><td>${esc(u.language||'uz')}</td><td>${(u.bonus_balance||0).toLocaleString()}</td><td>${Number(u.rating||0).toFixed(1)}</td><td>${state}</td><td>${esc(u.created_at||'')}</td><td>${act}</td></tr>`;
 });
 }
+function loadPassengers(){
 fetch('/admin/api/passengers').then(r=>r.json()).then(data=>{
+if(!Array.isArray(data))adminError(data&&data.error?data.error:'Yo\\'lovchilarni yuklab bo\\'lmadi');
 allPassengers=Array.isArray(data)?data:[];
 renderPassengers();
-});
+}).catch(()=>adminError('Yo\\'lovchilarni yuklab bo\\'lmadi'));
+}
+function blockPassenger(id){
+if(!confirm('Yo\\'lovchini bloklaysizmi? U ilovaga kira olmaydi va buyurtma bera olmaydi.'))return;
+fetch('/admin/api/passengers/'+id+'/block',{method:'POST'}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'OK');loadPassengers();}).catch(()=>alert('Xatolik'));
+}
+function unblockPassenger(id){
+if(!confirm('Yo\\'lovchini blokdan chiqaramizmi?'))return;
+fetch('/admin/api/passengers/'+id+'/unblock',{method:'POST'}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'OK');loadPassengers();}).catch(()=>alert('Xatolik'));
+}
+loadPassengers();
 </script>"""
 
 ORDERS_HTML = """<h2>Buyurtmalar</h2>
@@ -580,9 +653,14 @@ ORDERS_HTML = """<h2>Buyurtmalar</h2>
 ORDERS_JS = """<script>
 function loadOrders(){
 const st=document.getElementById('status-filter').value;
-fetch('/admin/api/orders?status='+st).then(r=>r.json()).then(data=>{
+fetch('/admin/api/orders?status='+st).then(r=>r.json()).then(payload=>{
 const tb=document.querySelector('#orders-table tbody');
 tb.innerHTML='';
+// An error response is an object, and calling .forEach on it threw — the table simply
+// stopped updating with nothing shown to the admin.
+const data=Array.isArray(payload)?payload:[];
+if(!Array.isArray(payload)){adminError(payload&&payload.error?payload.error:'Buyurtmalarni yuklab bo\\'lmadi');}
+if(!data.length){tb.innerHTML='<tr><td colspan="9" class="text-muted">Buyurtma yo\\'q</td></tr>';}
 data.forEach(o=>{
 const badge={'new':'bg-primary','accepted':'bg-info','completed':'bg-success','cancelled':'bg-danger'}[o.status]||'bg-secondary';
 const comm=(o.commission_effective||0);
@@ -596,9 +674,9 @@ driverHtml=`<div>${esc(o.driver_name||'-')}${carPart}</div>`+
 `<div class="text-muted small">${esc(o.driver_phone||'')}</div>`+
 (o.accepted_at?`<div class="text-muted small">${esc(fmt(o.accepted_at))}</div>`:'');
 }
-tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${esc(o.passenger_phone)}</td><td>${esc(o.from_city)} - ${esc(o.to_city)}</td><td>${o.price.toLocaleString()}</td><td>${commHtml}</td><td><span class="badge ${badge}">${esc(o.status)}</span></td><td>${driverHtml}</td><td>${esc(o.created_at||'')}</td></tr>`;
+tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${esc(o.passenger_phone)}</td><td>${esc(o.from_city)} - ${esc(o.to_city)}</td><td>${(o.price||0).toLocaleString()}</td><td>${commHtml}</td><td><span class="badge ${badge}">${esc(o.status)}</span></td><td>${driverHtml}</td><td>${esc(o.created_at||'')}</td></tr>`;
 });
-});
+}).catch(()=>adminError('Buyurtmalarni yuklab bo\\'lmadi'));
 }
 loadOrders();
 </script>"""
@@ -648,6 +726,7 @@ Ilovani ochib, bildirishnoma ruxsatini berishlari kerak — yoki ilovaning yangi
 <option value="all">Barchasi</option>
 <option value="failed">Faqat xatolar</option>
 <option value="sent">Faqat yuborilganlar</option>
+<option value="delivered">Faqat yetkazilganlar</option>
 </select>
 </div>
 <div class="table-responsive">
@@ -661,10 +740,14 @@ PUSH_LOG_JS = """<script>
 function loadPushLog(){
 const st=document.getElementById('pl-status').value;
 fetch('/admin/api/push-log?status='+st).then(r=>r.json()).then(d=>{
+if(!d||d.error||!d.summary){adminError(d&&d.error?d.error:'Push diagnostikani yuklab bo\\'lmadi');return;}
 const s=d.summary||{};
-document.getElementById('pl-online').textContent=s.drivers_online;
-document.getElementById('pl-online-token').textContent=s.drivers_online_with_token;
-const unreachable=(s.drivers_online-s.drivers_online_with_token);
+// Coalesce: on a partial payload these printed "undefined" in the cards and the
+// subtraction below produced NaN, which then drove the diagnosis text.
+const online=s.drivers_online||0, onlineToken=s.drivers_online_with_token||0;
+document.getElementById('pl-online').textContent=online;
+document.getElementById('pl-online-token').textContent=onlineToken;
+const unreachable=(online-onlineToken);
 document.getElementById('pl-unreachable').innerHTML=unreachable>0
 ?'<span class="text-danger">'+unreachable+' ta token yo\\'q</span>':'<span class="text-success">hammasida token bor</span>';
 document.getElementById('pl-sent').textContent=(s.last_24h||{}).sent||0;
@@ -688,7 +771,7 @@ msg='Expo '+sent+' ta push ni QABUL QILDI, lekin yetkazilganini hech biri tasdiq
 // outranks "some drivers are unreachable", and reporting the smaller problem first hid
 // the bigger one entirely.
 msg='Yetkazilgan push YO\\'Q — '+failed+' tasi rad etilgan. Pastdagi xato matnini o\\'qing. MismatchSenderId bo\\'lsa, ilovadagi google-services.json Expo dagi FCM kalitidan BOSHQA Firebase loyihasiga tegishli; DeviceNotRegistered bo\\'lsa token eskirgan.';cls='danger';
-}else if(s.drivers_online>0 && s.drivers_online_with_token===0){
+}else if(online>0 && onlineToken===0){
 msg='Online haydovchilarning HECH BIRIDA push token yo\\'q, ya\\'ni ilova yopiqda zakas hech kimga bormaydi. Ilova tokenni ro\\'yxatdan o\\'tkaza olmayapti — bildirishnoma ruxsati yoki eski ilova versiyasi.';cls='danger';
 }else if(unreachable>0){
 msg=unreachable+' ta online haydovchiga push BORA OLMAYDI (token yo\\'q). Ular zakasni faqat ilova ochiq turganda ko\\'radi — yopiqda o\\'tkazib yuboradi. Pastdagi ro\\'yxatdan kimligini ko\\'ring.'+(failed>0?' Bundan tashqari ba\\'zi push xato bilan qaytgan.':'');cls='warning';
@@ -714,13 +797,13 @@ if(!(s.top_errors||[]).length)et.innerHTML='<tr><td colspan="2" class="text-mute
 
 const tb=document.querySelector('#pl-table tbody');tb.innerHTML='';
 (d.rows||[]).forEach(r=>{
-const badge=r.status==='sent'?'bg-success':(r.status==='failed'?'bg-danger':'bg-secondary');
+const badge=r.status==='delivered'?'bg-success':(r.status==='sent'?'bg-primary':(r.status==='failed'?'bg-danger':'bg-secondary'));
 const who=r.recipient_name?esc(r.recipient_name):(esc(r.recipient_type||'')+' #'+r.recipient_id);
 const when=r.created_at?String(r.created_at).replace('T',' ').split('.')[0]:'';
 tb.innerHTML+=`<tr><td>${r.id}</td><td>${esc(when)}</td><td>${who}</td><td>${esc(r.type||'-')}</td><td>${esc(r.title||'')}</td><td><span class="badge ${badge}">${esc(r.status||'?')}</span></td><td class="small text-danger">${esc(r.error||'')}</td></tr>`;
 });
 if(!(d.rows||[]).length)tb.innerHTML='<tr><td colspan="7" class="text-muted">Yozuv yo\\'q</td></tr>';
-});
+}).catch(()=>adminError('Push diagnostikani yuklab bo\\'lmadi'));
 }
 function checkReceipts(){
 const btn=document.getElementById('pl-check'), out=document.getElementById('pl-check-result');
@@ -825,9 +908,12 @@ ROUTES_HTML = """<h2>Yo'nalishlar va narxlar</h2>
 
 ROUTES_JS = """<script>
 function loadRoutes(){
-fetch('/admin/api/routes').then(r=>r.json()).then(data=>{
+fetch('/admin/api/routes').then(r=>r.json()).then(payload=>{
 const tb=document.querySelector('#routes-table tbody');
 tb.innerHTML='';
+const data=Array.isArray(payload)?payload:[];
+if(!Array.isArray(payload))adminError(payload&&payload.error?payload.error:'Yo\\'nalishlarni yuklab bo\\'lmadi');
+if(!data.length)tb.innerHTML='<tr><td colspan="7" class="text-muted">Yo\\'nalish yo\\'q</td></tr>';
 data.forEach(rt=>{
 tb.innerHTML+=`<tr>
 <td>${rt.id}</td><td>${esc(rt.from_city)}</td><td>${esc(rt.to_city)}</td>
@@ -837,11 +923,17 @@ tb.innerHTML+=`<tr>
 <td><button class="btn btn-sm btn-success" onclick="saveRoute(${rt.id})">Saqlash</button></td>
 </tr>`;
 });
-});
+}).catch(()=>adminError('Yo\\'nalishlarni yuklab bo\\'lmadi'));
 }
 function saveRoute(id){
-const body={price_per_person:parseInt(document.getElementById('pp-'+id).value),full_car_price:parseInt(document.getElementById('fc-'+id).value),parcel_price:parseInt(document.getElementById('pr-'+id).value)};
-fetch('/admin/api/routes/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{if(d.ok)alert('Saqlandi');else alert(d.error||'Xato');});
+const body={};
+// An empty field made parseInt return NaN, which JSON.stringify turns into null.
+for(const [prefix,key] of [['pp-','price_per_person'],['fc-','full_car_price'],['pr-','parcel_price']]){
+const raw=String(document.getElementById(prefix+id).value).trim();
+if(!/^\\d+$/.test(raw)){alert('Narxlar butun son bo\\'lishi kerak (bo\\'sh qoldirmang)');return;}
+body[key]=parseInt(raw,10);
+}
+fetch('/admin/api/routes/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{if(d.ok)alert('Saqlandi');else alert(d.error||'Xato');}).catch(()=>alert('Saqlashda xatolik'));
 }
 loadRoutes();
 </script>"""
@@ -871,30 +963,152 @@ SETTINGS_HTML = """<h2>Sozlamalar</h2>
 </div>"""
 
 SETTINGS_JS = """<script>
+const SETTING_FIELDS=[['set-commission','commission_percent'],['set-trial-days','free_trial_days'],['set-trial-limit','free_trial_limit'],['set-min-balance','min_balance']];
 fetch('/admin/api/settings').then(r=>r.json()).then(d=>{
-document.getElementById('set-commission').value=d.commission_percent||10;
-document.getElementById('set-trial-days').value=d.free_trial_days||30;
-document.getElementById('set-trial-limit').value=d.free_trial_limit||100;
-document.getElementById('set-min-balance').value=d.min_balance||20000;
-});
+if(!d||d.error){adminError(d&&d.error?d.error:'Sozlamalarni yuklab bo\\'lmadi');return;}
+// `??`, not `||`: 0 is a legal value for all four settings (the API allows it), and `||`
+// displayed a saved 0% commission as 10% — then the next Save wrote that 10% back.
+SETTING_FIELDS.forEach(([id,key])=>{const el=document.getElementById(id);if(el)el.value=d[key]??'';});
+}).catch(()=>adminError('Sozlamalarni yuklab bo\\'lmadi'));
 function saveSettings(){
-const body={commission_percent:parseInt(document.getElementById('set-commission').value),free_trial_days:parseInt(document.getElementById('set-trial-days').value),free_trial_limit:parseInt(document.getElementById('set-trial-limit').value),min_balance:parseInt(document.getElementById('set-min-balance').value)};
+const out=document.getElementById('settings-result');
+const body={};
+for(const [id,key] of SETTING_FIELDS){
+const raw=String(document.getElementById(id).value).trim();
+// Validate here instead of shipping NaN -> JSON null to the server.
+if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger">Barcha maydonlar butun son bo\\'lishi kerak (bo\\'sh qoldirmang)</div>';return;}
+body[key]=parseInt(raw,10);
+}
 fetch('/admin/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{
-document.getElementById('settings-result').innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+'">'+esc(d.detail||d.error||'Saqlandi')+'</div>';
-});
+out.innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+'">'+esc(d.detail||d.error||'Saqlandi')+'</div>';
+}).catch(()=>{out.innerHTML='<div class="alert alert-danger">Saqlashda xatolik</div>';});
 }
 </script>"""
 
 
-def render_page(title, content, extra_js=""):
-    """Render a page using the base template."""
+# Sidebar entries, in display order. Kept as data so the current page can be highlighted
+# (the stylesheet always had a `.sidebar a.active` rule, but nothing ever set the class).
+NAV_ITEMS = (
+    ("/admin/", "Dashboard"),
+    ("/admin/statistics", "📊 Statistika"),
+    ("/admin/drivers", "Haydovchilar"),
+    ("/admin/passengers", "Yo'lovchilar"),
+    ("/admin/orders", "Buyurtmalar"),
+    ("/admin/push", "Push xabar"),
+    ("/admin/push-log", "🔔 Push diagnostika"),
+    ("/admin/routes", "Yo'nalishlar"),
+    ("/admin/settings", "Sozlamalar"),
+    ("/admin/audit", "🧾 Audit jurnali"),
+)
+
+
+def render_nav(active=""):
+    """Build the sidebar, marking `active` (a path from NAV_ITEMS) as current."""
+    links = []
+    for href, label in NAV_ITEMS:
+        cls = ' class="active"' if href == active else ""
+        links.append(f'<a href="{href}"{cls}>{label}</a>')
+    return "\n".join(links)
+
+
+def render_page(title, content, extra_js="", active="", csrf_token=""):
+    """Render a page using the base template.
+
+    `csrf_token` is rendered into the logout form server-side: it used to be filled only
+    by an inline DOMContentLoaded handler, so with that script blocked logout was a
+    permanent 403.
+    """
+    from html import escape
+
     return BASE_HTML.format(
         title=title,
         content=content,
+        nav=render_nav(active),
+        csrf_token=escape(csrf_token or "", quote=True),
         bootstrap_css=BOOTSTRAP_CSS,
         bootstrap_js=BOOTSTRAP_JS,
         extra_js=extra_js,
     )
+
+
+AUDIT_HTML = """<h2>🧾 Audit jurnali</h2>
+<p class="text-muted">Panelda bajarilgan har bir muhim amal shu yerda yozib boriladi:
+kim, qachon, qaysi IP dan. Bu jurnal faqat o'qish uchun — o'zgartirilmaydi va o'chirilmaydi.</p>
+<div class="mb-3">
+<select class="form-select w-auto d-inline" id="audit-action" onchange="loadAudit()">
+<option value="">Barcha amallar</option>
+<option value="auth.">Kirish / chiqish</option>
+<option value="driver.">Haydovchi amallari</option>
+<option value="driver.balance_adjust">Balans o'zgarishi</option>
+<option value="user.">Yo'lovchi amallari</option>
+<option value="route.">Narx o'zgarishi</option>
+<option value="settings.">Sozlama o'zgarishi</option>
+<option value="push.">Push xabarlar</option>
+</select>
+<span class="ms-2 text-muted" id="audit-count"></span>
+</div>
+<div class="table-responsive">
+<table class="table table-striped table-sm" id="audit-table">
+<thead><tr><th>ID</th><th>Sana</th><th>Kim</th><th>Amal</th><th>Obyekt</th><th>IP</th><th>Tafsilot</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>"""
+
+AUDIT_JS = """<script>
+const AUDIT_LABELS={'auth.login_success':'Kirdi','auth.login_failure':'Kirish xato','auth.logout':'Chiqdi','auth.rate_limited':'Cheklandi','driver.verify':'Haydovchi tasdiqlandi','driver.reject':'Haydovchi rad etildi','driver.block':'Haydovchi bloklandi','driver.unblock':'Haydovchi blokdan chiqdi','driver.create':'Haydovchi qo\\'shildi','driver.balance_adjust':'Balans o\\'zgardi','user.block':'Yo\\'lovchi bloklandi','user.unblock':'Yo\\'lovchi blokdan chiqdi','route.update':'Narx o\\'zgardi','settings.update':'Sozlama o\\'zgardi','push.send':'Push yuborildi'};
+function loadAudit(){
+const act=document.getElementById('audit-action').value;
+fetch('/admin/api/audit?action='+encodeURIComponent(act)).then(r=>r.json()).then(payload=>{
+const tb=document.querySelector('#audit-table tbody');
+tb.innerHTML='';
+const data=Array.isArray(payload)?payload:[];
+if(!Array.isArray(payload))adminError(payload&&payload.error?payload.error:'Jurnalni yuklab bo\\'lmadi');
+document.getElementById('audit-count').textContent=data.length+' ta yozuv';
+if(!data.length)tb.innerHTML='<tr><td colspan="7" class="text-muted">Yozuv yo\\'q</td></tr>';
+data.forEach(r=>{
+const when=r.created_at?String(r.created_at).replace('T',' ').split('.')[0]:'';
+const label=AUDIT_LABELS[r.action]||r.action;
+const money=r.action==='driver.balance_adjust';
+const target=r.target_type?esc(r.target_type)+(r.target_id?' #'+esc(r.target_id):''):'-';
+tb.innerHTML+=`<tr${money?' class="table-warning"':''}><td>${r.id}</td><td>${esc(when)}</td><td>${esc(r.admin_username||'')}</td><td>${esc(label)}</td><td>${target}</td><td class="small">${esc(r.remote_ip||'-')}</td><td class="small text-muted" style="max-width:380px;word-break:break-all">${esc(r.details||'')}</td></tr>`;
+});
+}).catch(()=>adminError('Jurnalni yuklab bo\\'lmadi'));
+}
+loadAudit();
+</script>"""
+
+CSRF_ERROR_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sessiya eskirgan - Sarix Go Admin</title>
+<link rel="stylesheet" href="{bootstrap_css}">
+</head>
+<body class="bg-light">
+<div class="container">
+<div class="row justify-content-center mt-5">
+<div class="col-md-5">
+<div class="card shadow"><div class="card-body p-4 text-center">
+<h5 class="mb-3">Sessiya eskirgan</h5>
+<p class="text-muted">Xavfsizlik tekshiruvi (CSRF) o'tmadi. Bu ko'pincha sahifa uzoq vaqt
+ochiq qolganda yoki ikkita oynada bir vaqtda ishlaganda bo'ladi.</p>
+<a class="btn btn-primary" href="/admin/login">Qaytadan kirish</a>
+</div></div>
+</div>
+</div>
+</div>
+</body>
+</html>"""
+
+
+def render_csrf_error():
+    """Styled page for a failed CSRF check.
+
+    This used to be `web.Response(text="CSRF validation failed")` — a bare plain-text
+    dead end with no way back to the login form.
+    """
+    return CSRF_ERROR_HTML.format(bootstrap_css=BOOTSTRAP_CSS)
 
 
 def render_login(error="", csrf_token=""):

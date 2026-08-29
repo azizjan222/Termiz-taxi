@@ -199,6 +199,11 @@ def _client_ip(request: web.Request) -> str:
     return (request.remote or "unknown")[:64]
 
 
+def client_ip(request: web.Request) -> str:
+    """Public alias of :func:`_client_ip` for other modules (audit trail)."""
+    return _client_ip(request)
+
+
 def _login_key(request: web.Request, username: str) -> tuple[str, str]:
     return (_client_ip(request), username.casefold()[:128])
 

@@ -79,6 +79,13 @@ async def security_headers_middleware(request: web.Request, handler):
 async def cors_middleware(request: web.Request, handler):
     """Add CORS headers to all responses (origin controlled by CORS_ALLOWED_ORIGINS)."""
     allow_origin = _resolve_cors_origin(request)
+    # Never advertise a cross-origin policy for the admin panel. CORS_ALLOWED_ORIGINS
+    # defaults to "*" for the mobile apps, and that wildcard was being echoed on
+    # /admin/* responses too. It is not directly exploitable (the session cookie is
+    # SameSite=Strict and a browser will not attach credentials to a wildcard ACAO), but
+    # the money panel has no business being readable from another origin at all.
+    if request.path.startswith("/admin"):
+        allow_origin = None
 
     if request.method == "OPTIONS":
         headers = {
