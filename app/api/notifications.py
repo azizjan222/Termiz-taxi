@@ -1,15 +1,22 @@
 """Push token registration and the in-app announcement inbox."""
 import logging
+import re
 
 from aiohttp import web
 from sqlalchemy import and_, or_
 
+from app.api.auth import SUPPORTED_LANGUAGES
 from app.api.drivers import _get_driver_from_request
 from app.database import get_session
 from app.models import Announcement, AnnouncementRead, Driver, User
 from app.services import notify_i18n as nt
+from app.utils.body import BodyError, read_json_object, read_str
+from app.utils.timefmt import iso_utc
 
 logger = logging.getLogger(__name__)
+
+#: Expo push tokens are always `ExponentPushToken[...]` (or the legacy `ExpoPushToken[...]`).
+_EXPO_TOKEN_RE = re.compile(r"^Expo(nent)?PushToken\[[^\[\]\s]+\]$")
 
 #: Default/maximum number of announcements returned in one call. The apps keep at most
 #: 100 notifications locally, so serving more than that is wasted work.
@@ -23,17 +30,23 @@ async def register_token(request: web.Request) -> web.Response:
     Works for authenticated user (passenger) or driver.
     """
     try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
+        data = await read_json_object(request)
+        token = read_str(data, "token", max_length=200)
+        lang = read_str(data, "language")
+    except BodyError as e:
+        return e.response
 
-    token = (data.get("token") or "").strip()
     if not token:
         return web.json_response({"error": "Token kerak"}, status=400)
+    # Any string used to be accepted and written to push_token. A malformed value is not
+    # harmless: Expo rejects the whole batch it appears in, so one bad token could stop
+    # notifications for the drivers/passengers batched alongside it, and the column is
+    # VARCHAR(200) so an over-long value failed at commit with a 500.
+    if not _EXPO_TOKEN_RE.match(token):
+        return web.json_response({"error": "Push token noto'g'ri"}, status=400)
 
     # Optional language so push notifications can be localized to the user's choice.
-    lang = (data.get("language") or "").strip()
-    if lang not in ("uz", "uz-cyrl", "ru", "en"):
+    if lang not in SUPPORTED_LANGUAGES:
         lang = None
 
     # Check driver auth first
@@ -202,7 +215,9 @@ async def list_notifications(request: web.Request) -> web.Response:
                 "body": a.body,
                 "type": "admin",
                 "read": a.id in seen,
-                "created_at": a.created_at.isoformat() if a.created_at else None,
+                # Naive-UTC column, so the offset must be explicit or the apps render
+                # every fresh announcement as "5 soat oldin".
+                "created_at": iso_utc(a.created_at),
             }
             for a in rows
         ]
@@ -224,9 +239,14 @@ async def mark_notifications_read(request: web.Request) -> web.Response:
     if not kind:
         return web.json_response({"error": "Avtorizatsiya kerak"}, status=401)
 
+    # An empty/absent body is a legitimate no-op here, but a body that parses to a
+    # non-dict (`5`, `[1]`) made data.get() raise AttributeError -> 500. Treat anything
+    # that is not an object the same as no body at all.
     try:
         data = await request.json()
     except Exception:
+        data = {}
+    if not isinstance(data, dict):
         data = {}
 
     session = get_session()

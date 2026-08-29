@@ -17,6 +17,7 @@ from app.services.dynamic_settings import (
     get_referral_referrer_bonus,
 )
 from app.utils.auth import require_auth
+from app.utils.body import BodyError, read_json_object, read_str
 from app.utils.timefmt import iso_utc
 
 
@@ -33,13 +34,15 @@ async def validate_promo(request: web.Request) -> web.Response:
     Body: {"code": "WELCOME10"}
     Returns discount info without applying.
     """
+    # A non-dict body (`5`, `[1]`) parses fine, then data.get() raised AttributeError and
+    # returned a 500. A non-string code crashed on .strip() the same way.
     try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
+        data = await read_json_object(request)
+        code = read_str(data, "code", max_length=30).upper()
+    except BodyError as e:
+        return e.response
 
     user: User = request["user"]
-    code = (data.get("code") or "").strip().upper()
     if not code:
         return web.json_response({"error": "Promo kod kerak"}, status=400)
 
@@ -173,11 +176,11 @@ async def apply_referral_code(request: web.Request) -> web.Response:
     """
     user: User = request["user"]
     try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
+        data = await read_json_object(request)
+        code = read_str(data, "code", max_length=30).upper()
+    except BodyError as e:
+        return e.response
 
-    code = (data.get("code") or "").strip().upper()
     if not code:
         return web.json_response({"error": "Kod kerak"}, status=400)
 

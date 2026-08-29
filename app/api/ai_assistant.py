@@ -1,5 +1,7 @@
 """AI Assistant for drivers and passengers - answers FAQ via OpenAI or built-in fallback."""
 import logging
+import time
+from collections import deque
 
 import aiohttp
 from aiohttp import web
@@ -7,18 +9,88 @@ from aiohttp import web
 from app import config
 from app.api.drivers import _get_driver_from_request
 from app.utils.auth import get_current_user
+from app.utils.body import BodyError, read_json_object
 
 logger = logging.getLogger(__name__)
+
+#: Roles a CLIENT is allowed to send. "system" is deliberately excluded: the client's
+#: messages are appended straight after our own system prompt, so a caller sending
+#: {"role": "system", ...} could override the assistant's instructions entirely — make it
+#: quote prices we don't charge, or repeat back whatever text an attacker wanted attributed
+#: to Sarix Go. Only the server may speak as "system".
+_ALLOWED_ROLES = ("user", "assistant")
+
+#: Conversation limits. Every message in `messages` is billed as OpenAI input tokens on
+#: EVERY turn, and nothing bounded the array: a single request could carry megabytes of
+#: text and a client could replay it in a loop, so one authenticated account was enough to
+#: run up an unbounded bill.
+_MAX_MESSAGES = 12
+_MAX_CONTENT_CHARS = 1500
+
+#: Per-caller sliding window for the paid path.
+_RATE_LIMIT_REQUESTS = 12
+_RATE_LIMIT_WINDOW_SECONDS = 60
+#: (role, id) -> timestamps of recent calls. In-process only, which is enough here: it
+#: caps the damage one client can do per worker, and the FAQ fallback still answers.
+_recent_calls: dict[tuple[str, int], deque] = {}
+
+
+def _rate_limited(key: tuple[str, int]) -> bool:
+    """True when ``key`` has exceeded the window. Records the call when it has not."""
+    now = time.monotonic()
+    calls = _recent_calls.get(key)
+    if calls is None:
+        calls = deque()
+        _recent_calls[key] = calls
+    while calls and now - calls[0] > _RATE_LIMIT_WINDOW_SECONDS:
+        calls.popleft()
+    if len(calls) >= _RATE_LIMIT_REQUESTS:
+        return True
+    calls.append(now)
+    # Drop keys that have gone quiet so the dict can't grow without bound.
+    if len(_recent_calls) > 5000:
+        for stale_key in [k for k, v in _recent_calls.items() if not v]:
+            _recent_calls.pop(stale_key, None)
+    return False
+
+
+def _sanitize_messages(raw: list) -> list:
+    """Keep only well-formed user/assistant turns, newest ``_MAX_MESSAGES`` of them.
+
+    Also guards against non-dict entries: `m.get("role")` on `[1, 2]` or `["hi"]` raised
+    AttributeError and returned a 500.
+    """
+    clean = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = item.get("content")
+        if role not in _ALLOWED_ROLES or not isinstance(content, str):
+            continue
+        content = content.strip()
+        if not content:
+            continue
+        clean.append({"role": role, "content": content[:_MAX_CONTENT_CHARS]})
+    return clean[-_MAX_MESSAGES:]
 
 
 def _get_authenticated_user(request: web.Request):
     """Returns dict with role and info, or None."""
     driver = _get_driver_from_request(request)
     if driver:
-        return {"role": "driver", "name": driver.first_name or "Haydovchi"}
+        return {
+            "role": "driver",
+            "id": driver.id,
+            "name": driver.first_name or "Haydovchi",
+        }
     user = get_current_user(request)
     if user:
-        return {"role": "passenger", "name": user.first_name or "Yo'lovchi"}
+        return {
+            "role": "passenger",
+            "id": user.id,
+            "name": user.first_name or "Yo'lovchi",
+        }
     return None
 
 
@@ -391,35 +463,44 @@ async def chat(request: web.Request) -> web.Response:
         )
 
     try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
+        body = await read_json_object(request)
+    except BodyError as e:
+        return e.response
 
-    messages = body.get("messages", [])
-    if not messages or not isinstance(messages, list):
+    raw_messages = body.get("messages")
+    if not raw_messages or not isinstance(raw_messages, list):
         return web.json_response({"error": "messages array required"}, status=400)
 
-    last_user = next(
-        (m for m in reversed(messages) if m.get("role") == "user"),
-        None,
-    )
+    # Strip client-supplied "system" turns, non-dict entries and over-long content before
+    # anything is forwarded to OpenAI.
+    messages = _sanitize_messages(raw_messages)
+    if not messages:
+        return web.json_response({"error": "No user message"}, status=400)
+
+    last_user = next((m for m in reversed(messages) if m["role"] == "user"), None)
     if not last_user:
         return web.json_response({"error": "No user message"}, status=400)
 
-    question = (last_user.get("content") or "").strip()
+    question = last_user["content"]
     if not question:
         return web.json_response({"error": "Empty question"}, status=400)
 
     support = config.SUPPORT_TELEGRAM
     role = auth["role"]
 
-    if config.OPENAI_API_KEY:
+    # Rate-limit the PAID path only. Over the limit we skip OpenAI and serve the built-in
+    # FAQ, so the assistant still answers instead of erroring — it just stops costing money.
+    over_limit = _rate_limited((role, auth["id"]))
+    if over_limit:
+        logger.info("AI chat rate limit hit for %s %s; serving FAQ", role, auth["id"])
+
+    if config.OPENAI_API_KEY and not over_limit:
         try:
             answer = await _ask_openai(messages, support, role=role)
             return web.json_response({"answer": answer, "source": "ai"})
         except Exception as e:
             logger.warning(f"OpenAI failed for role={role}, falling back to FAQ: {e}")
-    else:
+    elif not config.OPENAI_API_KEY:
         logger.info("OPENAI_API_KEY not set; using built-in FAQ for role=%s", role)
 
     # FAQ fallback - role-specific

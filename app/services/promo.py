@@ -12,6 +12,7 @@ the platform collects ``commission - bonus_used - promo_discount``.
 import logging
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from app.models import PromoCode, PromoUsage
@@ -115,12 +116,20 @@ def redeem_promo(
             return 0, None, "Siz bu kodni allaqachon ishlatgansiz"
 
         # 2) Claim a global use. Conditional UPDATE so max_uses can't be exceeded by a race.
+        #
+        # COALESCE is required on both sides. `used_count` is nullable and legacy /
+        # hand-inserted rows carry NULL, where `NULL + 1` is NULL and `NULL < max_uses` is
+        # NULL (never true). So the guarded UPDATE matched no rows and a perfectly valid
+        # code was rejected as "Limit tugagan" — permanently, since the counter could
+        # never leave NULL. `check_promo` above already reads it as `used_count or 0`, so
+        # the code looked redeemable right up to this point.
         max_uses = promo.max_uses or 0
+        used_count = func.coalesce(PromoCode.used_count, 0)
         query = session.query(PromoCode).filter(PromoCode.id == promo.id)
         if max_uses > 0:
-            query = query.filter(PromoCode.used_count < max_uses)
+            query = query.filter(used_count < max_uses)
         claimed = query.update(
-            {PromoCode.used_count: PromoCode.used_count + 1},
+            {PromoCode.used_count: used_count + 1},
             synchronize_session=False,
         )
         if claimed != 1:
