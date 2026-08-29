@@ -60,7 +60,9 @@ const PARCEL_TAGS: Tag[] = [
  * Home.
  *
  * The one job of this screen is to get the passenger into the order flow, so it is built
- * around the two service cards and nothing else. Previously it greeted the user, then
+ * around the two service cards and nothing else. Everything is deliberately tight: with
+ * only two cards to show, generous padding just pushed them apart and left the bottom half
+ * of the screen empty, which reads as an unfinished screen rather than a calm one. Previously it greeted the user, then
  * printed "Qayerga ketamiz?" as a subtitle, then printed the very same sentence again as
  * the section heading — the same question twice, which reads as a glitch — and the cards
  * themselves were flat grey rows that looked more like list items than the main action.
@@ -138,7 +140,7 @@ export default function HomeScreen() {
               off the bottom-right corner so the card reads as illustrated rather than as
               another form row. Purely visual, hence aria-hidden to screen readers. */}
           <View style={styles.watermark} pointerEvents="none" aria-hidden>
-            <Icon name={opts.icon} size={150} color={accentColor} />
+            <Icon name={opts.icon} size={120} color={accentColor} />
           </View>
 
           <View style={styles.cardTop}>
@@ -150,7 +152,7 @@ export default function HomeScreen() {
             >
               <Icon
                 name={opts.icon}
-                size={30}
+                size={24}
                 color={isTaxi ? colors.textOnAccent : colors.textOnPrimary}
               />
             </View>
@@ -161,14 +163,14 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.cardArrow}>
-              <Icon name="arrowRight" size={20} color={colors.text} />
+              <Icon name="arrowRight" size={18} color={colors.text} />
             </View>
           </View>
 
           <View style={styles.tagRow}>
             {opts.tags.map((tag) => (
               <View key={tag.labelKey} style={styles.tag}>
-                <Icon name={tag.icon} size={13} color={accentColor} />
+                <Icon name={tag.icon} size={12} color={accentColor} />
                 <Text style={styles.tagText}>{t(tag.labelKey)}</Text>
               </View>
             ))}
@@ -203,7 +205,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={t('profile.notifications')}
           >
-            <Icon name="notification" size={22} color={colors.primary} />
+            <Icon name="notification" size={20} color={colors.primary} />
             {unread > 0 && <View style={styles.bellDot} />}
           </TouchableOpacity>
         </View>
@@ -238,33 +240,33 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scroll: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
   },
 
   // Greeting
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.xl,
+    alignItems: 'center',
+    marginBottom: spacing.lg,
   },
-  greeting: { ...typography.h1, color: colors.text, flex: 1, marginRight: spacing.md },
+  greeting: { ...typography.h2, color: colors.text, flex: 1, marginRight: spacing.md },
   /** The personal half of the greeting — same line, brand colour. */
   greetingName: { color: colors.primary },
   bell: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bellDot: {
     position: 'absolute',
-    top: 9,
-    right: 11,
-    width: 10,
-    height: 10,
+    top: 8,
+    right: 9,
+    width: 9,
+    height: 9,
     borderRadius: 5,
     backgroundColor: colors.error,
     // Ring in the screen background so the dot stays legible on top of the bell glyph.
@@ -273,52 +275,52 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
 
   // Section
-  sectionTitle: { ...typography.h1, color: colors.text },
+  sectionTitle: { ...typography.h2, color: colors.text },
   sectionSubtitle: {
-    ...typography.body,
+    ...typography.caption,
     color: colors.textMuted,
     marginTop: 2,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
 
   // Service cards
   cardShadow: {
-    borderRadius: radius.xl,
-    marginBottom: spacing.md,
+    borderRadius: radius.lg,
+    marginBottom: spacing.sm + 4,
     shadowColor: '#1A1240',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.09,
+    shadowRadius: 14,
     elevation: 4,
   },
   card: {
-    borderRadius: radius.xl,
-    padding: spacing.lg,
+    borderRadius: radius.lg,
+    padding: spacing.md,
     // Clips the oversized watermark glyph to the card's rounded corners.
     overflow: 'hidden',
   },
   watermark: {
     position: 'absolute',
-    right: -28,
-    bottom: -34,
+    right: -24,
+    bottom: -28,
     opacity: 0.14,
   },
   cardTop: { flexDirection: 'row', alignItems: 'center' },
   cardIcon: {
-    width: 58,
-    height: 58,
-    borderRadius: radius.lg,
+    width: 46,
+    height: 46,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
   cardCopy: { flex: 1, marginRight: spacing.sm },
-  cardTitle: { ...typography.h3, color: colors.text, fontWeight: '800' },
-  cardSubtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  cardTitle: { ...typography.bodyBold, color: colors.text, fontWeight: '800' },
+  cardSubtitle: { ...typography.small, color: colors.textSecondary, marginTop: 1 },
   cardArrow: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
@@ -326,15 +328,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: 6,
+    marginTop: spacing.sm + 2,
   },
   tag: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: radius.pill,
     backgroundColor: colors.card,
   },
