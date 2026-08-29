@@ -56,7 +56,6 @@ export default {
   home: {
     hello: 'Hi,',
     greetingName: '{{name}}!',
-    niceDay: 'Have a great day!',
     whereToGo: 'Where to go?',
     chooseService: 'Pick a service and hit the road',
     orderTaxi: 'Order taxi',

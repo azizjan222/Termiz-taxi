@@ -56,7 +56,6 @@ export default {
   home: {
     hello: 'Салом,',
     greetingName: '{{name}}!',
-    niceDay: 'Бугун ҳам ажойиб кун!',
     whereToGo: 'Қаерга кетамиз?',
     chooseService: 'Хизмат турини танланг ва йўлга чиқинг',
     orderTaxi: 'Такси чақириш',

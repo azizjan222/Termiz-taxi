@@ -191,18 +191,18 @@ export default function HomeScreen() {
       >
         {/* Greeting + inbox */}
         <View style={styles.header}>
-          <View style={styles.greetingCol}>
-            <Text style={styles.hello}>{t('home.hello')}</Text>
-            <Text style={styles.name} numberOfLines={1}>
+          {/* One sentence, two colours. A nested Text keeps "Salom," and the name on the
+              same line and lets them wrap together as one block, so a long name moves to
+              the next line instead of being clipped — which is what splitting them into
+              two separate Texts was working around. */}
+          <Text style={styles.greeting} numberOfLines={2}>
+            {t('home.hello')}{' '}
+            <Text style={styles.greetingName}>
               {t('home.greetingName', {
                 name: user?.first_name || t('auth.namePlaceholder'),
               })}
             </Text>
-            <View style={styles.niceDayRow}>
-              <Text style={styles.niceDay}>{t('home.niceDay')}</Text>
-              <Icon name="handWave" size={16} color={colors.accentDark} />
-            </View>
-          </View>
+          </Text>
 
           <TouchableOpacity
             style={styles.bell}
@@ -252,13 +252,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: spacing.xl,
   },
-  greetingCol: { flex: 1, marginRight: spacing.md },
-  hello: { ...typography.h1, color: colors.text },
-  // The name is the personal half of the greeting, so it carries the brand colour and
-  // gets its own line — a long name used to push "Salom," off the edge of the screen.
-  name: { ...typography.h1, color: colors.primary, marginTop: -4 },
-  niceDayRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.xs },
-  niceDay: { ...typography.body, color: colors.textSecondary },
+  greeting: { ...typography.h1, color: colors.text, flex: 1, marginRight: spacing.md },
+  /** The personal half of the greeting — same line, brand colour. */
+  greetingName: { color: colors.primary },
   bell: {
     width: 46,
     height: 46,
