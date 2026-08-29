@@ -58,7 +58,6 @@ export default {
     // colours; a long name used to push the whole greeting off the screen.
     hello: 'Salom,',
     greetingName: '{{name}}!',
-    niceDay: 'Bugun ham ajoyib kun!',
     whereToGo: 'Qayerga ketamiz?',
     chooseService: "Xizmat turini tanlang va yo'lga chiqing",
     orderTaxi: 'Taksi chaqirish',

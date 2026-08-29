@@ -70,14 +70,18 @@ export default function TabsLayout() {
           borderRadius: radius.xl,
           backgroundColor: colors.card,
           borderTopWidth: 0,
-          paddingTop: 10,
-          paddingBottom: 6,
+          // No vertical padding here: it would shrink the room left for each item's
+          // icon + label + underline stack. The breathing room is on the item instead,
+          // where it is measured together with the content.
+          paddingTop: 0,
+          paddingBottom: 0,
           shadowColor: '#0E1730',
           shadowOffset: { width: 0, height: 6 },
           shadowOpacity: 0.12,
           shadowRadius: 18,
           elevation: 12,
         },
+        tabBarItemStyle: { paddingTop: 10, paddingBottom: 8 },
       }}
     >
       <Tabs.Screen
@@ -111,16 +115,19 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   iconWrapper: {
     width: 40,
-    height: 28,
+    height: 26,
     alignItems: 'center',
     justifyContent: 'center',
   },
   labelWrapper: { alignItems: 'center' },
-  label: { fontSize: 12, fontWeight: '600' },
+  // Explicit lineHeight: left to the system font, a 12px label measures anywhere from 14
+  // to 19px depending on the device, and the tallest of those is what pushed the stack out
+  // of the bar on some phones and not others.
+  label: { fontSize: 12, lineHeight: 15, fontWeight: '600' },
   indicator: {
     width: 22,
     height: 3,
     borderRadius: 2,
-    marginTop: 3,
+    marginTop: 4,
   },
 });

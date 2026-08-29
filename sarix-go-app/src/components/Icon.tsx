@@ -106,7 +106,6 @@ const GLYPHS = {
   // Qualities (service-card tags)
   flash: 'lightning-bolt',
   shield: 'shield-check-outline',
-  handWave: 'hand-wave',
 
   // Appearance
   sun: 'white-balance-sunny',
