@@ -9,12 +9,13 @@ import {
   Easing,
   Dimensions,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+
 import { useTranslation } from 'react-i18next';
 
 import { type DriverOrder } from '../api/driver';
 import { Icon, IconText, type IconName } from './Icon';
-import { typography, spacing, radius, gradients } from '../theme';
+import { typography, spacing, radius } from '../theme';
+import { AcceptButton } from './AcceptButton';
 import type { ThemeColors } from '../theme/colors-themed';
 import { formatDepartureTime } from '../utils/departureTime';
 
@@ -53,7 +54,6 @@ export const IncomingOrderModal: React.FC<Props> = ({
   const [slide] = useState(() => new Animated.Value(SCREEN_H));
   const [backdrop] = useState(() => new Animated.Value(0));
   const [countdown] = useState(() => new Animated.Value(1));
-  const [pulse] = useState(() => new Animated.Value(0));
   const [secsLeft, setSecsLeft] = useState(COUNTDOWN_SEC);
 
   useEffect(() => {
@@ -82,14 +82,7 @@ export const IncomingOrderModal: React.FC<Props> = ({
     });
     countdownAnim.start();
 
-    // Attention pulse on the accept button.
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ])
-    );
-    pulseLoop.start();
+    // The accept button animates itself now — see AcceptButton.
 
     // Held so cleanup can cancel it: otherwise the deferred dismiss survived unmount and
     // fired setIncomingOrder(null) on a gone component — and could land mid-accept.
@@ -112,7 +105,6 @@ export const IncomingOrderModal: React.FC<Props> = ({
     return () => {
       clearInterval(tick);
       if (dismissTimer) clearTimeout(dismissTimer);
-      pulseLoop.stop();
       countdownAnim.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -122,7 +114,6 @@ export const IncomingOrderModal: React.FC<Props> = ({
 
   const isParcel = order.service_type === 'parcel';
   const countdownWidth = countdown.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
-  const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.03] });
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onDismiss}>
@@ -262,21 +253,19 @@ export const IncomingOrderModal: React.FC<Props> = ({
             </IconText>
           )}
 
-          {/* Actions */}
-          <Animated.View style={{ transform: [{ scale: pulseScale }] }}>
-            <TouchableOpacity onPress={onAccept} disabled={accepting} activeOpacity={0.9}>
-              <LinearGradient
-                colors={gradients.gold}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.acceptBtn}
-              >
-                <Text style={styles.acceptBtnText}>
-                  {accepting ? t('incoming.accepting') : t('order.accept')}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </Animated.View>
+          {/* Actions.
+              The same AcceptButton as the orders list, rather than this sheet's own
+              hand-rolled pulse: the driver meets "Qabul qilish" in two places and they
+              should feel identical, and the shared button also brings the spinner and the
+              haptic tick that this one never had. */}
+          <View style={styles.acceptWrap}>
+            <AcceptButton
+              title={t('order.accept')}
+              onPress={onAccept}
+              loading={accepting}
+              fullWidth
+            />
+          </View>
 
           <TouchableOpacity onPress={onDismiss} style={styles.skipBtn} activeOpacity={0.7}>
             <Text style={styles.skipBtnText}>{t('incoming.skip')}</Text>
@@ -403,19 +392,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   bonusText: { ...typography.small, color: colors.success, fontWeight: '700', marginTop: 2 },
   note: { ...typography.small, color: colors.textSecondary, fontStyle: 'italic', marginBottom: spacing.md },
 
-  acceptBtn: {
-    borderRadius: radius.lg,
-    paddingVertical: spacing.md + 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-    shadowColor: colors.accentDark,
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
-  },
-  acceptBtnText: { ...typography.h3, color: '#0E1B3D', fontWeight: '900' },
+  acceptWrap: { marginTop: spacing.sm },
   skipBtn: { alignItems: 'center', paddingVertical: spacing.md, marginTop: spacing.xs },
   skipBtnText: { ...typography.body, color: colors.textSecondary, fontWeight: '600' },
 });
