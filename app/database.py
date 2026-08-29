@@ -5,6 +5,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app import config
 from app.config import (
     DATABASE_URL,
     PERSISTENT_DATA_DIR,
@@ -42,11 +43,49 @@ if DATABASE_URL.startswith("sqlite"):
 else:
     logger.info("Using external database (%s) ✅", DATABASE_URL.split("://")[0])
 
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
-)
+
+def _engine_options() -> dict:
+    """Build create_engine kwargs, with pool tuning for networked databases.
+
+    ``pool_pre_ping`` is the important one. Without it SQLAlchemy hands out whatever
+    connection is at the head of the pool, including ones the server has already closed —
+    so every Postgres idle timeout, failover or restart surfaced as a burst of 500s on the
+    next requests to reuse those connections, until the pool churned itself clean. The
+    pre-ping costs one cheap round-trip and transparently replaces dead connections.
+
+    Sizing matters here because this is a single-process deployment: HTTP handlers, both
+    Telegram bots and the schedulers share one pool, and the handlers do BLOCKING queries
+    on the event loop, so an exhausted pool stalls everything rather than just queueing.
+    ``pool_timeout`` makes that failure loud (an error) instead of an indefinite hang.
+
+    SQLite gets ``pre_ping`` but no sizing: depending on the URL it resolves to a
+    SingletonThreadPool/NullPool, and those reject ``pool_size``/``max_overflow`` with a
+    TypeError at import time.
+    """
+    is_sqlite = DATABASE_URL.startswith("sqlite")
+    options: dict = {
+        "echo": False,
+        "pool_pre_ping": True,
+        "connect_args": {"check_same_thread": False} if is_sqlite else {},
+    }
+    if not is_sqlite:
+        options.update(
+            pool_size=config.DB_POOL_SIZE,
+            max_overflow=config.DB_MAX_OVERFLOW,
+            pool_timeout=config.DB_POOL_TIMEOUT,
+            pool_recycle=config.DB_POOL_RECYCLE,
+        )
+        logger.info(
+            "DB pool: size=%s overflow=%s timeout=%ss recycle=%ss pre_ping=on",
+            config.DB_POOL_SIZE,
+            config.DB_MAX_OVERFLOW,
+            config.DB_POOL_TIMEOUT,
+            config.DB_POOL_RECYCLE,
+        )
+    return options
+
+
+engine = create_engine(DATABASE_URL, **_engine_options())
 
 # expire_on_commit=False is REQUIRED here. The codebase's pattern is: load an ORM
 # object, commit, close the session, then return the object and read its attributes in
