@@ -14,7 +14,7 @@ import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 
 import { Icon, type IconName } from '../src/components/Icon';
-import { listCities } from '../src/api/orders';
+import { listCities, listRoutes, type Route } from '../src/api/orders';
 import { listAddresses, type SavedAddress } from '../src/api/addresses';
 import { suggestAddress, geocodeAddress } from '../src/services/geocoding';
 import { resolveRouteCity } from '../src/services/cityResolver';
@@ -23,6 +23,7 @@ import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
+import { longHaulDestinations } from '../src/utils/longHaul';
 import { suggestLang } from '../src/utils/yandexLocale';
 
 type Field = 'from' | 'to';
@@ -52,6 +53,7 @@ export default function RouteSelectScreen() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [routes, setRoutes] = useState<Route[]>([]);
 
   const fromInputRef = useRef<TextInput>(null);
   const toInputRef = useRef<TextInput>(null);
@@ -59,6 +61,11 @@ export default function RouteSelectScreen() {
   useEffect(() => {
     listCities().then(setCities).catch(() => setCities([]));
     listAddresses().then(setSavedAddresses).catch(() => setSavedAddresses([]));
+    // The route table is what carries real road distances, so it is also what decides which
+    // destinations are long-haul. A failure here just means no filtering (see below).
+    listRoutes()
+      .then(({ routes }) => setRoutes(routes || []))
+      .catch(() => setRoutes([]));
   }, []);
 
   // Focus the active field's input. Both inputs stay mounted (we never swap a
@@ -203,9 +210,33 @@ export default function RouteSelectScreen() {
   const fromPlaceholder = t(isParcel ? 'routeSelect.fromParcelPlaceholder' : 'routeSelect.fromPlaceholder');
   const toPlaceholder = t(isParcel ? 'orderEntry.whereToParcel' : 'orderEntry.whereTo');
 
+  // Destinations at least LONG_HAUL_MIN_KM from the pickup, nearest first. Shared with the
+  // map screen's quick picks so both lists agree on what counts as a long trip.
+  const longHaul = useMemo(
+    () => longHaulDestinations(routes, orderStore.fromCity),
+    [routes, orderStore.fromCity]
+  );
+
+  /**
+   * Whether the destination list is being narrowed to long-haul cities.
+   *
+   * Only while choosing the DESTINATION, and only if the filter actually found something.
+   * An empty list would be worse than an unfiltered one — the pickup may be somewhere with
+   * no route rows at all (or `fromCity` may be a geocoded district name like "Boysun", or
+   * the literal "Joriy joylashuv"), and in that case offering nothing to tap would leave the
+   * passenger unable to order at all.
+   */
+  const longHaulActive = active === 'to' && longHaul.length > 0;
+
   // Filter cities and places based on search
-  const filteredCities = cities.filter((c) => c.toLowerCase().includes(search.toLowerCase()));
+  const searchable = longHaulActive ? longHaul.map((d) => d.city) : cities;
+  const filteredCities = searchable.filter((c) =>
+    c.toLowerCase().includes(search.toLowerCase())
+  );
   const localPlaces = searchSurxondaryoPlaces(search, cities);
+
+  /** Road distance to a destination, when the long-haul filter is what listed it. */
+  const kmTo = (city: string) => longHaul.find((d) => d.city === city)?.km;
 
   type Row =
     | { type: 'header'; key: string; labelKey: string }
@@ -391,6 +422,13 @@ export default function RouteSelectScreen() {
                   <Text style={styles.resultTitle}>{item.name}</Text>
                   <Text style={styles.resultSub}>{t('cities.region')}</Text>
                 </View>
+                {/* Show the distance when it is the reason the city is on the list, so the
+                    shortened list reads as deliberate rather than as missing entries. */}
+                {kmTo(item.name) != null && (
+                  <Text style={styles.resultDistance}>
+                    {t('orderEntry.kmAway', { km: kmTo(item.name) })}
+                  </Text>
+                )}
               </TouchableOpacity>
             );
           }
