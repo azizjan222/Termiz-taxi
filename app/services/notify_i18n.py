@@ -172,7 +172,25 @@ def commission_soon(lang: str, *, from_city: str, to_city: str,
     return title, body
 
 
-def admin_title(lang: str) -> str:
-    lang = norm_lang(lang)
-    return {"uz": "📢 Admin xabari", "uz-cyrl": "📢 Админ хабари",
-            "ru": "📢 Сообщение от администрации", "en": "📢 Message from admin"}[lang]
+# Sarlavha sifatida ko'rsatiladigan ilova nomlari. app.json dagi `name` bilan bir xil
+# bo'lishi SHART: sarix-go-app -> "Sarix Go", sarix-go-driver -> "Sarix Driver".
+PASSENGER_APP_NAME = "Sarix Go"
+DRIVER_APP_NAME = "Sarix Driver"
+
+
+def app_title(recipient_type: Optional[str]) -> str:
+    """Return the app name to use as an announcement's notification title.
+
+    Broadcasts used to arrive titled "📢 Admin xabari", which told the passenger
+    nothing about *which* app woke their phone — both apps are installed on many
+    devices. The title is now the sending app's own name, so the notification
+    shade reads "Sarix Go" or "Sarix Driver".
+
+    ``recipient_type`` is the same discriminator the push layer uses (see
+    ``app/services/push.py``): a "driver" recipient holds a driver-app Expo token,
+    anything else ("user"/"passenger") is the passenger app.
+
+    Deliberately NOT localized — an app name is a brand and stays identical in
+    uz/uz-cyrl/ru/en, unlike every other helper in this module.
+    """
+    return DRIVER_APP_NAME if (recipient_type or "").strip().lower() == "driver" else PASSENGER_APP_NAME

@@ -705,13 +705,13 @@ async def cmd_push_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for u in session.query(User).filter(User.push_token.isnot(None)).all():
             items.append({
                 "recipient_type": "user", "recipient_id": u.id, "token": u.push_token,
-                "title": nt.admin_title(nt.norm_lang(u.language)), "body": text,
+                "title": nt.app_title("user"), "body": text,
                 "data": {"type": "admin"},
             })
         for d in session.query(Driver).filter(Driver.push_token.isnot(None)).all():
             items.append({
                 "recipient_type": "driver", "recipient_id": d.id, "token": d.push_token,
-                "title": nt.admin_title(nt.norm_lang(d.language)), "body": text,
+                "title": nt.app_title("driver"), "body": text,
                 "data": {"type": "admin"},
             })
         total = len(items)
@@ -743,7 +743,7 @@ async def cmd_push_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for d in session.query(Driver).filter(Driver.push_token.isnot(None)).all():
             items.append({
                 "recipient_type": "driver", "recipient_id": d.id, "token": d.push_token,
-                "title": nt.admin_title(nt.norm_lang(d.language)), "body": text,
+                "title": nt.app_title("driver"), "body": text,
                 "data": {"type": "admin"},
             })
         total = len(items)
@@ -775,7 +775,7 @@ async def cmd_push_passengers(update: Update, context: ContextTypes.DEFAULT_TYPE
         for u in session.query(User).filter(User.push_token.isnot(None)).all():
             items.append({
                 "recipient_type": "user", "recipient_id": u.id, "token": u.push_token,
-                "title": nt.admin_title(nt.norm_lang(u.language)), "body": text,
+                "title": nt.app_title("user"), "body": text,
                 "data": {"type": "admin"},
             })
         total = len(items)
@@ -861,16 +861,11 @@ async def cmd_push_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        if recipient_type == "driver":
-            _r = session.query(Driver).filter_by(id=recipient_id).first()
-        else:
-            _r = session.query(User).filter_by(id=recipient_id).first()
-        lang = nt.norm_lang(_r.language if _r else None)
         result = await send_push(
             session,
             recipient_type=recipient_type,
             recipient_id=recipient_id,
-            title=nt.admin_title(lang),
+            title=nt.app_title(recipient_type),
             body=text,
             data={"type": "admin"},
         )
