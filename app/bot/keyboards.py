@@ -85,6 +85,26 @@ def share_location() -> ReplyKeyboardMarkup:
     )
 
 
+def cancel_only() -> ReplyKeyboardMarkup:
+    """Just a cancel button, for free-text steps that otherwise show no keyboard.
+
+    The passenger order form used ReplyKeyboardRemove on its text steps, so there was no
+    way to back out of a half-filled order except by typing /cancel — which is not shown
+    anywhere in the bot.
+    """
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(BTN_CANCEL)]], resize_keyboard=True,
+    )
+
+
+def share_location_or_cancel() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(BTN_SHARE_LOCATION, request_location=True)],
+         [KeyboardButton(BTN_CANCEL)]],
+        resize_keyboard=True, one_time_keyboard=True,
+    )
+
+
 def car_model_picker() -> ReplyKeyboardMarkup:
     popular = car_models.get_popular_models()
     rows = [[KeyboardButton(m) for m in popular[i:i + 2]] for i in range(0, len(popular), 2)]
