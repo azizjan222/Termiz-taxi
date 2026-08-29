@@ -15,11 +15,11 @@
 /**
  * Height of the bar's own card, excluding the safe-area inset below it.
  *
- * Sized to hold the icon, the label AND the active-tab underline. At 68 it did not: the
- * inner height left after the bar's padding was a couple of pixels short of the stack, so
- * the labels spilled out over the top edge of the card.
+ * The bar renders its own contents (see the `tabBar` renderer in app/(tabs)/_layout.tsx)
+ * and centres them, so this only has to be comfortably larger than the
+ * icon + label + underline stack — no interplay with any framework padding.
  */
-export const TAB_BAR_HEIGHT = 78;
+export const TAB_BAR_HEIGHT = 72;
 
 /** Gap between the bar's card and the screen edges. */
 export const TAB_BAR_MARGIN = 16;
