@@ -4,7 +4,7 @@ import {
   TouchableOpacity, Alert, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
@@ -19,8 +19,9 @@ import { useRealtimeStore } from '../../src/store/realtime';
 import { useThemeStore } from '../../src/store/theme';
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { IncomingOrderModal } from '../../src/components/IncomingOrderModal';
+import { AcceptButton } from '../../src/components/AcceptButton';
 import { stopAlert } from '../../src/services/notifications';
-import { typography, spacing, radius, gradients } from '../../src/theme';
+import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 import { formatDepartureTime } from '../../src/utils/departureTime';
 
@@ -324,18 +325,36 @@ export default function OrdersScreen() {
     return 'taxi';
   };
 
+  /**
+   * What kind of job this is, in words.
+   *
+   * The card used to convey it with an icon alone — a small parcel box vs a small taxi in
+   * the same grey tile — and a parcel is a completely different job (no passengers, price
+   * negotiated with the sender). Naming it removes the guess.
+   */
+  const getServiceLabel = (type: string) =>
+    t(type === 'parcel' ? 'more.parcelLabel' : type === 'full_car' ? 'more.fullCarLabel' : 'more.taxi');
+
   const renderOrder = ({ item }: { item: DriverOrder }) => {
     const onFreeTrial = !!driver?.has_active_subscription;
     const insufficientBalance =
       !onFreeTrial && (driver?.balance || 0) < item.commission;
+    const isParcel = item.service_type === 'parcel';
     return (
       <View style={[styles.card, item.female_only && styles.cardFemale]}>
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderLeft}>
-            <View style={styles.serviceIconTile}>
-              <Icon name={getServiceIcon(item.service_type)} size={20} color={colors.primary} />
+            <View style={[styles.serviceIconTile, isParcel && styles.serviceIconTileParcel]}>
+              <Icon
+                name={getServiceIcon(item.service_type)}
+                size={20}
+                color={isParcel ? colors.primary : colors.accentDark}
+              />
             </View>
-            <Text style={styles.timeAgo}>{formatTimeAgo(item.created_at)} {t('more.ago')}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.serviceLabel}>{getServiceLabel(item.service_type)}</Text>
+              <Text style={styles.timeAgo}>{formatTimeAgo(item.created_at)} {t('more.ago')}</Text>
+            </View>
           </View>
           {item.source === 'app' && (
             <View style={styles.sourceBadge}>
@@ -346,12 +365,20 @@ export default function OrdersScreen() {
           )}
         </View>
 
+        {/* Route. The sub-line under each city is the passenger's ACTUAL address when they
+            gave one — it used to be the literal word "Manzil" under the pickup and nothing
+            under the destination, so the driver had to accept the order before finding out
+            where in town they were going. */}
         <View style={styles.routeBlock}>
           <View style={styles.routeRow}>
             <View style={styles.routeDot} />
             <View style={{ flex: 1 }}>
               <Text style={styles.routeText}>{item.from_city}</Text>
-              <Text style={styles.routeSub}>{t('more.address')}</Text>
+              {!!item.from_address && (
+                <Text style={styles.routeSub} numberOfLines={1}>
+                  {item.from_address}
+                </Text>
+              )}
             </View>
           </View>
           <View style={styles.routeConnector} />
@@ -359,6 +386,11 @@ export default function OrdersScreen() {
             <View style={[styles.routeDot, { backgroundColor: colors.accent }]} />
             <View style={{ flex: 1 }}>
               <Text style={styles.routeText}>{item.to_city}</Text>
+              {!!item.to_address && (
+                <Text style={styles.routeSub} numberOfLines={1}>
+                  {item.to_address}
+                </Text>
+              )}
             </View>
           </View>
         </View>
@@ -398,16 +430,30 @@ export default function OrdersScreen() {
             {t(item.service_type === 'parcel' ? 'more.dispatch' : 'more.departure')}
             : {formatDepartureTime(item.departure_time, t)}
           </IconText>
-          <IconText
-            name={item.service_type === 'parcel' ? 'parcel' : 'people'}
-            size={13}
-            color={colors.textSecondary}
-            textStyle={styles.cardInfoText}
-          >
-            {item.service_type === 'parcel'
-              ? t('more.parcelNegotiable')
-              : `${t('more.peopleCount', { n: item.person_count })} · ${formatPrice(item.price)} ${t('more.currency')}`}
-          </IconText>
+          {/* The fare is what the driver is deciding on, so it gets its own emphasised row
+              rather than sharing the muted styling of the metadata above it. A parcel has
+              no fare to show — its price is agreed with the sender — so it says so
+              instead of printing a passenger count that means nothing for a parcel. */}
+          <View style={styles.fareRow}>
+            <Icon
+              name={isParcel ? 'parcel' : 'people'}
+              size={15}
+              color={colors.textSecondary}
+            />
+            {isParcel ? (
+              // `more.negotiable` ("Kelishiladi"), not `more.parcelNegotiable`
+              // ("Pochta · Narx: Kelishiladi") — the header already says "Pochta".
+              <Text style={styles.fareNegotiable}>{t('more.negotiable')}</Text>
+            ) : (
+              <Text style={styles.fareText}>
+                {t('more.peopleCount', { n: item.person_count })}
+                {' · '}
+                <Text style={styles.farePrice}>
+                  {formatPrice(item.price)} {t('more.currency')}
+                </Text>
+              </Text>
+            )}
+          </View>
           {item.note && (
             <IconText
               name="chat"
@@ -443,32 +489,17 @@ export default function OrdersScreen() {
               )}
             </View>
           </View>
-          <TouchableOpacity
+          <AcceptButton
+            title={t('order.accept')}
             onPress={() => handleAccept(item)}
-            disabled={insufficientBalance || accepting === item.id}
-            activeOpacity={0.85}
-            accessibilityRole="button"
+            loading={accepting === item.id}
+            disabled={insufficientBalance}
             accessibilityLabel={t('more.a11yAcceptOrder', {
               from: item.from_city,
               to: item.to_city,
             })}
             accessibilityHint={t('more.a11yAcceptOrderHint')}
-            accessibilityState={{
-              disabled: insufficientBalance || accepting === item.id,
-              busy: accepting === item.id,
-            }}
-          >
-            <LinearGradient
-              colors={insufficientBalance ? ([colors.border, colors.border] as const) : gradients.gold}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.acceptBtn, insufficientBalance && styles.acceptBtnDisabled]}
-            >
-              <Text style={styles.acceptBtnText}>
-                {accepting === item.id ? '...' : t('order.accept')}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          />
         </View>
       </View>
     );
@@ -523,30 +554,19 @@ export default function OrdersScreen() {
         </View>
       </View>
 
-      {/* Trial / balance status card */}
-      {driver?.has_active_subscription ? (
-        <View style={[styles.statusCard, styles.statusCardTrial]}>
-          <Icon name="gift" size={24} color={colors.success} style={styles.statusCardIcon} />
-          <Text style={styles.statusCardTitle}>
+      {/* Free-trial chip.
+          The balance card that used to sit here was removed: this screen is for reading
+          orders, and a standing balance figure with a top-up button competed with them for
+          attention on every single visit. The balance stays one tap away on the Profile tab
+          (which shows it prominently, with a low-balance warning), the red banner below
+          still appears the moment the balance actually blocks accepting, and the accept
+          alert itself offers "To'ldirish". The trial state survives here because it is
+          time-limited news the driver should not have to go looking for. */}
+      {driver?.has_active_subscription && (
+        <View style={styles.trialChip}>
+          <IconText name="gift" size={14} color={colors.success} textStyle={styles.trialChipText}>
             {t('more.trialDaysLeft', { days: driver.subscription_days_left ?? 0 })}
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.statusCard}>
-          <Icon name="money" size={24} color={colors.accent} style={styles.statusCardIcon} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.statusCardLabel}>{t('profile.balance')}</Text>
-            <Text style={styles.statusCardValue}>
-              {formatPrice(driver?.balance || 0)} {t('more.currency')}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.topUpMini}
-            onPress={() => router.push('/top-up')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.topUpMiniText}>+ {t('more.topUp')}</Text>
-          </TouchableOpacity>
+          </IconText>
         </View>
       )}
 
@@ -669,39 +689,19 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   title: { ...typography.h1, color: colors.text },
   headerSub: { ...typography.small, color: colors.textMuted, marginTop: 2, fontWeight: '600' },
-  statusCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+  // Free-trial notice — a slim chip, not the full-width card the balance used to sit in.
+  trialChip: {
+    alignSelf: 'flex-start',
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.background,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.divider,
-    shadowColor: '#0E1730',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  statusCardTrial: {
+    paddingVertical: 6,
     backgroundColor: colors.warningLight,
+    borderRadius: radius.pill,
+    borderWidth: 1,
     borderColor: colors.accentLight,
   },
-  statusCardIcon: { fontSize: 24 },
-  statusCardTitle: { ...typography.bodyBold, color: colors.accentDark, flex: 1 },
-  statusCardLabel: { ...typography.small, color: colors.textSecondary },
-  statusCardValue: { ...typography.bodyBold, color: colors.success, fontSize: 18 },
-  topUpMini: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: radius.pill,
-  },
-  topUpMiniText: { ...typography.small, color: colors.textOnPrimary, fontWeight: '700' },
+  trialChipText: { ...typography.small, color: colors.accentDark, fontWeight: '700' },
   topupBanner: {
     backgroundColor: colors.errorLight,
     borderColor: '#F5B5B5',
@@ -756,15 +756,21 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  // flex: 1 so the service label column has a bounded width and the "Ilova" badge stays
+  // pinned to the right edge of the card.
+  cardHeaderLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   serviceIconTile: {
     width: 36,
     height: 36,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    // Tinted per service so taxi and parcel are told apart at a glance, before the label
+    // is even read: gold for a ride, brand blue for a parcel.
+    backgroundColor: colors.warningLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  serviceIconTileParcel: { backgroundColor: colors.primary100 },
+  serviceLabel: { ...typography.bodyBold, color: colors.text, fontSize: 15 },
 
   timeAgo: { ...typography.small, color: colors.textMuted },
   sourceBadge: {
@@ -803,6 +809,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 2,
   },
   cardInfoText: { ...typography.caption, color: colors.text },
+  // The fare line — the number the accept decision actually turns on.
+  fareRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  fareText: { ...typography.bodyBold, color: colors.text, flexShrink: 1 },
+  farePrice: { color: colors.success, fontWeight: '800' },
+  fareNegotiable: { ...typography.bodyBold, color: colors.primary, flexShrink: 1 },
   note: { ...typography.small, color: colors.textSecondary, marginTop: 4, fontStyle: 'italic' },
   extrasBlock: {
     backgroundColor: '#FFFBEB',
@@ -843,18 +854,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.pill,
   },
   bonusTagText: { ...typography.small, color: colors.success, fontWeight: '700' },
-  acceptBtn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    shadowColor: colors.accentDark,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  acceptBtnDisabled: { shadowOpacity: 0, elevation: 0 },
-  acceptBtnText: { ...typography.bodyBold, color: '#0E1B3D' },
+
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl },
   emptyIconCircle: {
     width: 108,
