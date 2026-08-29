@@ -152,6 +152,8 @@ export const uz = {
     onlineToday: 'Bugun onlayn',
     hours: 'soat',
     minutes: 'daqiqa',
+    loadFailed: "Statistikani yuklab bo'lmadi",
+    noData: "Ma'lumot yo'q",
   },
   history: {
     title: 'Zakaslar tarixi',
@@ -469,6 +471,8 @@ export const uz = {
     a11yCompleteOrderHint: 'Tasdiqlangandan keyin buyurtmani tugallangan deb belgilaydi',
     a11yStartTripHint: 'Tasdiqlangandan keyin safarni boshlaydi',
     noRatingsYet: 'Hali baho yo‘q',
+    activeLoadFailed: "Faol zakaslarni yuklab bo'lmadi",
+    pullToRetry: 'Qayta urinish uchun pastga torting',
   },
   departure: {
     now: 'Hozir',
@@ -724,6 +728,8 @@ export const ru = {
     dailyChart: 'Доход по дням', topRoutes: 'Частые маршруты',
     services: 'Виды услуг', onlineToday: 'Онлайн сегодня',
     hours: 'ч', minutes: 'мин',
+    loadFailed: 'Не удалось загрузить статистику',
+    noData: 'Нет данных',
   },
   history: {
     title: 'История заказов', empty: 'История пуста',
@@ -1030,6 +1036,8 @@ export const ru = {
     a11yCompleteOrderHint: 'После подтверждения отметит заказ как выполненный',
     a11yStartTripHint: 'После подтверждения начнёт поездку',
     noRatingsYet: 'Пока нет оценок',
+    activeLoadFailed: 'Не удалось загрузить активные заказы',
+    pullToRetry: 'Потяните вниз, чтобы повторить',
   },
   departure: {
     now: 'Сейчас',
@@ -1284,6 +1292,8 @@ export const en = {
     dailyChart: 'Daily earnings', topRoutes: 'Top routes',
     services: 'Service types', onlineToday: 'Online today',
     hours: 'h', minutes: 'min',
+    loadFailed: 'Could not load the statistics',
+    noData: 'No data',
   },
   history: {
     title: 'Order history', empty: 'History is empty',
@@ -1589,6 +1599,8 @@ export const en = {
     a11yCompleteOrderHint: 'Marks the order as completed once confirmed',
     a11yStartTripHint: 'Starts the trip once confirmed',
     noRatingsYet: 'No ratings yet',
+    activeLoadFailed: 'Could not load your active orders',
+    pullToRetry: 'Pull down to try again',
   },
   departure: {
     now: 'Now',
@@ -1843,6 +1855,8 @@ export const uzCyrl = {
     dailyChart: 'Кунлик даромад', topRoutes: 'Энг кўп йўналишлар',
     services: 'Хизмат турлари', onlineToday: 'Бугун онлайн',
     hours: 'соат', minutes: 'дақиқа',
+    loadFailed: 'Статистикани юклаб бўлмади',
+    noData: 'Маълумот йўқ',
   },
   history: {
     title: 'Заказлар тарихи', empty: 'Тарих бўш',
@@ -2148,6 +2162,8 @@ export const uzCyrl = {
     a11yCompleteOrderHint: 'Тасдиқлангандан кейин буюртмани тугалланган деб белгилайди',
     a11yStartTripHint: 'Тасдиқлангандан кейин сафарни бошлайди',
     noRatingsYet: 'Ҳали баҳо йўқ',
+    activeLoadFailed: 'Фаол заказларни юклаб бўлмади',
+    pullToRetry: 'Қайта уриниш учун пастга тортинг',
   },
   departure: {
     now: 'Ҳозир',

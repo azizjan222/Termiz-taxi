@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity,
 } from 'react-native';
@@ -18,23 +18,31 @@ export default function ActiveOrdersScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [orders, setOrders] = useState<DriverOrder[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  // A failed fetch used to be indistinguishable from "you have no active rides" — the most
+  // misleading message possible for a driver who is mid-trip and just lost signal.
+  const [failed, setFailed] = useState(false);
 
-  const load = async () => {
-    setRefreshing(true);
+  // `silent` keeps the 15s poll invisible. Without it every poll set `refreshing`, so the
+  // pull-to-refresh spinner appeared by itself four times a minute. The orders tab already
+  // solved this the same way.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setRefreshing(true);
     try {
       const list = await listMyActive();
       setOrders(list);
+      setFailed(false);
     } catch {
+      setFailed(true);
     } finally {
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     load();
-    const i = setInterval(load, 15000);
+    const i = setInterval(() => load(true), 15000);
     return () => clearInterval(i);
-  }, []);
+  }, [load]);
 
   const renderOrder = ({ item }: { item: DriverOrder }) => (
     <TouchableOpacity
@@ -76,20 +84,40 @@ export default function ActiveOrdersScreen() {
         <Text style={styles.title}>{t('home.active')}</Text>
       </View>
 
-      {orders.length === 0 && !refreshing ? (
-        <View style={styles.empty}>
-          <Icon name="inboxEmpty" size={64} color={colors.textMuted} />
-          <Text style={styles.emptyText}>{t('more.noActiveOrders')}</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={orders}
-          keyExtractor={(o) => o.id.toString()}
-          renderItem={renderOrder}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
-        />
-      )}
+      {/* The list is rendered in EVERY state, with the empty/error message supplied via
+          ListEmptyComponent. Previously the empty state was a plain View that replaced the
+          FlatList, which took the RefreshControl with it: a driver whose request had failed
+          was told they had no active rides and had no way to retry. */}
+      <FlatList
+        data={orders}
+        keyExtractor={(o) => o.id.toString()}
+        renderItem={renderOrder}
+        contentContainerStyle={orders.length === 0 ? styles.emptyList : styles.list}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load()}
+            tintColor={colors.primary}
+          />
+        }
+        ListEmptyComponent={
+          refreshing ? null : (
+            <View style={styles.empty}>
+              <Icon
+                name={failed ? 'warning' : 'inboxEmpty'}
+                size={64}
+                color={colors.textMuted}
+              />
+              <Text style={styles.emptyText}>
+                {failed ? t('more.activeLoadFailed') : t('more.noActiveOrders')}
+              </Text>
+              {failed && (
+                <Text style={styles.emptyHint}>{t('more.pullToRetry')}</Text>
+              )}
+            </View>
+          )
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -127,6 +155,25 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   statusBadgeText: { ...typography.small, color: colors.warning, fontWeight: '700' },
   passenger: { ...typography.caption, color: colors.text, marginBottom: 2 },
   persons: { ...typography.caption, color: colors.textSecondary },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { ...typography.body, color: colors.textSecondary },
+  // `emptyList` gives the ListEmptyComponent room to centre itself while still living
+  // inside the scroll view that owns the RefreshControl.
+  emptyList: { flexGrow: 1 },
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  emptyText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
+  emptyHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
 });
