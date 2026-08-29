@@ -11,7 +11,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
-import { Button } from '../src/components/Button';
+import { OrderCtaButton } from '../src/components/OrderCtaButton';
 import { getPriceQuote, type PriceQuote } from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
@@ -306,11 +306,10 @@ export default function TariffScreen() {
               : `${formatPrice(getCurrentPrice())} ${t('common.currency')}`}
           </Text>
         </View>
-        <Button
+        <OrderCtaButton
           title={t('common.next')}
           onPress={() => router.push('/confirm-order')}
           variant="primary"
-          fullWidth={false}
           // Block the step while there is no usable tariff. It used to stay enabled even
           // when every quote had failed, so the passenger reached confirm-order with a
           // "—" price and confirmed a ride without ever seeing the fare.

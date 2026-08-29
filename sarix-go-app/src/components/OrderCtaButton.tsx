@@ -48,6 +48,14 @@ export interface OrderCtaButtonProps {
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
+  /**
+   * Which brand colour the button wears.
+   *
+   * `gold` is the final commit ("Buyurtma berish"); `primary` is a step forward in a flow
+   * that has not committed to anything yet ("Davom etish"). Keeping both in one component
+   * means the motion is defined once — a second copy would drift out of step with this one.
+   */
+  variant?: 'gold' | 'primary';
   accessibilityLabel?: string;
   accessibilityHint?: string;
   style?: StyleProp<ViewStyle>;
@@ -61,12 +69,17 @@ export function OrderCtaButton({
   onPress,
   loading = false,
   disabled = false,
+  variant = 'gold',
   accessibilityLabel,
   accessibilityHint,
   style,
 }: OrderCtaButtonProps) {
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const isGold = variant === 'gold';
+  const tint = isGold ? colors.accent : colors.primary;
+  const onTint = isGold ? colors.textOnAccent : colors.textOnPrimary;
 
   // The gloss sweep has to travel the real button width, which is only known after layout.
   const [width, setWidth] = useState(0);
@@ -191,12 +204,19 @@ export function OrderCtaButton({
       {alive && (
         <Animated.View
           pointerEvents="none"
-          style={[styles.ring, { opacity: ringOpacity, transform: [{ scale: ringScale }] }]}
+          style={[
+            styles.ring,
+            { borderColor: tint, opacity: ringOpacity, transform: [{ scale: ringScale }] },
+          ]}
         />
       )}
 
       <Animated.View
-        style={[styles.lift, { transform: [{ scale: breatheScale }, { scale: pressScale }] }]}
+        style={[
+          styles.lift,
+          { backgroundColor: tint, shadowColor: tint },
+          { transform: [{ scale: breatheScale }, { scale: pressScale }] },
+        ]}
       >
         <Pressable
           onPress={handlePress}
@@ -211,20 +231,20 @@ export function OrderCtaButton({
           accessibilityState={{ disabled: !alive, busy: loading }}
         >
           <LinearGradient
-            colors={gradients.gold}
+            colors={isGold ? gradients.gold : gradients.purple}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.gradient}
           >
             {loading ? (
-              <ActivityIndicator color={colors.textOnAccent} />
+              <ActivityIndicator color={onTint} />
             ) : (
               <View style={styles.content}>
-                <Text style={styles.text} numberOfLines={1}>
+                <Text style={[styles.text, { color: onTint }]} numberOfLines={1}>
                   {title}
                 </Text>
                 <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
-                  <Icon name="arrowRight" size={20} color={colors.textOnAccent} />
+                  <Icon name="arrowRight" size={20} color={onTint} />
                 </Animated.View>
               </View>
             )}
@@ -260,14 +280,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     bottom: 0,
     borderRadius: radius.lg,
     borderWidth: 2,
-    borderColor: colors.accent,
+    // borderColor comes from the variant.
   },
   lift: {
     borderRadius: radius.lg,
-    // Android draws `elevation` from the view's own background, so the wrapper needs one
-    // even though the gradient paints over every pixel of it.
-    backgroundColor: colors.accent,
-    shadowColor: colors.accent,
+    // backgroundColor/shadowColor come from the variant. Android draws `elevation` from the
+    // view's own background, so the wrapper needs one even though the gradient paints over
+    // every pixel of it.
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
