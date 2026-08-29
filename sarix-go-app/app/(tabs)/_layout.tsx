@@ -35,7 +35,10 @@ export default function TabsLayout() {
    */
   const renderLabel =
     (label: string) =>
-    ({ focused, color }: { focused: boolean; color: string }) => (
+    // `color` is a ColorValue, not a string — React Navigation hands the label renderer the
+    // resolved active/inactive tint, and typing it as `string` makes the whole function
+    // unassignable to `tabBarLabel`.
+    ({ focused, color }: { focused: boolean; color: ColorValue }) => (
       <View style={styles.labelWrapper}>
         <Text style={[styles.label, { color }]} numberOfLines={1}>
           {label}
