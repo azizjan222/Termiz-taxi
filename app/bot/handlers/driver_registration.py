@@ -39,14 +39,50 @@ async def become_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📞 Telefon raqamingizni yuboring:", reply_markup=kb.share_phone())
 
 
+def _own_contact_phone(update: Update) -> str | None:
+    """The sender's OWN phone number from a shared contact, or None.
+
+    The "share my number" button returns the sender's own contact, but nothing stops a user
+    ignoring the button and attaching ANY contact card from their address book -- and numbers
+    can be put in an address book freely. Telegram sets ``contact.user_id`` to the contact's
+    own Telegram id, so requiring it to equal the sender is what makes the number proof of
+    ownership rather than just a string the sender typed.
+
+    Without this check the phone was trusted for both app login and driver registration,
+    which meant sharing a known driver's contact card:
+      * minted an app login code for THAT driver's account (cash balance included), because
+        the app links the session by phone; and
+      * re-pointed the existing Driver row's telegram_id onto the attacker
+        (see store.register_driver), locking the real driver out.
+    """
+    contact = update.message.contact if update.message else None
+    if contact is None or not contact.phone_number:
+        return None
+    sender = update.effective_user.id if update.effective_user else None
+    if contact.user_id is None or sender is None or contact.user_id != sender:
+        return None
+    return contact.phone_number
+
+
 async def save_shared_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle a shared contact for app-login OR the quick driver registration path."""
     uid = update.effective_user.id
 
+    # Someone else's contact card is not proof of anything -- refuse before it can be used
+    # for auth or registration.
+    if update.message.contact and _own_contact_phone(update) is None:
+        context.user_data.pop("tg_auth_token", None)
+        await update.message.reply_text(
+            "❌ Faqat <b>o'zingizning</b> raqamingizni yuborishingiz mumkin.\n\n"
+            "Iltimos, pastdagi \"📱 Raqamni yuborish\" tugmasidan foydalaning "
+            "(boshqa odamning kontaktini yubormang).",
+            parse_mode="HTML")
+        return
+
     # App login/registration via Telegram (passenger or driver).
     if update.message.contact and context.user_data.get("tg_auth_token"):
         token = context.user_data.pop("tg_auth_token")
-        phone = update.message.contact.phone_number
+        phone = _own_contact_phone(update)
         login_code = None
         ttl_minutes = None
         try:
@@ -86,7 +122,7 @@ async def save_shared_contact(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # Quick driver registration (just the phone).
     if update.message.contact:
-        store.register_driver(uid, update.message.contact.phone_number)
+        store.register_driver(uid, _own_contact_phone(update))
         await update.message.reply_text(
             "🎉 <b>Ro'yxatdan o'tdingiz!</b>\n/start bosing.",
             parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
@@ -125,8 +161,19 @@ async def reg_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("reg", None)
         await save_shared_contact(update, context)
         return ConversationHandler.END
-    phone = (update.message.contact.phone_number if update.message.contact
-             else (update.message.text or "").strip())
+    if update.message.contact:
+        # Same rule as save_shared_contact: a contact card the sender does not own is not
+        # proof of their number, and store.register_driver re-points an existing Driver row
+        # (balance included) when the phone matches.
+        phone = _own_contact_phone(update)
+        if phone is None:
+            await update.message.reply_text(
+                "❌ Faqat <b>o'zingizning</b> raqamingizni yuborishingiz mumkin.\n\n"
+                "Raqamni qo'lda yozing yoki \"📱 Raqamni yuborish\" tugmasini bosing.",
+                parse_mode="HTML")
+            return REG_PHONE
+    else:
+        phone = (update.message.text or "").strip()
     context.user_data.setdefault("reg", {})["phone"] = phone
     await update.message.reply_text("2️⃣ Ismingizni yozing:", reply_markup=ReplyKeyboardRemove())
     return REG_FIRST_NAME

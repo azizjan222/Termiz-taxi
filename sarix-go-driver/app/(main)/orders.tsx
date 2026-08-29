@@ -5,14 +5,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
 
 import {
-  listAvailableOrders, acceptOrder, setOnline as apiSetOnline,
+  listAvailableOrders, acceptOrder, setOnline as apiSetOnline, listMyActive,
   MIN_BALANCE_FALLBACK, type DriverOrder,
 } from '../../src/api/driver';
+import { describeApiError } from '../../src/api/errors';
 import { useDriverStore } from '../../src/store/driver';
 import { useRealtimeStore } from '../../src/store/realtime';
 import { useThemeStore } from '../../src/store/theme';
@@ -30,6 +31,7 @@ export default function OrdersScreen() {
   const driver = useDriverStore((s) => s.driver);
   const isOnline = useDriverStore((s) => s.isOnline);
   const setOnlineLocal = useDriverStore((s) => s.setOnline);
+  const loadDriver = useDriverStore((s) => s.loadDriver);
   const isVerified = driver?.is_verified === true;
   const onlineEnabled = isVerified && isOnline;
 
@@ -95,7 +97,14 @@ export default function OrdersScreen() {
           is_verified: res.is_verified,
           documents_submitted:
             res.documents_submitted ?? currentDriver.documents_submitted,
-          is_online: res.is_online ?? currentDriver.is_online,
+          // Same in-flight guard as setOnlineLocal below. This write was NOT guarded, so a
+          // poll response that started before the driver flipped the switch still wrote
+          // the old value onto the driver object. realtime.ts gates `new_order` delivery
+          // on the driver being online, so a driver who had just gone online silently
+          // stopped receiving order events.
+          is_online: onlineInFlightRef.current
+            ? currentDriver.is_online
+            : res.is_online ?? currentDriver.is_online,
         });
       }
       // Don't let the 15s poll overwrite a toggle the driver just made and that is still
@@ -116,6 +125,18 @@ export default function OrdersScreen() {
     const interval = setInterval(() => load(true), 15000);
     return () => clearInterval(interval);
   }, [load]);
+
+  // Refresh the driver record whenever this tab comes into view. The accept gate below is
+  // driven entirely by `driver.balance` and `driver.min_balance`, but nothing on this
+  // screen ever refetched them: `load()` only reads the order list, and `loadDriver()` ran
+  // just once at app start. Deferred commissions are debited by a background job 15
+  // minutes after each ride, so the balance held here drifts further from reality with
+  // every trip — blocking accepts the server would allow, or promising ones it will refuse.
+  useFocusEffect(
+    useCallback(() => {
+      loadDriver();
+    }, [loadDriver])
+  );
 
   // Consume real-time events from the app-wide realtime store. The socket itself
   // lives in src/services/realtime.ts and is mounted in app/_layout.tsx, so the
@@ -250,11 +271,36 @@ export default function OrdersScreen() {
       // Commission is now deferred: it is charged 15 minutes after acceptance by the
       // backend (skipped during the free trial). So we DON'T deduct the balance here.
       setIncomingOrder(null);
+      // Drop the accepted order from the available list. `router.push` leaves this screen
+      // mounted, so coming back showed the card as still available for up to a full poll
+      // interval — and tapping it fired another accept for a ride already owned.
+      setOrders((prev) => prev.filter((o) => o.id !== order.id));
       router.push(`/order/${order.id}`);
     } catch (e: any) {
-      const msg = e?.response?.data?.error || t('order.notFound');
-      Alert.alert(t('common.error'), msg);
       setIncomingOrder(null);
+
+      // A failure with NO HTTP response (timeout, dropped connection) does not mean the
+      // accept failed — only that we never heard the answer. The server may well have
+      // assigned the order, and 15 minutes later the commission is debited for a ride the
+      // driver never saw. Ask who owns the order before reporting anything.
+      if (!e?.response) {
+        try {
+          const mine = await listMyActive();
+          const claimed = mine.find((o) => o.id === order.id);
+          if (claimed) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            router.push(`/order/${order.id}`);
+            return;
+          }
+        } catch {
+          // Reconciliation itself failed; fall through to the error message below.
+        }
+      }
+
+      // Every failure used to be reported as `order.notFound` unless the server happened
+      // to send a prose `error` field — so a timeout or a 500 told the driver the order
+      // had been taken, which is a different decision than "try again".
+      Alert.alert(t('common.error'), describeApiError(e, t));
       load();
     } finally {
       setAccepting(null);

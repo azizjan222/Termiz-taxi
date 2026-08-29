@@ -5,6 +5,8 @@ from typing import Dict, Set
 
 from aiohttp import WSMsgType, web
 
+from app.models import Driver, User
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,11 +29,22 @@ class WebSocketManager:
         self.passenger_clients.setdefault(user_id, set()).add(ws)
 
     def remove(self, ws: web.WebSocketResponse):
+        """Detach ``ws`` and drop any registry entry it leaves empty.
+
+        The empty sets used to be kept forever, so both dicts grew by one permanent entry
+        per driver/passenger that ever connected. That leaks memory for the lifetime of the
+        process and makes every subsequent disconnect slower, because this method scans
+        each dict in full — including the thousands of dead keys.
+        """
         self.broadcast_clients.discard(ws)
-        for s in self.driver_clients.values():
-            s.discard(ws)
-        for s in self.passenger_clients.values():
-            s.discard(ws)
+        for registry in (self.driver_clients, self.passenger_clients):
+            empty = []
+            for key, sockets in registry.items():
+                sockets.discard(ws)
+                if not sockets:
+                    empty.append(key)
+            for key in empty:
+                registry.pop(key, None)
 
     async def send_to_driver(self, telegram_id: int, message: dict):
         clients = self.driver_clients.get(telegram_id, set())
@@ -65,6 +78,25 @@ class WebSocketManager:
 ws_manager = WebSocketManager()
 
 
+def _account_active(model, id_field: str, value: int) -> bool:
+    """True if the row exists and is not blocked.
+
+    Fails CLOSED on a database error: an unverifiable identity must not be handed a live
+    event stream carrying phone numbers and GPS.
+    """
+    from app.database import get_session
+
+    session = get_session()
+    try:
+        row = session.query(model).filter_by(**{id_field: value}).first()
+        return bool(row) and not row.is_blocked
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("WS identity lookup failed (%s=%s): %s", id_field, value, e)
+        return False
+    finally:
+        session.close()
+
+
 def _verify_ws_identity(role: str, client_id: int, token: str) -> bool:
     """Verify the JWT token actually belongs to the claimed role + id.
 
@@ -75,6 +107,12 @@ def _verify_ws_identity(role: str, client_id: int, token: str) -> bool:
 
     - passenger: utils.auth token, `sub` (user id) must equal client_id
     - driver:    drivers._decode_driver_token, `telegram_id` must equal client_id
+
+    A blocked account is rejected too. Both HTTP entry points (`get_current_user` and
+    `_get_driver_from_request`) refuse `is_blocked` accounts, but this path only checked
+    the signature — so banning someone did not disconnect them or stop new connections.
+    A blocked driver kept receiving every `new_order` broadcast, complete with the
+    passenger's phone number, until their token happened to expire.
     """
     if not token:
         return False
@@ -83,10 +121,20 @@ def _verify_ws_identity(role: str, client_id: int, token: str) -> bool:
         payload = decode_token(token)
         if not payload:
             return False
+        # Reject a token minted for a different audience. Driver tokens are signed with the
+        # SAME secret and carry `sub` = Driver.id, so without this a driver could connect as
+        # `role=passenger&id=<their Driver.id>` and stream the events of the User whose id
+        # happens to match -- including that passenger's phone number and the assigned
+        # driver's live GPS. get_current_user() has this check; decode_token() alone does
+        # not, and calling it directly here bypassed it.
+        if payload.get("role") not in (None, "passenger"):
+            return False
         try:
-            return int(payload.get("sub")) == client_id
+            if int(payload.get("sub")) != client_id:
+                return False
         except (TypeError, ValueError):
             return False
+        return _account_active(User, "id", client_id)
     if role == "driver":
         # Lazy import to avoid a circular import (drivers.py imports ws_manager).
         from app.api.drivers import _decode_driver_token
@@ -94,9 +142,11 @@ def _verify_ws_identity(role: str, client_id: int, token: str) -> bool:
         if not payload:
             return False
         try:
-            return int(payload.get("telegram_id")) == client_id
+            if int(payload.get("telegram_id")) != client_id:
+                return False
         except (TypeError, ValueError):
             return False
+        return _account_active(Driver, "telegram_id", client_id)
     return False
 
 

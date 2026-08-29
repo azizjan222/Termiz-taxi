@@ -71,6 +71,12 @@ export default function OrderDetailScreen() {
   // Set once the order is no longer among our active orders (cancelled / taken / done).
   const [gone, setGone] = useState(false);
   const goneHandledRef = useRef(false);
+  // True once WE completed the ride, so the `gone` watcher treats the order leaving the
+  // active list as the expected outcome rather than something to warn about.
+  const completedByMeRef = useRef(false);
+  // Synchronous in-flight guards for the two irreversible actions on this screen.
+  const startInFlightRef = useRef(false);
+  const completeInFlightRef = useRef(false);
 
   // Imperative handle + live driver position for the in-app pickup map.
   const mapRef = useRef<YandexMapHandle>(null);
@@ -126,6 +132,12 @@ export default function OrderDetailScreen() {
   // this instantly when the socket is up; this covers the case where it is not.
   useEffect(() => {
     if (!gone || goneHandledRef.current) return;
+    // A ride the driver just finished themselves also disappears from listMyActive, so the
+    // poll set `gone` and this fired "zakas endi faol emas" on top of the completion
+    // dialog — and its OK button navigates to the orders list, pre-empting the jump to
+    // /rate-passenger. The driver was told their finished ride had vanished and lost the
+    // chance to rate the passenger. Completing is a normal exit, not a surprise.
+    if (completedByMeRef.current) return;
     goneHandledRef.current = true;
     Alert.alert(t('common.attention'), t('more.orderNoLongerActive'), [
       { text: t('common.ok'), onPress: () => router.replace('/(main)/orders') },
@@ -339,6 +351,12 @@ export default function OrderDetailScreen() {
         {
           text: t('more.yesPickedUp'),
           onPress: async () => {
+            // handleComplete guards its in-flight request; this one did not. Reopening the
+            // dialog and confirming again while the first call was still running fired a
+            // second startTrip, and the server's "already in progress" rejection surfaced
+            // as a raw error on a trip that had in fact started correctly.
+            if (startInFlightRef.current) return;
+            startInFlightRef.current = true;
             setLoading(true);
             try {
               const res = await startTrip(parseInt(id));
@@ -346,6 +364,7 @@ export default function OrderDetailScreen() {
             } catch (e: any) {
               Alert.alert(t('common.error'), describeApiError(e, t));
             } finally {
+              startInFlightRef.current = false;
               setLoading(false);
             }
           },
@@ -360,7 +379,8 @@ export default function OrderDetailScreen() {
       {
         text: t('common.yes'),
         onPress: async () => {
-          if (loading) return;
+          if (completeInFlightRef.current) return;
+          completeInFlightRef.current = true;
           setLoading(true);
           try {
             // Captured BEFORE the await: `order` is refreshed by the poll/socket and the
@@ -368,6 +388,9 @@ export default function OrderDetailScreen() {
             const passengerName = order?.passenger_name || '';
             const canRate = order?.can_rate_passenger === true;
             await completeOrder(parseInt(String(id)));
+            // Claim this exit BEFORE the poll can notice the order left the active list,
+            // so the `gone` handler above stays quiet.
+            completedByMeRef.current = true;
 
             // Offer to rate the passenger, then leave. Only when the ride actually has a
             // passenger account behind it: rate-passenger needs Order.passenger_id, and
@@ -392,6 +415,7 @@ export default function OrderDetailScreen() {
               { onDismiss: done },
             );
           } catch (e: any) {
+            completeInFlightRef.current = false;
             Alert.alert(t('common.error'), describeApiError(e, t));
             setLoading(false);
           }

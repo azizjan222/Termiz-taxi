@@ -31,6 +31,7 @@ from app.bot.handlers import (
 from app.bot.notifications import notify_admin_order_cancelled
 from app.bot.pdf import cmd_driver_documents, driver_pdf_callback
 from app.bot.state import BOT_TOKEN
+from app.bot.store import store
 from app.database import init_db
 from app.migrate import run_migration
 from app.services.monitoring import init_sentry
@@ -59,12 +60,19 @@ def _build_order_conversation() -> ConversationHandler:
             ASK_TO: [MessageHandler(text_only, passenger_order.ask_person_count)],
             ASK_PERSON_COUNT: [MessageHandler(text_only, passenger_order.ask_time)],
             ASK_TIME: [MessageHandler(text_only, passenger_order.finish_order)],
+            ConversationHandler.TIMEOUT: [
+                MessageHandler(filters.ALL, passenger_order.order_timeout)],
         },
         fallbacks=[
             CommandHandler("cancel", passenger_order.cancel_order_form),
             MessageHandler(filters.Regex(f"^{kb.BTN_CANCEL}$"),
                            passenger_order.cancel_order_form),
         ],
+        # Drop a half-filled form after 30 minutes of silence. Without this the passenger
+        # stayed pinned in whatever state they abandoned, so their next message — hours or
+        # days later — was consumed as the missing answer and a real order was created
+        # from stale data. The TIMEOUT state above is only reachable once this is set.
+        conversation_timeout=1800,
     )
 
 
@@ -103,8 +111,27 @@ def _build_driver_registration_conversation() -> ConversationHandler:
 async def _photo_router(update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("topup_step") == "receipt":
         await payments.receive_receipt(update, context)
-    else:
-        await admin_actions.broadcast_media(update, context)
+        return
+
+    # `broadcast_media` returns silently unless the sender is an admin *and* is mid
+    # broadcast, so any other photo used to disappear without a word. The costly case is
+    # a driver sending a top-up receipt when `topup_step` was never set or was lost to a
+    # bot restart: they have already paid, they see no error, and nobody is notified.
+    # Tell them how to submit it instead of swallowing the message.
+    if await admin_actions.broadcast_media(update, context):
+        return
+
+    try:
+        if update.effective_user and store.is_driver(update.effective_user.id):
+            await update.message.reply_text(
+                "📷 Rasm qabul qilindi, lekin to'lov jarayoni boshlanmagan.\n\n"
+                f"Chekni yuborish uchun: «{kb.BTN_CABINET}» → summani tanlang → "
+                "so'ngra chek rasmini yuboring.\n\n"
+                "⚠️ To'lovni allaqachon amalga oshirgan bo'lsangiz, chekni saqlab turing "
+                "va shu tartibda qayta yuboring — pulingiz yo'qolmaydi."
+            )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("photo fallback failed: %s", e)
 
 
 def _register_admin_commands(app) -> None:

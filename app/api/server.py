@@ -218,7 +218,12 @@ async def health_db(request: web.Request) -> web.Response:
             "tables": report,
         }, status=200 if all_ok else 500)
     except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+        # /health/db is public (no auth), so the raw exception must not go out. A driver
+        # or connection failure here stringifies to the SQLAlchemy URL — host, port, user
+        # and password — handing anyone who curls the endpoint the database credentials.
+        # Keep the detail in the server log where operators can still read it.
+        logger.error("health/db inspection failed: %s", e)
+        return web.json_response({"error": "schema_inspection_failed"}, status=500)
 
 
 async def legacy_db(request: web.Request) -> web.Response:

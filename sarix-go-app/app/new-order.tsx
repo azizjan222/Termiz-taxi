@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -44,6 +44,14 @@ export default function NewOrderScreen() {
   // Non-404 quote failure (network etc.): distinct from "route not available".
   const [quoteFailed, setQuoteFailed] = useState(false);
   const [submitting, setSubmitting] = useState<number | 'find' | null>(null);
+  // Synchronous double-submit guard. `submitting` is state, so the `disabled` prop below
+  // only takes effect after a React commit — a fast second tap lands before that and,
+  // with a 20s axios timeout, both taps get through and create TWO orders. The server
+  // allows MAX_ACTIVE_ORDERS_PER_USER = 2, so nothing stops it: the passenger is taken to
+  // /searching for the second order while the first stays open and is accepted by another
+  // driver, who then calls about a ride the passenger has no record of (and is charged a
+  // commission for). confirm-order.tsx already guards its submit exactly this way.
+  const submitInFlightRef = useRef(false);
 
   // Bottom action-bar sheets
   const [paymentSheet, setPaymentSheet] = useState(false);
@@ -101,6 +109,8 @@ export default function NewOrderScreen() {
       Alert.alert(t('common.attention'), t('newOrder.routeUnavailable'));
       return;
     }
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setSubmitting(targetDriverId ?? 'find');
     try {
       // Fold the optional "Boshqa odam" (someone else) details into the driver note.
@@ -140,9 +150,12 @@ export default function NewOrderScreen() {
         params: { orderId: result.order.id.toString() },
       });
     } catch (e: any) {
-      Alert.alert(t('common.error'), describeApiError(e, t));
-    } finally {
+      // Release the guard ONLY on failure. On success we navigate away, and clearing it
+      // in a `finally` would reopen the double-submit window for the whole duration of
+      // the router.replace animation.
+      submitInFlightRef.current = false;
       setSubmitting(null);
+      Alert.alert(t('common.error'), describeApiError(e, t));
     }
   };
 
@@ -215,7 +228,7 @@ export default function NewOrderScreen() {
           {[1, 2, 3, 4].map((n) => {
             const selected = !isFullCar && persons === n;
             const onPress = () => {
-              orderStore.setField('personCount', n);
+              orderStore.setPersonCount(n);
               orderStore.setField('serviceType', 'taxi');
             };
             if (selected) {
@@ -264,7 +277,7 @@ export default function NewOrderScreen() {
           <TouchableOpacity
             onPress={() => {
               orderStore.setField('serviceType', 'full_car');
-              orderStore.setField('personCount', 4);
+              orderStore.setPersonCount(4);
             }}
             activeOpacity={0.9}
           >
@@ -290,7 +303,7 @@ export default function NewOrderScreen() {
             style={styles.fullCarChip}
             onPress={() => {
               orderStore.setField('serviceType', 'full_car');
-              orderStore.setField('personCount', 4);
+              orderStore.setPersonCount(4);
             }}
             activeOpacity={0.85}
           >

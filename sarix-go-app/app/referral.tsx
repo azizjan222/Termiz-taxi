@@ -17,10 +17,26 @@ export default function ReferralScreen() {
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [info, setInfo] = useState<ReferralInfo | null>(null);
+  // The fetch error used to be swallowed by an empty catch, leaving `info` null forever.
+  // The null branch rendered a bare ActivityIndicator with NO header, so a failed request
+  // trapped the passenger on a spinner with no back button and no hint of what went wrong.
+  const [failed, setFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    getReferralInfo().then(setInfo).catch(() => {});
-  }, []);
+    let active = true;
+    setFailed(false);
+    getReferralInfo()
+      .then((data) => {
+        if (active) setInfo(data);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [reloadKey]);
 
   const formatPrice = (n: number) => n.toLocaleString().replace(/,/g, ' ');
 
@@ -40,11 +56,36 @@ export default function ReferralScreen() {
     Alert.alert(t('common.success'), t('referral.codeCopied'));
   };
 
+  // Header is rendered in EVERY state so the back button always exists.
+  const header = (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <Icon name="back" size={26} color={colors.primary} />
+      </TouchableOpacity>
+      <Text style={styles.title}>{t('referral.title')}</Text>
+      <View style={{ width: 40 }} />
+    </View>
+  );
+
   if (!info) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={colors.primary} />
+        {header}
+        <View style={styles.centered}>
+          {failed ? (
+            <>
+              <Text style={styles.errorText}>{t('errors.loadFailed')}</Text>
+              <TouchableOpacity
+                onPress={() => setReloadKey((k) => k + 1)}
+                style={styles.retryBtn}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.retryText}>{t('common.retry')}</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <ActivityIndicator size="large" color={colors.primary} />
+          )}
         </View>
       </SafeAreaView>
     );
@@ -52,13 +93,7 @@ export default function ReferralScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Icon name="back" size={26} color={colors.primary} />
-        </TouchableOpacity>
-        <Text style={styles.title}>{t('referral.title')}</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      {header}
 
       <View style={styles.body}>
         <View style={styles.heroBox}>
@@ -126,6 +161,25 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   title: { ...typography.h3, color: colors.primary },
   body: { flex: 1, padding: spacing.lg },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  errorText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  retryBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  retryText: { ...typography.button, color: colors.textOnPrimary },
   heroBox: {
     backgroundColor: colors.primary,
     padding: spacing.lg,

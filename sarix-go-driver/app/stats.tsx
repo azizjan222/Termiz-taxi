@@ -21,6 +21,11 @@ export default function StatsScreen() {
   const [stats, setStats] = useState<DriverStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // The fetch error was swallowed entirely. `loading` went false but `stats` stayed null,
+  // so the `loading || !stats` branch below kept the spinner on screen forever — and the
+  // pull-to-refresh lives INSIDE the ScrollView that branch replaces, so there was no
+  // reachable way to retry. The driver's only option was to kill the app.
+  const [failed, setFailed] = useState(false);
 
   const PERIODS: { value: StatsPeriod; label: string }[] = [
     { value: 'today', label: t('stats.today') },
@@ -40,8 +45,10 @@ export default function StatsScreen() {
       const s = await getDriverStats(p);
       if (reqIdRef.current !== myReq) return;
       setStats(s);
+      setFailed(false);
     } catch {
       if (reqIdRef.current !== myReq) return;
+      setFailed(true);
     } finally {
       if (reqIdRef.current === myReq) {
         setLoading(false);
@@ -100,9 +107,22 @@ export default function StatsScreen() {
         })}
       </View>
 
-      {loading || !stats ? (
+      {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : !stats ? (
+        <View style={styles.center}>
+          <Text style={styles.errorText}>
+            {failed ? t('stats.loadFailed') : t('stats.noData')}
+          </Text>
+          <TouchableOpacity
+            onPress={() => load(period)}
+            style={styles.retryBtn}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.retryText}>{t('common.retry')}</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <ScrollView
@@ -317,7 +337,25 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { ...typography.h3, color: colors.text, fontWeight: '800' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  errorText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  retryBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  retryText: { ...typography.button, color: '#FFFFFF' },
 
   // Segmented tabs
   tabs: {

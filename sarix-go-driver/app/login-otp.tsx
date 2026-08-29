@@ -32,6 +32,11 @@ export default function LoginOtpScreen() {
   const [loading, setLoading] = useState(false);
   const [resendIn, setResendIn] = useState(60);
   const inputRef = useRef<TextInput>(null);
+  // Synchronous guards. `loading` is state, so it only blocks re-entry after a React
+  // commit — and this screen fires handleVerify straight from onChangeText, where SMS
+  // autofill can deliver the final digit twice within a single tick.
+  const verifyInFlightRef = useRef(false);
+  const resendInFlightRef = useRef(false);
 
   useEffect(() => {
     const t = setInterval(() => setResendIn((s) => (s > 0 ? s - 1 : 0)), 1000);
@@ -48,7 +53,8 @@ export default function LoginOtpScreen() {
     // This is auto-fired from onChangeText. Without an in-flight guard, editing a digit
     // mid-request re-sent the single-use OTP, and the second (now failing) call's
     // "Kod noto'g'ri" flashed over a login that had actually succeeded.
-    if (loading) return;
+    if (verifyInFlightRef.current) return;
+    verifyInFlightRef.current = true;
 
     setLoading(true);
     setError('');
@@ -65,11 +71,16 @@ export default function LoginOtpScreen() {
       const msg = e?.response?.data?.error || t('auth.errBadCode');
       setError(msg);
     } finally {
+      verifyInFlightRef.current = false;
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
+    // Unguarded before: two taps sent two codes, and because each request regenerates the
+    // OTP the driver who then typed the code from the FIRST message was told it was wrong.
+    if (resendInFlightRef.current) return;
+    resendInFlightRef.current = true;
     try {
       await requestDriverOtp(phone);
       setResendIn(60);
@@ -78,6 +89,8 @@ export default function LoginOtpScreen() {
       // Was Alert.alert(t('common.error'), t('common.error')) — the title repeated as the
       // body, telling the driver nothing about why the code had not been resent.
       Alert.alert(t('common.error'), describeApiError(e, t));
+    } finally {
+      resendInFlightRef.current = false;
     }
   };
 

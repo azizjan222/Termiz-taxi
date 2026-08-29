@@ -534,12 +534,21 @@ class BotStore:
         ))
 
     def complete_order(self, order_id: int, *, actor: str = "",
-                       actor_phone: str = "") -> Order | None:
-        """Mark an accepted bot order completed and log it to history."""
+                       actor_phone: str = "",
+                       actor_telegram_id: int | None = None) -> Order | None:
+        """Mark an accepted **bot** order completed and log it to history.
+
+        ``actor_telegram_id`` must be the order's driver. callback_data is client-supplied,
+        so without this anyone could close somebody else's ride by guessing its id.
+        """
         session = self._session_factory()
         try:
             order = session.query(Order).filter_by(id=order_id).first()
             if not order:
+                return None
+            if (order.source or "bot") != "bot":
+                return None
+            if actor_telegram_id is not None and actor_telegram_id != order.driver_telegram_id:
                 return None
             completed_at = datetime.utcnow()
             claimed = (
@@ -563,16 +572,39 @@ class BotStore:
             session.close()
 
     def cancel_order(self, order_id: int, *, cancelled_by: str, actor: str = "",
-                     actor_phone: str = "") -> tuple[Order | None, bool]:
-        """Cancel a bot order, refunding the reserved fare if it was accepted.
+                     actor_phone: str = "",
+                     actor_telegram_id: int | None = None) -> tuple[Order | None, bool]:
+        """Cancel a **bot** order, refunding what was actually reserved.
 
         Returns ``(order, refunded)``. ``refunded`` is True when the driver's balance
         was credited back (only happens for orders that had been accepted).
+
+        BOT ORDERS ONLY -- the same restriction :meth:`assign_order` documents, and for the
+        same reason. This used to accept any order id and refund ``order.price``. A bot
+        order has ``commission == price`` so that was right for them, but an app order
+        carries the passenger's full fare in ``price`` and only the ~10% platform cut in
+        ``commission``. Once the commission scheduler had collected that cut, cancelling the
+        app order through here credited the driver the WHOLE FARE -- roughly ten times what
+        they had paid -- and order ids are sequential, so it was reachable by guessing.
+
+        ``actor_telegram_id`` is the Telegram id of whoever pressed the button and is
+        REQUIRED to match the order's driver or passenger. callback_data is client-supplied,
+        so without this check anyone holding any inline keyboard from the bot could cancel
+        (and trigger a refund on) somebody else's ride.
         """
         session = self._session_factory()
         try:
             order = session.query(Order).filter_by(id=order_id).first()
             if not order or order.status not in ("new", "accepted"):
+                return None, False
+            if (order.source or "bot") != "bot":
+                # Report as "not found": ids are guessable, so do not confirm that some
+                # other order exists.
+                return None, False
+            if actor_telegram_id is not None and actor_telegram_id not in (
+                order.driver_telegram_id,
+                order.passenger_telegram_id,
+            ):
                 return None, False
 
             was_accepted = order.status == "accepted"
@@ -604,8 +636,19 @@ class BotStore:
                     .first()
                 )
                 if driver and order.commission_collected:
-                    refund_amount = int(
-                        order.price or self.order_price(order.person_count or 1)
+                    # Refund exactly what was taken, read back from the ledger rather than
+                    # recomputed. Whichever path charged this order (assign_order here, or
+                    # the commission scheduler) wrote a negative BalanceTransaction under
+                    # this key, so this can never refund more than was actually debited.
+                    charged = (
+                        session.query(BalanceTransaction)
+                        .filter_by(idempotency_key=f"order:{order.id}:commission")
+                        .first()
+                    )
+                    refund_amount = (
+                        abs(int(charged.amount or 0))
+                        if charged is not None
+                        else int(order.price or self.order_price(order.person_count or 1))
                     )
                     driver.balance = int(driver.balance or 0) + refund_amount
                     order.commission_collected = False

@@ -11,19 +11,25 @@ from app.services.otp import (
     verify_otp,
 )
 from app.utils.auth import create_token, require_auth
+from app.utils.body import BodyError, read_json_object, read_str
+from app.utils.timefmt import iso_utc
+
+#: Languages the apps actually ship translations for. Anything else must not be stored.
+SUPPORTED_LANGUAGES = ("uz", "uz-cyrl", "ru", "en")
 
 
 async def request_otp(request: web.Request) -> web.Response:
     """POST /api/auth/request-otp
     Body: {"phone": "+998901234567"}
     """
+    # A body of `5` or `[1]` parses fine but is not a dict, so data.get() below raised
+    # AttributeError -> 500. read_json_object rejects it with a 400.
     try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
+        data = await read_json_object(request)
+        phone_raw = read_str(data, "phone")
+    except BodyError as e:
+        return e.response
 
-    # Use `or ""` (not a get-default) so an explicit JSON null doesn't crash .strip().
-    phone_raw = (data.get("phone") or "").strip()
     if not phone_raw:
         return web.json_response({"error": "Telefon raqam kerak"}, status=400)
 
@@ -59,16 +65,20 @@ async def verify_otp_endpoint(request: web.Request) -> web.Response:
     Body: {"phone": "+998901234567", "code": "123456", "first_name": "...", "language": "uz"}
     """
     try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
+        data = await read_json_object(request)
+        phone_raw = read_str(data, "phone")
+        first_name = read_str(data, "first_name", max_length=100)
+    except BodyError as e:
+        return e.response
 
-    # `or ""` guards against an explicit JSON null (e.g. {"first_name": null}), which a
-    # get-default would NOT catch and would crash .strip() with a 500 instead of a 400.
-    phone_raw = (data.get("phone") or "")
     code = str(data.get("code", "")).strip()
-    first_name = (data.get("first_name") or "").strip()
-    language = data.get("language") or "uz"
+    # Unlike update_profile, this endpoint used to write `data["language"]` straight to
+    # user.language with no whitelist. Anything the client sent was stored — a value the
+    # apps cannot render, and one that silently breaks localized push (notify_i18n falls
+    # through to no translation) or overflows the VARCHAR(10) column on commit.
+    language = read_str(data, "language") or "uz"
+    if language not in SUPPORTED_LANGUAGES:
+        language = "uz"
 
     if not phone_raw or not code:
         return web.json_response({"error": "Telefon va kod kerak"}, status=400)
@@ -136,7 +146,9 @@ async def me(request: web.Request) -> web.Response:
         "language": user.language,
         "bonus_balance": user.bonus_balance,
         "profile_photo_url": user.profile_photo_url,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
+        # iso_utc, not a bare isoformat(): the column is naive UTC, so without the offset
+        # a JS client reads the account age as 5 hours off in Uzbekistan.
+        "created_at": iso_utc(user.created_at),
     })
 
 
@@ -144,10 +156,17 @@ async def me(request: web.Request) -> web.Response:
 async def update_profile(request: web.Request) -> web.Response:
     """PATCH /api/auth/me - update profile."""
     user: User = request["user"]
+    # `data["first_name"][:100]` raised TypeError on any non-string — {"first_name": 5}
+    # or {"first_name": ["a"]} returned a 500 instead of a 400, and a list value would
+    # have been sliced into a list and handed to a String column.
     try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
+        data = await read_json_object(request)
+        has_first = "first_name" in data
+        has_last = "last_name" in data
+        first_name = read_str(data, "first_name", max_length=100) if has_first else ""
+        last_name = read_str(data, "last_name", max_length=100) if has_last else ""
+    except BodyError as e:
+        return e.response
 
     session = get_session()
     try:
@@ -155,17 +174,17 @@ async def update_profile(request: web.Request) -> web.Response:
         if not u:
             return web.json_response({"error": "User not found"}, status=404)
 
-        if "first_name" in data:
-            u.first_name = data["first_name"][:100] if data["first_name"] else None
-        if "last_name" in data:
-            u.last_name = data["last_name"][:100] if data["last_name"] else None
+        if has_first:
+            u.first_name = first_name or None
+        if has_last:
+            u.last_name = last_name or None
         if "contact_phone" in data:
             from app.services.otp import normalize_phone
             cp = normalize_phone(str(data.get("contact_phone") or "")) if data.get("contact_phone") else ""
             if cp and not (cp.startswith("+998") and len(cp) == 13):
                 return web.json_response({"error": "Telefon raqam noto'g'ri"}, status=400)
             u.contact_phone = cp or None
-        if "language" in data and data["language"] in ("uz", "uz-cyrl", "ru", "en"):
+        if "language" in data and data["language"] in SUPPORTED_LANGUAGES:
             u.language = data["language"]
 
         session.commit()
@@ -300,12 +319,12 @@ async def telegram_verify_code(request: web.Request) -> web.Response:
     account.
     """
     try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
+        data = await read_json_object(request)
+        token = read_str(data, "token", max_length=200)
+        code = read_str(data, "code", max_length=20)
+    except BodyError as e:
+        return e.response
 
-    token = (data.get("token") or "").strip()
-    code = (data.get("code") or "").strip()
     if not token:
         return web.json_response({"error": "token kerak"}, status=400)
     if not code:

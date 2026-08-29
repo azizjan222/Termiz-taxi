@@ -89,6 +89,15 @@ def _stats_buttons() -> InlineKeyboardMarkup:
 
 async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+
+    # The buttons are only ever SHOWN to an admin, but callback_data is not a secret:
+    # anyone can replay `stat_overview` / `stat_orders` and read the platform's driver
+    # count, total balance held, order totals, ban count and the last five routes.
+    # Every other admin entry point checks; this one did not.
+    if not is_admin(update.effective_user.id):
+        await query.answer("⛔ Ruxsat yo'q", show_alert=True)
+        return
+
     await query.answer()
 
     if query.data == "stat_overview":
@@ -147,10 +156,17 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ {sent} ta foydalanuvchiga yuborildi.")
 
 
-async def broadcast_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def broadcast_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Broadcast an admin's media. Returns True if the message was consumed.
+
+    The return value lets the photo router tell "I handled it" apart from "not for me",
+    so a non-admin photo can get a reply instead of being silently dropped.
+    """
     if is_admin(update.effective_user.id) and \
             context.user_data.get("admin_state") == "broadcast":
         await broadcast(update, context)
+        return True
+    return False
 
 
 async def _export_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -176,19 +192,41 @@ async def add_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     """/pul [ID/phone] [amount] — admin credits a driver's balance."""
     if not is_admin(update.effective_user.id):
         return
+
+    # Parse and validate FIRST, in its own guard. The whole body used to sit inside one
+    # `except (ValueError, IndexError)`, so a ValueError raised by add_balance — or by
+    # anything after the money already moved — printed the usage hint. An admin reading
+    # "❌ Xato! /pul ..." naturally retries, and because the idempotency key is scoped to
+    # `update_id` the retry is a DIFFERENT key: the driver gets credited twice.
+    args = context.args or []
+    if len(args) < 2:
+        await update.message.reply_text("❌ Xato! /pul [ID/Tel] [Summa]")
+        return
+    identifier = args[0]
     try:
-        args = context.args
-        if len(args) < 2:
-            raise ValueError
-        identifier, amount = args[0], int(args[1])
-        driver_tg_id = None
+        amount = int(args[1])
+    except ValueError:
+        await update.message.reply_text("❌ Summa butun son bo'lishi kerak.\n/pul [ID/Tel] [Summa]")
+        return
+    if amount == 0:
+        await update.message.reply_text("❌ Summa 0 bo'lishi mumkin emas.")
+        return
+
+    driver_tg_id = None
+    try:
         if identifier.isdigit() and store.is_driver(int(identifier)):
             driver_tg_id = int(identifier)
         if not driver_tg_id:
             driver_tg_id, _ = store.find_driver_by_phone(identifier)
-        if not driver_tg_id:
-            await update.message.reply_text("❌ Haydovchi topilmadi!")
-            return
+    except Exception as e:
+        logger.error("/pul driver lookup failed for %r: %s", identifier, e)
+        await update.message.reply_text("⚠️ Haydovchini qidirishda xatolik. Qayta urinib ko'ring.")
+        return
+    if not driver_tg_id:
+        await update.message.reply_text("❌ Haydovchi topilmadi!")
+        return
+
+    try:
         new_balance = store.add_balance(
             driver_tg_id,
             amount,
@@ -196,18 +234,26 @@ async def add_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             audit_actor=f"telegram:{update.effective_user.id}",
             audit_update_id=update.update_id,
         )
+    except Exception as e:
+        # Say plainly that this is a system failure and that the outcome is unknown, so
+        # the balance is checked before retrying rather than the command being re-fired.
+        logger.error("/pul add_balance failed (driver %s, %s): %s", driver_tg_id, amount, e)
         await update.message.reply_text(
-            f"✅ Qo'shildi!\nID: {driver_tg_id}\n+{money(amount)} so'm\n"
+            "⚠️ Balansni o'zgartirish amalga oshmadi.\n"
+            f"Qayta yubormasdan oldin /driver {driver_tg_id} bilan balansni tekshiring."
+        )
+        return
+
+    await update.message.reply_text(
+        f"✅ Qo'shildi!\nID: {driver_tg_id}\n+{money(amount)} so'm\n"
+        f"Jami: {money(new_balance)} so'm")
+    try:
+        await context.bot.send_message(
+            driver_tg_id,
+            f"🎁 Balansingizga {money(amount)} so'm qo'shildi.\n"
             f"Jami: {money(new_balance)} so'm")
-        try:
-            await context.bot.send_message(
-                driver_tg_id,
-                f"🎁 Balansingizga {money(amount)} so'm qo'shildi.\n"
-                f"Jami: {money(new_balance)} so'm")
-        except Exception:
-            pass
-    except (ValueError, IndexError):
-        await update.message.reply_text("❌ Xato! /pul [ID/Tel] [Summa]")
+    except Exception:
+        pass
 
 
 async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -27,10 +27,11 @@ export default function TariffScreen() {
   const [taxiQuote, setTaxiQuote] = useState<PriceQuote | null>(null);
   const [parcelQuote, setParcelQuote] = useState<PriceQuote | null>(null);
   const [fullCarQuote, setFullCarQuote] = useState<PriceQuote | null>(null);
-  // Only the setter is used (drives the fetch lifecycle); the value isn't rendered.
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   // True when the quote request failed, so the footer must not render a fallback 0.
   const [quotesFailed, setQuotesFailed] = useState(false);
+  // Bumped by the retry button to re-run the effect.
+  const [reloadKey, setReloadKey] = useState(0);
 
   const isParcel = orderStore.serviceType === 'parcel';
 
@@ -44,28 +45,33 @@ export default function TariffScreen() {
     const loadQuotes = async () => {
       setLoading(true);
       setQuotesFailed(false);
-      try {
-        const [taxi, parcel, full] = await Promise.all([
-          getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'taxi', 1),
-          getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'parcel'),
-          getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'full_car'),
-        ]);
-        if (!active) return;
-        setTaxiQuote(taxi);
-        setParcelQuote(parcel);
-        setFullCarQuote(full);
-      } catch {
-        // Record the failure so the footer does not present a fallback 0 as a real fare.
-        if (active) setQuotesFailed(true);
-      } finally {
-        if (active) setLoading(false);
-      }
+      // allSettled, not all. `Promise.all` rejects as soon as ONE quote fails, so a route
+      // with no parcel tariff defined (a plain 404) threw away the taxi and full-car
+      // quotes that had arrived successfully — leaving the screen with no prices at all
+      // and no way to order a perfectly available taxi.
+      const [taxi, parcel, full] = await Promise.allSettled([
+        getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'taxi', 1),
+        getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'parcel'),
+        getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'full_car'),
+      ]);
+      if (!active) return;
+      setTaxiQuote(taxi.status === 'fulfilled' ? taxi.value : null);
+      setParcelQuote(parcel.status === 'fulfilled' ? parcel.value : null);
+      setFullCarQuote(full.status === 'fulfilled' ? full.value : null);
+      // Only a total failure is an error state. If the tariff the passenger actually
+      // selected came back, the screen is usable.
+      setQuotesFailed(
+        taxi.status === 'rejected' &&
+          parcel.status === 'rejected' &&
+          full.status === 'rejected'
+      );
+      setLoading(false);
     };
     loadQuotes();
     return () => {
       active = false;
     };
-  }, [orderStore.fromCity, orderStore.toCity]);
+  }, [orderStore.fromCity, orderStore.toCity, reloadKey]);
 
   const formatPrice = (p: number) =>
     p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -74,14 +80,14 @@ export default function TariffScreen() {
     // No early return on 'full_car': switching back to a per-person count is exactly
     // what this handler is for. The old guard left the passenger-count rows visible but
     // dead once "Bo'sh mashina" had been picked, with no way back.
-    orderStore.setField('personCount', n);
+    orderStore.setPersonCount(n);
     orderStore.setField('serviceType', 'taxi');
-    orderStore.setField('maleCount', n);
   };
 
   const handleFullCar = () => {
     orderStore.setField('serviceType', 'full_car');
-    orderStore.setField('personCount', 4);
+    // A booked-out car is priced and dispatched as 4 seats.
+    orderStore.setPersonCount(4);
   };
 
   const getCurrentPrice = () => {
@@ -90,6 +96,10 @@ export default function TariffScreen() {
     if (taxiQuote) return taxiQuote.price_per_person * orderStore.personCount;
     return 0;
   };
+
+  // A parcel is negotiated with the driver, so its quote existing is enough; every other
+  // tariff needs a real number before the passenger may continue.
+  const hasUsableQuote = isParcel ? !!parcelQuote : getCurrentPrice() > 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -163,8 +173,24 @@ export default function TariffScreen() {
               <Text style={styles.tariffPrice}>{t('order.negotiable')}</Text>
               <Text style={styles.tariffHint}>{t('order.parcelNegotiableHint')}</Text>
             </>
-          ) : (
+          ) : loading ? (
             <Text style={styles.tariffHint}>{t('common.loading')}</Text>
+          ) : (
+            // Not loading and still no quote: this used to sit on "Yuklanmoqda..."
+            // permanently, with the tariff selector hidden and no way to retry — while the
+            // Next button stayed enabled, so the passenger walked into confirm-order with
+            // no fare at all. Say what happened and offer a retry.
+            <>
+              <Text style={styles.tariffName}>{t('tariff.unavailableTitle')}</Text>
+              <Text style={styles.tariffHint}>{t('tariff.unavailableBody')}</Text>
+              <TouchableOpacity
+                onPress={() => setReloadKey((k) => k + 1)}
+                style={styles.retryBtn}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.retryText}>{t('common.retry')}</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
 
@@ -285,6 +311,10 @@ export default function TariffScreen() {
           onPress={() => router.push('/confirm-order')}
           variant="primary"
           fullWidth={false}
+          // Block the step while there is no usable tariff. It used to stay enabled even
+          // when every quote had failed, so the passenger reached confirm-order with a
+          // "—" price and confirmed a ride without ever seeing the fare.
+          disabled={loading || !hasUsableQuote}
           style={{ flex: 1, marginLeft: spacing.md }}
         />
       </View>
@@ -361,7 +391,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+    textAlign: 'center',
   },
+  retryBtn: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  retryText: { ...typography.button, color: '#FFFFFF' },
   sectionTitle: { ...typography.h3, color: colors.primary, marginBottom: spacing.md },
   personOptions: { gap: spacing.sm },
   personOption: {

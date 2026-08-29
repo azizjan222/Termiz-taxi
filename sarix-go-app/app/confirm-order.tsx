@@ -28,7 +28,9 @@ export default function ConfirmOrderScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const orderStore = useOrderStore();
   const [loading, setLoading] = useState(false);
-  const [note, setNote] = useState('');
+  // Seed from the draft. This screen kept the note purely in local state, so a note the
+  // passenger had already typed on an earlier step was silently dropped on arrival.
+  const [note, setNote] = useState(orderStore.note || '');
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
   const submitInFlightRef = useRef(false);
@@ -227,6 +229,11 @@ export default function ConfirmOrderScreen() {
           loading={loading}
           variant="primary"
           fullWidth={false}
+          // Confirm used to stay enabled while the price read '...' or '—', so a passenger
+          // could commit to a ride whose fare had never loaded — and then be quoted a
+          // number they never agreed to. A parcel is genuinely negotiated with the driver,
+          // so it only needs its quote to exist.
+          disabled={quoteLoading || !(isParcel ? quote : quote && quote.price > 0)}
           style={{ flex: 1, marginLeft: spacing.md }}
         />
       </View>

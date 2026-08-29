@@ -17,6 +17,32 @@ from app.services import notify_i18n as nt
 logger = logging.getLogger("sarixgo.bot.orders")
 
 
+async def _append_status(query, status: str) -> None:
+    """Append a status line to the order card, whatever kind of message it is.
+
+    ``f"{query.message.text}\\n\\n{status}"`` breaks on a photo/caption message, where
+    ``.text`` is None -- the edit then either writes the literal "None" or raises, leaving
+    the driver with no confirmation that their tap worked.
+    """
+    message = query.message
+    try:
+        if message is not None and message.text:
+            await query.edit_message_text(f"{message.text}\n\n{status}")
+        elif message is not None and message.caption:
+            await query.edit_message_caption(f"{message.caption}\n\n{status}")
+        else:
+            await query.answer(status, show_alert=True)
+    except Exception:
+        # Editing can fail (message too old, identical content). The state change already
+        # committed, so try to tell the user through the callback answer instead of raising.
+        # This may be a no-op when the caller already consumed the single allowed
+        # answerCallbackQuery, hence the silent except.
+        try:
+            await query.answer(status, show_alert=True)
+        except Exception:
+            pass
+
+
 def _actor_label(update: Update) -> str:
     user = update.effective_user
     if not user:
@@ -114,17 +140,36 @@ async def assign_order_to_driver(update: Update, context: ContextTypes.DEFAULT_T
 async def order_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle inline buttons: order_close / driver_cancel / passenger_cancel."""
     query = update.callback_query
-    await query.answer()
     action, _, order_id_str = query.data.rpartition("_")
-    order_id = int(order_id_str)
+    try:
+        order_id = int(order_id_str)
+    except (TypeError, ValueError):
+        # callback_data is client-supplied; a bare int() here raised and left the bot silent.
+        await query.answer("Buyurtma topilmadi", show_alert=True)
+        return
     actor = _actor_label(update)
+    # Whoever pressed the button. Every store call below verifies the order belongs to them:
+    # callback_data can be forged, so the delivering chat is not proof of ownership.
+    actor_id = update.effective_user.id if update.effective_user else None
+
+    # Telegram accepts exactly ONE answerCallbackQuery per query, so the acknowledgement
+    # cannot be sent up front any more: the failure branches below need that single answer
+    # to carry their alert text, and a second call would just raise "query is too old".
+    async def reject(message: str) -> None:
+        try:
+            await query.answer(message, show_alert=True)
+        except Exception:
+            pass
 
     if action == "order_close":
-        order = store.complete_order(order_id, actor=actor)
+        order = store.complete_order(order_id, actor=actor, actor_telegram_id=actor_id)
         if not order:
+            # Not theirs, already closed, or a double tap. Say so instead of going silent.
+            await reject("Bu buyurtma allaqachon yopilgan")
             return
+        await query.answer()
         _stop_timers(context, order_id)
-        await query.edit_message_text(f"{query.message.text}\n\n✅ YOPILDI")
+        await _append_status(query, "✅ YOPILDI")
         try:
             await context.bot.send_message(
                 order.passenger_telegram_id, "✅ Manzilga yetib keldingiz. Rahmat!")
@@ -133,11 +178,15 @@ async def order_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif action == "driver_cancel":
         order, refunded = store.cancel_order(
-            order_id, cancelled_by="driver", actor=f"Haydovchi: {actor}")
+            order_id, cancelled_by="driver", actor=f"Haydovchi: {actor}",
+            actor_telegram_id=actor_id)
         if not order:
+            await reject("Bu buyurtma allaqachon yopilgan")
             return
+        await query.answer()
         _stop_timers(context, order_id)
-        await query.edit_message_text(f"{query.message.text}\n\n❌ BEKOR (Pul qaytarildi)")
+        await _append_status(
+            query, "❌ BEKOR (Pul qaytarildi)" if refunded else "❌ BEKOR QILINDI")
         try:
             await context.bot.send_message(
                 order.passenger_telegram_id, "❌ Haydovchi bekor qildi.")
@@ -146,11 +195,14 @@ async def order_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif action == "passenger_cancel":
         order, refunded = store.cancel_order(
-            order_id, cancelled_by="passenger", actor=f"Yo'lovchi: {actor}")
+            order_id, cancelled_by="passenger", actor=f"Yo'lovchi: {actor}",
+            actor_telegram_id=actor_id)
         if not order:
+            await reject("Bu buyurtma allaqachon yopilgan")
             return
+        await query.answer()
         _stop_timers(context, order_id)
-        await query.edit_message_text("❌ Buyurtma bekor qilindi.")
+        await _append_status(query, "❌ Buyurtma bekor qilindi.")
         if refunded and order.driver_telegram_id:
             try:
                 await context.bot.send_message(
