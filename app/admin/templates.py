@@ -95,6 +95,27 @@ function fmtNum(n){{return (Number(n)||0).toLocaleString('ru-RU').replace(/\\u00
 // A rating only means something once somebody has rated. `d.rating||5` reported an
 // unrated driver as a perfect 5.
 function fmtRating(rating,count){{return (count>0&&rating!=null)?Number(rating).toFixed(1):'—';}}
+// Shared pager. Every list endpoint now returns {{items,total,page,per_page}} instead of
+// the whole table: loading every driver and every user into the browser and filtering in JS
+// was fine at a few hundred rows and unusable at ten thousand.
+function renderPager(elId,d,onGo){{
+  const el=document.getElementById(elId);
+  if(!el)return;
+  const total=Number(d.total)||0, per=Number(d.per_page)||50, page=Number(d.page)||1;
+  const pages=Math.max(1,Math.ceil(total/per));
+  if(total===0){{el.innerHTML='';return;}}
+  const from=(page-1)*per+1, to=Math.min(page*per,total);
+  el.innerHTML=`<div class="d-flex align-items-center gap-2">
+    <button class="btn btn-sm btn-outline-secondary" ${{page<=1?'disabled':''}} data-go="${{page-1}}">‹ Oldingi</button>
+    <span class="text-muted small">${{from}}–${{to}} / ${{total}} (${{page}}/${{pages}}-sahifa)</span>
+    <button class="btn btn-sm btn-outline-secondary" ${{page>=pages?'disabled':''}} data-go="${{page+1}}">Keyingi ›</button>
+  </div>`;
+  el.querySelectorAll('button[data-go]').forEach(b=>{{
+    b.onclick=()=>onGo(Number(b.getAttribute('data-go')));
+  }});
+}}
+// Debounce so typing in a search box does not fire a request per keystroke.
+function debounce(fn,ms){{let t;return function(){{clearTimeout(t);t=setTimeout(fn,ms||350);}};}}
 // Shared error banner: every page used to fail silently in the console.
 function adminError(msg){{
   const main=document.querySelector('.main-content');
@@ -411,8 +432,8 @@ shundan keyin tasdiqlashingiz mumkin.</small>
 </div>
 </div>
 <div class="mb-3">
-<input type="text" class="form-control w-auto d-inline" id="driver-search" placeholder="Ism yoki telefon bo'yicha qidirish..." oninput="renderDrivers()" style="min-width:280px">
-<select class="form-select w-auto d-inline" id="driver-filter" onchange="renderDrivers()">
+<input type="text" class="form-control w-auto d-inline" id="driver-search" placeholder="Ism, telefon yoki mashina raqami..." style="min-width:280px">
+<select class="form-select w-auto d-inline" id="driver-filter" onchange="reloadDrivers()">
 <option value="all">Barchasi</option>
 <option value="online">Onlayn</option>
 <option value="verified">Tasdiqlangan</option>
@@ -428,6 +449,7 @@ shundan keyin tasdiqlashingiz mumkin.</small>
 <tbody></tbody>
 </table>
 </div>
+<div id="drivers-pager" class="mt-2"></div>
 <!-- Driver details modal -->
 <div class="modal fade" id="driver-detail-modal" tabindex="-1">
 <div class="modal-dialog modal-lg">
@@ -437,16 +459,42 @@ shundan keyin tasdiqlashingiz mumkin.</small>
 <div class="modal-body" id="driver-detail-body">Yuklanmoqda...</div>
 </div>
 </div>
+</div>
+<!-- Driver edit modal -->
+<div class="modal fade" id="driver-edit-modal" tabindex="-1">
+<div class="modal-dialog modal-lg">
+<div class="modal-content">
+<div class="modal-header"><h5 class="modal-title">Ma'lumotni tahrirlash</h5>
+<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body" id="driver-edit-body">Yuklanmoqda...</div>
+<div class="modal-footer">
+<div id="driver-edit-result" class="me-auto"></div>
+<button class="btn btn-primary" onclick="saveDriverEdit()">Saqlash</button>
+</div>
+</div>
+</div>
 </div>"""
 
 DRIVERS_JS = """<script>
 let allDrivers=[];
-function loadDrivers(){
-fetch('/admin/api/drivers').then(r=>r.json()).then(data=>{
-if(!Array.isArray(data))adminError(data&&data.error?data.error:'Haydovchilarni yuklab bo\\'lmadi');
-allDrivers=Array.isArray(data)?data:[];renderDrivers();
+let driverPage=1;
+function loadDrivers(page){
+driverPage=page||driverPage;
+const f=document.getElementById('driver-filter').value;
+const qEl=document.getElementById('driver-search');
+const q=qEl?qEl.value.trim():'';
+fetch('/admin/api/drivers?page='+driverPage+'&filter='+encodeURIComponent(f)+'&q='+encodeURIComponent(q))
+.then(r=>r.json()).then(d=>{
+if(!d||d.error||!Array.isArray(d.items)){adminError(d&&d.error?d.error:'Haydovchilarni yuklab bo\\'lmadi');return;}
+allDrivers=d.items;
+document.getElementById('driver-count').textContent=fmtNum(d.total)+' ta';
+renderDrivers();
+renderPager('drivers-pager',d,loadDrivers);
 }).catch(()=>adminError('Haydovchilarni yuklab bo\\'lmadi'));
 }
+// Changing a filter or search term must go back to page 1, otherwise the request asks for
+// page 7 of a result set that now has two pages and the table looks empty.
+function reloadDrivers(){loadDrivers(1);}
 // A document can be recorded on the driver row while the file itself is unreachable (a
 // legacy Telegram file_id with no bot attached to this process). The <img> then rendered
 // as a broken-image icon with no explanation.
@@ -462,25 +510,10 @@ fetch('/api/car-models').then(r=>r.json()).then(d=>{
 const dl=document.getElementById('car-models-list');
 if(dl&&d&&Array.isArray(d.models)){dl.innerHTML=d.models.map(m=>`<option value="${esc(m)}">`).join('');}
 }).catch(()=>{});
+// Filtering, searching and paging are done by the server now — see renderPager().
 function renderDrivers(){
-const f=document.getElementById('driver-filter').value;
-let data=allDrivers;
-if(f==='online')data=allDrivers.filter(d=>d.is_online);
-else if(f==='verified')data=allDrivers.filter(d=>d.is_verified);
-else if(f==='pending')data=allDrivers.filter(d=>!d.is_verified&&d.documents_submitted);
-// A driver created from this panel starts with documents_submitted=false, so they matched
-// NO filter except "Barchasi" — right after "Haydovchi qo'shildi" they seemed to vanish.
-else if(f==='nodocs')data=allDrivers.filter(d=>!d.is_verified&&!d.documents_submitted);
-else if(f==='blocked')data=allDrivers.filter(d=>d.is_blocked);
-const qEl=document.getElementById('driver-search');
-const q=qEl?qEl.value.trim().toLowerCase():'';
-if(q){data=data.filter(d=>{
-const name=((d.first_name||'')+' '+(d.last_name||'')).toLowerCase();
-const phone=String(d.phone||'').toLowerCase();
-return name.includes(q)||phone.includes(q);
-});}
-document.getElementById('driver-count').textContent=data.length+' ta';
 const tb=document.querySelector('#drivers-table tbody');
+const data=allDrivers;
 tb.innerHTML='';
 if(!data.length)tb.innerHTML='<tr><td colspan="9" class="text-muted">Haydovchi topilmadi</td></tr>';
 data.forEach(d=>{
@@ -494,6 +527,7 @@ tb.innerHTML+=`<tr>
 <td>${status} ${online}</td>
 <td>
 <button class="btn btn-sm btn-outline-dark" onclick="showDriver(${d.id})">Batafsil</button>
+<button class="btn btn-sm btn-outline-secondary" onclick="editDriver(${d.id})">✏️</button>
 ${!d.is_verified?`<button class="btn btn-sm btn-success" onclick="verifyDriver(${d.id})">Tasdiqlash</button>`:''}
 ${d.is_verified?`<button class="btn btn-sm btn-danger" onclick="rejectDriver(${d.id})">Rad etish</button>`:''}
 <button class="btn btn-sm btn-outline-success" onclick="topUpDriver(${d.id})">Balans +</button>
@@ -609,12 +643,55 @@ function unblockDriver(id){
     .then(r=>r.json()).then(d=>{alert(d.detail||d.error||'OK');loadDrivers();})
     .catch(()=>alert('Xatolik'));
 }
-loadDrivers();
+// Edit form: until now a typo in a phone or car number entered here could only be fixed
+// in the database.
+const EDIT_FIELDS=[['ed-first','first_name','Ism'],['ed-last','last_name','Familiya'],['ed-phone','phone','Telefon'],['ed-contact','contact_phone','Aloqa telefoni'],['ed-pinfl','pinfl','JSHSHIR'],['ed-model','car_model','Mashina modeli'],['ed-carnum','car_number','Mashina raqami'],['ed-color','car_color','Rangi'],['ed-year','car_year','Yili'],['ed-seats','seats',"O'rindiqlar"],['ed-tgid','telegram_id','Telegram ID']];
+let editingDriverId=null;
+function editDriver(id){
+editingDriverId=id;
+const body=document.getElementById('driver-edit-body');
+body.innerHTML='Yuklanmoqda...';
+new bootstrap.Modal(document.getElementById('driver-edit-modal')).show();
+fetch('/admin/api/drivers/'+id).then(r=>r.json()).then(d=>{
+if(d.error){body.innerHTML='<div class="alert alert-danger">'+esc(d.error)+'</div>';return;}
+body.innerHTML='<div class="row g-2">'+EDIT_FIELDS.map(([elId,key,label])=>
+`<div class="col-md-6"><label class="form-label small mb-0">${esc(label)}</label>
+<input class="form-control form-control-sm" id="${elId}" value="${esc(d[key]==null?'':d[key])}"></div>`
+).join('')+'</div><div class="form-text mt-2">Bo\\'sh qoldirilgan maydon tozalanadi. Telefon va Telegram ID takrorlanmasligi tekshiriladi.</div>';
+}).catch(()=>{body.innerHTML='<div class="alert alert-danger">Xatolik</div>';});
+}
+function saveDriverEdit(){
+if(!editingDriverId)return;
+const out=document.getElementById('driver-edit-result');
+const body={};
+for(const [elId,key] of EDIT_FIELDS){
+const el=document.getElementById(elId);
+if(!el)continue;
+const raw=String(el.value).trim();
+if(key==='seats'){if(raw===''){continue;}if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger mb-0">O\\'rindiqlar soni butun son bo\\'lishi kerak</div>';return;}body[key]=parseInt(raw,10);continue;}
+if(key==='telegram_id'){if(raw===''){continue;}if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger mb-0">Telegram ID raqam bo\\'lishi kerak</div>';return;}body[key]=raw;continue;}
+body[key]=raw;
+}
+out.innerHTML='<div class="text-muted">Saqlanmoqda...</div>';
+fetch('/admin/api/drivers/'+editingDriverId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+.then(r=>r.json()).then(d=>{
+out.innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+' mb-0">'+esc(d.detail||d.error||'Saqlandi')+'</div>';
+if(!d.error)loadDrivers();
+}).catch(()=>{out.innerHTML='<div class="alert alert-danger mb-0">Saqlashda xatolik</div>';});
+}
+const driverSearchEl=document.getElementById('driver-search');
+if(driverSearchEl)driverSearchEl.addEventListener('input',debounce(reloadDrivers,400));
+loadDrivers(1);
 </script>"""
 
 PASSENGERS_HTML = """<h2>Yo'lovchilar</h2>
 <div class="mb-3">
-<input type="text" class="form-control w-auto d-inline" id="passenger-search" placeholder="Ism yoki telefon bo'yicha qidirish..." oninput="renderPassengers()" style="min-width:280px">
+<input type="text" class="form-control w-auto d-inline" id="passenger-search" placeholder="Ism yoki telefon bo'yicha qidirish..." style="min-width:280px">
+<select class="form-select w-auto d-inline" id="passenger-filter" onchange="reloadPassengers()">
+<option value="all">Barchasi</option>
+<option value="active">Faol</option>
+<option value="blocked">Bloklangan</option>
+</select>
 <span class="ms-2 text-muted" id="passenger-count"></span>
 </div>
 <div class="table-responsive">
@@ -622,21 +699,14 @@ PASSENGERS_HTML = """<h2>Yo'lovchilar</h2>
 <thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Til</th><th>Bonus</th><th>Reyting</th><th>Holat</th><th>Ro'yxatdan o'tgan</th><th>Amal</th></tr></thead>
 <tbody></tbody>
 </table>
-</div>"""
+</div>
+<div id="passengers-pager" class="mt-2"></div>"""
 
 PASSENGERS_JS = """<script>
 let allPassengers=[];
+// Search, filter and paging are server-side now (see /admin/api/passengers).
 function renderPassengers(){
-const qEl=document.getElementById('passenger-search');
-const q=qEl?qEl.value.trim().toLowerCase():'';
-let data=allPassengers;
-if(q){data=data.filter(u=>{
-const name=((u.first_name||'')+' '+(u.last_name||'')).toLowerCase();
-const phone=String(u.phone||'').toLowerCase();
-return name.includes(q)||phone.includes(q);
-});}
-const cnt=document.getElementById('passenger-count');
-if(cnt)cnt.textContent=data.length+' ta';
+const data=allPassengers;
 const tb=document.querySelector('#passengers-table tbody');
 tb.innerHTML='';
 if(!data.length){tb.innerHTML='<tr><td colspan="9" class="text-muted">Yo\\'lovchi yo\\'q</td></tr>';}
@@ -651,13 +721,24 @@ const LANGS={uz:"O'zbek",ru:'Rus',en:'Ingliz'};
 tb.innerHTML+=`<tr><td>${Number(u.id)}</td><td>${esc(u.first_name||'')} ${esc(u.last_name||'')}</td><td>${esc(u.phone)}</td><td>${esc(LANGS[u.language]||u.language||"O'zbek")}</td><td>${fmtNum(u.bonus_balance)}</td><td>${Number(u.rating||0)>0?Number(u.rating).toFixed(1):'—'}</td><td>${state}</td><td class="small">${esc(fmtDt(u.created_at))}</td><td>${act}</td></tr>`;
 });
 }
-function loadPassengers(){
-fetch('/admin/api/passengers').then(r=>r.json()).then(data=>{
-if(!Array.isArray(data))adminError(data&&data.error?data.error:'Yo\\'lovchilarni yuklab bo\\'lmadi');
-allPassengers=Array.isArray(data)?data:[];
+let passengerPage=1;
+function loadPassengers(page){
+passengerPage=page||passengerPage;
+const qEl=document.getElementById('passenger-search');
+const q=qEl?qEl.value.trim():'';
+const fEl=document.getElementById('passenger-filter');
+const f=fEl?fEl.value:'all';
+fetch('/admin/api/passengers?page='+passengerPage+'&q='+encodeURIComponent(q)+'&filter='+encodeURIComponent(f))
+.then(r=>r.json()).then(d=>{
+if(!d||d.error||!Array.isArray(d.items)){adminError(d&&d.error?d.error:'Yo\\'lovchilarni yuklab bo\\'lmadi');return;}
+allPassengers=d.items;
+const cnt=document.getElementById('passenger-count');
+if(cnt)cnt.textContent=fmtNum(d.total)+' ta';
 renderPassengers();
+renderPager('passengers-pager',d,loadPassengers);
 }).catch(()=>adminError('Yo\\'lovchilarni yuklab bo\\'lmadi'));
 }
+function reloadPassengers(){loadPassengers(1);}
 function blockPassenger(id){
 if(!confirm('Yo\\'lovchini bloklaysizmi? U ilovaga kira olmaydi va buyurtma bera olmaydi.'))return;
 fetch('/admin/api/passengers/'+id+'/block',{method:'POST'}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'OK');loadPassengers();}).catch(()=>alert('Xatolik'));
@@ -666,12 +747,14 @@ function unblockPassenger(id){
 if(!confirm('Yo\\'lovchini blokdan chiqaramizmi?'))return;
 fetch('/admin/api/passengers/'+id+'/unblock',{method:'POST'}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'OK');loadPassengers();}).catch(()=>alert('Xatolik'));
 }
-loadPassengers();
+const passengerSearchEl=document.getElementById('passenger-search');
+if(passengerSearchEl)passengerSearchEl.addEventListener('input',debounce(reloadPassengers,400));
+loadPassengers(1);
 </script>"""
 
 ORDERS_HTML = """<h2>Buyurtmalar</h2>
 <div class="mb-3">
-<select class="form-select w-auto d-inline" id="status-filter" onchange="loadOrders()">
+<select class="form-select w-auto d-inline" id="status-filter" onchange="reloadOrders()">
 <option value="all">Barchasi</option>
 <option value="active">Faol (yangi/qabul/jarayonda)</option>
 <option value="new">Yangi</option>
@@ -681,14 +764,16 @@ ORDERS_HTML = """<h2>Buyurtmalar</h2>
 <option value="cancelled">Bekor qilingan</option>
 <option value="expired">Muddati o'tgan (hech kim olmagan)</option>
 </select>
-<span class="ms-2 text-muted small">Oxirgi 200 ta buyurtma ko'rsatiladi</span>
+<input type="text" class="form-control w-auto d-inline" id="order-search" placeholder="Telefon, ism yoki shahar..." style="min-width:260px">
+<span class="ms-2 text-muted" id="order-count"></span>
 </div>
 <div class="table-responsive">
 <table class="table table-striped table-sm" id="orders-table">
 <thead><tr><th>ID</th><th>Yo'lovchi</th><th>Telefon</th><th>Yo'nalish</th><th>Xizmat</th><th>Narx</th><th>Komissiya</th><th>Holat</th><th>Haydovchi</th><th>Sana</th></tr></thead>
 <tbody></tbody>
 </table>
-</div>"""
+</div>
+<div id="orders-pager" class="mt-2"></div>"""
 
 ORDERS_JS = """<script>
 // The table used to print the raw English snake_case status, and both `in_progress` and
@@ -696,15 +781,21 @@ ORDERS_JS = """<script>
 const ORDER_STATUS={'new':{l:'Yangi',c:'bg-primary'},'accepted':{l:'Qabul qilingan',c:'bg-info'},'in_progress':{l:'Jarayonda',c:'bg-warning text-dark'},'completed':{l:'Yakunlangan',c:'bg-success'},'cancelled':{l:'Bekor qilingan',c:'bg-danger'},'expired':{l:"Muddati o'tgan",c:'bg-dark'}};
 const SERVICE_NAMES={taxi:'Taksi',parcel:'Pochta',full_car:"To'liq mashina"};
 const CANCELLED_BY={passenger:"yo'lovchi",driver:'haydovchi',system:'tizim',admin:'admin'};
-function loadOrders(){
+let orderPage=1;
+function reloadOrders(){loadOrders(1);}
+function loadOrders(page){
+orderPage=page||orderPage;
 const st=document.getElementById('status-filter').value;
-fetch('/admin/api/orders?status='+st).then(r=>r.json()).then(payload=>{
+const qEl=document.getElementById('order-search');
+const q=qEl?qEl.value.trim():'';
+fetch('/admin/api/orders?status='+encodeURIComponent(st)+'&page='+orderPage+'&q='+encodeURIComponent(q))
+.then(r=>r.json()).then(payload=>{
 const tb=document.querySelector('#orders-table tbody');
 tb.innerHTML='';
-// An error response is an object, and calling .forEach on it threw — the table simply
-// stopped updating with nothing shown to the admin.
-const data=Array.isArray(payload)?payload:[];
-if(!Array.isArray(payload)){adminError(payload&&payload.error?payload.error:'Buyurtmalarni yuklab bo\\'lmadi');}
+if(!payload||payload.error||!Array.isArray(payload.items)){adminError(payload&&payload.error?payload.error:'Buyurtmalarni yuklab bo\\'lmadi');return;}
+const data=payload.items;
+const cnt=document.getElementById('order-count');
+if(cnt)cnt.textContent=fmtNum(payload.total)+' ta';
 if(!data.length){tb.innerHTML='<tr><td colspan="10" class="text-muted">Buyurtma yo\\'q</td></tr>';}
 data.forEach(o=>{
 const st=ORDER_STATUS[o.status]||{l:o.status,c:'bg-secondary'};
@@ -727,9 +818,12 @@ stHtml+=`<div class="text-muted small">${esc(by)}${o.cancel_reason?': '+esc(o.ca
 const svc=esc(SERVICE_NAMES[o.service_type]||o.service_type||'-')+(o.person_count?` <span class="text-muted">· ${o.person_count} kishi</span>`:'');
 tb.innerHTML+=`<tr><td>${o.id}</td><td>${esc(o.passenger_name||'-')}</td><td>${esc(o.passenger_phone)}</td><td>${esc(o.from_city)} - ${esc(o.to_city)}</td><td class="small">${svc}</td><td>${fmtNum(o.price)}</td><td>${commHtml}</td><td>${stHtml}</td><td>${driverHtml}</td><td class="small">${esc(fmtDt(o.created_at))}</td></tr>`;
 });
+renderPager('orders-pager',payload,loadOrders);
 }).catch(()=>adminError('Buyurtmalarni yuklab bo\\'lmadi'));
 }
-loadOrders();
+const orderSearchEl=document.getElementById('order-search');
+if(orderSearchEl)orderSearchEl.addEventListener('input',debounce(reloadOrders,400));
+loadOrders(1);
 </script>"""
 
 PUSH_LOG_HTML = """<h2>Push diagnostika</h2>
@@ -1155,6 +1249,7 @@ NAV_ITEMS = (
     ("/admin/push", "Push xabar"),
     ("/admin/push-log", "🔔 Push diagnostika"),
     ("/admin/routes", "Yo'nalishlar"),
+    ("/admin/payments", "💳 To'lovlar"),
     ("/admin/settings", "Sozlamalar"),
     ("/admin/audit", "🧾 Audit jurnali"),
 )
@@ -1254,6 +1349,99 @@ tb.innerHTML+=`<tr${money?' class="table-warning"':''}><td>${Number(r.id)}</td><
 }).catch(()=>adminError('Jurnalni yuklab bo\\'lmadi'));
 }
 loadAudit();
+</script>"""
+
+PAYMENTS_HTML = """<h2>💳 To'lovlar (balans to'ldirish)</h2>
+<p class="text-muted">Haydovchilar yuborgan kvitansiyalar. Tasdiqlansa balans avtomatik
+to'ldiriladi va birinchi to'lov uchun <b>+50% bonus</b> beriladi (bir marta).
+Tasdiqlash bot orqali ham mumkin — ikkalasi bir xil himoyalangan yo'ldan o'tadi,
+ya'ni ikki marta pul tushishi mumkin emas.</p>
+<div class="mb-3">
+<select class="form-select w-auto d-inline" id="pay-status" onchange="loadPayments(1)">
+<option value="pending">Kutilmoqda</option>
+<option value="approved">Tasdiqlangan</option>
+<option value="rejected">Rad etilgan</option>
+<option value="cancelled">Muddati o'tgan</option>
+<option value="all">Barchasi</option>
+</select>
+<span class="ms-2 badge bg-warning text-dark" id="pay-pending-count"></span>
+</div>
+<div class="table-responsive">
+<table class="table table-striped table-sm align-middle" id="payments-table">
+<thead><tr><th>ID</th><th>Haydovchi</th><th>Summa</th><th>Turi</th><th>Holat</th><th>Kvitansiya</th><th>Sana</th><th>Amal</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+<div id="payments-pager" class="mt-2"></div>
+<div class="modal fade" id="receipt-modal" tabindex="-1">
+<div class="modal-dialog modal-lg modal-dialog-centered">
+<div class="modal-content">
+<div class="modal-header"><h5 class="modal-title">Kvitansiya</h5>
+<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body text-center" id="receipt-body">Yuklanmoqda...</div>
+</div>
+</div>
+</div>"""
+
+PAYMENTS_JS = """<script>
+const PAY_STATUS={pending:{l:'Kutilmoqda',c:'bg-warning text-dark'},processing:{l:'Ishlanmoqda',c:'bg-info'},approved:{l:'Tasdiqlangan',c:'bg-success'},rejected:{l:'Rad etilgan',c:'bg-danger'},cancelled:{l:"Muddati o'tgan",c:'bg-secondary'}};
+const PAY_PROVIDER={manual_app:'Ilova',manual_bot:'Telegram',click:'Click'};
+let payPage=1;
+function loadPayments(page){
+payPage=page||payPage;
+const st=document.getElementById('pay-status').value;
+fetch('/admin/api/payments?status='+encodeURIComponent(st)+'&page='+payPage).then(r=>r.json()).then(d=>{
+if(!d||d.error||!Array.isArray(d.items)){adminError(d&&d.error?d.error:'To\\'lovlarni yuklab bo\\'lmadi');return;}
+const badge=document.getElementById('pay-pending-count');
+badge.textContent=d.pending_total?d.pending_total+' ta kutilmoqda':'';
+badge.style.display=d.pending_total?'':'none';
+const tb=document.querySelector('#payments-table tbody');
+tb.innerHTML='';
+if(!d.items.length)tb.innerHTML='<tr><td colspan="8" class="text-muted">To\\'lov yo\\'q</td></tr>';
+d.items.forEach(p=>{
+const st=PAY_STATUS[p.status]||{l:p.status,c:'bg-secondary'};
+const who=`<div>${esc(p.driver_name||('#'+Number(p.driver_id)))}${p.driver_blocked?' <span class="badge bg-danger">🚫</span>':''}</div>`+
+`<div class="text-muted small">${esc(p.driver_phone||'')} · balans: ${fmtNum(p.driver_balance)}</div>`;
+const bonusNote=p.status==='pending'&&p.first_bonus_pending?'<div class="text-success small">+50% bonus beriladi</div>':
+(p.bonus_amount?`<div class="text-success small">+${fmtNum(p.bonus_amount)} bonus</div>`:'');
+const receipt=p.has_receipt?`<button class="btn btn-sm btn-outline-secondary" onclick="showReceipt(${Number(p.id)})">Ko'rish</button>`:'<span class="text-muted">yo\\'q</span>';
+const act=p.status==='pending'
+  ?`<button class="btn btn-sm btn-success" onclick="approvePayment(${Number(p.id)},${Number(p.amount)})">Tasdiqlash</button>
+    <button class="btn btn-sm btn-outline-danger" onclick="rejectPayment(${Number(p.id)})">Rad etish</button>`
+  :`<span class="text-muted small">${esc(fmtDt(p.processed_at))}</span>`;
+tb.innerHTML+=`<tr><td>${Number(p.id)}</td><td>${who}</td><td><b>${fmtNum(p.amount)}</b> so'm${bonusNote}</td><td class="small">${esc(PAY_PROVIDER[p.provider]||p.provider)}</td><td><span class="badge ${st.c}">${esc(st.l)}</span></td><td>${receipt}</td><td class="small">${esc(fmtDt(p.created_at))}</td><td>${act}</td></tr>`;
+});
+renderPager('payments-pager',d,loadPayments);
+}).catch(()=>adminError('To\\'lovlarni yuklab bo\\'lmadi'));
+}
+function showReceipt(id){
+const body=document.getElementById('receipt-body');
+body.innerHTML='Yuklanmoqda...';
+new bootstrap.Modal(document.getElementById('receipt-modal')).show();
+const img=new Image();
+img.style.maxWidth='100%';
+img.onload=()=>{body.innerHTML='';body.appendChild(img);};
+img.onerror=()=>{body.innerHTML='<div class="alert alert-warning mb-0">Kvitansiyani yuklab bo\\'lmadi. Telegram orqali yuborilgan bo\\'lsa, bot ulanmagan bo\\'lishi mumkin.</div>';};
+img.src='/admin/api/payments/'+id+'/receipt';
+}
+const _payInFlight={};
+function approvePayment(id,amount){
+if(_payInFlight[id]){alert('Iltimos kutib turing...');return;}
+if(!confirm('To\\'lovni tasdiqlaysizmi?\\n\\n'+fmtNum(amount)+" so'm haydovchi balansiga qo'shiladi.\\nBu amalni bekor qilish mumkin emas."))return;
+_payInFlight[id]=true;
+fetch('/admin/api/payments/'+id+'/approve',{method:'POST'}).then(r=>r.json()).then(d=>{
+alert(d.detail||d.error||'OK');loadPayments();
+}).catch(()=>alert('Xatolik')).finally(()=>{delete _payInFlight[id];});
+}
+function rejectPayment(id){
+if(_payInFlight[id]){alert('Iltimos kutib turing...');return;}
+if(!confirm('To\\'lovni rad etamizmi? Haydovchiga xabar boradi.'))return;
+_payInFlight[id]=true;
+fetch('/admin/api/payments/'+id+'/reject',{method:'POST'}).then(r=>r.json()).then(d=>{
+alert(d.detail||d.error||'OK');loadPayments();
+}).catch(()=>alert('Xatolik')).finally(()=>{delete _payInFlight[id];});
+}
+loadPayments(1);
 </script>"""
 
 CSRF_ERROR_HTML = """<!DOCTYPE html>
