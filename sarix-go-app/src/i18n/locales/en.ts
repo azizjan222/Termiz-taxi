@@ -86,6 +86,8 @@ export default {
     parcelHint: 'Send documents or items',
     perPerson: '{{price}} UZS',
     info: 'Up to {{persons}} passengers',
+    unavailableTitle: 'Could not get the price',
+    unavailableBody: 'Check your internet connection and try again, or choose a different route.',
   },
   newOrder: {
     personsStep: 'Number of passengers',
@@ -189,6 +191,7 @@ export default {
     fileTooLarge: 'The file is too large (5 MB maximum).',
     slowNetwork: 'Your connection is too slow. Please try again.',
     serverStatus: 'Server error ({{status}}).',
+    loadFailed: 'Could not load the data',
   },
   ai: {
     title: 'AI Assistant',

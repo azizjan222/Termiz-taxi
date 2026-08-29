@@ -137,8 +137,31 @@ export default function RouteSelectScreen() {
   );
 
   const handleSelectCity = (city: string) => applySelection(active, city, '');
-  const handleSelectAddress = (address: string) =>
-    applySelection(active, matchCity(address, address.split(',')[0].trim()), address);
+
+  // Yandex Suggest returns only title/subtitle text — no coordinates — so a suggestion
+  // picked here used to land with lat/lon null. The passenger had chosen a precise
+  // address and the order still went out with no pickup pin, leaving the driver with
+  // nothing but a city name to navigate to. Resolve the coordinates the same way
+  // handleSelectPlace does before committing the selection.
+  const handleSelectAddress = useCallback(
+    async (address: string) => {
+      const field = active;
+      let lat: number | undefined;
+      let lon: number | undefined;
+      try {
+        const results = await geocodeAddress(address);
+        if (results.length > 0) {
+          lat = results[0].lat;
+          lon = results[0].lon;
+        }
+      } catch {
+        // Geocoding is best-effort: a failure must not block the selection, it just
+        // means this order has no pin (same as picking a bare city).
+      }
+      applySelection(field, matchCity(address, address.split(',')[0].trim()), address, lat, lon);
+    },
+    [active, applySelection, matchCity]
+  );
   const handleSelectSaved = (a: SavedAddress) =>
     applySelection(
       active,

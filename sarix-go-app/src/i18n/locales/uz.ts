@@ -86,6 +86,8 @@ export default {
     parcelHint: 'Hujjat yoki dokument yuborish',
     perPerson: '{{price}} so\'m',
     info: '{{persons}} kishigacha yo\'lovchi olinadi',
+    unavailableTitle: 'Narxni aniqlab boʻlmadi',
+    unavailableBody: 'Internet aloqasini tekshirib, qayta urinib koʻring yoki boshqa yoʻnalish tanlang.',
   },
   newOrder: {
     personsStep: "Yo'lovchi soni",
@@ -191,6 +193,7 @@ export default {
     fileTooLarge: 'Fayl juda katta (maksimal 5 MB).',
     slowNetwork: "Internet juda sekin. Qayta urinib ko'ring.",
     serverStatus: 'Server xatosi ({{status}}).',
+    loadFailed: "Ma'lumotni yuklab bo'lmadi",
   },
   ai: {
     title: 'AI Yordamchi',

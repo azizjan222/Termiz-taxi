@@ -86,6 +86,8 @@ export default {
     parcelHint: 'Ҳужжат ёки документ юбориш',
     perPerson: '{{price}} сўм',
     info: '{{persons}} кишигача йўловчи олинади',
+    unavailableTitle: 'Нархни аниқлаб бўлмади',
+    unavailableBody: 'Интернет алоқасини текшириб, қайта уриниб кўринг ёки бошқа йўналиш танланг.',
   },
   newOrder: {
     personsStep: 'Йўловчи сони',
@@ -189,6 +191,7 @@ export default {
     fileTooLarge: 'Файл жуда катта (максимал 5 МБ).',
     slowNetwork: 'Интернет жуда секин. Қайта уриниб кўринг.',
     serverStatus: 'Сервер хатоси ({{status}}).',
+    loadFailed: 'Маълумотни юклаб бўлмади',
   },
   ai: {
     title: 'AI Ёрдамчи',

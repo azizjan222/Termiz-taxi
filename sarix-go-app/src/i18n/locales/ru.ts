@@ -86,6 +86,8 @@ export default {
     parcelHint: 'Документы или вещи',
     perPerson: '{{price}} сум',
     info: 'До {{persons}} пассажиров',
+    unavailableTitle: 'Не удалось узнать цену',
+    unavailableBody: 'Проверьте интернет-соединение и попробуйте снова или выберите другой маршрут.',
   },
   newOrder: {
     personsStep: 'Количество пассажиров',
@@ -189,6 +191,7 @@ export default {
     fileTooLarge: 'Файл слишком большой (максимум 5 МБ).',
     slowNetwork: 'Слишком медленное соединение. Попробуйте снова.',
     serverStatus: 'Ошибка сервера ({{status}}).',
+    loadFailed: 'Не удалось загрузить данные',
   },
   ai: {
     title: 'AI Помощник',

@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import { getOrder, cancelOrder } from '../src/api/orders';
+import { describeApiError } from '../src/api/errors';
 import { useAuthStore } from '../src/store/auth';
 import { connectPassengerSocket } from '../src/services/passengerSocket';
 import { presentLocalNotification } from '../src/services/notifications';
@@ -175,7 +176,13 @@ export default function SearchingScreen() {
   // Polling fallback (in case the WS event is missed).
   useEffect(() => {
     const id = parseInt(orderId);
-    if (!id) return;
+    // A missing/garbage param makes this NaN. The old `if (!id) return` left the
+    // passenger watching the search animation forever with no poll running and no way to
+    // tell anything was wrong. There is no order to wait for, so go home.
+    if (!Number.isFinite(id) || id <= 0) {
+      router.replace('/(tabs)/home');
+      return;
+    }
     // `clearInterval` only runs AFTER the await, so a request slower than the 5s tick
     // let two polls overlap and both reach the terminal branch -> two stacked Alerts,
     // each navigating home on OK.
@@ -192,6 +199,16 @@ export default function SearchingScreen() {
         if (order.status === 'accepted' || order.status === 'in_progress') {
           notifyDriverFound();
           setStatus('accepted');
+        } else if (order.status === 'completed') {
+          // `completed` was not handled at all, so a ride finished while this screen was
+          // open (a stale screen resumed from the background, or a driver who accepted and
+          // completed between two polls) left the passenger on the search animation
+          // forever — unable to rate the trip, with an order they believed was still
+          // pending. Send them to the order screen, which shows the finished ride.
+          if (alerted) return;
+          alerted = true;
+          clearInterval(interval);
+          router.replace(`/order/${id}`);
         } else if (order.status === 'cancelled' || order.status === 'expired') {
           // The order ended while waiting (passenger/admin cancelled, or the
           // search timed out). Don't leave the passenger stuck on "searching".
@@ -241,10 +258,14 @@ export default function SearchingScreen() {
           try {
             await cancelOrder(parseInt(orderId));
             router.replace('/(tabs)/home');
-          } catch {
+          } catch (e: any) {
             cancelInFlightRef.current = false;
             setCancelling(false);
-            Alert.alert(t('common.error'), t('errors.networkError'));
+            // Every failure used to be reported as "no internet", including the common
+            // real cases: the driver already accepted (cancellation now needs a reason /
+            // may be refused) or the order no longer exists. The passenger retried a
+            // cancel that could never succeed while the ride was actually on its way.
+            Alert.alert(t('common.error'), describeApiError(e, t));
           }
         },
       },
