@@ -103,8 +103,10 @@ export default {
     femaleInCabin: 'Woman in the cabin',
     roofRack: 'Roof luggage rack',
     title: 'Order',
-    extrasValue: 'Options',
+    extrasNone: 'None',
+    extrasCount: '{{count}} selected',
     a11ySubmitHint: 'Starts looking for a driver on the selected route',
+    a11ySwap: 'Reverse the route direction',
   },
   order: {
     serviceType: 'Service type',

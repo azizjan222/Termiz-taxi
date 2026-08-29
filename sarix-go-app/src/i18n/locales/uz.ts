@@ -103,8 +103,11 @@ export default {
     femaleInCabin: 'Salonida ayol kishi bor',
     roofRack: 'Tomida yukxona bor',
     title: 'Buyurtma',
-    extrasValue: 'Sozlamalar',
+    extrasNone: 'Tanlanmagan',
+    // Deliberately NOT i18next pluralization — see the note on order.personsCount.
+    extrasCount: '{{count}} ta tanlangan',
     a11ySubmitHint: "Tanlangan yo'nalish bo'yicha haydovchi qidirishni boshlaydi",
+    a11ySwap: "Yo'nalishni teskarisiga almashtirish",
   },
   order: {
     serviceType: 'Xizmat turi',

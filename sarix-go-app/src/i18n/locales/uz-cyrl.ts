@@ -103,8 +103,10 @@ export default {
     femaleInCabin: 'Салонида аёл киши бор',
     roofRack: 'Томида юкхона бор',
     title: 'Буюртма',
-    extrasValue: 'Созламалар',
+    extrasNone: 'Танланмаган',
+    extrasCount: '{{count}} та танланган',
     a11ySubmitHint: 'Танланган йўналиш бўйича ҳайдовчи қидиришни бошлайди',
+    a11ySwap: 'Йўналишни тескарисига алмаштириш',
   },
   order: {
     serviceType: 'Хизмат тури',

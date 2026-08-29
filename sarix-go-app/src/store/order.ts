@@ -42,6 +42,8 @@ interface OrderState extends OrderDraft {
    */
   setPersonCount: (n: number) => void;
   setRoute: (from: string, to: string) => void;
+  /** Reverse the trip: pickup becomes destination and vice versa. */
+  swapRoute: () => void;
   reset: () => void;
 }
 
@@ -81,6 +83,21 @@ export const useOrderStore = create<OrderState>((set) => ({
     }),
 
   setRoute: (from, to) => set({ fromCity: from, toCity: to }),
+
+  // The order screen showed a swap button that was wired to nothing, so tapping it looked
+  // like the app had frozen. All four pairs have to move together: swapping the city names
+  // while leaving the coordinates behind would send the driver to the wrong end of the trip.
+  swapRoute: () =>
+    set((s) => ({
+      fromCity: s.toCity,
+      toCity: s.fromCity,
+      fromAddress: s.toAddress,
+      toAddress: s.fromAddress,
+      fromLat: s.toLat,
+      toLat: s.fromLat,
+      fromLon: s.toLon,
+      toLon: s.fromLon,
+    })),
 
   reset: () => set(initialDraft),
 }));

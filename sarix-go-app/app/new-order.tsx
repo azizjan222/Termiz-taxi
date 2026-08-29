@@ -6,9 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Animated,
   Modal,
   TextInput,
   Switch,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -21,7 +23,8 @@ import {
   getPriceQuote,
   type PriceQuote,
 } from '../src/api/orders';
-import { Icon, IconText } from '../src/components/Icon';
+import { Icon } from '../src/components/Icon';
+import { OrderCtaButton } from '../src/components/OrderCtaButton';
 import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -33,6 +36,23 @@ import {
   departureKey,
 } from '../src/utils/departureTime';
 
+/** Inner padding of the passenger-count segmented control, in px. */
+const SEG_PAD = 4;
+const PERSON_OPTIONS = [1, 2, 3, 4] as const;
+
+/**
+ * The order screen.
+ *
+ * It used to present itself as a numbered form ("3. Ketish vaqti", "4. Yo'lovchi soni")
+ * with the price, the payment card, the extras card and the CTA all stacked as
+ * similar-looking blocks, so the passenger had to read the whole screen to find the one
+ * button that mattered — and on a short phone that button was below the fold.
+ *
+ * Now: the route is a single card, each choice is one compact control, and the price plus
+ * the CTA live in a pinned footer that is visible no matter how far the page is scrolled.
+ * The numbers are gone — the route is already chosen by the time this screen opens, so
+ * there was never a sequence to walk through here.
+ */
 export default function NewOrderScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
@@ -69,6 +89,26 @@ export default function NewOrderScreen() {
   const formatPrice = (p: number) =>
     p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
+  // --- Passenger-count segmented control ---
+  // The sliding indicator needs the real track width, which is only known after layout.
+  const [segWidth, setSegWidth] = useState(0);
+  const segAnim = useRef(new Animated.Value(persons - 1)).current;
+  const cell = segWidth > 0 ? (segWidth - SEG_PAD * 2) / PERSON_OPTIONS.length : 0;
+
+  useEffect(() => {
+    Animated.spring(segAnim, {
+      toValue: persons - 1,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 8,
+    }).start();
+  }, [persons, segAnim]);
+
+  const handleSegLayout = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    setSegWidth((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+  };
+
   // Price for the current route + passenger count (or full car = 4 people)
   useEffect(() => {
     let active = true;
@@ -102,6 +142,33 @@ export default function NewOrderScreen() {
 
   // Recommendations were removed: passengers no longer see/choose specific drivers.
   // Orders are broadcast to all eligible drivers via the "Buyurtma berish" button.
+
+  // setPersonCount, not setField: it keeps maleCount + femaleCount === personCount, which
+  // is what actually goes to the driver.
+  const selectPersons = (n: number) => {
+    orderStore.setPersonCount(n);
+    orderStore.setField('serviceType', 'taxi');
+  };
+
+  const toggleFullCar = (on: boolean) => {
+    orderStore.setField('serviceType', on ? 'full_car' : 'taxi');
+    orderStore.setPersonCount(on ? 4 : 1);
+  };
+
+  // How many optional extras are set, so the row can say so instead of always reading
+  // "Sozlamalar" whether or not anything was actually chosen.
+  const extrasCount = [
+    orderStore.note.trim(),
+    otherName.trim() || otherPhone.trim(),
+    orderStore.femaleOnly,
+    orderStore.hasRoofRack,
+    orderStore.promoCode.trim(),
+  ].filter(Boolean).length;
+
+  const tripSummary = [
+    t('order.personsCount', { count: isFullCar ? 4 : persons }),
+    t(departureKey(orderStore.departureTime)),
+  ].join(' · ');
 
   const submit = async (targetDriverId?: number) => {
     if (!from || !to) return;
@@ -159,6 +226,13 @@ export default function NewOrderScreen() {
     }
   };
 
+  /** One line under "Narxi": the trip shape, or why there is no price. */
+  const footerNote = routeUnavailable
+    ? t('newOrder.routeUnavailable')
+    : quoteFailed
+    ? t('errors.networkError')
+    : tripSummary;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
@@ -170,236 +244,212 @@ export default function NewOrderScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Steps 1 & 2 summary: Qayerdan → Qayerga */}
-        <View style={styles.card}>
-          <View style={styles.routeBody}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.routeRow}>
-                <View style={styles.dotFrom} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.stepLabel}>1. {t('order.from')}</Text>
-                  <Text style={styles.routeValue}>{from}</Text>
-                </View>
-              </View>
-              <View style={styles.routeConnector} />
-              <View style={styles.routeRow}>
-                <View style={styles.dotTo} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.stepLabel}>2. {t('order.to')}</Text>
-                  <Text style={styles.routeValue}>{to}</Text>
-                </View>
+        {/* Route: Qayerdan → Qayerga */}
+        <View style={styles.routeCard}>
+          <View style={styles.routeCol}>
+            <View style={styles.routeRow}>
+              <View style={styles.dotFrom} />
+              <View style={styles.routeTexts}>
+                <Text style={styles.routeLabel}>{t('order.from')}</Text>
+                <Text style={styles.routeValue} numberOfLines={1}>
+                  {from}
+                </Text>
+                {!!orderStore.fromAddress && orderStore.fromAddress !== from && (
+                  <Text style={styles.routeAddress} numberOfLines={1}>
+                    {orderStore.fromAddress}
+                  </Text>
+                )}
               </View>
             </View>
 
-            {/* Swap (visual only — no dedicated swap handler in the store) */}
-            <View style={styles.swapBtn}>
-              <Icon name="swap" size={18} color={colors.primary} />
+            <View style={styles.routeConnector} />
+
+            <View style={styles.routeRow}>
+              <View style={styles.dotTo} />
+              <View style={styles.routeTexts}>
+                <Text style={styles.routeLabel}>{t('order.to')}</Text>
+                <Text style={styles.routeValue} numberOfLines={1}>
+                  {to}
+                </Text>
+                {!!orderStore.toAddress && orderStore.toAddress !== to && (
+                  <Text style={styles.routeAddress} numberOfLines={1}>
+                    {orderStore.toAddress}
+                  </Text>
+                )}
+              </View>
             </View>
           </View>
+
+          <TouchableOpacity
+            style={styles.swapBtn}
+            onPress={orderStore.swapRoute}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('newOrder.a11ySwap')}
+          >
+            <Icon name="swap" size={20} color={colors.primary} />
+          </TouchableOpacity>
         </View>
 
-        {/* Step 3: Ketadigan vaqti */}
-        <IconText name="clock" size={15} color={colors.text} textStyle={styles.sectionTitle}>
-          3. {t('order.departureTime')}
-        </IconText>
-        <View style={styles.chipRow}>
+        {/* Ketish vaqti — one scrollable row, so five presets never wrap into a grid */}
+        <View style={styles.sectionHead}>
+          <Icon name="clock" size={16} color={colors.textMuted} />
+          <Text style={styles.sectionLabel}>{t('order.departureTime')}</Text>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.timeRow}
+        >
           {DEPARTURE_CODES.map((code) => {
             const selected = orderStore.departureTime === code;
             return (
               <TouchableOpacity
                 key={code}
-                style={[styles.chip, selected ? styles.timeChipSelected : styles.chipUnselected]}
+                style={[styles.timeChip, selected && styles.timeChipSelected]}
                 onPress={() => orderStore.setField('departureTime', code)}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
               >
-                <Text style={[styles.chipText, selected && styles.timeChipTextSelected]}>
+                <Text style={[styles.timeChipText, selected && styles.timeChipTextSelected]}>
                   {t(departureKey(code))}
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
 
-        {/* Step 4: Yo'lovchi soni / Bo'sh mashina */}
-        <IconText name="profile" size={15} color={colors.text} textStyle={styles.sectionTitle}>
-          4. {t('newOrder.personsStep')}
-        </IconText>
-        <View style={styles.chipRow}>
-          {[1, 2, 3, 4].map((n) => {
+        {/* Yo'lovchi soni — a segmented control with a sliding indicator */}
+        <View style={styles.sectionHead}>
+          <Icon name="people" size={16} color={colors.textMuted} />
+          <Text style={styles.sectionLabel}>{t('newOrder.personsStep')}</Text>
+        </View>
+        <View style={styles.segment} onLayout={handleSegLayout}>
+          {cell > 0 && !isFullCar && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.segIndicator,
+                { width: cell, transform: [{ translateX: Animated.multiply(segAnim, cell) }] },
+              ]}
+            >
+              <LinearGradient
+                colors={gradients.purple}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+            </Animated.View>
+          )}
+          {PERSON_OPTIONS.map((n) => {
             const selected = !isFullCar && persons === n;
-            const onPress = () => {
-              orderStore.setPersonCount(n);
-              orderStore.setField('serviceType', 'taxi');
-            };
-            if (selected) {
-              return (
-                <TouchableOpacity key={n} onPress={onPress} activeOpacity={0.85}>
-                  <LinearGradient
-                    colors={gradients.purple}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.personChipSelected}
-                  >
-                    <IconText
-                      name="profile"
-                      size={13}
-                      color={colors.textOnPrimary}
-                      textStyle={styles.personChipTextSelected}
-                    >
-                      {n}
-                    </IconText>
-                  </LinearGradient>
-                </TouchableOpacity>
-              );
-            }
             return (
               <TouchableOpacity
                 key={n}
-                style={styles.personChip}
-                onPress={onPress}
-                activeOpacity={0.85}
+                style={styles.segCell}
+                onPress={() => selectPersons(n)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
               >
-                <IconText
-                  name="profile"
-                  size={13}
-                  color={colors.textSecondary}
-                  textStyle={styles.personChipText}
-                >
-                  {n}
-                </IconText>
+                <Text style={[styles.segText, selected && styles.segTextSelected]}>{n}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Bo'sh mashina (full car) — books the whole car, priced for 4 people. */}
-        {isFullCar ? (
-          <TouchableOpacity
-            onPress={() => {
-              orderStore.setField('serviceType', 'full_car');
-              orderStore.setPersonCount(4);
-            }}
-            activeOpacity={0.9}
-          >
-            <LinearGradient
-              colors={gradients.gold}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.fullCarChipSelected}
-            >
-              <IconText
-                name="car"
-                size={13}
-                color={colors.textOnPrimary}
-                textStyle={styles.fullCarChipTextSelected}
-              >
-                {t('tariff.fullCar')}
-              </IconText>
-              <Text style={styles.fullCarHintSelected}>{t('tariff.fullCarHint')}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.fullCarChip}
-            onPress={() => {
-              orderStore.setField('serviceType', 'full_car');
-              orderStore.setPersonCount(4);
-            }}
-            activeOpacity={0.85}
-          >
-            <IconText
-              name="car"
-              size={13}
-              color={colors.textSecondary}
-              textStyle={styles.fullCarChipText}
-            >
-              {t('tariff.fullCar')}
-            </IconText>
-            <Text style={styles.fullCarHint}>{t('tariff.fullCarHint')}</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Price preview (or "route unavailable" banner) */}
-        {routeUnavailable ? (
-          <View style={styles.unavailableBar}>
-            <Icon name="blocked" size={18} color={colors.error} style={styles.unavailableIcon} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.unavailableTitle}>{t('newOrder.routeUnavailable')}</Text>
-              <Text style={styles.unavailableSub}>
-                {t('newOrder.routeUnavailableHint')}
-              </Text>
-            </View>
+        {/* Bo'sh mashina — a switch, so its state is never ambiguous */}
+        <View style={[styles.fullCarRow, isFullCar && styles.fullCarRowOn]}>
+          <View style={styles.fullCarIcon}>
+            <Icon name="car" size={20} color={colors.primary} />
           </View>
-        ) : (
-          <LinearGradient
-            colors={gradients.purple}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.priceBar}
-          >
-            <Text style={styles.priceBarLabel}>{t('order.price')}</Text>
-            <Text style={styles.priceBarValue}>
-              {quote
-                ? `${formatPrice(quote.price)} ${t('common.currency')}`
-                : quoteFailed
-                ? t('errors.networkError')
-                : '...'}
-            </Text>
-          </LinearGradient>
-        )}
+          <View style={styles.fullCarTexts}>
+            <Text style={styles.fullCarTitle}>{t('tariff.fullCar')}</Text>
+            <Text style={styles.fullCarHint}>{t('tariff.fullCarHint')}</Text>
+          </View>
+          <Switch
+            value={isFullCar}
+            onValueChange={toggleFullCar}
+            trackColor={{ true: colors.accent }}
+            accessibilityLabel={t('tariff.fullCar')}
+          />
+        </View>
 
-        {/* Action area — secondary controls (payment / options) + primary CTA */}
-        <View style={styles.secondaryRow}>
+        {/* To'lov + Qo'shimcha — two quiet rows in one card, not two competing buttons */}
+        <View style={styles.optionsCard}>
           <TouchableOpacity
-            style={styles.secondaryBtn}
+            style={styles.optionRow}
             onPress={() => setPaymentSheet(true)}
-            activeOpacity={0.85}
+            activeOpacity={0.7}
+            accessibilityRole="button"
           >
-            <Icon name="cash" size={18} color={colors.textSecondary} style={styles.secondaryIcon} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.secondaryLabel}>{t('newOrder.payment')}</Text>
-              <Text style={styles.secondaryValue}>{t('order.cash')}</Text>
-            </View>
+            <Icon name="cash" size={20} color={colors.textSecondary} />
+            <Text style={styles.optionLabel}>{t('newOrder.payment')}</Text>
+            <Text style={styles.optionValue}>{t('order.cash')}</Text>
           </TouchableOpacity>
 
+          <View style={styles.optionDivider} />
+
           <TouchableOpacity
-            style={styles.secondaryBtn}
+            style={styles.optionRow}
             onPress={() => setOptionsSheet(true)}
-            activeOpacity={0.85}
+            activeOpacity={0.7}
+            accessibilityRole="button"
           >
-            <Icon name="settings" size={18} color={colors.textSecondary} style={styles.secondaryIcon} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.secondaryLabel}>{t('newOrder.extras')}</Text>
-              <Text style={styles.secondaryValue}>{t('newOrder.extrasValue')}</Text>
-            </View>
+            <Icon name="settings" size={20} color={colors.textSecondary} />
+            <Text style={styles.optionLabel}>{t('newOrder.extras')}</Text>
+            <Text style={styles.optionValue}>
+              {extrasCount > 0
+                ? t('newOrder.extrasCount', { count: extrasCount })
+                : t('newOrder.extrasNone')}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={[styles.ctaWrap, (routeUnavailable || quoteFailed) && styles.btnDisabled]}
+        {routeUnavailable && (
+          <View style={styles.unavailableBar}>
+            <Icon name="blocked" size={20} color={colors.error} />
+            <View style={styles.unavailableTexts}>
+              <Text style={styles.unavailableTitle}>{t('newOrder.routeUnavailable')}</Text>
+              <Text style={styles.unavailableSub}>{t('newOrder.routeUnavailableHint')}</Text>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Pinned footer: the price and the one button that matters are always on screen */}
+      <View style={styles.footer}>
+        <View style={styles.priceRow}>
+          <View style={styles.priceTexts}>
+            <Text style={styles.priceLabel}>{t('order.price')}</Text>
+            <Text
+              style={[styles.priceNote, (routeUnavailable || quoteFailed) && styles.priceNoteError]}
+              numberOfLines={1}
+            >
+              {footerNote}
+            </Text>
+          </View>
+          <Text style={styles.priceValue}>
+            {quote
+              ? `${formatPrice(quote.price)} ${t('common.currency')}`
+              : // "…" while the quote is still in flight, "—" once we know there won't be
+                // one, so a slow network never looks like a missing price.
+                routeUnavailable || quoteFailed
+              ? '—'
+              : '…'}
+          </Text>
+        </View>
+
+        <OrderCtaButton
+          title={submitting === 'find' ? t('common.sending') : t('order.confirm')}
           onPress={() => submit()}
-          disabled={submitting !== null || routeUnavailable || quoteFailed}
-          activeOpacity={0.9}
-          accessibilityRole="button"
+          loading={submitting !== null}
+          disabled={routeUnavailable || quoteFailed}
           accessibilityLabel={t('order.confirm')}
           accessibilityHint={t('newOrder.a11ySubmitHint')}
-          accessibilityState={{
-            disabled: submitting !== null || routeUnavailable,
-            busy: submitting !== null,
-          }}
-        >
-          <LinearGradient
-            colors={gradients.gold}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.ctaBtn}
-          >
-            <Text style={styles.ctaText}>
-              {submitting === 'find' ? t('common.sending') : t('order.confirm')}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </ScrollView>
+        />
+      </View>
 
       {/* Payment method sheet — only cash is selectable for now */}
       <Modal
@@ -441,7 +491,7 @@ export default function NewOrderScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Extra options sheet (⋮) */}
+      {/* Extra options sheet */}
       <Modal
         visible={optionsSheet}
         transparent
@@ -535,180 +585,196 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   title: { ...typography.h3, color: colors.text },
-  scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg },
 
-  // From / To card
-  card: {
-    backgroundColor: colors.white,
-    borderRadius: 20,
+  // Route card
+  routeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
     padding: spacing.md,
     marginBottom: spacing.lg,
     shadowColor: '#0E1730',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.07,
     shadowRadius: 16,
     elevation: 3,
   },
-  routeBody: { flexDirection: 'row', alignItems: 'center' },
+  routeCol: { flex: 1 },
   routeRow: { flexDirection: 'row', alignItems: 'center' },
+  routeTexts: { flex: 1 },
   dotFrom: {
-    width: 12, height: 12, borderRadius: 6,
-    backgroundColor: colors.success, marginRight: spacing.md,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.success,
+    marginRight: spacing.md,
   },
   dotTo: {
-    width: 12, height: 12, borderRadius: 6,
-    backgroundColor: colors.accent, marginRight: spacing.md,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.accent,
+    marginRight: spacing.md,
   },
   routeConnector: {
     width: 0,
-    height: 22,
+    height: 18,
     borderLeftWidth: 2,
     borderStyle: 'dotted',
     borderColor: colors.border,
-    marginLeft: 5,
-    marginVertical: 2,
+    marginLeft: 4,
+    marginVertical: 4,
   },
-  stepLabel: { ...typography.small, color: colors.textMuted },
+  routeLabel: { ...typography.small, color: colors.textMuted },
   routeValue: { ...typography.bodyBold, color: colors.text },
+  routeAddress: { ...typography.small, color: colors.textSecondary, marginTop: 1 },
   swapBtn: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing.md,
+    marginLeft: spacing.sm,
   },
 
-  // Section titles
-  sectionTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.md },
-
-  // Chips
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-  },
-  chipUnselected: { backgroundColor: colors.white, borderColor: colors.border },
-  timeChipSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { ...typography.bodyBold, color: colors.text },
-  timeChipTextSelected: { color: colors.textOnAccent },
-
-  // Person chips
-  personChip: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.white,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-  },
-  personChipSelected: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-  },
-  personChipText: { ...typography.bodyBold, color: colors.text },
-  personChipTextSelected: { ...typography.bodyBold, color: colors.textOnPrimary },
-
-  // Bo'sh mashina (full car) option
-  fullCarChip: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    marginBottom: spacing.lg,
-  },
-  fullCarChipSelected: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.lg,
-    marginBottom: spacing.lg,
-  },
-  fullCarChipText: { ...typography.bodyBold, color: colors.text },
-  fullCarChipTextSelected: { ...typography.bodyBold, color: colors.textOnAccent },
-  fullCarHint: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
-  fullCarHintSelected: { ...typography.small, color: colors.textOnAccent, opacity: 0.85, marginTop: 2 },
-
-  // Price bar
-  priceBar: {
+  // Section headings — quiet labels, not headlines competing with the CTA
+  sectionHead: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    gap: 6,
+    marginBottom: spacing.sm,
+  },
+  sectionLabel: {
+    ...typography.small,
+    // Shrink/wrap inside the row instead of pushing past the card edge: the Russian
+    // labels are noticeably longer than the Uzbek ones.
+    flex: 1,
+    color: colors.textMuted,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+
+  // Ketish vaqti
+  timeRow: { gap: spacing.sm, paddingRight: spacing.lg, paddingBottom: spacing.lg },
+  timeChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  timeChipSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+  timeChipText: { ...typography.caption, color: colors.text, fontWeight: '600' },
+  timeChipTextSelected: { color: colors.textOnAccent, fontWeight: '700' },
+
+  // Yo'lovchi soni segmented control
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    padding: SEG_PAD,
     marginBottom: spacing.md,
   },
-  priceBarLabel: { ...typography.bodyBold, color: colors.textOnPrimary },
-  priceBarValue: { ...typography.h2, color: colors.textOnPrimary },
+  segIndicator: {
+    position: 'absolute',
+    top: SEG_PAD,
+    bottom: SEG_PAD,
+    left: SEG_PAD,
+    borderRadius: radius.pill,
+    overflow: 'hidden',
+  },
+  segCell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
+  segText: { ...typography.bodyBold, color: colors.textSecondary },
+  segTextSelected: { color: colors.textOnPrimary, fontWeight: '700' },
+
+  // Bo'sh mashina
+  fullCarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  fullCarRowOn: { borderColor: colors.accent },
+  fullCarIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primary50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  fullCarTexts: { flex: 1, marginRight: spacing.sm },
+  fullCarTitle: { ...typography.bodyBold, color: colors.text },
+  fullCarHint: { ...typography.small, color: colors.textSecondary, marginTop: 1 },
+
+  // To'lov / Qo'shimcha
+  optionsCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  optionLabel: { ...typography.caption, color: colors.textSecondary, flex: 1 },
+  optionValue: { ...typography.bodyBold, color: colors.text, fontSize: 15 },
+  optionDivider: { height: 1, backgroundColor: colors.divider },
+
+  // Route unavailable
   unavailableBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
     backgroundColor: colors.errorLight,
     borderRadius: radius.md,
     padding: spacing.md,
-    marginTop: spacing.md,
     borderWidth: 1,
     borderColor: colors.error,
   },
-  unavailableIcon: { fontSize: 24, marginRight: spacing.md },
+  unavailableTexts: { flex: 1 },
   unavailableTitle: { ...typography.bodyBold, color: colors.error },
-  unavailableSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  btnDisabled: { opacity: 0.4 },
+  unavailableSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
 
-  // Action area — secondary controls + primary CTA
-  secondaryRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.md,
-  },
-  secondaryBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+  // Pinned footer
+  footer: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
     shadowColor: '#0E1730',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  secondaryIcon: { fontSize: 22, marginRight: spacing.sm },
-  secondaryLabel: { ...typography.small, color: colors.textMuted },
-  secondaryValue: { ...typography.bodyBold, color: colors.text },
-  ctaWrap: {
-    borderRadius: radius.lg,
-    marginBottom: spacing.lg,
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.08,
     shadowRadius: 16,
-    elevation: 6,
+    elevation: 12,
   },
-  ctaBtn: {
-    borderRadius: radius.lg,
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaText: {
-    ...typography.h3,
-    color: colors.textOnAccent,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-  },
+  priceRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
+  priceTexts: { flex: 1, marginRight: spacing.sm },
+  priceLabel: { ...typography.small, color: colors.textMuted },
+  priceNote: { ...typography.caption, color: colors.textSecondary },
+  priceNoteError: { color: colors.error },
+  priceValue: { ...typography.h2, color: colors.primary },
 
   // Sheets
   sheetBackdrop: {
@@ -717,7 +783,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.card,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     padding: spacing.lg,
@@ -743,7 +809,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.surface,
     marginBottom: spacing.sm,
   },
-  payOptionSelected: { borderColor: colors.success, backgroundColor: colors.white },
+  payOptionSelected: { borderColor: colors.success, backgroundColor: colors.card },
   payOptionDisabled: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -752,7 +818,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.surface,
     opacity: 0.5,
   },
-  payOptionIcon: { fontSize: 22, marginRight: spacing.md },
+  payOptionIcon: { marginRight: spacing.md },
   payOptionText: { ...typography.bodyBold, color: colors.text, flex: 1 },
   payOptionTextDisabled: { ...typography.bodyBold, color: colors.textSecondary, flex: 1 },
   optLabel: {
@@ -787,34 +853,4 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: spacing.lg,
   },
   optDoneText: { ...typography.h3, color: colors.textOnAccent },
-  recHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  recEmpty: { ...typography.body, color: colors.textSecondary, paddingVertical: spacing.md },
-  recCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  recAvatar: { width: 52, height: 52, borderRadius: 26, marginRight: spacing.md },
-  recAvatarPlaceholder: {
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recAvatarText: { fontSize: 22, color: colors.textOnPrimary, fontWeight: '700' },
-  recName: { ...typography.bodyBold, color: colors.text },
-  recCar: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  recMeta: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
-  recRight: { alignItems: 'flex-end' },
-  recPriceLabel: { ...typography.small, color: colors.textSecondary },
-  recPrice: { ...typography.bodyBold, color: colors.primary },
-  recPick: { ...typography.small, color: colors.accentDark, marginTop: 4, fontWeight: '700' },
 });
