@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from collections import Counter, OrderedDict
 from datetime import datetime, timedelta
 
@@ -75,6 +76,26 @@ def _iso(dt) -> str | None:
     nothing saying it was UTC. `iso_utc` tags it, and the UI formats it (see fmtDt()).
     """
     return iso_utc(dt)
+
+
+#: Rows per page for the paginated tables. The panel used to load EVERY driver and EVERY
+#: user in one response and filter them in the browser — fine at a few hundred rows, a
+#: multi-megabyte response and a frozen table at ten thousand.
+DEFAULT_PER_PAGE = 50
+MAX_PER_PAGE = 200
+
+
+def _page_params(request: web.Request) -> tuple[int, int]:
+    """Read `page`/`per_page` from the query string, clamped to sane bounds."""
+    try:
+        page = max(int(request.query.get("page", 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = int(request.query.get("per_page", DEFAULT_PER_PAGE))
+    except (TypeError, ValueError):
+        per_page = DEFAULT_PER_PAGE
+    return page, min(max(per_page, 1), MAX_PER_PAGE)
 
 
 def _parse_int_field(data: dict, key: str) -> int:
@@ -218,10 +239,43 @@ async def api_stats(request: web.Request) -> web.Response:
     return web.json_response(await asyncio.to_thread(_stats_payload))
 
 
-def _drivers_payload() -> list:
+def _drivers_payload(page: int, per_page: int, q: str, filt: str) -> dict:
     session = get_session()
     try:
-        drivers = session.query(Driver).order_by(Driver.id.desc()).all()
+        query = session.query(Driver)
+        # Filtering and searching move to SQL: the browser used to receive every driver row
+        # and do this in JS.
+        if filt == "online":
+            query = query.filter(Driver.is_online == True)  # noqa: E712
+        elif filt == "verified":
+            query = query.filter(Driver.is_verified == True)  # noqa: E712
+        elif filt == "pending":
+            query = query.filter(
+                Driver.is_verified == False,  # noqa: E712
+                Driver.documents_submitted == True,  # noqa: E712
+            )
+        elif filt == "nodocs":
+            query = query.filter(
+                Driver.is_verified == False,  # noqa: E712
+                Driver.documents_submitted == False,  # noqa: E712
+            )
+        elif filt == "blocked":
+            query = query.filter(Driver.is_blocked == True)  # noqa: E712
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                func.lower(func.coalesce(Driver.first_name, "")).like(func.lower(like))
+                | func.lower(func.coalesce(Driver.last_name, "")).like(func.lower(like))
+                | func.coalesce(Driver.phone, "").like(like)
+                | func.coalesce(Driver.car_number, "").like(like)
+            )
+        total = query.count()
+        drivers = (
+            query.order_by(Driver.id.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
         result = []
         for d in drivers:
             result.append({
@@ -248,21 +302,46 @@ def _drivers_payload() -> list:
                 "has_tech_passport": bool(d.tech_passport_file_id or d.tech_passport_url),
                 "has_car_photo": bool(d.car_photo_file_id or d.car_photo_url),
             })
-        return result
+        return {"items": result, "total": total, "page": page, "per_page": per_page}
     finally:
         session.close()
 
 
 @require_admin_api
 async def api_drivers(request: web.Request) -> web.Response:
-    """GET /admin/api/drivers - list all drivers."""
-    return web.json_response(await asyncio.to_thread(_drivers_payload))
+    """GET /admin/api/drivers?page=&per_page=&q=&filter= - paginated driver list."""
+    page, per_page = _page_params(request)
+    q = (request.query.get("q") or "").strip()[:100]
+    filt = (request.query.get("filter") or "all").strip()
+    return web.json_response(
+        await asyncio.to_thread(_drivers_payload, page, per_page, q, filt)
+    )
 
 
-def _passengers_payload() -> list:
+def _passengers_payload(page: int, per_page: int, q: str, filt: str) -> dict:
     session = get_session()
     try:
-        users = session.query(User).order_by(User.id.desc()).all()
+        query = session.query(User)
+        if filt == "blocked":
+            query = query.filter(User.is_blocked == True)  # noqa: E712
+        elif filt == "active":
+            query = query.filter(
+                (User.is_blocked == False) | (User.is_blocked.is_(None))  # noqa: E712
+            )
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                func.lower(func.coalesce(User.first_name, "")).like(func.lower(like))
+                | func.lower(func.coalesce(User.last_name, "")).like(func.lower(like))
+                | func.coalesce(User.phone, "").like(like)
+            )
+        total = query.count()
+        users = (
+            query.order_by(User.id.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
         result = []
         for u in users:
             result.append({
@@ -278,18 +357,23 @@ def _passengers_payload() -> list:
                 "is_blocked": u.is_blocked,
                 "created_at": _iso(u.created_at),
             })
-        return result
+        return {"items": result, "total": total, "page": page, "per_page": per_page}
     finally:
         session.close()
 
 
 @require_admin_api
 async def api_passengers(request: web.Request) -> web.Response:
-    """GET /admin/api/passengers - list all users."""
-    return web.json_response(await asyncio.to_thread(_passengers_payload))
+    """GET /admin/api/passengers?page=&per_page=&q=&filter= - paginated user list."""
+    page, per_page = _page_params(request)
+    q = (request.query.get("q") or "").strip()[:100]
+    filt = (request.query.get("filter") or "all").strip()
+    return web.json_response(
+        await asyncio.to_thread(_passengers_payload, page, per_page, q, filt)
+    )
 
 
-def _orders_payload(status_filter: str) -> list:
+def _orders_payload(status_filter: str, page: int, per_page: int, q: str) -> dict:
     session = get_session()
     try:
         # joinedload: the driver of every row is rendered in the table, and a lazy
@@ -301,7 +385,21 @@ def _orders_payload(status_filter: str) -> list:
             )
         elif status_filter and status_filter != "all":
             query = query.filter(Order.status == status_filter)
-        orders = query.order_by(Order.id.desc()).limit(200).all()
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                func.coalesce(Order.passenger_phone, "").like(like)
+                | func.lower(func.coalesce(Order.passenger_name, "")).like(func.lower(like))
+                | func.lower(func.coalesce(Order.from_city, "")).like(func.lower(like))
+                | func.lower(func.coalesce(Order.to_city, "")).like(func.lower(like))
+            )
+        total = query.count()
+        orders = (
+            query.order_by(Order.id.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
         result = []
         for o in orders:
             # Driver who took the order (if any) — eager-loaded by the query above.
@@ -337,16 +435,20 @@ def _orders_payload(status_filter: str) -> list:
                 "cancelled_by": o.cancelled_by,
                 "cancel_reason": o.cancel_reason,
             })
-        return result
+        return {"items": result, "total": total, "page": page, "per_page": per_page}
     finally:
         session.close()
 
 
 @require_admin_api
 async def api_orders(request: web.Request) -> web.Response:
-    """GET /admin/api/orders?status=all|new|accepted|completed|cancelled."""
+    """GET /admin/api/orders?status=&page=&per_page=&q= - paginated order list."""
     status_filter = request.query.get("status", "all")
-    return web.json_response(await asyncio.to_thread(_orders_payload, status_filter))
+    page, per_page = _page_params(request)
+    q = (request.query.get("q") or "").strip()[:100]
+    return web.json_response(
+        await asyncio.to_thread(_orders_payload, status_filter, page, per_page, q)
+    )
 
 
 def _push_prepare(target: str, recipient_type: str, recipient_id_int, message: str) -> dict:
@@ -1477,6 +1579,345 @@ async def api_driver_photo(request: web.Request) -> web.Response:
     return web.json_response({"error": "Hujjat topilmadi"}, status=404)
 
 
+# ============================= PAYMENTS (manual top-ups) =============================
+#
+# Approval used to be possible ONLY from the Telegram bot, so the panel's money story was
+# half-told: an operator could see driver balances and adjust them by hand, but not act on
+# the receipts drivers actually submit.
+#
+# The money itself is NOT re-implemented here. `credit_driver_payment` (app/api/payments.py)
+# is the one shared primitive the Click webhook and both bot flows already use: it claims
+# the row (pending -> processing), grants the one-time 50% first-top-up bonus, credits the
+# balance and writes the BalanceTransaction under the unique ledger key
+# "payment:<id>:approved" — which is the database-level guarantee against a double credit
+# even if an operator taps the panel button while another taps the bot button.
+
+_PAYMENT_STATUSES = ("pending", "processing", "approved", "rejected", "cancelled")
+
+
+def _payments_payload(status_filter: str, page: int, per_page: int) -> dict:
+    session = get_session()
+    try:
+        from app.models import Payment
+
+        query = session.query(Payment)
+        if status_filter in _PAYMENT_STATUSES:
+            query = query.filter(Payment.status == status_filter)
+        total = query.count()
+        rows = (
+            query.order_by(Payment.id.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
+        driver_ids = {p.driver_id for p in rows if p.driver_id}
+        drivers = {}
+        if driver_ids:
+            for d in session.query(Driver).filter(Driver.id.in_(driver_ids)).all():
+                drivers[d.id] = d
+        items = []
+        for p in rows:
+            d = drivers.get(p.driver_id)
+            items.append({
+                "id": p.id,
+                "driver_id": p.driver_id,
+                "driver_name": (
+                    (f"{d.first_name or ''} {d.last_name or ''}").strip() or None
+                ) if d else None,
+                "driver_phone": d.phone if d else None,
+                "driver_balance": (d.balance or 0) if d else None,
+                "driver_blocked": bool(d.is_blocked) if d else None,
+                # Tells the operator up front that approving will add a 50% bonus.
+                "first_bonus_pending": (
+                    not bool(d.first_payment_bonus_granted) if d else False
+                ),
+                "provider": p.provider,
+                "amount": p.amount or 0,
+                "bonus_amount": p.bonus_amount or 0,
+                "status": p.status,
+                "has_receipt": bool(p.photo_file_id),
+                "created_at": _iso(p.created_at),
+                "processed_at": _iso(p.processed_at),
+            })
+        pending_total = session.query(Payment).filter(Payment.status == "pending").count()
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "pending_total": pending_total,
+        }
+    finally:
+        session.close()
+
+
+@require_admin_api
+async def api_payments(request: web.Request) -> web.Response:
+    """GET /admin/api/payments?status=&page=&per_page= - manual top-up queue."""
+    status_filter = request.query.get("status", "pending")
+    page, per_page = _page_params(request)
+    return web.json_response(
+        await asyncio.to_thread(_payments_payload, status_filter, page, per_page)
+    )
+
+
+def _approve_payment_in_db(payment_id: int, ip, user_agent) -> dict:
+    """Approve one payment through the shared money primitive. Runs in a thread."""
+    from app.api.payments import credit_driver_payment
+    from app.models import Payment
+
+    session = get_session()
+    try:
+        payment = session.query(Payment).filter_by(id=payment_id).first()
+        if not payment:
+            return {"body": {"error": "To'lov topilmadi"}, "status": 404}
+        if payment.provider not in ("manual_app", "manual_bot"):
+            return {
+                "body": {"error": f"'{payment.provider}' to'lovi qo'lda tasdiqlanmaydi"},
+                "status": 400,
+            }
+        if payment.status != "pending":
+            return {
+                "body": {"error": f"To'lov allaqachon qayta ishlangan: {payment.status}"},
+                "status": 409,
+            }
+        provider = payment.provider
+
+        credited = credit_driver_payment(session, payment)
+        if not credited:
+            # Another approval (bot button, or a second tab) won the pending->processing
+            # claim, or the reaper cancelled the row. Nothing was credited here.
+            session.rollback()
+            return {
+                "body": {"error": "To'lov boshqa so'rovda qayta ishlangan"},
+                "status": 409,
+            }
+        amount, bonus, driver = credited
+        add_actor_audit(
+            session,
+            actor=config.ADMIN_USERNAME,
+            action="payment.approve",
+            target_type="payment",
+            target_id=payment_id,
+            details={
+                "amount": amount,
+                "bonus": bonus,
+                "provider": provider,
+                "driver_id": driver.id,
+                "balance_after": driver.balance,
+            },
+            remote_ip=ip,
+            user_agent=user_agent,
+        )
+        # credit_driver_payment deliberately does not commit — the caller owns it.
+        session.commit()
+        total = amount + bonus
+        return {
+            "body": {
+                "ok": True,
+                "detail": (
+                    f"Tasdiqlandi: {total:,} so'm balansga qo'shildi"
+                    + (f" (+{bonus:,} bonus)" if bonus else "")
+                ).replace(",", " "),
+                "amount": amount,
+                "bonus": bonus,
+            },
+            "status": 200,
+            "notify": {
+                "driver_id": driver.id,
+                "telegram_id": driver.telegram_id,
+                "amount": amount,
+                "bonus": bonus,
+                "provider": provider,
+            },
+        }
+    except Exception:
+        session.rollback()
+        logger.exception("admin: payment.approve failed for %s", payment_id)
+        return {"body": {"error": INTERNAL_ERROR}, "status": 500}
+    finally:
+        session.close()
+
+
+def _reject_payment_in_db(payment_id: int, ip, user_agent) -> dict:
+    """Reject one pending payment. No money moves, so no shared primitive is needed."""
+    from app.models import Payment
+
+    session = get_session()
+    try:
+        payment = session.query(Payment).filter_by(id=payment_id).first()
+        if not payment:
+            return {"body": {"error": "To'lov topilmadi"}, "status": 404}
+        driver_id = payment.driver_id
+        provider = payment.provider
+        amount = payment.amount
+        # Conditional UPDATE, exactly like the bot: it is the claim, not the pre-check.
+        claimed = (
+            session.query(Payment)
+            .filter_by(id=payment_id, status="pending")
+            .update(
+                {"status": "rejected", "processed_at": datetime.utcnow()},
+                synchronize_session=False,
+            )
+        )
+        if claimed != 1:
+            session.rollback()
+            return {
+                "body": {"error": "To'lov boshqa so'rovda qayta ishlangan"},
+                "status": 409,
+            }
+        add_actor_audit(
+            session,
+            actor=config.ADMIN_USERNAME,
+            action="payment.reject",
+            target_type="payment",
+            target_id=payment_id,
+            details={"amount": amount, "provider": provider, "driver_id": driver_id},
+            remote_ip=ip,
+            user_agent=user_agent,
+        )
+        session.commit()
+        return {
+            "body": {"ok": True, "detail": "To'lov rad etildi"},
+            "status": 200,
+            "notify": {"driver_id": driver_id, "provider": provider, "rejected": True},
+        }
+    except Exception:
+        session.rollback()
+        logger.exception("admin: payment.reject failed for %s", payment_id)
+        return {"body": {"error": INTERNAL_ERROR}, "status": 500}
+    finally:
+        session.close()
+
+
+async def _notify_payment_outcome(request: web.Request, notify: dict) -> None:
+    """Tell the driver, the same way the bot does. Best-effort: never fails the request."""
+    driver_id = notify.get("driver_id")
+    if not driver_id:
+        return
+    session = get_session()
+    try:
+        if notify.get("rejected"):
+            try:
+                await send_push(
+                    session,
+                    recipient_type="driver",
+                    recipient_id=driver_id,
+                    title="❌ To'lov rad etildi",
+                    body="To'lov kvitansiyangiz admin tomonidan rad etildi.",
+                )
+            except Exception:
+                logger.warning("payment reject push failed for driver %s", driver_id)
+        else:
+            try:
+                from app.services.push import notify_balance_topup
+
+                await notify_balance_topup(
+                    session, driver_id, notify.get("amount") or 0, notify.get("bonus") or 0
+                )
+            except Exception:
+                logger.warning("payment approve push failed for driver %s", driver_id)
+    finally:
+        session.close()
+
+    # manual_bot top-ups come from Telegram, so mirror the bot's DM as well.
+    tg_id = notify.get("telegram_id")
+    bot = request.app.get("bot")
+    if bot and tg_id and notify.get("provider") == "manual_bot" and not notify.get("rejected"):
+        total = (notify.get("amount") or 0) + (notify.get("bonus") or 0)
+        extra = " (+50% BONUS)" if notify.get("bonus") else ""
+        try:
+            await bot.send_message(
+                tg_id, f"✅ Balansingizga {total:,} so'm tushdi!{extra}".replace(",", " ")
+            )
+        except Exception:
+            logger.warning("payment approve Telegram DM failed for %s", tg_id)
+
+
+@require_admin_api
+async def api_approve_payment(request: web.Request) -> web.Response:
+    """POST /admin/api/payments/{id}/approve - credit the driver via the shared primitive."""
+    payment_id = int(request.match_info["id"])
+    result = await asyncio.to_thread(
+        _approve_payment_in_db,
+        payment_id,
+        client_ip(request),
+        request.headers.get("User-Agent", ""),
+    )
+    if result.get("notify"):
+        await _notify_payment_outcome(request, result["notify"])
+    return web.json_response(result["body"], status=result["status"])
+
+
+@require_admin_api
+async def api_reject_payment(request: web.Request) -> web.Response:
+    """POST /admin/api/payments/{id}/reject - mark a pending top-up rejected."""
+    payment_id = int(request.match_info["id"])
+    result = await asyncio.to_thread(
+        _reject_payment_in_db,
+        payment_id,
+        client_ip(request),
+        request.headers.get("User-Agent", ""),
+    )
+    if result.get("notify"):
+        await _notify_payment_outcome(request, result["notify"])
+    return web.json_response(result["body"], status=result["status"])
+
+
+@require_admin_api
+async def api_payment_receipt(request: web.Request) -> web.Response:
+    """GET /admin/api/payments/{id}/receipt - the proof image the driver submitted.
+
+    Receipts are never publicly servable (`_sensitive_legacy_filename` 404s any `topup_*`
+    file on the public route), so the bytes are streamed here behind admin auth.
+    """
+    payment_id = int(request.match_info["id"])
+
+    def _lookup():
+        from app.models import Payment
+
+        session = get_session()
+        try:
+            p = session.query(Payment).filter_by(id=payment_id).first()
+            return (p.photo_file_id, p.provider) if p else None
+        finally:
+            session.close()
+
+    found = await asyncio.to_thread(_lookup)
+    if found is None:
+        return web.json_response({"error": "To'lov topilmadi"}, status=404)
+    stored, provider = found
+    if not stored:
+        return web.json_response({"error": "Kvitansiya yo'q"}, status=404)
+
+    headers = {
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": f'inline; filename="receipt_{payment_id}"',
+    }
+    if provider == "manual_app":
+        from app.api.uploads import resolve_upload_path
+
+        fpath = resolve_upload_path(stored)
+        if fpath and fpath.exists() and fpath.is_file():
+            return web.FileResponse(fpath, headers=headers)
+        return web.json_response({"error": "Kvitansiya fayli topilmadi"}, status=404)
+
+    # manual_bot stores a Telegram file_id.
+    bot = request.app.get("bot")
+    if not bot:
+        return web.json_response(
+            {"error": "Kvitansiya Telegram'da saqlangan, bot ulanmagan"}, status=404
+        )
+    try:
+        tg_file = await bot.get_file(stored)
+        data = await tg_file.download_as_bytearray()
+        return web.Response(body=bytes(data), content_type="image/jpeg", headers=headers)
+    except Exception:
+        logger.warning("Could not download payment receipt %s", payment_id)
+        return web.json_response({"error": "Kvitansiyani yuklab bo'lmadi"}, status=404)
+
+
 def _norm_phone_admin(phone) -> str:
     digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
     return ("+" + digits) if digits else ""
@@ -1603,7 +2044,166 @@ def _create_driver_in_db(data: dict, phone: str, telegram_id, ip, user_agent) ->
         session.close()
 
 
+#: Fields an operator may correct from the panel, with their max length.
+#
+# There was no edit path at all: a typo in a car number entered through the create form
+# could only be fixed in the database.
+DRIVER_EDITABLE_FIELDS = {
+    "first_name": 100,
+    "last_name": 100,
+    "phone": 20,
+    "contact_phone": 20,
+    "pinfl": 14,
+    "car_model": 100,
+    "car_number": 20,
+    "car_color": 50,
+    "car_year": 10,
+}
+
+
+def _update_driver_in_db(driver_id: int, data: dict, ip, user_agent) -> dict:
+    session = get_session()
+    try:
+        driver = session.query(Driver).filter_by(id=driver_id).first()
+        if not driver:
+            return {"body": {"error": "Haydovchi topilmadi"}, "status": 404}
+
+        before, after = {}, {}
+        for field, max_len in DRIVER_EDITABLE_FIELDS.items():
+            if field not in data:
+                continue
+            raw = data[field]
+            value = None if raw is None else str(raw).strip()
+            if value == "":
+                value = None
+            if value is not None:
+                if len(value) > max_len:
+                    return {
+                        "body": {"error": f"'{field}' juda uzun (maks {max_len})"},
+                        "status": 400,
+                    }
+                if field in ("phone", "contact_phone"):
+                    value = _norm_phone_admin(value)
+                    if not value or len(value) < 9:
+                        return {
+                            "body": {"error": f"'{field}' to'g'ri telefon bo'lishi kerak"},
+                            "status": 400,
+                        }
+                elif field == "pinfl":
+                    value = "".join(ch for ch in value if ch.isdigit()) or None
+                elif field == "car_number":
+                    value = value.upper()
+            if getattr(driver, field) != value:
+                before[field] = getattr(driver, field)
+                after[field] = value
+                setattr(driver, field, value)
+
+        if "seats" in data:
+            try:
+                seats = _parse_int_field(data, "seats")
+            except (TypeError, ValueError):
+                return {"body": {"error": "'seats' butun son bo'lishi kerak"}, "status": 400}
+            if not 1 <= seats <= 20:
+                return {"body": {"error": "'seats' 1-20 orasida bo'lishi kerak"}, "status": 400}
+            if driver.seats != seats:
+                before["seats"] = driver.seats
+                after["seats"] = seats
+                driver.seats = seats
+
+        if "telegram_id" in data:
+            raw_tg = data["telegram_id"]
+            try:
+                tg = int(raw_tg) if str(raw_tg).strip() not in ("", "None") else None
+            except (TypeError, ValueError):
+                return {"body": {"error": "Telegram ID raqam bo'lishi kerak"}, "status": 400}
+            if tg is None:
+                return {"body": {"error": "Telegram ID bo'sh bo'lishi mumkin emas"},
+                        "status": 400}
+            if tg != driver.telegram_id:
+                clash = session.query(Driver.id).filter(
+                    Driver.telegram_id == tg, Driver.id != driver_id
+                ).first()
+                if clash:
+                    return {
+                        "body": {"error": "Bu Telegram ID boshqa haydovchida band"},
+                        "status": 409,
+                    }
+                before["telegram_id"] = driver.telegram_id
+                after["telegram_id"] = tg
+                driver.telegram_id = tg
+
+        if not after:
+            return {"body": {"ok": True, "detail": "O'zgarish yo'q"}, "status": 200}
+
+        add_actor_audit(
+            session,
+            actor=config.ADMIN_USERNAME,
+            action="driver.update",
+            target_type="driver",
+            target_id=driver_id,
+            details={"before": before, "after": after},
+            remote_ip=ip,
+            user_agent=user_agent,
+        )
+        session.commit()
+        return {"body": {"ok": True, "detail": "Saqlandi"}, "status": 200}
+    except IntegrityError:
+        session.rollback()
+        logger.warning("admin: driver.update uniqueness conflict on %s", driver_id)
+        return {
+            "body": {"error": "Telefon yoki Telegram ID band"},
+            "status": 409,
+        }
+    except Exception:
+        session.rollback()
+        logger.exception("admin: driver.update failed for %s", driver_id)
+        return {"body": {"error": INTERNAL_ERROR}, "status": 500}
+    finally:
+        session.close()
+
+
+@require_admin_api
+async def api_update_driver(request: web.Request) -> web.Response:
+    """PUT /admin/api/drivers/{id} - correct a driver's own/car details."""
+    driver_id = int(request.match_info["id"])
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+    if not isinstance(data, dict):
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+    unknown = sorted(set(data) - set(DRIVER_EDITABLE_FIELDS) - {"seats", "telegram_id"})
+    if unknown:
+        return web.json_response(
+            {"error": "O'zgartirilmaydigan maydon: " + ", ".join(unknown)}, status=400
+        )
+    result = await asyncio.to_thread(
+        _update_driver_in_db,
+        driver_id,
+        data,
+        client_ip(request),
+        request.headers.get("User-Agent", ""),
+    )
+    return web.json_response(result["body"], status=result["status"])
+
+
+# Analytics are read-only and expensive (a full pass over `orders`). A short TTL keeps a
+# refreshed page or a second operator from re-running the whole thing, without making the
+# numbers meaningfully stale.
+_STATS_CACHE: dict[str, tuple[float, dict]] = {}
+_STATS_TTL_SECONDS = 60.0
+
+
 def _statistics_payload() -> dict:
+    cached = _STATS_CACHE.get("statistics")
+    if cached and (time.monotonic() - cached[0]) < _STATS_TTL_SECONDS:
+        return cached[1]
+    payload = _statistics_compute()
+    _STATS_CACHE["statistics"] = (time.monotonic(), payload)
+    return payload
+
+
+def _statistics_compute() -> dict:
     session = get_session()
     try:
         now = datetime.utcnow()
@@ -1642,53 +2242,65 @@ def _statistics_payload() -> dict:
             "driver_mau": _count_since(Driver, Driver.last_active, month_ago),
         }
 
-        # ---- Single pass over orders for districts / routes / status / hours ----
-        order_rows = session.query(
-            Order.created_at,
-            Order.from_city,
-            Order.to_city,
-            Order.status,
-            Order.service_type,
-            Order.price,
-            Order.passenger_phone,
-        ).all()
+        # ---- Aggregates computed in SQL ----
+        #
+        # This block used to load EVERY order (7 columns) into Python and count in a loop.
+        # The numbers are identical, but the database now does the grouping and only the
+        # aggregate rows cross the wire — the panel no longer has to hold the whole order
+        # table in memory to draw a chart. `trim` matches the old `.strip()`; both SQLite
+        # and Postgres implement it.
+        from_trim = func.trim(func.coalesce(Order.from_city, ""))
+        to_trim = func.trim(func.coalesce(Order.to_city, ""))
 
-        district_counter = Counter()   # which district's residents order most (by from_city)
-        route_counter = Counter()
+        district_rows = (
+            session.query(from_trim.label("city"), func.count(Order.id).label("n"))
+            .filter(from_trim != "")
+            .group_by(from_trim)
+            .order_by(func.count(Order.id).desc())
+            .limit(10)
+            .all()
+        )
+        districts = [{"name": city, "count": n} for city, n in district_rows]
+
+        route_rows = (
+            session.query(from_trim.label("f"), to_trim.label("t"), func.count(Order.id))
+            .filter(from_trim != "", to_trim != "")
+            .group_by(from_trim, to_trim)
+            .order_by(func.count(Order.id).desc())
+            .limit(10)
+            .all()
+        )
+        top_routes = [{"route": f"{f} \u2192 {t}", "count": n} for f, t, n in route_rows]
+
         status_counter = Counter()
+        for status, n in (
+            session.query(Order.status, func.count(Order.id)).group_by(Order.status).all()
+        ):
+            status_counter[status or "unknown"] += n
+
         service_counter = Counter()
+        for service_type, n in (
+            session.query(Order.service_type, func.count(Order.id))
+            .group_by(Order.service_type)
+            .all()
+        ):
+            service_counter[service_type or "taxi"] += n
+
+        gmv, completed_priced = session.query(
+            func.coalesce(func.sum(Order.price), 0), func.count(Order.id)
+        ).filter(Order.status == "completed").first()
+        gmv = int(gmv or 0)
+        completed_priced = int(completed_priced or 0)
+
+        # ---- Time-of-day / weekday: one narrow column, grouped in Python ----
+        # Extracting hour/weekday in SQL needs dialect-specific date functions, so this
+        # stays in Python — but it now fetches a single column instead of seven.
         hour_counter = [0] * 24
         weekday_counter = [0] * 7      # Mon..Sun (Python weekday(): Mon=0)
-        phone_counter = Counter()      # orders per passenger -> repeat-customer analysis
-        gmv = 0                        # total money from completed orders (turnover)
-        completed_priced = 0
-
-        for created_at, from_city, to_city, status, service_type, price, phone in order_rows:
-            fc = (from_city or "").strip()
-            tc = (to_city or "").strip()
-            if fc:
-                district_counter[fc] += 1
-            if fc and tc:
-                route_counter[f"{fc} \u2192 {tc}"] += 1
-            status_counter[(status or "unknown")] += 1
-            service_counter[(service_type or "taxi")] += 1
+        for (created_at,) in session.query(Order.created_at).all():
             if created_at is not None:
                 hour_counter[created_at.hour] += 1
                 weekday_counter[created_at.weekday()] += 1
-            if phone:
-                phone_counter[phone] += 1
-            if status == "completed":
-                gmv += (price or 0)
-                completed_priced += 1
-
-        districts = [
-            {"name": name, "count": cnt}
-            for name, cnt in district_counter.most_common(10)
-        ]
-        top_routes = [
-            {"route": name, "count": cnt}
-            for name, cnt in route_counter.most_common(10)
-        ]
         orders_by_hour = [{"hour": h, "count": hour_counter[h]} for h in range(24)]
 
         total_orders = sum(status_counter.values())
@@ -1697,12 +2309,24 @@ def _statistics_payload() -> dict:
         completion_rate = round(completed / total_orders * 100, 1) if total_orders else 0.0
         cancellation_rate = round(cancelled / total_orders * 100, 1) if total_orders else 0.0
 
-        # ---- Loyalty / money metrics (my own additions) ----
+        # ---- Loyalty metrics ----
         # Repeat customers = passengers who placed more than one order. A high repeat
         # rate is the strongest signal of product-market fit for a taxi service.
-        repeat_customers = sum(1 for c in phone_counter.values() if c >= 2)
-        one_time_customers = sum(1 for c in phone_counter.values() if c == 1)
-        distinct_customers = len(phone_counter)
+        per_phone = (
+            session.query(func.count(Order.id).label("n"))
+            .filter(Order.passenger_phone.isnot(None), Order.passenger_phone != "")
+            .group_by(Order.passenger_phone)
+            .subquery()
+        )
+        repeat_customers = int(
+            session.query(func.count()).select_from(per_phone)
+            .filter(per_phone.c.n >= 2).scalar() or 0
+        )
+        one_time_customers = int(
+            session.query(func.count()).select_from(per_phone)
+            .filter(per_phone.c.n == 1).scalar() or 0
+        )
+        distinct_customers = repeat_customers + one_time_customers
         repeat_rate = round(
             repeat_customers / distinct_customers * 100, 1
         ) if distinct_customers else 0.0
@@ -1983,6 +2607,11 @@ def setup_api_routes(app: web.Application):
     app.router.add_post(r"/admin/api/passengers/{id:\d+}/block", api_block_passenger)
     app.router.add_post(r"/admin/api/passengers/{id:\d+}/unblock", api_unblock_passenger)
     app.router.add_get("/admin/api/audit", api_audit)
+    app.router.add_route("PUT", r"/admin/api/drivers/{id:\d+}", api_update_driver)
+    app.router.add_get("/admin/api/payments", api_payments)
+    app.router.add_post(r"/admin/api/payments/{id:\d+}/approve", api_approve_payment)
+    app.router.add_post(r"/admin/api/payments/{id:\d+}/reject", api_reject_payment)
+    app.router.add_get(r"/admin/api/payments/{id:\d+}/receipt", api_payment_receipt)
     app.router.add_post(r"/admin/api/drivers/{id:\d+}/balance", api_topup_driver_balance)
     app.router.add_get(r"/admin/api/drivers/{id:\d+}/pdf", api_driver_pdf)
     app.router.add_get("/admin/api/routes", api_routes)

@@ -297,7 +297,8 @@ def _api_bucket(request: web.Request) -> str:
         return "push"
     if path in ("/admin/api/statistics", "/admin/api/push-log", "/admin/api/audit"):
         return "heavy"
-    if path.endswith("/balance"):
+    # Money: manual balance adjustments and top-up approvals share one tight bucket.
+    if path.endswith("/balance") or path.endswith("/approve") or path.endswith("/reject"):
         return "balance"
     return "default"
 

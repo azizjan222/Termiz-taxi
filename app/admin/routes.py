@@ -28,6 +28,8 @@ from app.admin.templates import (
     ORDERS_JS,
     PASSENGERS_HTML,
     PASSENGERS_JS,
+    PAYMENTS_HTML,
+    PAYMENTS_JS,
     PUSH_HTML,
     PUSH_JS,
     PUSH_LOG_HTML,
@@ -202,6 +204,12 @@ async def settings_page(request: web.Request) -> web.Response:
 
 
 @require_admin
+async def payments_page(request: web.Request) -> web.Response:
+    """GET /admin/payments - manual top-up approval queue."""
+    return _page(request, "To'lovlar", PAYMENTS_HTML, PAYMENTS_JS, "/admin/payments")
+
+
+@require_admin
 async def audit_page(request: web.Request) -> web.Response:
     """GET /admin/audit - read-only view of the admin audit trail."""
     return _page(request, "Audit jurnali", AUDIT_HTML, AUDIT_JS, "/admin/audit")
@@ -231,4 +239,5 @@ def setup_page_routes(app: web.Application):
     app.router.add_get("/admin/push-log", push_log_page)
     app.router.add_get("/admin/routes", routes_page)
     app.router.add_get("/admin/settings", settings_page)
+    app.router.add_get("/admin/payments", payments_page)
     app.router.add_get("/admin/audit", audit_page)
