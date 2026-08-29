@@ -366,17 +366,7 @@ export async function telegramVerifyCode(
   return response.data;
 }
 
-export async function telegramCheck(token: string): Promise<TgCheckResponse> {
-  const response = await api.get<TgCheckResponse>('/api/driver/telegram/check', {
-    params: { token },
-  });
-  // Store the token both when fully verified AND when documents are still required,
-  // so the driver can upload their documents in-app (authenticated requests).
-  if (
-    (response.data.status === 'verified' || response.data.status === 'documents_required') &&
-    response.data.token
-  ) {
-    await setAuthToken(response.data.token);
-  }
-  return response.data;
-}
+// NOTE: there is deliberately no `telegramCheck()` poll helper. `/api/driver/telegram/check`
+// minted a full driver JWT from the session token alone, so a deep link the attacker
+// generated and got a driver to open handed over that driver's account. The endpoint is now
+// a 410 and login.tsx has used telegramVerifyCode() since 82994e5 — do not reintroduce it.
