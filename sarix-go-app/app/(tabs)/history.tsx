@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
@@ -16,6 +16,7 @@ import { Icon } from '../../src/components/Icon';
 import { listMyOrders, type Order } from '../../src/api/orders';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
+import { TAB_BAR_CONTENT_INSET } from '../../src/theme/tabBar';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 import { formatDateTime } from '../../src/utils/dateLocale';
 
@@ -23,6 +24,7 @@ export default function HistoryScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const [orders, setOrders] = useState<Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   // Separate from `refreshing`: the first load needs its own state so the empty view isn't
@@ -182,7 +184,12 @@ export default function HistoryScreen() {
           data={filtered}
           keyExtractor={(o) => o.id.toString()}
           renderItem={renderOrder}
-          contentContainerStyle={styles.list}
+          // The tab bar floats above the content, so the list has to end above it —
+          // otherwise the newest-but-last order can never be tapped.
+          contentContainerStyle={[
+            styles.list,
+            { paddingBottom: insets.bottom + TAB_BAR_CONTENT_INSET },
+          ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => loadOrders(true)} />

@@ -103,6 +103,11 @@ const GLYPHS = {
   delete: 'trash-can-outline',
   camera: 'camera',
 
+  // Qualities (service-card tags)
+  flash: 'lightning-bolt',
+  shield: 'shield-check-outline',
+  handWave: 'hand-wave',
+
   // Appearance
   sun: 'white-balance-sunny',
   moon: 'weather-night',

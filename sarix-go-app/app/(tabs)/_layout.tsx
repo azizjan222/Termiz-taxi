@@ -1,11 +1,13 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { View, StyleSheet, type ColorValue } from 'react-native';
+import { View, Text, StyleSheet, type ColorValue } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '../../src/components/Icon';
 import { useThemeStore } from '../../src/store/theme';
+import { radius } from '../../src/theme';
+import { TAB_BAR_HEIGHT, TAB_BAR_MARGIN } from '../../src/theme/tabBar';
 
 // `color` comes from tabBarActiveTintColor / tabBarInactiveTintColor. The emoji this
 // replaces could not be tinted, so the active tab was only distinguishable by its label.
@@ -18,11 +20,35 @@ const TabIcon: React.FC<{ name: IconName; color: ColorValue }> = ({ name, color 
 export default function TabsLayout() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
-  // Android 15+ forces edge-to-edge, so the system navigation bar is drawn over
-  // the app. React Navigation only adds the bottom inset for us when it controls
-  // the tab bar height — supplying an explicit `height` opts out of that, which
-  // would leave the labels tucked under the navigation bar. Add the inset here.
+  // Android 15+ forces edge-to-edge, so the system navigation bar is drawn over the app.
+  // The bar floats above it rather than being flush with the screen edge, so the inset
+  // becomes its bottom offset instead of internal padding.
   const insets = useSafeAreaInsets();
+
+  /**
+   * Label + active indicator.
+   *
+   * A custom renderer because the underline has to sit BELOW the label, and the built-in
+   * label is a bare Text with nothing under it. The indicator is always rendered and only
+   * changes colour: reserving its height in both states stops the label from shifting up
+   * and down by three pixels every time the tab changes.
+   */
+  const renderLabel =
+    (label: string) =>
+    ({ focused, color }: { focused: boolean; color: string }) => (
+      <View style={styles.labelWrapper}>
+        <Text style={[styles.label, { color }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <View
+          style={[
+            styles.indicator,
+            { backgroundColor: focused ? colors.primary : 'transparent' },
+          ]}
+        />
+      </View>
+    );
+
   return (
     <Tabs
       screenOptions={{
@@ -30,15 +56,24 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: colors.background,
-          borderTopColor: colors.divider,
-          height: 70 + insets.bottom,
-          paddingTop: 8,
-          paddingBottom: 12 + insets.bottom,
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
+          // Floating card: absolute so the screen background shows through the gaps
+          // around it. Every tab screen insets its own scroll content to compensate —
+          // see src/theme/tabBar.ts.
+          position: 'absolute',
+          left: TAB_BAR_MARGIN,
+          right: TAB_BAR_MARGIN,
+          bottom: insets.bottom + TAB_BAR_MARGIN,
+          height: TAB_BAR_HEIGHT,
+          borderRadius: radius.xl,
+          backgroundColor: colors.card,
+          borderTopWidth: 0,
+          paddingTop: 10,
+          paddingBottom: 6,
+          shadowColor: '#0E1730',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.12,
+          shadowRadius: 18,
+          elevation: 12,
         },
       }}
     >
@@ -47,6 +82,7 @@ export default function TabsLayout() {
         options={{
           title: t('home.orderTaxi'),
           tabBarIcon: ({ color }) => <TabIcon name="home" color={color} />,
+          tabBarLabel: renderLabel(t('home.orderTaxi')),
         }}
       />
       <Tabs.Screen
@@ -54,6 +90,7 @@ export default function TabsLayout() {
         options={{
           title: t('profile.orderHistory'),
           tabBarIcon: ({ color }) => <TabIcon name="history" color={color} />,
+          tabBarLabel: renderLabel(t('profile.orderHistory')),
         }}
       />
       <Tabs.Screen
@@ -61,6 +98,7 @@ export default function TabsLayout() {
         options={{
           title: t('profile.title'),
           tabBarIcon: ({ color }) => <TabIcon name="profile" color={color} />,
+          tabBarLabel: renderLabel(t('profile.title')),
         }}
       />
     </Tabs>
@@ -70,8 +108,16 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   iconWrapper: {
     width: 40,
-    height: 40,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  labelWrapper: { alignItems: 'center' },
+  label: { fontSize: 12, fontWeight: '600' },
+  indicator: {
+    width: 22,
+    height: 3,
+    borderRadius: 2,
+    marginTop: 3,
   },
 });
