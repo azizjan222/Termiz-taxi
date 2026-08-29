@@ -1,11 +1,12 @@
 """Migrate data from legacy taksi_baza.json to SQLite database."""
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
+from app import config
 from app.config import LEGACY_JSON_PATH
 from app.database import DbContext, engine, init_db
-from app.models import Driver, OrderHistory, Setting
+from app.models import Driver, Order, OrderHistory, Setting
 from app.seed_data import seed_routes
 
 #: Current schema revision. Bump this together with any change to the `migrations` list
@@ -275,33 +276,91 @@ def _apply_schema_migrations() -> int:
     return count
 
 
+def _backfill_commission_charged():
+    """Stop the deferred-commission scheduler from retroactively debiting old rides.
+
+    `orders.commission_charged` is added to existing deployments with DEFAULT FALSE. That
+    makes EVERY order ever accepted match the scheduler's "window elapsed and still owes
+    commission" query, so on the first poll after deploy it would debit a driver's LIVE
+    balance once per historical ride — hundreds of thousands of so'm, pushing the whole
+    fleet under the minimum balance and blocking them from taking work.
+
+    Those rides pre-date deferred commission (they were charged at accept time, or not at
+    all), so settle them once. Only orders already PAST the charge cutoff are closed:
+    anything accepted inside the current window is a genuinely pending charge and is left
+    for the scheduler to collect normally.
+    """
+    try:
+        with DbContext() as session:
+            if session.query(Setting).filter_by(
+                key="commission_charged_backfill_done"
+            ).first():
+                return
+            cutoff = datetime.utcnow() - timedelta(
+                minutes=config.COMMISSION_WINDOW_MINUTES
+            )
+            settled = session.query(Order).filter(
+                Order.commission_charged == False,  # noqa: E712
+                Order.accepted_at != None,  # noqa: E711
+                Order.accepted_at <= cutoff,
+            ).update({Order.commission_charged: True}, synchronize_session=False)
+            session.add(Setting(key="commission_charged_backfill_done", value="1"))
+            print(f"  ✓ Settled {settled} pre-deferred-commission order(s)")
+    except Exception as e:
+        print(f"  ⚠️  commission_charged backfill skipped: {e}")
+
+
 def _grandfather_existing_drivers():
     """Trust the pre-gate fleet once, without approving drivers registered later.
 
     Older deployments allowed existing drivers to work before document approval became
     mandatory. Preserve that installed fleet explicitly, then persist independent flags
     so later registrations must submit documents and receive administrator approval.
+
+    The two backfills MUST NOT be chained. Setting `documents_submitted=True` fleet-wide
+    and then selecting `documents_submitted == True` in the same transaction matches every
+    row the first statement just touched, so the verification pass handed `is_verified`
+    to drivers an administrator had never reviewed — unvetted people carrying passengers.
+    The cohort is therefore captured BEFORE the docs pass, and the verification pass is
+    driven by that snapshot instead of by the flag it just wrote.
     """
     try:
         with DbContext() as session:
             docs_flag = session.query(Setting).filter_by(key="docs_backfill_done").first()
+            verification_flag = session.query(Setting).filter_by(
+                key="verification_gate_backfill_done"
+            ).first()
+
+            # Verification runs FIRST, while `documents_submitted` still distinguishes the
+            # pre-gate fleet from later registrations.
+            if not verification_flag:
+                query = session.query(Driver)
+                if docs_flag:
+                    # The docs backfill ran in an EARLIER deploy, so `documents_submitted`
+                    # no longer identifies the pre-gate fleet: every driver who has since
+                    # uploaded documents carries it too, approved or not. Fall back to
+                    # evidence that the platform already let them work — completed rides.
+                    # A pending registrant has none, and an administrator can still
+                    # approve them by hand in the bot.
+                    query = query.filter(
+                        Driver.documents_submitted == True,  # noqa: E712
+                        Driver.total_orders > 0,
+                    )
+                # Otherwise every row present right now predates the gate by definition,
+                # so the unfiltered update is the intended "trust the installed fleet".
+                approved = query.update(
+                    {Driver.is_verified: True}, synchronize_session=False
+                )
+                session.add(Setting(key="verification_gate_backfill_done", value="1"))
+                session.flush()
+                print(f"  ✓ Trusted {approved} pre-gate drivers (is_verified=True)")
+
             if not docs_flag:
                 session.query(Driver).update(
                     {Driver.documents_submitted: True}, synchronize_session=False
                 )
                 session.add(Setting(key="docs_backfill_done", value="1"))
-                session.flush()
                 print("  ✓ Grandfathered existing drivers (documents_submitted=True)")
-
-            verification_flag = session.query(Setting).filter_by(
-                key="verification_gate_backfill_done"
-            ).first()
-            if not verification_flag:
-                approved = session.query(Driver).filter(
-                    Driver.documents_submitted == True,  # noqa: E712
-                ).update({Driver.is_verified: True}, synchronize_session=False)
-                session.add(Setting(key="verification_gate_backfill_done", value="1"))
-                print(f"  ✓ Trusted {approved} pre-gate drivers (is_verified=True)")
     except Exception as e:
         print(f"  ⚠️  driver gate backfill skipped: {e}")
 
@@ -403,6 +462,10 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
     # Existing deployments tracked first bonuses in a JSON Setting. Copy that state
     # into the new atomic per-driver flag before any new payment can be approved.
     _backfill_first_payment_bonus_flags()
+
+    # Must run before the commission scheduler's first poll, which is why it sits here
+    # (immediately after the column pass) rather than at the end with the other backfills.
+    _backfill_commission_charged()
 
     # Seed routes (isolated so a failure here can't skip later steps).
     try:
