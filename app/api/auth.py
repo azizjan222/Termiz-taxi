@@ -306,8 +306,12 @@ def _issue_passenger_login(db, sess) -> web.Response:
     # code, rides already completed) so a stale row cannot be exploited. Never allowed to
     # break the login: losing a referral credit is minor, failing a signup is not.
     try:
-        if consume_pending(db, user):
-            db.commit()
+        consume_pending(db, user)
+        # Committed unconditionally, NOT only when a link was made. `consume_pending` deletes
+        # the pending row either way, and that deletion is the whole reason an unusable invite
+        # does not get retried on every future signup — committing only on success left the
+        # row behind and reintroduced exactly that.
+        db.commit()
     except Exception:
         db.rollback()
         logger.exception("Failed to apply pending referral for user %s", user.id)

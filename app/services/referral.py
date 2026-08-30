@@ -79,8 +79,14 @@ def remember_pending(session, telegram_id: int, raw_code: str) -> None:
     row = session.query(PendingReferral).filter_by(telegram_id=telegram_id).first()
     if row:
         row.referral_code = code
-    else:
-        session.add(PendingReferral(telegram_id=telegram_id, referral_code=code))
+        return
+    session.add(PendingReferral(telegram_id=telegram_id, referral_code=code))
+    # Flushed, not just added. `SessionLocal` is configured with `autoflush=False`
+    # (app/database.py), so without this an INSERT stays invisible to the SELECT above — two
+    # calls in one session both take the `else` branch and the second one violates the unique
+    # constraint on `telegram_id`. Flushing is not committing: the caller still owns the
+    # transaction.
+    session.flush()
 
 
 def consume_pending(session, user: User) -> User | None:
@@ -101,11 +107,17 @@ def consume_pending(session, user: User) -> User | None:
     # Cleared either way: a code that cannot be applied now (own code, already referred, a
     # referrer whose account is gone) will not become applicable later, and leaving the row
     # behind would retry it on every subsequent signup with the same Telegram id.
+    code = row.referral_code
     session.delete(row)
+    # Flushed for the same reason as in `remember_pending`: with `autoflush=False` the DELETE
+    # would otherwise not be visible to later queries in this session, and a caller that only
+    # commits on success would leave the row in place — which is precisely the "retry forever"
+    # behaviour this delete exists to prevent.
+    session.flush()
     if not ok:
         logger.info(
             "Pending referral dropped: telegram_id=%s code=%s reason=%s",
-            telegram_id, row.referral_code, reason,
+            telegram_id, code, reason,
         )
         return None
     return referrer
