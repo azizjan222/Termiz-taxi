@@ -16,6 +16,7 @@ import { Icon, IconText } from '../src/components/Icon';
 import { OrderCtaButton } from '../src/components/OrderCtaButton';
 import { Input } from '../src/components/Input';
 import { createOrder, getPriceQuote, type PriceQuote } from '../src/api/orders';
+import { getReferralInfo } from '../src/api/promo';
 import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -34,9 +35,29 @@ export default function ConfirmOrderScreen() {
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
   const submitInFlightRef = useRef(false);
+  // Bonus wallet. Fetched here rather than held in a store because it changes server-side
+  // (every completed ride can credit it) and a stale figure would misrepresent a discount.
+  const [bonusBalance, setBonusBalance] = useState(0);
+  const [useBonus, setUseBonus] = useState(false);
 
   const formatPrice = (p: number) =>
     p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+  // Bonus wallet balance, so the passenger can choose to spend it on this ride.
+  //
+  // Silent on failure: the bonus toggle is an optional saving, and a config/network hiccup
+  // must not block ordering a taxi. A zero balance simply hides the row.
+  useEffect(() => {
+    let active = true;
+    getReferralInfo()
+      .then((info) => {
+        if (active) setBonusBalance(info.bonus_balance || 0);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Fetch the REAL price from the backend (no hardcoded placeholder).
   useEffect(() => {
@@ -97,6 +118,10 @@ export default function ConfirmOrderScreen() {
         has_roof_rack: orderStore.hasRoofRack,
         female_only: orderStore.femaleOnly,
         promo_code: orderStore.promoCode.trim() || undefined,
+        // Only sent when the passenger opted in AND has something to spend. The server caps
+        // the actual amount at this ride's commission, so the final discount arrives as
+        // `order.bonus_used` once a driver accepts.
+        use_bonus: useBonus && bonusBalance > 0 ? true : undefined,
       });
       orderStore.reset();
       router.replace({
@@ -198,6 +223,36 @@ export default function ConfirmOrderScreen() {
           />
         </View>
 
+        {/* Bonus wallet. Hidden at a zero balance — an always-visible row saying "0 so'm"
+            would just add noise to the one screen that must stay scannable.
+
+            Not offered for parcels: their fare is negotiated with the driver, so there is no
+            server-side commission to fund a discount from and the toggle would do nothing. */}
+        {bonusBalance > 0 && !isParcel && (
+          <TouchableOpacity
+            style={[styles.card, { marginTop: spacing.md }]}
+            onPress={() => setUseBonus((v) => !v)}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.row, { paddingVertical: spacing.xs }]}>
+              <IconText
+                name="gift"
+                size={12}
+                color={colors.textSecondary}
+                textStyle={styles.label}
+              >
+                {t('order.useBonus')}
+              </IconText>
+              <View style={[styles.checkbox, useBonus && styles.checkboxOn]}>
+                {useBonus && <Icon name="check" size={14} color={colors.textOnPrimary} />}
+              </View>
+            </View>
+            <Text style={styles.bonusHint}>
+              {t('order.useBonusHint', { amount: formatPrice(bonusBalance) })}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Payment */}
         <View style={[styles.card, { marginTop: spacing.md }]}>
           <Text style={styles.cardTitle}>{t('order.paymentMethod')}</Text>
@@ -283,6 +338,19 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: 6,
     backgroundColor: colors.accent,
   },
+  // Square, unlike the payment radio: cash is a choice between options, the bonus is an
+  // independent on/off, and using the same control for both would suggest otherwise.
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: radius.sm,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxOn: { backgroundColor: colors.primary },
+  bonusHint: { ...typography.small, color: colors.textSecondary, marginTop: spacing.xs },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
