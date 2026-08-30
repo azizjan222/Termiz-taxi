@@ -18,10 +18,10 @@ import {
 } from '../src/services/notifications';
 import { addNotification, syncAnnouncements } from '../src/services/notificationHistory';
 import * as realtime from '../src/services/realtime';
-// Imported for its side effect: the background-location task must be registered with
+// Imported for its side effect too: the background-location task must be registered with
 // TaskManager during startup, in EVERY JS context — including the headless one the OS
 // creates after the app has been killed. Registering it from a screen would be too late.
-import '../src/services/backgroundLocation';
+import { syncBackgroundLocationState } from '../src/services/backgroundLocation';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 
 export default function RootLayout() {
@@ -39,6 +39,12 @@ export default function RootLayout() {
       await initI18n();
       await themeInit();
       await loadDriver();
+      // Reconcile the cached "background task is reporting" flag with what the OS actually
+      // has running. After a cold start the flag is false while the service may well still
+      // be alive — the app was killed mid-trip and relaunched — and during that window the
+      // order screen's own watcher would double-report every fix. Cheap, and it closes the
+      // gap before any order screen can mount.
+      await syncBackgroundLocationState().catch(() => false);
       setReady(true);
     })();
     // One-time bootstrap (i18n/theme/driver); store actions are stable.

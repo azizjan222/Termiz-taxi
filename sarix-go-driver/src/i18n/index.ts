@@ -628,6 +628,16 @@ export const uz = {
   tracking: {
     serviceTitle: 'Safar davom etmoqda',
     serviceBody: "Yo'lovchi sizni xaritada ko'rib turishi uchun joylashuv yuborilmoqda",
+    // Google Play talab qiladigan "prominent disclosure": OS so'rovidan OLDIN ko'rsatiladi.
+    // Nima yig'ilishi, qachon, nima uchun va qachon to'xtashi aytilishi shart.
+    disclosureTitle: 'Fon rejimida joylashuv',
+    disclosureBody:
+      "Safar davomida joylashuvingiz serverga yuboriladi — ilova yopiq yoki fonda bo'lsa " +
+      "ham. Bu yo'lovchi sizni xaritada kuzatib turishi uchun kerak. Yuborish safar " +
+      "tugashi bilan avtomatik to'xtaydi. Keyingi oynada \u00abDoimo ruxsat berish\u00bb " +
+      'variantini tanlang.',
+    disclosureAllow: 'Roziman',
+    disclosureDeny: 'Rad etish',
   },
 };
 
@@ -1193,6 +1203,14 @@ export const ru = {
   tracking: {
     serviceTitle: 'Поездка продолжается',
     serviceBody: 'Местоположение отправляется, чтобы пассажир видел вас на карте',
+    disclosureTitle: 'Местоположение в фоновом режиме',
+    disclosureBody:
+      'Во время поездки ваше местоположение отправляется на сервер — даже если приложение ' +
+      'закрыто или работает в фоне. Это нужно, чтобы пассажир видел вас на карте. Передача ' +
+      'автоматически прекращается по завершении поездки. В следующем окне выберите ' +
+      '\u00abРазрешать всегда\u00bb.',
+    disclosureAllow: 'Согласен',
+    disclosureDeny: 'Отклонить',
   },
 };
 
@@ -1756,6 +1774,14 @@ export const en = {
   tracking: {
     serviceTitle: 'Trip in progress',
     serviceBody: 'Sending your location so the passenger can see you on the map',
+    disclosureTitle: 'Background location',
+    disclosureBody:
+      'During a trip your location is sent to our server — even when the app is closed or ' +
+      'in the background. This lets the passenger follow you on the map. It stops ' +
+      'automatically when the trip ends. Choose \u201cAllow all the time\u201d on the next ' +
+      'screen.',
+    disclosureAllow: 'I agree',
+    disclosureDeny: 'Decline',
   },
 };
 
@@ -2319,6 +2345,13 @@ export const uzCyrl = {
   tracking: {
     serviceTitle: 'Сафар давом этмоқда',
     serviceBody: 'Йўловчи сизни харитада кўриб туриши учун жойлашув юборилмоқда',
+    disclosureTitle: 'Фон режимида жойлашув',
+    disclosureBody:
+      'Сафар давомида жойлашувингиз серверга юборилади — илова ёпиқ ёки фонда бўлса ҳам. ' +
+      'Бу йўловчи сизни харитада кузатиб туриши учун керак. Юбориш сафар тугаши билан ' +
+      'автоматик тўхтайди. Кейинги ойнада \u00abДоимо рухсат бериш\u00bb вариантини танланг.',
+    disclosureAllow: 'Розиман',
+    disclosureDeny: 'Рад этиш',
   },
 };
 

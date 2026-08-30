@@ -132,6 +132,10 @@ export default function OrderDetailScreen() {
   // this instantly when the socket is up; this covers the case where it is not.
   useEffect(() => {
     if (!gone || goneHandledRef.current) return;
+    // Whatever the reason the order left the active list — cancelled, taken, completed by
+    // us — it is no longer something to report a position for. Runs before the
+    // `completedByMeRef` early return below, because the completion path needs this too.
+    stopBackgroundLocation().catch(() => {});
     // A ride the driver just finished themselves also disappears from listMyActive, so the
     // poll set `gone` and this fired "zakas endi faol emas" on top of the completion
     // dialog — and its OK button navigates to the orders list, pre-empting the jump to
@@ -162,6 +166,9 @@ export default function OrderDetailScreen() {
       // Stop the live GPS watcher + map route redraw right away (see `cancelled`
       // guards below) so the screen can't keep doing heavy work behind the alert.
       setCancelled(true);
+      // The trip is over, so the OS task must go too: it outlives this screen, and nothing
+      // else on this path would ever shut it down.
+      stopBackgroundLocation().catch(() => {});
       Alert.alert(
         t('notifications.orderCancelled'),
         t('notifications.orderCancelledBody'),
@@ -191,6 +198,35 @@ export default function OrderDetailScreen() {
   const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const mmss = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+  // Prominent disclosure for background location, shown BEFORE the OS prompt.
+  //
+  // This is a Google Play requirement, not a UX nicety: an app that asks for
+  // ACCESS_BACKGROUND_LOCATION without first disclosing, in the app itself, what is
+  // collected and why can have its updates blocked or be removed from the store. It has to
+  // say what data, while what is happening, and for whose benefit — hence the wording in
+  // `tracking.disclosure*` rather than a generic "we need location" line.
+  //
+  // Resolves false on dismiss (Android back button closes the dialog without invoking any
+  // button), because "did not agree" is the only safe reading of an unanswered disclosure.
+  const confirmBackgroundTracking = () =>
+    new Promise<boolean>((resolve) => {
+      let settled = false;
+      const answer = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      Alert.alert(
+        t('tracking.disclosureTitle'),
+        t('tracking.disclosureBody'),
+        [
+          { text: t('tracking.disclosureDeny'), style: 'cancel', onPress: () => answer(false) },
+          { text: t('tracking.disclosureAllow'), onPress: () => answer(true) },
+        ],
+        { onDismiss: () => answer(false) },
+      );
+    });
 
   // While the order is active, continuously watch the driver's GPS position. The
   // display, driver marker, and route refresh on every meter-level update, while the
@@ -226,11 +262,16 @@ export default function OrderDetailScreen() {
         if (status !== 'granted' || torndown) return;
 
         // Hand reporting to the OS so it survives the app being backgrounded or killed.
-        // Best-effort: if the driver declines the background permission this returns false
-        // and the foreground watcher below keeps reporting, exactly as it used to.
+        // Best-effort: if the driver declines the disclosure or the background permission
+        // this returns false and the foreground watcher below keeps reporting, exactly as it
+        // used to. Safe to call on every re-run: it no-ops when already tracking this order.
         startBackgroundLocation({
-          title: t('tracking.serviceTitle'),
-          body: t('tracking.serviceBody'),
+          orderId: id,
+          labels: {
+            title: t('tracking.serviceTitle'),
+            body: t('tracking.serviceBody'),
+          },
+          confirm: confirmBackgroundTracking,
         }).catch(() => {});
 
         const sub = await Location.watchPositionAsync(
@@ -254,9 +295,20 @@ export default function OrderDetailScreen() {
       torndown = true;
       subscriptionRef.current?.remove();
       subscriptionRef.current = null;
-      // The OS task outlives this screen, so leaving it running would keep the
-      // foreground-service notification up and keep reporting after the trip ended.
-      stopBackgroundLocation().catch(() => {});
+      // Deliberately NOT stopping background tracking here.
+      //
+      // This cleanup runs on every status change and whenever the driver simply navigates
+      // away — back to the orders list, into the profile, anywhere. Stopping here meant
+      // tracking survived the app being backgrounded only while this exact screen stayed
+      // mounted, which defeats the point of handing the job to the OS in the first place.
+      //
+      // It also raced the re-run's `start`: both were fire-and-forget, and one interleaving
+      // left the OS task stopped while `isBackgroundSending()` still reported true, so
+      // neither path reported for the rest of the trip.
+      //
+      // Tracking is bound to the ORDER's lifetime instead — stopped when the trip completes,
+      // when it is cancelled, when it leaves the active list, on sign-out, and by the task
+      // itself once the backend reports no active orders.
     };
     // Re-subscribe only on the fields that matter; the full order object changes on
     // every poll, which would needlessly tear down/re-create the location watcher.
@@ -391,6 +443,11 @@ export default function OrderDetailScreen() {
             // Claim this exit BEFORE the poll can notice the order left the active list,
             // so the `gone` handler above stays quiet.
             completedByMeRef.current = true;
+            // Trip is done: drop the foreground-service notification and stop reporting.
+            // Awaited so the notification is gone by the time the completion dialog shows —
+            // a driver looking at "Safar tugadi" while "Safar davom etmoqda" sits in their
+            // status bar would reasonably conclude the app is still tracking them.
+            await stopBackgroundLocation().catch(() => {});
 
             // Offer to rate the passenger, then leave. Only when the ride actually has a
             // passenger account behind it: rate-passenger needs Order.passenger_id, and
