@@ -7,6 +7,7 @@ from aiohttp import web
 from app.database import get_session
 from app.models import BonusTransaction, User
 from app.services import promo as promo_service
+from app.services import referral as referral_service
 from app.services.dynamic_settings import (
     get_loyalty_points_per_ride,
     get_loyalty_reward,
@@ -16,6 +17,7 @@ from app.services.dynamic_settings import (
     get_referral_new_user_max_rides,
     get_referral_referrer_bonus,
 )
+from app.services.referral import link_referral
 from app.utils.auth import require_auth
 from app.utils.body import BodyError, read_json_object, read_str
 from app.utils.timefmt import iso_utc
@@ -98,6 +100,14 @@ async def get_referral_info(request: web.Request) -> web.Response:
             "referral_count": u.referral_count or 0,
             "bonus_earned": u.referral_bonus_earned or 0,
             "bonus_balance": u.bonus_balance or 0,
+            # Whether this user was themselves invited, and whether they may still enter a
+            # code. The app needs both to decide if the "enter a friend's code" field is worth
+            # showing at all -- offering an input that can only ever return an error is worse
+            # than hiding it. The conditions mirror `link_referral`'s guards exactly.
+            "has_referrer": bool(u.referred_by_user_id),
+            "can_apply_code": (
+                not u.referred_by_user_id and (u.loyalty_lifetime_rides or 0) == 0
+            ),
             # Amounts (live from admin settings) so the app can show accurate promises.
             "referrer_bonus": get_referral_referrer_bonus(session),
             "new_user_bonus": get_referral_new_user_bonus(session),
@@ -187,33 +197,29 @@ async def apply_referral_code(request: web.Request) -> web.Response:
     session = get_session()
     try:
         u = session.query(User).filter_by(id=user.id).first()
-        if u.referred_by_user_id:
-            return web.json_response({"error": "Allaqachon kod ishlatgansiz"}, status=400)
-        if u.referral_code == code:
-            return web.json_response({"error": "O'z kodingizni ishlatib bo'lmaydi"}, status=400)
-        # A referral code links a genuinely NEW passenger. If the user has already
-        # completed rides, the "first ride" reward moment has passed -> reject, so the
-        # code can't be applied retroactively to farm bonuses.
-        if (u.loyalty_lifetime_rides or 0) > 0:
-            return web.json_response(
-                {"error": "Kodni faqat birinchi safardan oldin kiritish mumkin"},
-                status=400,
-            )
-
-        referrer = session.query(User).filter_by(referral_code=code).first()
-        if not referrer:
-            return web.json_response({"error": "Kod topilmadi"}, status=404)
-
+        # Guards live in the service because the bot deep-link path applies the same ones.
         # IMPORTANT: linking only. NO bonus is granted here. Both the referrer's reward and
         # the invited passenger's bonus are paid ONLY after the invited passenger COMPLETES
         # a ride (see app.services.rewards.apply_ride_rewards). This closes the fake-account
         # farming hole where bonuses were handed out the instant a code was entered.
-        u.referred_by_user_id = referrer.id
+        ok, reason, referrer = link_referral(session, u, code)
+        if not ok:
+            errors = {
+                referral_service.ALREADY_REFERRED: ("Allaqachon kod ishlatgansiz", 400),
+                referral_service.OWN_CODE: ("O'z kodingizni ishlatib bo'lmaydi", 400),
+                referral_service.TOO_LATE: (
+                    "Kodni faqat birinchi safardan oldin kiritish mumkin", 400,
+                ),
+                referral_service.NOT_FOUND: ("Kod topilmadi", 404),
+            }
+            message, status = errors.get(reason, ("Kod qabul qilinmadi", 400))
+            return web.json_response({"error": message}, status=status)
         session.commit()
         return web.json_response({
             "success": True,
             "referrer_name": referrer.first_name or "Do'stingiz",
             "new_user_bonus": get_referral_new_user_bonus(session),
+            "new_user_max_rides": get_referral_new_user_max_rides(session),
             "message": "Kod qabul qilindi! Bonus birinchi safaringizdan keyin hisobingizga tushadi.",
         })
     finally:

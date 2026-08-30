@@ -1,4 +1,5 @@
 """Authentication endpoints: phone OTP login."""
+import logging
 from datetime import datetime
 
 from aiohttp import web
@@ -10,9 +11,12 @@ from app.services.otp import (
     normalize_phone,
     verify_otp,
 )
+from app.services.referral import consume_pending
 from app.utils.auth import create_token, require_auth
 from app.utils.body import BodyError, read_json_object, read_str
 from app.utils.timefmt import iso_utc
+
+logger = logging.getLogger("sarixgo.auth")
 
 #: Languages the apps actually ship translations for. Anything else must not be stored.
 SUPPORTED_LANGUAGES = ("uz", "uz-cyrl", "ru", "en")
@@ -292,6 +296,25 @@ def _issue_passenger_login(db, sess) -> web.Response:
         user.last_active = datetime.utcnow()
         db.commit()
         db.refresh(user)
+
+    # Apply an invite that arrived via `t.me/<bot>?start=ref_CODE` before this account
+    # existed. This is the ONLY place it can happen: the bot has no User row to link at the
+    # time the link is opened, and this is the first moment a Telegram id and an account meet.
+    #
+    # Runs for returning users too, not just new ones — someone can open an invite link and
+    # only sign in later, and `consume_pending` re-checks every guard (already referred, own
+    # code, rides already completed) so a stale row cannot be exploited. Never allowed to
+    # break the login: losing a referral credit is minor, failing a signup is not.
+    try:
+        consume_pending(db, user)
+        # Committed unconditionally, NOT only when a link was made. `consume_pending` deletes
+        # the pending row either way, and that deletion is the whole reason an unusable invite
+        # does not get retried on every future signup — committing only on success left the
+        # row behind and reintroduced exactly that.
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to apply pending referral for user %s", user.id)
 
     jwt_token = create_token(user.id, user.phone)
     return web.json_response({

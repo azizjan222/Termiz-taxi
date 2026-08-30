@@ -629,6 +629,27 @@ class SosAlert(Base):
     resolved_at = Column(DateTime)
 
 
+# ============= PENDING REFERRALS =============
+class PendingReferral(Base):
+    """A referral code from a bot deep link, held until the invitee signs up.
+
+    ``t.me/<bot>?start=ref_CODE`` reaches the bot, but there is nothing to link yet: ``User``
+    rows are created by the app's auth flow (``app/api/auth.py``), and somebody arriving from
+    an invite link normally has no account at all. Without somewhere to park the code, the
+    invite is simply lost — which is what used to happen, since the bot ignored ``ref_``
+    entirely while the API happily generated links containing it.
+
+    One row per Telegram account, overwritten by a newer link, consumed and deleted at signup
+    (``app.services.referral.consume_pending``). Rows for people who never sign up are
+    harmless: a code and an id, no personal data.
+    """
+    __tablename__ = "pending_referrals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
+    referral_code = Column(String(20), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 
 # ============= TELEGRAM AUTH SESSIONS =============
 class TelegramAuthSession(Base):

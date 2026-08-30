@@ -93,6 +93,15 @@ export interface CreateOrderInput {
    * Omit (undefined) when no code was entered -- an invalid code rejects the order.
    */
   promo_code?: string;
+  /**
+   * Spend the passenger's bonus wallet on this ride.
+   *
+   * Opt-in per order, and only a request: the server decides the actual amount when a driver
+   * accepts, capped at that ride's commission (the discount is funded from forgone commission,
+   * never from the driver's earnings). So the final figure is `order.bonus_used`, which can be
+   * less than the wallet balance or zero — never present a client-side amount as final.
+   */
+  use_bonus?: boolean;
   parcel_recipient_name?: string;
   parcel_recipient_phone?: string;
   parcel_payer?: 'sender' | 'recipient';
