@@ -24,10 +24,15 @@ Workflows: `update-driver.yml`, `update-passenger.yml`.
 `preview` and `production` are **separate update streams**. Publishing to one does nothing
 for the other.
 
-- The owner tests on an **APK built with the `preview` profile** (`build-driver.yml` /
-  `build-passenger.yml` run `eas build --profile preview`), so that device only ever
-  receives `preview` updates.
+- `build-driver.yml` / `build-passenger.yml` run `eas build --profile preview`, and that
+  profile sets `channel: preview` — such a device only ever receives `preview` updates.
+- `release-*.yml` builds use the `production` profile and listen on `production`.
 - Real users are on `production`.
+
+Do not assume which one the owner is holding. Since the app entered Play **closed testing**,
+their phone may well be running a `production`-channel build installed through Play rather
+than a sideloaded preview APK — and the two take updates from different streams. Publishing to
+both, always, is what makes this question stop mattering.
 
 This has already caused a wasted debugging round: parts of a change set were published to
 `production` only, the owner reported "it didn't work", and the obvious-looking culprit
@@ -43,9 +48,13 @@ Update group ID    ...
 
 ## runtimeVersion is set by hand
 
-`app.json` holds `"runtimeVersion": "2"` in both apps, and `app.config.js` explains why the
-`fingerprint` policy was abandoned. An update only reaches a build with the **same**
-runtimeVersion.
+`app.config.js` explains why the `fingerprint` policy was abandoned. An update only reaches a
+build with the **same** runtimeVersion.
+
+| App | `app.json` runtimeVersion | Newest build in the store / on a device |
+| --- | --- | --- |
+| `sarix-go-driver` | `"3"` | `"2"` — **no build with `"3"` exists yet** |
+| `sarix-go-app` | `"2"` | `"2"` |
 
 Bump it only when the native side changes (native dependency, Expo SDK upgrade, config
 plugin, native-affecting app.json change) — and remember that bumping it strands every
@@ -53,6 +62,22 @@ already-installed build until a new binary ships.
 
 Adding a JS-only package (e.g. `@expo/vector-icons`) does **not** require a bump. Verify
 rather than assume: publish to `preview` and read `Runtime version` from the log.
+
+### The driver app is currently mid-bump — read this before debugging an OTA
+
+`#249` (background location) bumped the driver to `"3"` because it added `expo-task-manager`
+and a foreground service. **No driver build carrying `"3"` has ever been produced**, so every
+driver OTA published from `main` right now is valid, succeeds, and reaches **zero devices**.
+
+Two consequences worth knowing before losing an afternoon to them:
+
+- A driver phone's newest JS is whatever the last `"2"`-era update delivered, NOT `main`. Do
+  not read "the fix isn't on my phone" as "the fix doesn't work".
+- This resolves itself the moment `release-driver.yml` ships an AAB from `main`; that binary
+  embeds the current JS and then starts listening on its channel. Update the table above when
+  it does.
+
+The passenger app is unaffected — it is still on `"2"`, so its OTAs land normally.
 
 ## Lockfiles cannot be regenerated locally
 
@@ -74,6 +99,38 @@ Two consequences:
 Play" step is **opt-in** (`submit: true`). As of this writing no build has ever been
 submitted through CI, so a store release needs that flag set deliberately, with
 `track: internal` first.
+
+## Background location has release gates that are not in the code
+
+The driver app requests `ACCESS_BACKGROUND_LOCATION` and runs an Android foreground service
+(`#249`). Google treats that as a sensitive permission, so shipping it needs work in Play
+Console that no amount of correct code substitutes for:
+
+- **Permissions declaration form + approval.** Without it, updates can be blocked and the app
+  removed. This is a review with a turnaround, so it gates the *schedule*, not just the build.
+- **Data safety section** must declare location collection including the background case, and
+  must not contradict the privacy policy.
+- **Foreground service type** must be declared and justified for `FOREGROUND_SERVICE_LOCATION`.
+- **Privacy policy** must describe background collection. `legal/privacy-policy-*.md` and
+  `docs/privacy-policy*.html` cover this — Play Console links the **HTML**, so both have to
+  move together. They once said "only while the app is open", which the app had stopped doing.
+
+In the app itself, `startBackgroundLocation` takes a mandatory `confirm()` callback: Play
+requires a **prominent disclosure**, accepted by the driver, BEFORE the OS background-location
+prompt appears. It is not optional in the type signature on purpose — a default would let a
+future caller quietly reintroduce a store-removal risk. Strings live in
+`tracking.disclosure*` in all four locales.
+
+### Two upstream bugs to keep in mind
+
+- [expo#47595](https://github.com/expo/expo/issues/47595) — on Android the location foreground
+  service can freeze after **any** app update, including an `expo-updates` OTA: the
+  notification stays up while zero updates are delivered. This repo ships OTAs often, so after
+  publishing a driver OTA, actually start a trip and confirm positions still arrive.
+- [expo#48935](https://github.com/expo/expo/issues/48935) — a persisted JobScheduler job
+  scheduled without `RECEIVE_BOOT_COMPLETED` crashes the process on the first location update.
+  Both apps already list that permission in `app.json`, so do not remove it while trimming
+  permissions for a Play review.
 
 ## What must stay an emoji
 
