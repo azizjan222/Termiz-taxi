@@ -8,7 +8,6 @@ from app.database import get_session
 from app.models import BonusTransaction, User
 from app.services import promo as promo_service
 from app.services import referral as referral_service
-from app.services.referral import link_referral
 from app.services.dynamic_settings import (
     get_loyalty_points_per_ride,
     get_loyalty_reward,
@@ -18,6 +17,7 @@ from app.services.dynamic_settings import (
     get_referral_new_user_max_rides,
     get_referral_referrer_bonus,
 )
+from app.services.referral import link_referral
 from app.utils.auth import require_auth
 from app.utils.body import BodyError, read_json_object, read_str
 from app.utils.timefmt import iso_utc
