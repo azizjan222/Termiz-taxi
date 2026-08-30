@@ -23,10 +23,14 @@ import * as realtime from '../src/services/realtime';
 // creates after the app has been killed. Registering it from a screen would be too late.
 import { syncBackgroundLocationState } from '../src/services/backgroundLocation';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
+import { MaintenanceModal } from '../src/components/MaintenanceModal';
+import { isAppsMaintenance } from '../src/api/appConfig';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
+  // Server-declared maintenance for the mobile apps (not the Telegram bot — separate switch).
+  const [maintenance, setMaintenance] = useState(false);
   const loadDriver = useDriverStore((s) => s.loadDriver);
   const isAuth = useDriverStore((s) => s.isAuthenticated);
   const driver = useDriverStore((s) => s.driver);
@@ -93,6 +97,21 @@ export default function RootLayout() {
     });
     return () => sub.remove();
   }, [isAuth, ready]);
+
+  // Operator-declared maintenance for the MOBILE APPS.
+  //
+  // The admin panel has two independent switches; this is the apps one, so a paused Telegram
+  // bot does not blank out the driver app. Re-checked when the app returns to the foreground
+  // so it clears itself once the deployment finishes — nobody notifies the app that
+  // maintenance ended, and without this a driver would have to force-quit to find out.
+  useEffect(() => {
+    if (!ready) return;
+    isAppsMaintenance().then(setMaintenance);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') isAppsMaintenance().then(setMaintenance);
+    });
+    return () => sub.remove();
+  }, [ready]);
 
   // Session expiry: the server rejected our token (HTTP 401, or the realtime socket's
   // "unauthorized" frame). Sign the driver out locally and send them to login.
@@ -190,6 +209,14 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style={isDark ? 'light' : 'dark'} />
+        <MaintenanceModal
+          visible={maintenance}
+          onRetry={async () => {
+            const down = await isAppsMaintenance();
+            setMaintenance(down);
+            return !down;
+          }}
+        />
         <Stack
           screenOptions={{
             headerShown: false,

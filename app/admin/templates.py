@@ -1127,14 +1127,26 @@ o'qiydi. Bo'sh qoldirmang.</p>
 
 <div class="card mb-3 border-warning"><div class="card-body">
 <h6 class="mb-3">🛠 Texnik xizmat rejimi</h6>
+<div class="form-text mb-2">Bot va mobil ilovalar <b>alohida</b> to'xtatiladi. Serverni
+yangilashda ikkalasini ham belgilang.</div>
 <div class="form-check">
 <input class="form-check-input" type="checkbox" id="set-maintenance">
 <label class="form-check-label" for="set-maintenance">
-Texnik xizmat rejimi yoqilgan
+🤖 Telegram bot to'xtatilgan
 </label>
+<div class="form-text">Bot admindan boshqa hammaga "Texnik ishlar olib borilmoqda"
+deb javob beradi. Mobil ilovalarga ta'sir qilmaydi.</div>
 </div>
-<div class="form-text text-danger">Yoqilsa bot foydalanuvchilarga xizmat vaqtincha
-to'xtatilgani haqida xabar beradi. Ehtiyot bo'ling.</div>
+<div class="form-check mt-3">
+<input class="form-check-input" type="checkbox" id="set-maintenance-apps">
+<label class="form-check-label" for="set-maintenance-apps">
+📱 Mobil ilovalar to'xtatilgan
+</label>
+<div class="form-text">Yo'lovchi va haydovchi ilovalari ochilganda to'xtatish ekranini
+ko'rsatadi. Botga ta'sir qilmaydi.</div>
+</div>
+<div class="form-text text-danger mt-2">Ehtiyot bo'ling: yoqilgan paytda foydalanuvchilar
+zakas bera olmaydi.</div>
 </div></div>
 </div>
 
@@ -1201,6 +1213,13 @@ const SETTING_FIELDS=[
 ['set-ref-rides','referral_new_user_max_rides'],
 ['set-ref-max','referral_max_rewarded']
 ];
+// Boolean switches: [checkbox id, setting key, label used in the confirm dialog].
+// Two independent flags — the bot and the apps are paused separately, and checking both is
+// how you pause everything.
+const MAINTENANCE_FIELDS=[
+['set-maintenance','maintenance_mode','Telegram bot'],
+['set-maintenance-apps','maintenance_mode_apps','mobil ilovalar']
+];
 function loadSettings(){
 fetch('/admin/api/settings').then(r=>r.json()).then(d=>{
 if(!d||d.error){adminError(d&&d.error?d.error:'Sozlamalarni yuklab bo\\'lmadi');return;}
@@ -1209,8 +1228,7 @@ if(!d||d.error){adminError(d&&d.error?d.error:'Sozlamalarni yuklab bo\\'lmadi');
 SETTING_FIELDS.forEach(([id,key])=>{const el=document.getElementById(id);if(el)el.value=d[key]??'';});
 const used=document.getElementById('set-trial-used');
 if(used)used.textContent=fmtNum(d.free_trial_granted_count);
-const mt=document.getElementById('set-maintenance');
-if(mt)mt.checked=!!d.maintenance_mode;
+MAINTENANCE_FIELDS.forEach(([id,key])=>{const el=document.getElementById(id);if(el)el.checked=!!d[key];});
 }).catch(()=>adminError('Sozlamalarni yuklab bo\\'lmadi'));
 }
 function saveSettings(){
@@ -1224,10 +1242,17 @@ const raw=String(el.value).trim();
 if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger">"'+esc(el.previousElementSibling?el.previousElementSibling.textContent:key)+'" butun son bo\\'lishi kerak (bo\\'sh qoldirmang)</div>';el.focus();return;}
 body[key]=parseInt(raw,10);
 }
-const mt=document.getElementById('set-maintenance');
-if(mt){
-if(mt.checked&&!confirm('Texnik xizmat rejimini YOQMOQCHIMISIZ? Bot foydalanuvchilarga xizmat to\\'xtatilgani haqida xabar beradi.'))return;
-body.maintenance_mode=mt.checked;
+// Confirm ONCE, listing exactly what is being paused. Two separate confirms for two
+// checkboxes trained the operator to click through them, which defeats the point.
+const turningOn=[];
+for(const [id,,label] of MAINTENANCE_FIELDS){
+const el=document.getElementById(id);
+if(el&&el.checked)turningOn.push(label);
+}
+if(turningOn.length&&!confirm('Texnik xizmat rejimi YOQILADI: '+turningOn.join(' va ')+'.\\n\\nDavom etilsinmi?'))return;
+for(const [id,key] of MAINTENANCE_FIELDS){
+const el=document.getElementById(id);
+if(el)body[key]=el.checked;
 }
 fetch('/admin/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{
 out.innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+'">'+esc(d.detail||d.error||'Saqlandi')+'</div>';

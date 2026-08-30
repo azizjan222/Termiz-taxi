@@ -2,7 +2,7 @@
 from aiohttp import web
 
 from app import config
-from app.services.dynamic_settings import get_min_driver_balance
+from app.services.dynamic_settings import get_min_driver_balance, is_apps_maintenance
 
 
 async def get_app_config(request: web.Request) -> web.Response:
@@ -26,7 +26,13 @@ async def get_app_config(request: web.Request) -> web.Response:
         "latest_version": latest_version,
         "play_url": play_url,
         "force_update": False,  # set to True when min_version > app version
-        "maintenance_mode": False,
+        # Read from the DB, not hardcoded.
+        #
+        # This was `False` literal, which made the admin panel's maintenance checkbox a lie as
+        # far as the apps were concerned: it paused the Telegram bot while both apps carried on
+        # taking orders, and nothing surfaced the discrepancy. The panel now has a separate
+        # switch per surface, and this is the apps one.
+        "maintenance_mode": is_apps_maintenance(),
         "features": {
             "click_payment": bool(config.CLICK_MERCHANT_ID),
             "payme_payment": bool(config.PAYME_MERCHANT_ID),
