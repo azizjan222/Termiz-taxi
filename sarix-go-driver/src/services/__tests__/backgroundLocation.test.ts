@@ -132,10 +132,15 @@ type Module = typeof import('../backgroundLocation');
  * the throttle timestamp, the counters), and leaking any of it between tests would hide
  * exactly the kind of bug these tests exist to catch. Re-importing also re-runs `defineTask`,
  * so `mockWorld.taskHandler` always belongs to the instance under test.
+ *
+ * Loaded with `require` rather than a dynamic `import()`: jest-expo runs this suite as CJS,
+ * where `import()` throws "A dynamic import callback was invoked without
+ * --experimental-vm-modules".
  */
-async function load(): Promise<Module> {
+function load(): Module {
   jest.resetModules();
-  return import('../backgroundLocation');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  return require('../backgroundLocation') as Module;
 }
 
 const fix = (lat = 41.1, lon = 69.2) => ({
@@ -172,7 +177,7 @@ describe('start/stop serialization', () => {
     // when a start begins. Latency makes both straddle several awaits, which is what let
     // them observe each other's pre-state.
     for (const latency of [0, 1, 3]) {
-      const mod = await load();
+      const mod = load();
       mockWorld.latency = latency;
       mockWorld.osRunning = true; // mid-trip: the task is already running
 
@@ -189,7 +194,7 @@ describe('start/stop serialization', () => {
   });
 
   it('leaves tracking running when start is the last operation', async () => {
-    const mod = await load();
+    const mod = load();
     mockWorld.latency = 2;
     mockWorld.osRunning = true;
 
@@ -205,7 +210,7 @@ describe('start/stop serialization', () => {
   });
 
   it('a rejected stop does not wedge the queue', async () => {
-    const mod = await load();
+    const mod = load();
     mockWorld.osRunning = true;
     mockWorld.failStop = true;
 
@@ -222,7 +227,7 @@ describe('start/stop serialization', () => {
 
 describe('starting', () => {
   it('does not restart or re-ask when already tracking the same order', async () => {
-    const mod = await load();
+    const mod = load();
     let confirmCalls = 0;
     const confirm = async () => {
       confirmCalls += 1;
@@ -241,7 +246,7 @@ describe('starting', () => {
   });
 
   it('keeps the original deadline baseline across restarts for the same order', async () => {
-    const mod = await load();
+    const mod = load();
     await mod.startBackgroundLocation({ orderId: 42, labels, confirm: allow });
     const first = JSON.parse(mockWorld.storage.get('sarixgo_driver_bg_location')!).startedAt;
 
@@ -255,7 +260,7 @@ describe('starting', () => {
   });
 
   it('refuses background permission without an accepted disclosure', async () => {
-    const mod = await load();
+    const mod = load();
     mockWorld.bgStatus = 'undetermined';
 
     const ok = await mod.startBackgroundLocation({ orderId: 1, labels, confirm: deny });
@@ -268,7 +273,7 @@ describe('starting', () => {
   });
 
   it('skips the disclosure when background permission is already granted', async () => {
-    const mod = await load();
+    const mod = load();
     mockWorld.bgStatus = 'granted';
     let confirmCalls = 0;
 
@@ -289,7 +294,7 @@ describe('starting', () => {
   });
 
   it('returns false without starting when foreground permission is denied', async () => {
-    const mod = await load();
+    const mod = load();
     mockWorld.fgStatus = 'denied';
     const ok = await mod.startBackgroundLocation({ orderId: 1, labels, confirm: allow });
     expect(ok).toBe(false);
@@ -303,7 +308,7 @@ describe('the task', () => {
   };
 
   it('posts only the freshest fix from a buffered batch', async () => {
-    const mod = await load();
+    const mod = load();
     await start(mod);
     await mockWorld.taskHandler!({
       data: {
@@ -319,7 +324,7 @@ describe('the task', () => {
   });
 
   it('throttles to the existing ~10s backend cadence', async () => {
-    const mod = await load();
+    const mod = load();
     await start(mod);
     await mockWorld.taskHandler!(fix(1, 1));
     mockWorld.now += 3000;
@@ -334,7 +339,7 @@ describe('the task', () => {
   });
 
   it('stops itself once the backend reports no active orders', async () => {
-    const mod = await load();
+    const mod = load();
     await start(mod);
     mockWorld.ack = { success: true, active_orders: 0 };
 
@@ -349,7 +354,7 @@ describe('the task', () => {
   });
 
   it('keeps going when the backend omits active_orders (older deploy)', async () => {
-    const mod = await load();
+    const mod = load();
     await start(mod);
     mockWorld.ack = { success: true }; // field absent
 
@@ -362,7 +367,7 @@ describe('the task', () => {
   });
 
   it('stops itself when no session claims it', async () => {
-    const mod = await load();
+    const mod = load();
     await start(mod);
     // The app was updated, or storage was cleared, while the OS kept the service alive.
     mockWorld.storage.delete('sarixgo_driver_bg_location');
@@ -378,7 +383,7 @@ describe('the task', () => {
   });
 
   it('stops itself after the maximum tracking duration', async () => {
-    const mod = await load();
+    const mod = load();
     await start(mod);
 
     mockWorld.now += 6 * 60 * 60 * 1000 + 1000;
@@ -392,7 +397,7 @@ describe('the task', () => {
   });
 
   it('stops itself when the session is rejected', async () => {
-    const mod = await load();
+    const mod = load();
     await start(mod);
     const err = new Error('unauthorized') as Error & { response?: { status: number } };
     err.response = { status: 401 };
@@ -406,7 +411,7 @@ describe('the task', () => {
   });
 
   it('retries immediately after a network failure instead of waiting out the interval', async () => {
-    const mod = await load();
+    const mod = load();
     await start(mod);
     mockWorld.postError = new Error('offline');
 
@@ -427,7 +432,7 @@ describe('the task', () => {
   });
 
   it('ignores batches with an error or unusable coordinates', async () => {
-    const mod = await load();
+    const mod = load();
     await start(mod);
 
     await mockWorld.taskHandler!({ data: null, error: { message: 'no fix' } });
@@ -445,7 +450,7 @@ describe('the task', () => {
 
 describe('stopping', () => {
   it('clears the session even when the OS call fails', async () => {
-    const mod = await load();
+    const mod = load();
     await mod.startBackgroundLocation({ orderId: 9, labels, confirm: allow });
     mockWorld.failStop = true;
 
@@ -462,7 +467,7 @@ describe('stopping', () => {
   });
 
   it('is safe when tracking was never started', async () => {
-    const mod = await load();
+    const mod = load();
     await expect(mod.stopBackgroundLocation()).resolves.toBeUndefined();
     expect(mockWorld.stopCalls).toBe(0);
   });
@@ -470,7 +475,7 @@ describe('stopping', () => {
 
 describe('syncBackgroundLocationState', () => {
   it('recovers the flag after a cold start with the service still alive', async () => {
-    const mod = await load();
+    const mod = load();
     // Fresh JS context (flag defaults to false) but the OS service survived the kill.
     mockWorld.osRunning = true;
     expect(mod.isBackgroundSending()).toBe(false);
