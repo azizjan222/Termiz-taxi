@@ -1172,6 +1172,14 @@ async def api_update_route(request: web.Request) -> web.Response:
 # read live by app/services/dynamic_settings.py and decide how much bonus money is paid
 # out — they could only be changed with direct database access, which is exactly the kind
 # of value an operator needs to be able to see and adjust.
+# Boolean, panel-editable maintenance switches, in display order.
+#
+# Two of them, deliberately independent: `maintenance_mode` pauses the Telegram bot,
+# `maintenance_mode_apps` pauses the mobile apps. Turning both on is how you pause
+# everything; either alone is a legitimate state (e.g. migrating bot handlers while the apps
+# keep working). See app/services/dynamic_settings.py for why the bot key keeps its old name.
+MAINTENANCE_SETTINGS: tuple[str, ...] = ("maintenance_mode", "maintenance_mode_apps")
+
 SETTING_LIMITS: dict[str, tuple[int, int]] = {
     "commission_percent": (0, 100),
     "free_trial_days": (0, 3650),
@@ -1248,11 +1256,16 @@ def _settings_payload() -> dict:
             )
         except (TypeError, ValueError):
             payload["free_trial_granted_count"] = 0
-        # Maintenance switch (bot-side flag, app/bot/store.py). Surfaced here because the
-        # panel could neither see nor change it.
-        payload["maintenance_mode"] = str(
-            settings_map.get("maintenance_mode") or ""
-        ).strip().lower() in ("1", "true", "yes", "on")
+        # The two maintenance switches. `maintenance_mode` pauses the Telegram bot
+        # (app/bot/store.py); `maintenance_mode_apps` pauses the mobile apps via
+        # GET /api/config. Independent on purpose — see app/services/dynamic_settings.py.
+        #
+        # Permissive truthiness because the writers disagree: the bot writes "true"/"false",
+        # this endpoint writes "1"/"0".
+        for key in MAINTENANCE_SETTINGS:
+            payload[key] = str(settings_map.get(key) or "").strip().lower() in (
+                "1", "true", "yes", "on",
+            )
         return payload
     finally:
         session.close()
@@ -1275,7 +1288,7 @@ async def api_update_settings(request: web.Request) -> web.Response:
     # Reject unknown keys instead of answering "Sozlamalar saqlandi" without saving
     # anything — a client sending e.g. loyalty_reward_bonus used to get a success message
     # and no change at all.
-    known = set(SETTING_LIMITS) | {"maintenance_mode"}
+    known = set(SETTING_LIMITS) | set(MAINTENANCE_SETTINGS)
     unknown = sorted(set(data) - known)
     if unknown:
         return web.json_response(
@@ -1286,17 +1299,21 @@ async def api_update_settings(request: web.Request) -> web.Response:
     try:
         limits = SETTING_LIMITS
         changes = {}
-        # Maintenance mode is a boolean flag, stored as "1"/"0" for the bot.
-        if "maintenance_mode" in data:
-            enabled = bool(data["maintenance_mode"])
-            existing = session.query(Setting).filter_by(key="maintenance_mode").first()
+        # The two maintenance switches are independent booleans, stored as "1"/"0".
+        # Looped rather than duplicated: the bot flag used to be handled by a one-off block,
+        # and adding the apps flag by copy-paste is how the two drift apart.
+        for key in MAINTENANCE_SETTINGS:
+            if key not in data:
+                continue
+            enabled = bool(data[key])
+            existing = session.query(Setting).filter_by(key=key).first()
             previous = existing.value if existing else None
             if existing:
                 existing.value = "1" if enabled else "0"
                 existing.updated_at = datetime.utcnow()
             else:
-                session.add(Setting(key="maintenance_mode", value="1" if enabled else "0"))
-            changes["maintenance_mode"] = {"before": previous, "after": enabled}
+                session.add(Setting(key=key, value="1" if enabled else "0"))
+            changes[key] = {"before": previous, "after": enabled}
         for key, (minimum, maximum) in limits.items():
             if key not in data:
                 continue

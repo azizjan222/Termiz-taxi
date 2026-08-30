@@ -355,6 +355,12 @@ export default {
     message: 'Please update the app to the latest version. The old version will not work.',
     button: 'Update on Play Market',
   },
+  maintenance: {
+    title: 'Under maintenance',
+    message: 'The app is temporarily unavailable. Please try again in a little while.',
+    retry: 'Try again',
+    stillDown: 'Maintenance is still in progress. Please try again in a little while.',
+  },
   departure: {
     now: 'Now',
     min30: 'In 30 minutes',

@@ -322,6 +322,12 @@ export default {
     message: 'Iltimos, ilovani yangi versiyaga yangilang. Eski versiya ishlamaydi.',
     button: 'Play Market\'da yangilash',
   },
+  maintenance: {
+    title: 'Texnik ishlar olib borilmoqda',
+    message: "Ilova vaqtincha ishlamaydi. Iltimos, birozdan so'ng qayta urinib ko'ring.",
+    retry: 'Qayta urinish',
+    stillDown: "Texnik ishlar hali tugamagan. Birozdan so'ng qayta urinib ko'ring.",
+  },
   notifHistory: {
     title: 'Bildirishnomalar',
     empty: 'Bildirishnomalar yo\'q',

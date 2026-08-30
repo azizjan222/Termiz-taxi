@@ -639,6 +639,12 @@ export const uz = {
     disclosureAllow: 'Roziman',
     disclosureDeny: 'Rad etish',
   },
+  maintenance: {
+    title: 'Texnik ishlar olib borilmoqda',
+    message: "Ilova vaqtincha ishlamaydi. Iltimos, birozdan so'ng qayta urinib ko'ring.",
+    retry: 'Qayta urinish',
+    stillDown: "Texnik ishlar hali tugamagan. Birozdan so'ng qayta urinib ko'ring.",
+  },
 };
 
 export const ru = {
@@ -1212,6 +1218,12 @@ export const ru = {
     disclosureAllow: 'Согласен',
     disclosureDeny: 'Отклонить',
   },
+  maintenance: {
+    title: 'Идут технические работы',
+    message: 'Приложение временно недоступно. Пожалуйста, попробуйте немного позже.',
+    retry: 'Повторить',
+    stillDown: 'Технические работы ещё не закончились. Попробуйте немного позже.',
+  },
 };
 
 export const en = {
@@ -1783,6 +1795,12 @@ export const en = {
     disclosureAllow: 'I agree',
     disclosureDeny: 'Decline',
   },
+  maintenance: {
+    title: 'Under maintenance',
+    message: 'The app is temporarily unavailable. Please try again in a little while.',
+    retry: 'Try again',
+    stillDown: 'Maintenance is still in progress. Please try again in a little while.',
+  },
 };
 
 export const uzCyrl = {
@@ -2352,6 +2370,12 @@ export const uzCyrl = {
       'автоматик тўхтайди. Кейинги ойнада \u00abДоимо рухсат бериш\u00bb вариантини танланг.',
     disclosureAllow: 'Розиман',
     disclosureDeny: 'Рад этиш',
+  },
+  maintenance: {
+    title: 'Техник ишлар олиб борилмоқда',
+    message: 'Илова вақтинча ишламайди. Илтимос, бироздан сўнг қайта уриниб кўринг.',
+    retry: 'Қайта уриниш',
+    stillDown: 'Техник ишлар ҳали тугамаган. Бироздан сўнг қайта уриниб кўринг.',
   },
 };
 
