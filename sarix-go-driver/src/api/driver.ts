@@ -199,8 +199,25 @@ export async function getOrdersHistory(
 }
 
 /** Send the driver's current location to the backend (broadcast to the passenger). */
-export async function updateDriverLocation(lat: number, lon: number): Promise<void> {
-  await api.post('/api/driver/location', { lat, lon });
+export interface DriverLocationAck {
+  success: boolean;
+  /**
+   * How many orders the backend still considers active for this driver.
+   *
+   * The endpoint already computes this to decide which passengers to broadcast to, so it
+   * costs nothing to return — and it is the signal the background-location task uses to shut
+   * itself down once a trip is over. Optional because a driver app can outlive the backend
+   * deploy that added it: `undefined` must be read as "unknown, keep going", never as zero.
+   */
+  active_orders?: number;
+}
+
+export async function updateDriverLocation(
+  lat: number,
+  lon: number,
+): Promise<DriverLocationAck> {
+  const response = await api.post<DriverLocationAck>('/api/driver/location', { lat, lon });
+  return response.data || { success: true };
 }
 
 export async function uploadDriverProfilePhoto(uri: string): Promise<{ url: string }> {

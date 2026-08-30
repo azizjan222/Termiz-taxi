@@ -772,6 +772,8 @@ async def driver_update_location(request: web.Request) -> web.Response:
 
     session = get_session()
     active_orders = []
+    # Captured inside the session and returned to the caller; see the response comment.
+    active_count = 0
     try:
         d = session.query(Driver).filter_by(id=driver.id).first()
         if not d:
@@ -797,6 +799,7 @@ async def driver_update_location(request: web.Request) -> web.Response:
         order_passenger_pairs = [
             (o.id, o.passenger_id) for o in active_orders if o.passenger_id
         ]
+        active_count = len(active_orders)
     finally:
         session.close()
 
@@ -812,7 +815,12 @@ async def driver_update_location(request: web.Request) -> web.Response:
         except Exception:
             pass
 
-    return web.json_response({"success": True})
+    # `active_orders` lets the driver app's background-location task stop itself once the
+    # trip is over. That task outlives the app process by design (the Android foreground
+    # service is started with killServiceOnDestroy: false), so if the driver force-quits
+    # mid-trip no app code ever runs again to shut it down -- this count is what tells it to.
+    # Purely additive: older clients ignore the field.
+    return web.json_response({"success": True, "active_orders": active_count})
 
 
 @require_driver
