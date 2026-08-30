@@ -18,6 +18,12 @@ By using the app, you agree to this policy.
 
 ### 2.2 Automatically collected
 - **Location (GPS)** — only with your permission, for automatic address detection
+- **Driver background location** — in the Sarix Driver app only, and only during an accepted
+  order. From the start of a trip until it ends, the driver's location is sent to our server
+  even when the app is closed or in the background, so the passenger can follow the car on
+  the map in real time. Sending stops automatically when the trip completes, when it is
+  cancelled, and on sign-out. While it is active, Android shows a persistent notification.
+  The passenger app does not collect background location.
 - **Device identifier** — for technical error analysis
 - **App usage statistics** — to improve the app
 
@@ -81,7 +87,10 @@ This app is intended for users **18 and older**. We do not knowingly collect dat
 ## 9. Permissions
 
 The app requests:
-- **Location** — for address detection (only while app is open)
+- **Location** — for address detection (in the passenger app, only while the app is open)
+- **Background location** (`ACCESS_BACKGROUND_LOCATION`) — in the Sarix Driver app only, and
+  only during an active trip. The app still works without it: location is then sent only
+  while the app is open.
 - **Internet** — for server communication
 - **Notifications** — for new messages
 - **Vibration** — for alerts

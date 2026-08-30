@@ -18,6 +18,13 @@ Ilovani ishlatish orqali siz ushbu siyosatga rozilik bildirasiz.
 
 ### 2.2 Avtomatik yig'iladigan ma'lumotlar
 - **Joylashuv (GPS)** — faqat siz ruxsat berganingizda, manzilni avtomatik aniqlash uchun
+- **Haydovchining fon rejimidagi joylashuvi** — faqat Sarix Driver ilovasida va faqat
+  qabul qilingan buyurtma davomida. Safar boshlangandan tugagunga qadar haydovchining
+  joylashuvi ilova yopiq yoki fonda bo'lsa ham serverga yuboriladi, shunda yo'lovchi
+  mashinani xaritada real vaqtda kuzatib turadi. Safar tugashi, bekor qilinishi yoki
+  hisobdan chiqish bilan yuborish avtomatik to'xtaydi. Yuborilayotgan payt Android'da
+  doimiy bildirishnoma ko'rinib turadi. Yo'lovchi ilovasida fon rejimida joylashuv
+  yig'ilmaydi.
 - **Qurilma identifikatori** — texnik xatoliklarni tahlil qilish uchun
 - **Ilova ishlatish statistikasi** — ilovani yaxshilash uchun
 
@@ -81,7 +88,10 @@ Bu ilova **18 yoshdan oshganlar** uchun mo'ljallangan. Biz bilamak ravishda 18 y
 ## 9. Ruxsatlar (Permissions)
 
 Ilova quyidagi ruxsatlarni so'raydi:
-- **Joylashuv** — manzilni aniqlash uchun (faqat ilova ochiq turganda)
+- **Joylashuv** — manzilni aniqlash uchun (yo'lovchi ilovasida faqat ilova ochiq turganda)
+- **Fon rejimida joylashuv** (`ACCESS_BACKGROUND_LOCATION`) — faqat Sarix Driver
+  ilovasida, faqat faol safar davomida. Bu ruxsatni bermasangiz ham ilova ishlaydi:
+  joylashuv u holda faqat ilova ochiq turganda yuboriladi.
 - **Internet** — server bilan ishlash uchun
 - **Bildirishnomalar** — yangi xabarlar uchun
 - **Vibratsiya** — bildirishnoma uchun
