@@ -6,6 +6,11 @@
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
+// Safe above the `jest.mock` call below: babel-plugin-jest-hoist lifts `jest.mock` above every
+// import, so the mock is registered before this module is resolved. The module under test holds
+// no state of its own, so one import for the whole suite is enough.
+import { getDriverAppConfig, isAppsMaintenance } from '../appConfig';
+
 const mockState: { response: unknown; error: Error | null; calls: unknown[] } = {
   response: { maintenance_mode: false },
   error: null,
@@ -23,8 +28,6 @@ jest.mock('../client', () => ({
     },
   },
 }));
-
-import { getDriverAppConfig, isAppsMaintenance } from '../appConfig';
 
 beforeEach(() => {
   mockState.response = { maintenance_mode: false };
