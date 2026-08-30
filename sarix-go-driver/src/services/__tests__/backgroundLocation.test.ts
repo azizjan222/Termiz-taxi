@@ -36,7 +36,7 @@ interface FakeWorld {
   now: number;
   ack: { success: boolean; active_orders?: number };
   postError: (Error & { response?: { status: number } }) | null;
-  posts: Array<[number, number]>;
+  posts: [number, number][];
   taskHandler: TaskHandler | null;
 }
 
@@ -139,7 +139,7 @@ type Module = typeof import('../backgroundLocation');
  */
 function load(): Module {
   jest.resetModules();
-  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('../backgroundLocation') as Module;
 }
 
