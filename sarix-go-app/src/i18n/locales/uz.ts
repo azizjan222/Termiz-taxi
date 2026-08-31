@@ -289,6 +289,25 @@ export default {
     codeAcceptedBody: "{{name}} sizni taklif qilgan. Birinchi safaringizni tugatganingizdan keyin {{amount}} so'm bonus hisobingizga tushadi.",
     alreadyReferred: "Siz allaqachon taklif kodini ishlatgansiz.",
   },
+  // Bonus wallet ledger. Rows are labelled from the transaction's `source`, NOT from the
+  // server's `reason` string — that is written in Uzbek for the audit log, so showing it
+  // directly would leak Uzbek text into the Russian and English UIs.
+  bonusHistory: {
+    title: 'Bonus tarixi',
+    open: "Bonus tarixini ko'rish",
+    empty: 'Bonus harakatlari yo\'q',
+    emptyHint: "Do'st taklif qiling yoki safar qiling — bonuslar shu yerda ko'rinadi.",
+    balanceAfter: "Qoldiq: {{amount}}",
+    sourceReferral: "Do'st taklifi bonusi",
+    sourceLoyalty: 'Sodiqlik mukofoti',
+    sourcePromo: 'Promo kod bonusi',
+    sourceAdmin: 'Administrator qo\'shdi',
+    sourceRedeem: 'Safar chegirmasi',
+    sourceRedeemOrder: 'Zakas #{{id}} chegirmasi',
+    sourceReversal: 'Bonus qaytarildi',
+    sourceReversalOrder: 'Zakas #{{id}} bekor qilindi — bonus qaytarildi',
+    sourceOther: 'Bonus harakati',
+  },
   addresses: {
     title: 'Mening manzillarim',
     empty: 'Saqlangan manzillar yo\'q',

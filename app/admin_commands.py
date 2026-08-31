@@ -19,6 +19,7 @@ from app.models import (
     User,
 )
 from app.services import notify_i18n as nt
+from app.services import rewards
 from app.services.push import send_push, send_push_bulk
 from app.utils.timefmt import local_day_start_utc, local_month_start_utc
 
@@ -1154,8 +1155,21 @@ async def cmd_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 BalanceTransaction.source.in_(("commission_refund", "bot_order_refund")),
                 BalanceTransaction.created_at >= since,
             ).scalar() or 0
+            # Passenger discounts on free-trial rides are paid straight to the driver's
+            # balance instead of being taken off a commission, so they are a real cost that
+            # no commission row reflects. Summing the credit together with its reversal
+            # makes a cancelled-and-reversed order contribute 0. Credits are positive
+            # (money reaching the driver), reversals negative.
+            reimbursed = session.query(
+                func.coalesce(func.sum(BalanceTransaction.amount), 0)
+            ).filter(
+                BalanceTransaction.source.in_(
+                    (rewards.REIMBURSEMENT_SOURCE, rewards.REIMBURSEMENT_REVERSAL_SOURCE)
+                ),
+                BalanceTransaction.created_at >= since,
+            ).scalar() or 0
             # Commission rows are negative (money leaving the driver), refunds positive.
-            return max(0, int(-charged) - int(refunded))
+            return max(0, int(-charged) - int(refunded) - int(reimbursed))
 
         today_revenue = _collected(today_start)
         month_revenue = _collected(month_start)

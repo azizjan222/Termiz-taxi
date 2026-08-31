@@ -1,9 +1,11 @@
 """Promo codes and Referral system."""
+import logging
 import random
-import string
 
 from aiohttp import web
+from sqlalchemy.exc import IntegrityError
 
+from app import config
 from app.database import get_session
 from app.models import BonusTransaction, User
 from app.services import promo as promo_service
@@ -22,10 +24,54 @@ from app.utils.auth import require_auth
 from app.utils.body import BodyError, read_json_object, read_str
 from app.utils.timefmt import iso_utc
 
+logger = logging.getLogger(__name__)
 
-def _generate_referral_code() -> str:
-    """Generate unique referral code like 'ABC123'."""
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+# Ambiguous glyphs are excluded: codes are read aloud, retyped from screenshots and
+# hand-copied between friends, where O/0 and I/1 are the classic mix-ups. `link_referral`
+# cannot recover from a mistyped character — it just answers "code not found".
+_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def _generate_referral_code(length: int = 6) -> str:
+    """Generate a referral code like 'ABC123'."""
+    return "".join(random.choices(_CODE_ALPHABET, k=length))
+
+
+def _ensure_referral_code(session, user: User) -> str | None:
+    """Assign this user a unique referral code, generating one on first use.
+
+    Returns the code, or None if one could not be assigned (which the caller must handle
+    rather than render). The retry loop used to give up silently after 10 collisions and
+    leave ``referral_code`` NULL, so the screen showed an empty code and the invite link
+    read ``?start=ref_None`` — a dead link, with nothing logged.
+
+    The code length grows after a few failures so the loop cannot livelock on a saturated
+    keyspace, and an exhausted loop is logged as an error instead of vanishing.
+    """
+    if user.referral_code:
+        return user.referral_code
+
+    for attempt in range(10):
+        # 32^6 is ~1e9 combinations; widen anyway if we somehow keep colliding.
+        code = _generate_referral_code(6 if attempt < 6 else 8)
+        if session.query(User.id).filter_by(referral_code=code).first():
+            continue
+        user.referral_code = code
+        try:
+            session.commit()
+            return code
+        except IntegrityError:
+            # Lost a race against a concurrent request for the same code: the unique
+            # index did its job, so roll back and draw again.
+            session.rollback()
+            user = session.query(User).filter_by(id=user.id).first()
+            if user is None:
+                return None
+            if user.referral_code:
+                return user.referral_code
+
+    logger.error("Could not assign a referral code for user %s after 10 attempts", user.id)
+    return None
 
 
 # ============= PROMO CODES =============
@@ -80,22 +126,27 @@ async def get_referral_info(request: web.Request) -> web.Response:
     session = get_session()
     try:
         u = session.query(User).filter_by(id=user.id).first()
+        if not u:
+            return web.json_response({"error": "Foydalanuvchi topilmadi"}, status=404)
 
-        # Generate code if missing
-        if not u.referral_code:
-            for _ in range(10):
-                code = _generate_referral_code()
-                if not session.query(User).filter_by(referral_code=code).first():
-                    u.referral_code = code
-                    session.commit()
-                    break
+        code = _ensure_referral_code(session, u)
+        if not code:
+            # Better an explicit, retryable failure than a screen offering a blank code and
+            # a `?start=ref_None` link that can never match anyone.
+            return web.json_response(
+                {"error": "Taklif kodi yaratilmadi. Birozdan so'ng qayta urinib ko'ring."},
+                status=503,
+            )
 
         # Count my referrals
         referred_count = session.query(User).filter_by(referred_by_user_id=u.id).count()
 
         return web.json_response({
-            "referral_code": u.referral_code,
-            "referral_link": f"https://t.me/termizsariosiyotaxi_bot?start=ref_{u.referral_code}",
+            "referral_code": code,
+            # Built from config, like every other deep link (see app/api/auth.py). The bot
+            # handle used to be hardcoded here, so renaming the bot would have silently
+            # broken every invite link users had already shared — with no error anywhere.
+            "referral_link": f"https://t.me/{config.BOT_USERNAME}?start=ref_{code}",
             "referred_count": referred_count,
             "referral_count": u.referral_count or 0,
             "bonus_earned": u.referral_bonus_earned or 0,

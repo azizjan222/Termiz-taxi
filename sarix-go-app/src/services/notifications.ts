@@ -145,11 +145,24 @@ export async function unregisterPushToken(): Promise<void> {
 }
 
 export type NotificationData = {
-  type?: 'new_order' | 'order_accepted' | 'order_started' | 'order_cancelled' | 'order_completed' | 'balance_topup';
+  type?:
+    | 'new_order'
+    | 'order_accepted'
+    | 'order_started'
+    | 'order_cancelled'
+    | 'order_completed'
+    | 'balance_topup'
+    // Bonus wallet payouts sent when a ride completes (app/services/push.py).
+    // `bonus_earned` goes to the passenger who took the ride; `referral_reward` goes to
+    // whoever invited them, who is not part of that request and has no other way to know.
+    | 'bonus_earned'
+    | 'referral_reward';
   order_id?: number;
   by?: string;
   amount?: number;
   bonus?: number;
+  /** Wallet total after the change, carried by the bonus notifications above. */
+  balance?: number;
 };
 
 export function addNotificationReceivedListener(

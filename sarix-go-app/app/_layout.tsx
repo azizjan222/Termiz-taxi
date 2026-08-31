@@ -161,6 +161,7 @@ export default function RootLayout() {
           <Stack.Screen name="ai-chat" options={{ presentation: 'modal' }} />
           <Stack.Screen name="rate-driver" />
           <Stack.Screen name="referral" />
+          <Stack.Screen name="bonus-history" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="saved-addresses" />
           <Stack.Screen name="notifications" />

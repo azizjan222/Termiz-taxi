@@ -6,7 +6,11 @@ from aiohttp import web
 from app.api.drivers import _get_driver_from_request, compute_online_seconds_today
 from app.database import get_session
 from app.models import Order
-from app.services.rewards import effective_commission, passenger_payable
+from app.services.rewards import (
+    effective_commission,
+    net_reimbursements_by_order,
+    passenger_payable,
+)
 from app.utils.timefmt import local_day_start_utc, local_day_str
 
 
@@ -69,10 +73,21 @@ async def driver_stats(request: web.Request) -> web.Response:
             .count()
         )
 
+        # Discount reimbursements for these rides, in ONE query (see the helper's docstring
+        # for why a per-order lookup would be wrong here). On a free-trial ride the driver
+        # collects less cash and is credited the difference instead, so this term is part of
+        # what they earned — omitting it understated their earnings by the whole discount on
+        # every discounted trial ride, while their balance plainly showed the credit.
+        reimbursements = net_reimbursements_by_order(session, [o.id for o in completed])
+
+        def driver_received(order) -> int:
+            """Everything the driver got for this ride: cash + any discount reimbursement."""
+            return passenger_payable(order) + reimbursements.get(order.id, 0)
+
         completed_count = len(completed)
-        # Cash the driver actually collected: bonus and promo discounts are settled against
-        # commission, not paid in cash, so neither counts as revenue.
-        total_revenue = sum(passenger_payable(o) for o in completed)
+        # What the driver actually took in: cash collected, plus a reimbursement where the
+        # platform funded the passenger's discount directly instead of via commission.
+        total_revenue = sum(driver_received(o) for o in completed)
         # Commission the driver actually paid. `commission_collected` matters: a driver on a
         # free trial / active subscription is never charged, so counting the commission for
         # those rides understated their earnings by the full amount of every ride — while
@@ -98,10 +113,10 @@ async def driver_stats(request: web.Request) -> web.Response:
                 if day not in daily:
                     daily[day] = {"count": 0, "revenue": 0, "earnings": 0}
                 daily[day]["count"] += 1
-                # Same basis as the totals above: cash collected, then net of the
-                # commission actually deducted.
-                daily[day]["revenue"] += passenger_payable(o)
-                daily[day]["earnings"] += passenger_payable(o) - commission_paid(o)
+                # Same basis as the totals above: cash collected (plus any discount
+                # reimbursement), then net of the commission actually deducted.
+                daily[day]["revenue"] += driver_received(o)
+                daily[day]["earnings"] += driver_received(o) - commission_paid(o)
 
         daily_list = [
             {"date": k, **v}

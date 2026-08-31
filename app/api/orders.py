@@ -499,31 +499,38 @@ async def cancel_order(request: web.Request) -> web.Response:
             return web.json_response({"error": "Buyurtma holati o'zgargan"}, status=409)
         session.refresh(order)
 
-        from app.services.rewards import effective_commission, release_bonus_for_order
+        from app.services.rewards import (
+            effective_commission,
+            release_bonus_for_order,
+            reverse_discount_reimbursement,
+        )
+        # Load the driver whenever there is one, not only when a commission was collected.
+        # A free-trial ride never collects commission but CAN have been reimbursed for the
+        # passenger's discount, and that credit has to be reversed below.
+        driver = (
+            session.query(Driver)
+            .filter_by(id=order.driver_id)
+            .with_for_update()
+            .first()
+            if order.driver_id else None
+        )
         refunded = False
-        if order.driver_id and order.commission_collected:
-            driver = (
-                session.query(Driver)
-                .filter_by(id=order.driver_id)
-                .with_for_update()
-                .first()
-            )
-            if driver:
-                refund_amount = effective_commission(order)
-                if refund_amount > 0:
-                    driver.balance = (driver.balance or 0) + refund_amount
-                    session.add(BalanceTransaction(
-                        driver_id=driver.id,
-                        amount=refund_amount,
-                        balance_after=driver.balance,
-                        source="commission_refund",
-                        reference_type="order",
-                        reference_id=order.id,
-                        idempotency_key=f"order:{order.id}:commission_refund",
-                        note="Passenger-cancelled order refund",
-                    ))
-                order.commission_collected = False
-                refunded = True
+        if driver and order.commission_collected:
+            refund_amount = effective_commission(order)
+            if refund_amount > 0:
+                driver.balance = (driver.balance or 0) + refund_amount
+                session.add(BalanceTransaction(
+                    driver_id=driver.id,
+                    amount=refund_amount,
+                    balance_after=driver.balance,
+                    source="commission_refund",
+                    reference_type="order",
+                    reference_id=order.id,
+                    idempotency_key=f"order:{order.id}:commission_refund",
+                    note="Passenger-cancelled order refund",
+                ))
+            order.commission_collected = False
+            refunded = True
 
         passenger = (
             session.query(User)
@@ -535,6 +542,11 @@ async def cancel_order(request: web.Request) -> web.Response:
         # Return the promo redemption too: the ride never happened, so a single-use code
         # must not be burnt.
         promo_service.release_promo_for_order(session, order)
+        # Take back a free-trial discount reimbursement, if one was already paid. The
+        # discounts have just been returned to the passenger, so keeping it would grant the
+        # same money twice. Must run AFTER the releases and reads the amount from the
+        # ledger, because they zero bonus_used/promo_discount.
+        reverse_discount_reimbursement(session, order, driver)
         order.commission_charged = True
 
         session.add(OrderHistory(

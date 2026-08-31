@@ -187,7 +187,10 @@ def _ensure_test_driver(session, phone: str, telegram_id: int | None = None,
 
 
 def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
-    """Give the first `FREE_TRIAL_DRIVER_LIMIT` drivers a free month.
+    """Give the first `FREE_TRIAL_DRIVER_LIMIT` drivers `FREE_TRIAL_DAYS` of free service.
+
+    Launch terms are the first 50 drivers for 14 days; both numbers are admin-editable, so
+    this deliberately reads them at call time rather than baking a duration into the name.
 
     Called at login. Idempotent per driver (only acts when subscription_until is None).
     The global cap is enforced with an ATOMIC conditional UPDATE on the Setting counter,
@@ -1098,6 +1101,11 @@ async def accept_order(request: web.Request) -> web.Response:
             # Passenger must see the driver's chosen contact number, not the raw
             # Telegram/identity phone (consistent with GET /api/orders/{id}).
             driver_payload["phone"] = d.contact_phone or d.phone
+            # Deliberately carries no discount fields. The discount IS decided here, at
+            # accept time, but the passenger app navigates to the order screen on this
+            # event and fetches GET /api/orders/{id}, which already returns the
+            # authoritative `payable`/`bonus_used`. Duplicating them in the event would add
+            # a second source of truth that the bot accept path does not send at all.
             await ws_manager.send_to_passenger(order.passenger_id, {
                 "type": "order_accepted",
                 "order_id": order.id,
@@ -1281,9 +1289,13 @@ async def complete_order(request: web.Request) -> web.Response:
             .first()
             if order.passenger_id else None
         )
+        # Keep the summary: it names the referrer, who is not otherwise part of this
+        # request and has no other way to learn they were just paid. Discarding it left
+        # every referral payout completely silent.
+        rewards_result = {}
         if passenger:
             from app.services import rewards
-            rewards.apply_ride_rewards(session, order, passenger)
+            rewards_result = rewards.apply_ride_rewards(session, order, passenger)
 
         session.add(OrderHistory(
             order_id=order.id,
@@ -1311,6 +1323,44 @@ async def complete_order(request: web.Request) -> web.Response:
         except Exception:
             pass
 
+        # Bonus payouts earned by this ride. Best-effort and each in its own try/except:
+        # the money is already committed, so a failed push must never fail the request or
+        # block the other recipient.
+        passenger_earned = (
+            (rewards_result.get("loyalty_reward") or 0)
+            + (rewards_result.get("new_user_bonus") or 0)
+        )
+        #
+        # Push only, no WebSocket twin. The passenger app's foreground handler displays
+        # pushes as alerts, so the notification lands whether or not the app is open, and a
+        # WS event would need a handler on every screen to not be dead weight. The
+        # authoritative record is the wallet ledger (GET /api/bonus/transactions).
+        if passenger_earned > 0 and order.passenger_id:
+            try:
+                from app.services.push import notify_bonus_earned
+                await notify_bonus_earned(
+                    session,
+                    order.passenger_id,
+                    passenger_earned,
+                    rewards_result.get("passenger_balance") or 0,
+                )
+            except Exception as e:
+                logger.debug("Bonus earned push failed (order %s): %s", order.id, e)
+
+        referrer_bonus = rewards_result.get("referrer_bonus") or 0
+        referrer_id = rewards_result.get("referrer_user_id")
+        if referrer_bonus > 0 and referrer_id:
+            try:
+                from app.services.push import notify_referral_reward
+                await notify_referral_reward(
+                    session,
+                    referrer_id,
+                    referrer_bonus,
+                    rewards_result.get("referrer_balance") or 0,
+                )
+            except Exception as e:
+                logger.debug("Referral reward push failed (order %s): %s", order.id, e)
+
         return web.json_response({"success": True})
     finally:
         session.close()
@@ -1333,6 +1383,13 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
             return web.json_response({"error": "Buyurtma topilmadi"}, status=404)
         if order.status not in ("accepted", "in_progress"):
             return web.json_response({"error": "Bekor qilib bo'lmaydi"}, status=400)
+
+        # Whether the trip had already STARTED decides what happens to the discounts
+        # below, so capture it before the claim overwrites the status. A driver keeps the
+        # ability to cancel a started trip (they need an escape hatch when a ride falls
+        # apart mid-way), but such a ride physically happened and the passenger already
+        # handed over the discounted fare in cash.
+        ride_started = order.status == "in_progress"
 
         now = datetime.utcnow()
         claimed = (
@@ -1373,13 +1430,27 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
         # code, while the platform had already absorbed the same amount as forgone
         # commission. The passenger-cancel path in app/api/orders.py already computes the
         # refund before releasing; this path now matches it.
-        from app.services.rewards import effective_commission, release_bonus_for_order
+        from app.services.rewards import (
+            effective_commission,
+            release_bonus_for_order,
+            reverse_discount_reimbursement,
+        )
         commission_owed = effective_commission(order)
 
-        release_bonus_for_order(session, order, passenger)
-        # The driver cancelled, so the passenger keeps their promo code for another ride.
-        from app.services.promo import release_promo_for_order
-        release_promo_for_order(session, order)
+        # Discounts are only returned when the ride did NOT happen.
+        #
+        # A driver may cancel a trip they already STARTED, and for that ride the passenger
+        # has paid the discounted fare in cash. Returning the bonus and un-burning the
+        # promo there pays the passenger the same money twice, and — now that a free-trial
+        # ride's discount is reimbursed to the driver — reversing that credit would leave
+        # the driver short the cash they had already handed over. app/api/orders.py refuses
+        # a passenger cancel of an in_progress ride for exactly this reason; the driver
+        # keeps the escape hatch, but the money is settled as if the ride completed.
+        if not ride_started:
+            release_bonus_for_order(session, order, passenger)
+            # The driver cancelled, so the passenger keeps their promo code for another ride.
+            from app.services.promo import release_promo_for_order
+            release_promo_for_order(session, order)
 
         # Claiming the cancellation first prevents the background scheduler from racing
         # this charge. Lock the driver while changing money and write the same immutable
@@ -1417,6 +1488,17 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
                 ))
                 order.commission_collected = True
                 charged = True
+        # The scheduler reimburses a free-trial ride's discount 15 minutes after
+        # acceptance, which can land BEFORE this cancellation. When the discounts have just
+        # been released back to the passenger, leaving that credit in place would pay the
+        # driver for a ride that never happened while the passenger keeps their bonus.
+        # Reads the amount from the ledger, since bonus_used/promo_discount are now 0.
+        #
+        # Skipped for a started ride: the passenger really did pay less cash, so the
+        # reimbursement is money the driver is genuinely owed.
+        reimbursement_reversed = 0
+        if not ride_started:
+            reimbursement_reversed = reverse_discount_reimbursement(session, order, d)
         order.commission_charged = True
 
         session.add(OrderHistory(
@@ -1440,6 +1522,20 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
                 "order_id": order.id,
                 "by": "driver",
             })
+
+        # A reversal is a DEBIT on a cash-carrying account. The credit it undoes was
+        # announced with "you lose nothing", so staying silent here would leave the driver
+        # with exactly the unexplained deduction that push exists to prevent.
+        if reimbursement_reversed > 0 and d:
+            try:
+                from app.services.push import notify_driver_reimbursement_reversed
+                await notify_driver_reimbursement_reversed(
+                    session, d.id, reimbursement_reversed, order.id,
+                )
+            except Exception as e:
+                logger.debug(
+                    "Reimbursement reversal push failed (order %s): %s", order.id, e,
+                )
 
         return web.json_response({
             "success": True,
@@ -1475,9 +1571,15 @@ async def driver_balance_history(request: web.Request) -> web.Response:
         # /api/driver/stats, which reports payable - effective_commission for the same rides.
         #
         # Trial/subscription rides collect no commission (commission_collected stays False).
-        from app.services.rewards import effective_commission
+        # On those rides a passenger discount is instead reimbursed to the driver's balance,
+        # so that credit is part of what they earned — without it the total is short the
+        # discount on every discounted trial ride. Fetched in one aggregate query.
+        from app.services.rewards import effective_commission, net_reimbursements_by_order
+        reimbursements = net_reimbursements_by_order(session, [o.id for o in orders])
         total_earned = sum(
-            passenger_payable(o) - (effective_commission(o) if o.commission_collected else 0)
+            passenger_payable(o)
+            + reimbursements.get(o.id, 0)
+            - (effective_commission(o) if o.commission_collected else 0)
             for o in orders
             if o.price
         )

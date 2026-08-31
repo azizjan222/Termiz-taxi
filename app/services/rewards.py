@@ -6,11 +6,24 @@ Two SEPARATE programs share ONE wallet (``User.bonus_balance``):
 * Referral — an invited passenger's first ride rewards the referrer once, and the invited
   passenger earns a bonus on each of their first N rides.
 
-Bonus is SPENT as a fare discount, but only ever funded by forgone commission:
-``bonus_used <= that ride's commission`` and never on a free-trial/subscription driver's
-ride (there is no commission to fund it). This guarantees the driver's net is unchanged
-and the platform never pays cash out of pocket. Every change is written to the
-``BonusTransaction`` ledger for audit and reporting.
+Bonus is SPENT as a fare discount, always capped by that ride's commission
+(``bonus_used + promo_discount <= commission``). Passengers pay CASH directly to the
+driver, so the driver hands over the discount up front and the platform makes them whole
+out of commission. There are two ways that settlement happens, and BOTH must exist:
+
+* **Commission-paying ride** — the scheduler charges ``effective_commission`` (commission
+  minus the discount), so the driver simply keeps more of the fare. Nothing else to do.
+* **Free-trial / subscription ride** — no commission is charged, so reducing it settles
+  nothing and the discount would come straight out of the driver's pocket. The platform
+  therefore REIMBURSES the driver's balance for the discount
+  (:func:`reimburse_discount_for_order`).
+
+Either way the platform's cost is exactly the discount in forgone commission and the
+driver's net is unchanged — which is why bonus is now spendable on every ride instead of
+silently doing nothing whenever the driver happened to be on the free trial.
+
+Every change is written to a ledger for audit: ``BonusTransaction`` for the passenger's
+wallet, ``BalanceTransaction`` for the driver's.
 
 The functions here are synchronous (DB only) and take an open Session; the caller owns the
 commit. That keeps them trivially unit-testable and safe on both SQLite and Postgres.
@@ -18,7 +31,9 @@ commit. That keeps them trivially unit-testable and safe on both SQLite and Post
 import logging
 from datetime import datetime
 
-from app.models import BonusTransaction, User
+from sqlalchemy import func
+
+from app.models import BalanceTransaction, BonusTransaction, User
 from app.services.dynamic_settings import (
     get_bonus_max_per_ride,
     get_loyalty_points_per_ride,
@@ -33,9 +48,27 @@ from app.services.dynamic_settings import (
 logger = logging.getLogger("sarixgo.rewards")
 
 
-def _subscription_active(driver, now: datetime) -> bool:
-    """True while a driver pays NO commission (free trial / active subscription)."""
-    return bool(driver and driver.subscription_until and driver.subscription_until > now)
+# Ledger sources for the two legs of a free-trial discount settlement. Kept as constants
+# because the scheduler, both cancel paths and the reporting queries must agree on them.
+# Both MUST stay within BalanceTransaction.source's VARCHAR(30); the obvious
+# "discount_reimbursement_reversal" is 31 characters and would be rejected by Postgres
+# (SQLite would have silently accepted it, so the tests would not have caught it).
+REIMBURSEMENT_SOURCE = "discount_reimbursement"  # 22 chars
+REIMBURSEMENT_REVERSAL_SOURCE = "reimbursement_reversal"  # 22 chars
+
+
+def discount_total(order) -> int:
+    """Total discount the passenger received on this ride (bonus + promo).
+
+    This is the amount of cash the driver did NOT collect, so it is exactly what the
+    platform owes them when no commission is charged for the ride.
+    """
+    if order is None:
+        return 0
+    return max(
+        0,
+        (order.bonus_used or 0) + (getattr(order, "promo_discount", 0) or 0),
+    )
 
 
 def effective_commission(order) -> int:
@@ -133,10 +166,24 @@ def reserve_bonus_for_order(session, order, driver, passenger, now: datetime | N
     and the driver's net is unchanged. Doing this at accept — not completion — also removes
     any race with the scheduler and any free-trial/subscription flip mid-ride.
 
+    A free-trial / subscription driver is NOT excluded. This used to return 0 for them,
+    which meant a passenger who ticked "use my bonus" was quietly charged full price with
+    no discount, no explanation and no way to ever spend their wallet while the launch
+    trial was running — the bonus was effectively dead money. The ride's commission is
+    still computed and stored for a trial driver, so the discount stays capped exactly as
+    it is for everyone else; what changes is only WHO settles it, and the platform
+    reimburses the driver's balance instead of forgoing a charge
+    (see :func:`reimburse_discount_for_order`, called by the commission scheduler).
+
+    ``driver`` is retained in the signature: callers already have the row, and the accept
+    path must pass the driver it just claimed the order for so the reimbursement leg has
+    an unambiguous owner even if the order is reassigned later. ``now`` is likewise kept
+    for call-site compatibility; neither is read any more, because the reservation no
+    longer depends on the driver's subscription state.
+
     Returns the bonus reserved (0 if nothing applied). Guards (any failing -> 0):
       * the passenger opted in (``order.use_bonus``) — dormant until the apps send it;
       * not already reserved; commission not yet processed;
-      * the driver is NOT on a free trial / subscription (no commission to fund it);
       * ``commission > 0`` and the wallet has a balance.
     """
     if not passenger or not getattr(order, "use_bonus", False):
@@ -145,9 +192,6 @@ def reserve_bonus_for_order(session, order, driver, passenger, now: datetime | N
         return 0  # already reserved
     if getattr(order, "commission_charged", False):
         return 0  # too late — commission already processed for this order
-    now = now or datetime.utcnow()
-    if _subscription_active(driver, now):
-        return 0  # trial/subscription: no commission to fund a discount
     commission = order.commission or 0
     if commission <= 0:
         return 0
@@ -212,15 +256,198 @@ def release_bonus_for_order(session, order, passenger) -> int:
     return used
 
 
+def net_reimbursements_by_order(session, order_ids) -> dict[int, int]:
+    """Map ``order_id -> net discount reimbursement`` for the given orders.
+
+    A reimbursement is real income for the driver and a real cost for the platform, so
+    every money report has to account for it. Reports read the fare with
+    :func:`passenger_payable` (the cash actually collected), which on a free-trial ride is
+    short by exactly the discount — the credit is what makes the driver whole, and without
+    this term their earnings are understated on every discounted trial ride.
+
+    Returns the SUM of the credit and any reversal, so a cancelled-and-reversed order
+    contributes 0 rather than a phantom credit. Done as one aggregate query on purpose:
+    the callers are list endpoints, and a per-order lookup would be an N+1.
+    """
+    ids = [i for i in (order_ids or []) if i]
+    if not ids:
+        return {}
+    rows = (
+        session.query(
+            BalanceTransaction.reference_id,
+            func.coalesce(func.sum(BalanceTransaction.amount), 0),
+        )
+        .filter(
+            BalanceTransaction.source.in_(
+                (REIMBURSEMENT_SOURCE, REIMBURSEMENT_REVERSAL_SOURCE)
+            ),
+            BalanceTransaction.reference_type == "order",
+            BalanceTransaction.reference_id.in_(ids),
+        )
+        .group_by(BalanceTransaction.reference_id)
+        .all()
+    )
+    return {int(ref): int(total or 0) for ref, total in rows}
+
+
+def _reimbursement_key(order_id: int) -> str:
+    return f"order:{order_id}:discount_reimbursement"
+
+
+def _reimbursement_reversal_key(order_id: int) -> str:
+    return f"order:{order_id}:discount_reimbursement_reversal"
+
+
+def reimbursement_paid(session, order) -> BalanceTransaction | None:
+    """The reimbursement ledger row for this order, if one was already paid."""
+    if order is None or not getattr(order, "id", None):
+        return None
+    return (
+        session.query(BalanceTransaction)
+        .filter_by(idempotency_key=_reimbursement_key(order.id))
+        .first()
+    )
+
+
+def reimbursement_is_reversed(session, order_id: int) -> bool:
+    """True once a paid reimbursement has been taken back.
+
+    Exposed so callers never rebuild the ledger key themselves — the scheduler's
+    notification step needs this check, and a second hand-written copy of the key string is
+    exactly how such a guard silently stops matching.
+    """
+    if not order_id:
+        return False
+    return (
+        session.query(BalanceTransaction.id)
+        .filter_by(idempotency_key=_reimbursement_reversal_key(order_id))
+        .first()
+        is not None
+    )
+
+
+def reimburse_discount_for_order(session, order, driver) -> int:
+    """Pay a driver back a passenger discount that NO commission was collected to fund.
+
+    Call this wherever the platform decides not to charge commission for a ride that
+    carried a bonus/promo discount — today that is the free-trial/subscription branch of
+    the commission scheduler.
+
+    Why it is required: the passenger pays cash, and they paid
+    ``price - bonus_used - promo_discount``. On a commission-paying ride the driver is made
+    whole by being charged only ``effective_commission``. On a free ride there is no charge
+    to reduce, so without this credit the driver would simply be short the discount — the
+    platform would be funding passenger bonuses out of drivers' pockets. Crediting
+    ``balance`` (the wallet future commission is drawn from) costs the platform the same
+    forgone commission the non-trial path costs it, just later.
+
+    Idempotent via the ``order:<id>:discount_reimbursement`` ledger key, so a re-scan or a
+    retry can never pay twice. Returns the amount credited (0 if nothing was owed).
+    """
+    if order is None or driver is None:
+        return 0
+    amount = discount_total(order)
+    if amount <= 0:
+        return 0
+    key = _reimbursement_key(order.id)
+    if session.query(BalanceTransaction.id).filter_by(idempotency_key=key).first():
+        return 0
+
+    driver.balance = (driver.balance or 0) + amount
+    session.add(BalanceTransaction(
+        driver_id=driver.id,
+        amount=amount,
+        balance_after=driver.balance,
+        source=REIMBURSEMENT_SOURCE,
+        reference_type="order",
+        reference_id=order.id,
+        idempotency_key=key,
+        note="Yo'lovchi chegirmasi qoplandi (komissiya olinmadi)",
+    ))
+    logger.info(
+        "Discount reimbursed: order=%s driver=%s amount=%s", order.id, driver.id, amount,
+    )
+    return amount
+
+
+def reverse_discount_reimbursement(session, order, driver) -> int:
+    """Take a reimbursement back when the ride is cancelled and the discount is returned.
+
+    The scheduler reimburses 15 minutes after acceptance, which can land BEFORE a
+    cancellation. Cancelling releases the bonus to the passenger's wallet and returns the
+    promo code, so leaving the credit in place would hand the driver the discount amount
+    for a ride that never happened and let the passenger keep the bonus as well.
+
+    Reads the amount from the original ledger row rather than from the order, because both
+    cancel paths zero ``bonus_used``/``promo_discount`` while releasing — recomputing it
+    from the order would always yield 0. Idempotent, and refuses to touch a driver other
+    than the one that was credited.
+    """
+    paid = reimbursement_paid(session, order)
+    if not paid or (paid.amount or 0) <= 0:
+        return 0
+    if driver is None or driver.id != paid.driver_id:
+        # Never debit someone who was not credited. Not reachable today (accepting an order
+        # requires status == "new", so an order cannot change hands), but logged loudly
+        # rather than returning a silent 0: if reassignment ever becomes possible this
+        # leaves the credit with the old driver while the passenger's bonus is returned,
+        # and an unlogged early return would make that leak invisible.
+        logger.warning(
+            "Reimbursement for order %s not reversed: credited driver %s, current driver %s",
+            order.id, paid.driver_id, getattr(driver, "id", None),
+        )
+        return 0
+    key = _reimbursement_reversal_key(order.id)
+    if session.query(BalanceTransaction.id).filter_by(idempotency_key=key).first():
+        return 0
+
+    amount = paid.amount
+    driver.balance = (driver.balance or 0) - amount
+    session.add(BalanceTransaction(
+        driver_id=driver.id,
+        amount=-amount,
+        balance_after=driver.balance,
+        source=REIMBURSEMENT_REVERSAL_SOURCE,
+        reference_type="order",
+        reference_id=order.id,
+        idempotency_key=key,
+        note="Buyurtma bekor qilindi — chegirma qoplamasi qaytarildi",
+    ))
+    logger.info(
+        "Discount reimbursement reversed: order=%s driver=%s amount=%s",
+        order.id, driver.id, amount,
+    )
+    return amount
+
+
 def apply_ride_rewards(session, order, passenger: User, now: datetime | None = None) -> dict:
     """Grant loyalty + referral EARNINGS for a passenger's completed ride.
 
-    Call exactly once, when an order transitions to ``completed``. Returns a small summary
-    dict (useful for logging/notifications). Crediting only adds numbers to wallets; it is
-    always safe (the real cost is deferred to redemption and capped at commission).
+    Call exactly once, when an order transitions to ``completed``. Crediting only adds
+    numbers to wallets; it is always safe (the real cost is deferred to redemption and
+    capped at commission).
+
+    Returns a summary the caller is expected to ACT on, not just log:
+
+    * ``loyalty_reward`` / ``new_user_bonus`` — credited to this passenger;
+    * ``referrer_bonus`` + ``referrer_user_id`` — credited to the inviter, who is not part
+      of this request at all and has no other way to find out;
+    * ``passenger_balance`` / ``referrer_balance`` — the wallet totals to show.
+
+    ``referrer_user_id`` is returned precisely so the completion handler can push a
+    notification. Discarding this dict (which the driver-app handler used to do) meant a
+    referrer earned money in total silence and only discovered it by chance, which is the
+    one thing a referral programme cannot afford.
     """
     now = now or datetime.utcnow()
-    result = {"loyalty_reward": 0, "new_user_bonus": 0, "referrer_bonus": 0}
+    result = {
+        "loyalty_reward": 0,
+        "new_user_bonus": 0,
+        "referrer_bonus": 0,
+        "referrer_user_id": None,
+        "passenger_balance": 0,
+        "referrer_balance": 0,
+    }
     if not passenger or getattr(order, "rewards_applied", False):
         return result
     order.rewards_applied = True
@@ -299,7 +526,10 @@ def apply_ride_rewards(session, order, passenger: User, now: datetime | None = N
                             referrer.referral_bonus_earned or 0
                         ) + credited
                         result["referrer_bonus"] = credited
+                        result["referrer_user_id"] = referrer.id
+                        result["referrer_balance"] = referrer.bonus_balance or 0
             # Set the guard even if the referrer row is gone / capped, so we never retry.
             passenger.referral_reward_given = True
 
+    result["passenger_balance"] = passenger.bonus_balance or 0
     return result

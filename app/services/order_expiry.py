@@ -27,9 +27,9 @@ from datetime import datetime, timedelta
 
 from app import config
 from app.database import get_session
-from app.models import Order, User
+from app.models import Driver, Order, User
 from app.services.promo import release_promo_for_order
-from app.services.rewards import release_bonus_for_order
+from app.services.rewards import release_bonus_for_order, reverse_discount_reimbursement
 
 logger = logging.getLogger("sarixgo.expiry")
 
@@ -237,26 +237,38 @@ def cancel_abandoned_orders(now: datetime | None = None) -> list[dict]:
                     .with_for_update()
                     .first()
                 )
+            # All three money operations are ONE transfer and must succeed or fail
+            # together, so they share a single handler.
+            #
+            # They used to have an `except` each. Returning the passenger's bonus and
+            # taking the driver's reimbursement back are two sides of the same movement, so
+            # letting either commit alone means real money goes missing: release without
+            # reversal pays the same amount to both parties, reversal without release
+            # leaves the driver short. The order is committed as "cancelled" either way and
+            # this sweep only scans "accepted", so nothing would ever reconcile it. Failing
+            # the group instead rolls the claim back and the next cycle retries.
+            #
+            # An abandoned order is ALWAYS past the 15-minute commission window, so a
+            # free-trial ride's discount has already been reimbursed to the driver; the
+            # reversal must run AFTER both releases because it reads the amount from the
+            # ledger (they zero bonus_used/promo_discount).
             try:
                 release_bonus_for_order(session, order, passenger)
-            except Exception as bonus_error:  # pragma: no cover - defensive
-                logger.error(
-                    "Bonus release failed for abandoned order %s: %s", order.id, bonus_error
-                )
-            try:
                 release_promo_for_order(session, order)
-            except Exception as promo_error:  # pragma: no cover - defensive
-                logger.error(
-                    "Promo release failed for abandoned order %s: %s", order.id, promo_error
+                driver = (
+                    session.query(Driver)
+                    .filter_by(id=order.driver_id)
+                    .with_for_update()
+                    .first()
+                    if order.driver_id else None
                 )
-
-            # Commit per order so one bad row cannot discard the whole sweep.
-            try:
+                reverse_discount_reimbursement(session, order, driver)
+                # Commit per order so one bad row cannot discard the whole sweep.
                 session.commit()
-            except Exception as commit_error:  # pragma: no cover - defensive
+            except Exception as settle_error:  # pragma: no cover - defensive
                 session.rollback()
                 logger.error(
-                    "Could not close abandoned order %s: %s", order.id, commit_error
+                    "Could not close abandoned order %s: %s", order.id, settle_error
                 )
                 continue
 

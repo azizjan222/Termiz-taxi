@@ -316,8 +316,13 @@ REFERRAL_NEW_USER_MAX_RIDES = _get_int("REFERRAL_NEW_USER_MAX_RIDES", 3)
 REFERRAL_MAX_REWARDED = _get_int("REFERRAL_MAX_REWARDED", 20)
 # Redemption: the most bonus that may be applied to ONE ride. The effective discount is
 # min(this, that ride's commission, wallet balance) so the platform funds it purely from
-# forgone commission (driver net unchanged) and never pays cash out of pocket. Bonus is
-# NEVER applied on a free-trial/subscription driver's ride (no commission to fund it).
+# forgone commission and the driver's net is unchanged.
+#
+# Bonus DOES apply on a free-trial/subscription driver's ride. There is no commission to
+# reduce there, so the platform instead reimburses the discount to the driver's balance
+# (see app/services/rewards.py::reimburse_discount_for_order). Excluding those rides
+# instead — as this used to — made the wallet unspendable for the entire launch trial:
+# passengers ticked "use my bonus", paid full price, and were told nothing.
 BONUS_MAX_PER_RIDE = _get_int("BONUS_MAX_PER_RIDE", 5000)
 # Max simultaneously-active TAXI / full-car orders a driver may hold. Parcel (pochta)
 # orders are unlimited and do NOT count toward this limit.
@@ -326,8 +331,13 @@ MAX_ACTIVE_NONPARCEL_ORDERS = _get_int("MAX_ACTIVE_NONPARCEL_ORDERS", 4)
 # Driver free trial / subscription
 # The first N drivers who sign in to the driver app get FREE_TRIAL_DAYS of free service:
 # during the trial they do NOT need the minimum balance and pay NO commission per order.
-FREE_TRIAL_DRIVER_LIMIT = _get_int("FREE_TRIAL_DRIVER_LIMIT", 100)
-FREE_TRIAL_DAYS = _get_int("FREE_TRIAL_DAYS", 30)
+#
+# Launch terms: the first 50 drivers get 14 days. The defaults are the launch terms so a
+# fresh deploy behaves correctly without env vars; both remain overridable at runtime from
+# the admin panel (`free_trial_limit` / `free_trial_days`, see dynamic_settings.py), which
+# takes precedence over these values.
+FREE_TRIAL_DRIVER_LIMIT = _get_int("FREE_TRIAL_DRIVER_LIMIT", 50)
+FREE_TRIAL_DAYS = _get_int("FREE_TRIAL_DAYS", 14)
 
 # Require drivers to submit registration documents (via the bot) before they can use
 # the driver app. They can enter immediately after submitting; admin reviews via PDF.
