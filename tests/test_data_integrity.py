@@ -87,8 +87,14 @@ def test_ride_rewards_have_durable_order_guard(db):
     second = apply_ride_rewards(db, order, passenger)
     db.commit()
 
-    assert first == {"loyalty_reward": 0, "new_user_bonus": 0, "referrer_bonus": 0}
-    assert second == {"loyalty_reward": 0, "new_user_bonus": 0, "referrer_bonus": 0}
+    # Assert on the PAYOUTS, not on the exact shape of the summary dict. Comparing the
+    # whole dict pinned an implementation detail: adding `referrer_user_id` (needed so the
+    # completion handler can notify the referrer) broke this test without anything about
+    # the durability guard changing.
+    payout_keys = ("loyalty_reward", "new_user_bonus", "referrer_bonus")
+    assert all(first[k] == 0 for k in payout_keys)
+    # The point of the guard: a replay grants nothing a second time.
+    assert all(second[k] == 0 for k in payout_keys)
     assert passenger.loyalty_lifetime_rides == 1
     assert order.rewards_applied is True
 
