@@ -1501,19 +1501,44 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
             )
         )
         charged = False
-        if d and not subscription_active and not order.commission_charged:
-            commission = commission_owed
-            if commission > 0:
-                # Shared with the scheduler so both paths floor the debit identically and
-                # neither can drive the balance negative (ck_driver_balance_nonnegative).
-                from app.services.rewards import debit_commission
-                charged_now, _debt = debit_commission(
-                    session, d, order, commission,
-                    note="Driver-cancelled order commission",
-                )
-                if charged_now:
-                    order.commission_collected = True
-                charged = True
+        if d and not subscription_active:
+            # CLAIM the commission with a conditional UPDATE instead of reading
+            # `order.commission_charged` and writing the flag ~30 lines later.
+            #
+            # The deferred-commission scheduler writes the SAME ledger key
+            # (order:<id>:commission) and can commit in the window between the
+            # session.refresh(order) above and the flag write below. Under Postgres READ
+            # COMMITTED the old read-then-write therefore inserted a DUPLICATE idempotency
+            # key -> IntegrityError at commit -> 500 -> the ENTIRE cancellation rolled back,
+            # so the driver's "Bekor qilish" button appeared broken. Reachable exactly at
+            # the COMMISSION_WINDOW_MINUTES boundary, which is when a driver is most likely
+            # to give up on a ride.
+            #
+            # This is the same atomic-claim pattern the other 8 order transitions already
+            # use; only this path still did check-then-act.
+            commission_claimed = bool(
+                session.query(Order)
+                .filter(Order.id == order.id, Order.commission_charged == False)  # noqa: E712
+                .update({"commission_charged": True}, synchronize_session=False)
+            )
+            if commission_claimed:
+                # synchronize_session=False leaves the in-memory copy stale.
+                session.refresh(order)
+                commission = commission_owed
+                if commission > 0:
+                    # Shared with the scheduler so both paths floor the debit identically
+                    # and neither can drive the balance negative
+                    # (ck_driver_balance_nonnegative).
+                    from app.services.rewards import debit_commission
+                    charged_now, _debt = debit_commission(
+                        session, d, order, commission,
+                        note="Driver-cancelled order commission",
+                    )
+                    if charged_now:
+                        order.commission_collected = True
+                    charged = True
+            # claim failed => the scheduler already charged this order. Nothing to do; this
+            # is a normal outcome, not an error.
         # The scheduler reimburses a free-trial ride's discount 15 minutes after
         # acceptance, which can land BEFORE this cancellation. When the discounts have just
         # been released back to the passenger, leaving that credit in place would pay the
@@ -1525,6 +1550,10 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
         reimbursement_reversed = 0
         if not ride_started:
             reimbursement_reversed = reverse_discount_reimbursement(session, order, d)
+        # Still needed, and NOT redundant with the conditional claim above: the claim is
+        # skipped entirely for a subscription/trial ride, and this is what stops the
+        # scheduler from charging that ride 15 minutes later. When the claim did succeed, or
+        # when the scheduler won the race, the flag is already True and this is a no-op.
         order.commission_charged = True
 
         session.add(OrderHistory(
