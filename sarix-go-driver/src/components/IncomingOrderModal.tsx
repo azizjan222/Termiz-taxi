@@ -113,6 +113,11 @@ export const IncomingOrderModal: React.FC<Props> = ({
   if (!order) return null;
 
   const isParcel = order.service_type === 'parcel';
+  // Optional on the wire (an OTA can outrun the backend), so fall back to the old
+  // behaviour of showing the gross price rather than rendering an empty amount.
+  const discount = (order.bonus_used ?? 0) + (order.promo_discount ?? 0);
+  const payable = order.payable ?? order.price;
+  const hasDiscount = !isParcel && discount > 0;
   const countdownWidth = countdown.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
 
   return (
@@ -223,12 +228,23 @@ export const IncomingOrderModal: React.FC<Props> = ({
           {/* Price + commission */}
           <View style={styles.priceRow}>
             <View>
-              <Text style={styles.priceLabel}>{t('order.price')}</Text>
+              {/* A promo discount is applied when the order is CREATED, so it can already
+                  be in effect here and the fare shown must be what will be collected. A
+                  bonus discount is only decided at acceptance -- hence the note below
+                  rather than a number. */}
+              <Text style={styles.priceLabel}>
+                {hasDiscount ? t('order.payable') : t('order.price')}
+              </Text>
               <Text style={styles.priceValue}>
                 {isParcel
                   ? t('more.negotiable')
-                  : `${formatPrice(order.price)} ${t('more.currency')}`}
+                  : `${formatPrice(hasDiscount ? payable : order.price)} ${t('more.currency')}`}
               </Text>
+              {hasDiscount && (
+                <Text style={styles.discountLine}>
+                  {t('order.price')}: {formatPrice(order.price)} · -{formatPrice(discount)}
+                </Text>
+              )}
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={styles.priceLabel}>{t('order.commission')}</Text>
@@ -240,6 +256,15 @@ export const IncomingOrderModal: React.FC<Props> = ({
               </IconText>}
             </View>
           </View>
+
+          {/* Warn BEFORE accepting, because accepting is what fixes the discount. Without
+              this the fare simply appeared to shrink on its own once the ride was taken. */}
+          {!isParcel && order.use_bonus && !hasDiscount && (
+            <Text style={styles.discountNote}>{t('order.mayUseBonus')}</Text>
+          )}
+          {hasDiscount && (
+            <Text style={styles.discountNote}>{t('order.discountNote')}</Text>
+          )}
 
           {!!order.note && (
             <IconText
@@ -390,6 +415,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   commission: { ...typography.bodyBold, color: colors.error, marginTop: 2 },
   commissionStruck: { textDecorationLine: 'line-through', color: colors.textMuted },
   bonusText: { ...typography.small, color: colors.success, fontWeight: '700', marginTop: 2 },
+  discountLine: { ...typography.small, color: colors.textMuted, marginTop: 2 },
+  discountNote: {
+    ...typography.small,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+    lineHeight: 16,
+  },
   note: { ...typography.small, color: colors.textSecondary, fontStyle: 'italic', marginBottom: spacing.md },
 
   acceptWrap: { marginTop: spacing.sm },

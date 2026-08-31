@@ -121,6 +121,14 @@ export default {
     taxi: 'Taksi',
     fullCar: "To'liq mashina",
     negotiable: 'Kelishiladi',
+    // Fare breakdown on the order screen. Before these existed the screen showed only the
+    // gross price, so a passenger whose bonus had already been debited still paid the full
+    // amount in cash — losing the bonus and getting nothing back for it.
+    bonusDiscount: 'Bonus chegirma',
+    promoDiscount: 'Promo chegirma',
+    payable: "To'lanadigan",
+    payableHint: "Haydovchiga shu summani naqd bering. Chegirma haydovchi komissiyasidan qoplanadi.",
+    bonusPendingHint: "Bonus chegirmasi haydovchi zakasni qabul qilganda hisoblanadi va shu yerda ko'rinadi.",
     summary: 'Buyurtma tafsilotlari',
     from: 'Qayerdan',
     to: 'Qayerga',

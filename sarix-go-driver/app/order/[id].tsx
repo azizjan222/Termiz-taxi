@@ -514,6 +514,16 @@ export default function OrderDetailScreen() {
   // driverCoords. The target is the pickup before pickup, the destination after.
   const enRoute = isEnRouteToDestination(order);
   const isParcel = order.service_type === 'parcel';
+
+  // Passenger discounts. All optional on the wire: an OTA update can reach a driver before
+  // the backend that serves these fields, and falling back to `price` keeps an older
+  // backend behaving exactly as before rather than rendering "collect NaN".
+  const bonusUsed = order.bonus_used ?? 0;
+  const promoDiscount = order.promo_discount ?? 0;
+  const payable = order.payable ?? order.price;
+  const commissionEffective = order.commission_effective ?? null;
+  // Parcels have a negotiated fare (price 0), so a breakdown of it would be meaningless.
+  const hasDiscount = !isParcel && bonusUsed + promoDiscount > 0;
   const serviceIcon: IconName = isParcel
     ? 'parcel'
     : order.service_type === 'full_car'
@@ -766,12 +776,78 @@ export default function OrderDetailScreen() {
             <Text
               style={[
                 styles.value,
-                { fontSize: 18, color: isParcel ? colors.info : colors.success },
+                // Once a discount applies this is no longer the amount to collect, so it
+                // stops being the highlighted figure — `payable` below takes over.
+                { fontSize: 18, color: isParcel ? colors.info : (hasDiscount ? colors.text : colors.success) },
               ]}
             >
               {isParcel ? t('more.negotiable') : `${formatPrice(order.price)} ${t('more.currency')}`}
             </Text>
           </View>
+
+          {/* Discount breakdown. Shown ONLY when there is a discount, so an ordinary ride's
+              price card is unchanged. Without this the driver was shown the gross price and
+              would ask the passenger for cash the passenger app had already deducted. */}
+          {hasDiscount && (
+            <>
+              {bonusUsed > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.row}>
+                    <IconText name="gift" size={12} color={colors.textSecondary} textStyle={styles.label}>
+                      {t('order.bonusDiscount')}
+                    </IconText>
+                    <Text style={[styles.value, { color: colors.warning }]}>
+                      -{formatPrice(bonusUsed)} {t('more.currency')}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {promoDiscount > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.row}>
+                    <IconText name="tag" size={12} color={colors.textSecondary} textStyle={styles.label}>
+                      {t('order.promoDiscount')}
+                    </IconText>
+                    <Text style={[styles.value, { color: colors.warning }]}>
+                      -{formatPrice(promoDiscount)} {t('more.currency')}
+                    </Text>
+                  </View>
+                </>
+              )}
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <IconText name="cash" size={12} color={colors.success} textStyle={styles.label}>
+                  {t('order.payable')}
+                </IconText>
+                <Text style={[styles.value, { fontSize: 18, color: colors.success }]}>
+                  {formatPrice(payable)} {t('more.currency')}
+                </Text>
+              </View>
+              {commissionEffective !== null && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.row}>
+                    <Text style={styles.label}>{t('order.commissionAfterDiscount')}</Text>
+                    <Text style={[styles.value, { color: colors.textSecondary }]}>
+                      -{formatPrice(commissionEffective)} {t('more.currency')}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {/* The reason the smaller number is not a loss. A driver shown only a reduced
+                  figure reasonably assumes they are being short-changed. */}
+              <Text style={styles.discountNote}>{t('order.discountNote')}</Text>
+            </>
+          )}
+
+          {/* Opted in but not yet applied: the discount is computed at acceptance, so the
+              amount to collect will drop later. Saying so beats the figure changing by
+              itself. */}
+          {!hasDiscount && order.use_bonus && !isParcel && (
+            <Text style={styles.discountNote}>{t('order.mayUseBonus')}</Text>
+          )}
         </View>
 
         {order.note && (
@@ -1031,6 +1107,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   label: { ...typography.caption, color: colors.textSecondary },
   value: { ...typography.bodyBold, color: colors.text },
   divider: { height: 1, backgroundColor: colors.divider },
+  discountNote: {
+    ...typography.small,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    lineHeight: 18,
+  },
   noteText: { ...typography.body, color: colors.text },
   extrasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   extraTag: {

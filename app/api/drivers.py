@@ -14,7 +14,7 @@ from app.services.dynamic_settings import (
     get_free_trial_limit,
     get_min_driver_balance,
 )
-from app.services.rewards import passenger_payable
+from app.services.rewards import effective_commission, passenger_payable
 from app.utils.timefmt import iso_utc, local_day_str
 
 logger = logging.getLogger(__name__)
@@ -591,6 +591,15 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "bonus_used": o.bonus_used or 0,
         "promo_discount": o.promo_discount or 0,
         "payable": passenger_payable(o),
+        # Whether the passenger opted to spend bonus. The discount itself is only computed
+        # when a driver accepts, so BEFORE acceptance `bonus_used` is still 0 and `payable`
+        # equals the price: the app needs this flag to warn that the amount to collect may
+        # drop, instead of the figure appearing to change by itself after accepting.
+        "use_bonus": bool(o.use_bonus),
+        # Commission net of those discounts -- what the scheduler actually deducts. Exposed
+        # separately from gross `commission` because the two differ on a discounted ride and
+        # the driver was being shown the gross figure while being charged the net one.
+        "commission_effective": effective_commission(o),
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,
@@ -865,11 +874,31 @@ async def driver_orders_history(request: web.Request) -> web.Response:
             .all()
         )
 
+        # Discount reimbursements for this page, in one query (see the helper's docstring).
+        from app.services.rewards import net_reimbursements_by_order
+        reimbursements = net_reimbursements_by_order(session, [o.id for o in orders])
+
         def _hist(o: Order) -> dict:
             data = _serialize_order(o, include_passenger=True)
             data["completed_at"] = iso_utc(o.completed_at)
             data["cancelled_at"] = iso_utc(o.cancelled_at)
-            data["earned"] = (o.price or 0) - (o.commission or 0) if o.status == "completed" else 0
+            # Net earnings, on the SAME basis as /api/driver/stats and
+            # /api/driver/balance/history: the cash actually collected (which excludes any
+            # bonus/promo discount), plus a discount reimbursement where the platform funded
+            # the discount directly, minus the commission actually deducted.
+            #
+            # This was `price - commission`, i.e. gross on gross. On a discounted ride that
+            # overstated the per-ride figure while the stats screen showed the correct
+            # (lower) total, so the driver's two earnings screens contradicted each other.
+            data["earned"] = (
+                (
+                    passenger_payable(o)
+                    + reimbursements.get(o.id, 0)
+                    - (effective_commission(o) if o.commission_collected else 0)
+                )
+                if o.status == "completed"
+                else 0
+            )
             return data
 
         return web.json_response({

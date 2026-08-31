@@ -16,6 +16,7 @@ wallet unspendable: passengers opted in, paid full price, and were told nothing.
 These tests drive the real scheduler function against the DB, because the bug was in the
 interaction (reserve at accept, settle 15 minutes later), not in either piece alone.
 """
+import json
 from datetime import datetime, timedelta
 
 from app import config
@@ -456,3 +457,123 @@ def test_net_reimbursements_nets_out_a_reversed_credit(db, monkeypatch):
     reverse_discount_reimbursement(db, saved_order, saved_driver)
     db.commit()
     assert net_reimbursements_by_order(db, [saved_order.id]).get(saved_order.id, 0) == 0
+
+
+
+# ==================== showing the discount to the driver and passenger ====================
+#
+# The settlement above is only half the job: the discount also has to REACH the passenger.
+# Both apps rendered gross `price`, so a passenger whose bonus had been debited still handed
+# over the full fare in cash — they lost the bonus and got nothing for it, and the driver was
+# told to collect money the passenger app had already discounted. These pin the fields both
+# apps now read.
+
+async def test_serialized_order_exposes_the_discount_to_the_driver(db, monkeypatch):
+    """`payable`, `use_bonus` and `commission_effective` must all reach the driver app."""
+    from app.api import drivers as drivers_api
+
+    driver = _driver(db, balance=50_000)
+    passenger = _passenger(db, bonus_balance=10_000)
+    order = _accepted_order(
+        db, driver, passenger, commission=10_000, use_bonus=True, promo_discount=1_000,
+    )
+    reserve_bonus_for_order(db, order, driver, passenger)
+    db.commit()
+
+    data = drivers_api._serialize_order(order)
+
+    bonus = config.BONUS_MAX_PER_RIDE
+    assert data["price"] == 100_000
+    assert data["bonus_used"] == bonus
+    assert data["promo_discount"] == 1_000
+    # The cash to collect — NOT the price.
+    assert data["payable"] == 100_000 - bonus - 1_000
+    # Gross vs net commission are both exposed, because they differ here and the driver was
+    # shown the gross figure while being charged the net one.
+    assert data["commission"] == 10_000
+    assert data["commission_effective"] == 10_000 - bonus - 1_000
+    assert data["use_bonus"] is True
+
+
+async def test_use_bonus_is_visible_before_the_discount_exists(db):
+    """Opted in but not yet accepted: the app must be able to warn the amount will drop.
+
+    `bonus_used` is still 0 and `payable` still equals the price at this point, so
+    `use_bonus` is the only signal that the figure is provisional.
+    """
+    from app.api import drivers as drivers_api
+    from app.api import orders as orders_api
+
+    driver = _driver(db)
+    passenger = _passenger(db, bonus_balance=10_000)
+    order = _accepted_order(db, driver, passenger, commission=10_000, use_bonus=True)
+
+    for data in (drivers_api._serialize_order(order), orders_api._serialize_order(order)):
+        assert data["use_bonus"] is True
+        assert data["bonus_used"] == 0
+        assert data["payable"] == order.price
+
+
+async def test_history_earned_is_net_of_the_discount(db, monkeypatch):
+    """Per-ride `earned` must agree with the stats screen.
+
+    It was `price - commission` — gross on gross — which OVERSTATED a discounted ride while
+    /api/driver/stats reported the correct lower total, so the driver's two earnings screens
+    contradicted each other on the same ride.
+    """
+    monkeypatch.setattr(config, "COMMISSION_WINDOW_MINUTES", 15)
+    from app.api import drivers as drivers_api
+
+    driver = _driver(db, balance=50_000)
+    passenger = _passenger(db, bonus_balance=10_000)
+    order = _accepted_order(db, driver, passenger, commission=10_000, use_bonus=True)
+    reserve_bonus_for_order(db, order, driver, passenger)
+    order.status = "completed"
+    order.completed_at = datetime.utcnow()
+    db.commit()
+    charge_due_commissions()
+
+    monkeypatch.setattr(
+        drivers_api, "_get_driver_from_request",
+        lambda request: db.query(Driver).filter_by(id=driver.id).first(),
+    )
+    from aiohttp.test_utils import make_mocked_request
+    response = await drivers_api.driver_orders_history(
+        make_mocked_request("GET", "/api/driver/orders/history?status=completed")
+    )
+    assert response.status == 200
+    row = json.loads(response.text)["orders"][0]
+
+    bonus = config.BONUS_MAX_PER_RIDE
+    # Cash collected (95 000) minus the commission actually charged (10 000 - 5 000).
+    assert row["earned"] == (100_000 - bonus) - (10_000 - bonus)
+    # The old gross-on-gross figure would have been 90 000; assert we are NOT reporting it.
+    assert row["earned"] != 100_000 - 10_000
+
+
+async def test_trial_ride_history_earned_includes_the_reimbursement(db, monkeypatch):
+    """On a trial ride the credit is part of what the driver earned."""
+    monkeypatch.setattr(config, "COMMISSION_WINDOW_MINUTES", 15)
+    from app.api import drivers as drivers_api
+
+    driver = _driver(db, balance=0, trial_days=10)
+    passenger = _passenger(db, bonus_balance=10_000)
+    order = _accepted_order(db, driver, passenger, commission=10_000, use_bonus=True)
+    reserve_bonus_for_order(db, order, driver, passenger)
+    order.status = "completed"
+    order.completed_at = datetime.utcnow()
+    db.commit()
+    charge_due_commissions()
+
+    monkeypatch.setattr(
+        drivers_api, "_get_driver_from_request",
+        lambda request: db.query(Driver).filter_by(id=driver.id).first(),
+    )
+    from aiohttp.test_utils import make_mocked_request
+    response = await drivers_api.driver_orders_history(
+        make_mocked_request("GET", "/api/driver/orders/history?status=completed")
+    )
+    row = json.loads(response.text)["orders"][0]
+
+    # No commission charged, and cash + credit == the full fare.
+    assert row["earned"] == 100_000

@@ -305,6 +305,14 @@ export default function OrderDetailScreen() {
   // would just produce an error the passenger can do nothing about.
   const canCancel = ['new', 'accepted'].includes(order.status);
   const isParcel = order.service_type === 'parcel';
+
+  // Discounts are server-authoritative and only fixed once a driver accepts. Optional on
+  // the wire, so fall back to `price` rather than rendering a blank amount.
+  const bonusUsed = order.bonus_used ?? 0;
+  const promoDiscount = order.promo_discount ?? 0;
+  const payable = order.payable ?? order.price;
+  // Parcel fares are negotiated with the driver, so there is no total to break down.
+  const hasDiscount = !isParcel && bonusUsed + promoDiscount > 0;
   const isFullCar = order.service_type === 'full_car';
   const serviceIcon: IconName = isParcel ? 'parcel' : isFullCar ? 'car' : 'taxi';
   const serviceBadge = isParcel
@@ -544,10 +552,60 @@ export default function OrderDetailScreen() {
             <IconText name="cash" size={12} color={colors.textSecondary} textStyle={styles.label}>
               {t('order.price')}
             </IconText>
-            <Text style={[styles.value, styles.price]}>
+            <Text style={[styles.value, hasDiscount ? undefined : styles.price]}>
               {isParcel ? t('order.negotiable') : `${formatPrice(order.price)} ${t('common.currency')}`}
             </Text>
           </View>
+
+          {/* The discount the passenger is actually getting, and the cash they now owe.
+              This screen showed only the gross `price`, so a passenger whose bonus had been
+              spent still saw the full fare and handed over the full amount in cash — they
+              lost the bonus and received nothing for it. */}
+          {hasDiscount && (
+            <>
+              {bonusUsed > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.row}>
+                    <IconText name="gift" size={12} color={colors.textSecondary} textStyle={styles.label}>
+                      {t('order.bonusDiscount')}
+                    </IconText>
+                    <Text style={[styles.value, { color: colors.success }]}>
+                      -{formatPrice(bonusUsed)} {t('common.currency')}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {promoDiscount > 0 && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.row}>
+                    <IconText name="tag" size={12} color={colors.textSecondary} textStyle={styles.label}>
+                      {t('order.promoDiscount')}
+                    </IconText>
+                    <Text style={[styles.value, { color: colors.success }]}>
+                      -{formatPrice(promoDiscount)} {t('common.currency')}
+                    </Text>
+                  </View>
+                </>
+              )}
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <IconText name="cash" size={12} color={colors.primary} textStyle={styles.label}>
+                  {t('order.payable')}
+                </IconText>
+                <Text style={[styles.value, styles.price]}>
+                  {formatPrice(payable)} {t('common.currency')}
+                </Text>
+              </View>
+              <Text style={styles.discountNote}>{t('order.payableHint')}</Text>
+            </>
+          )}
+
+          {/* Opted in, but no driver has accepted yet, so there is no amount to show. */}
+          {!hasDiscount && order.use_bonus && !isParcel && (
+            <Text style={styles.discountNote}>{t('order.bonusPendingHint')}</Text>
+          )}
         </View>
 
         {order.note && (
@@ -703,6 +761,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   value: { ...typography.bodyBold, color: colors.text },
   price: { color: colors.primary, fontSize: 18 },
   divider: { height: 1, backgroundColor: colors.divider },
+  discountNote: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    lineHeight: 18,
+  },
   noteText: { ...typography.body, color: colors.text },
   footer: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.divider },
 });

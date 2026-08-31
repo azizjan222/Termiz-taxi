@@ -54,11 +54,16 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "price": o.price,
         "commission": o.commission,
         # Bonus wallet: how much bonus was applied and the cash the passenger actually
-        # pays (price - bonus_used). Both are 0/price while the feature is dormant.
+        # pays (price - bonus_used - promo_discount).
         "bonus_used": o.bonus_used or 0,
         "promo_code": o.promo_code,
         "promo_discount": o.promo_discount or 0,
         "payable": passenger_payable(o),
+        # The passenger opted in, but the discount is only computed when a driver ACCEPTS.
+        # Until then `bonus_used` is 0 and `payable` equals the price, so the app needs this
+        # to say "the discount applies once a driver accepts" rather than showing a total
+        # that quietly changes later.
+        "use_bonus": bool(o.use_bonus),
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,

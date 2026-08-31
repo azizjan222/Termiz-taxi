@@ -64,8 +64,30 @@ export interface DriverOrder {
   to_lat?: number | null;
   to_lon?: number | null;
   person_count: number;
+  /** The full fare. NOT what the driver collects when the passenger used a discount. */
   price: number;
+  /** Gross commission for the ride. See `commission_effective` for what is deducted. */
   commission: number;
+  /**
+   * The cash the driver must actually COLLECT: `price - bonus_used - promo_discount`.
+   *
+   * These four discount fields were missing from this type, so no driver screen could read
+   * them and every screen showed gross `price` — telling the driver to ask for money the
+   * passenger app had already discounted. Optional because an OTA update can reach a driver
+   * before the backend that serves the fields; treat `undefined` as "fall back to price".
+   */
+  payable?: number;
+  /** Bonus spent by the passenger on this ride. Only set once a driver has accepted. */
+  bonus_used?: number;
+  promo_discount?: number;
+  /**
+   * The passenger asked to spend bonus, but the amount is only decided at acceptance.
+   * Before that `bonus_used` is 0, so this is the only way to warn that the figure to
+   * collect will drop — and that the commission drops with it.
+   */
+  use_bonus?: boolean;
+  /** Commission net of the discounts — what is really taken off the balance. */
+  commission_effective?: number;
   departure_time: string;
   status: string;
   note?: string | null;
