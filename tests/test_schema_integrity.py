@@ -18,6 +18,7 @@ Two regressions are locked in here.
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.migrate import _declared_constraints
 from app.models import BalanceTransaction, Driver, Order
@@ -201,8 +202,6 @@ def test_debit_is_a_noop_for_a_fully_discounted_ride(db, driver):
 
 def test_debt_ledger_key_is_idempotent(db, driver):
     """A replay must hit the unique ledger key rather than double-booking the debt."""
-    from sqlalchemy.exc import IntegrityError
-
     order = _order(db, driver, 10_000)
     debit_commission(db, driver, order, 10_000, note="test")
     db.commit()
