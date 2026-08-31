@@ -44,6 +44,13 @@ export interface Order {
   promo_discount?: number;
   /** What the passenger actually hands the driver: price - bonus_used - promo_discount. */
   payable?: number;
+  /**
+   * The passenger asked to spend bonus, but the amount is only fixed when a driver accepts.
+   * Until then `bonus_used` is 0 and `payable` equals `price`, so the order screen needs
+   * this to say "the discount applies once a driver accepts" instead of showing a total
+   * that silently drops later.
+   */
+  use_bonus?: boolean;
   departure_time: string;
   status: OrderStatus;
   note?: string | null;

@@ -12,6 +12,18 @@ import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
+/** Thousands-separated so'm, matching the other driver screens. */
+const formatPrice = (n: number) => (n ?? 0).toLocaleString().replace(/,/g, ' ');
+
+/**
+ * Whether the passenger's fare was discounted, so the cash to collect is NOT `price`.
+ *
+ * Reads the optional wire fields defensively: an OTA can reach a driver whose backend does
+ * not serve them yet, and in that case the old behaviour (show `price`) is correct.
+ */
+const hasDiscount = (o: DriverOrder) =>
+  o.service_type !== 'parcel' && ((o.bonus_used ?? 0) + (o.promo_discount ?? 0)) > 0;
+
 export default function ActiveOrdersScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
@@ -75,6 +87,26 @@ export default function ActiveOrdersScreen() {
             ? t('more.emptyCar')
             : t('more.peopleCount', { n: item.person_count })}
       </Text>
+      {/* The amount to COLLECT, on the screen the driver actually has open mid-ride.
+          This screen showed no money at all, so a driver with a discounted ride had to
+          open the detail screen to learn the fare was not the full price — and until the
+          detail screen was fixed too, it did not tell them either. */}
+      {item.service_type !== 'parcel' && (
+        <View style={styles.fareRow}>
+          <Text style={styles.fareLabel}>
+            {hasDiscount(item) ? t('order.payable') : t('order.price')}
+          </Text>
+          <Text style={styles.fareValue}>
+            {formatPrice(item.payable ?? item.price)} {t('more.currency')}
+          </Text>
+        </View>
+      )}
+      {hasDiscount(item) && (
+        <Text style={styles.fareHint}>
+          {t('order.price')}: {formatPrice(item.price)} {t('more.currency')} ·{' '}
+          {t('order.discountNote')}
+        </Text>
+      )}
     </TouchableOpacity>
   );
 
@@ -155,6 +187,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   statusBadgeText: { ...typography.small, color: colors.warning, fontWeight: '700' },
   passenger: { ...typography.caption, color: colors.text, marginBottom: 2 },
   persons: { ...typography.caption, color: colors.textSecondary },
+  fareRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  fareLabel: { ...typography.caption, color: colors.textSecondary },
+  fareValue: { ...typography.bodyBold, color: colors.success },
+  fareHint: { ...typography.small, color: colors.textMuted, marginTop: 2, lineHeight: 16 },
   // `emptyList` gives the ListEmptyComponent room to centre itself while still living
   // inside the scroll view that owns the RefreshControl.
   emptyList: { flexGrow: 1 },

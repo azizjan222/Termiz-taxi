@@ -28,6 +28,7 @@ from app.models import (
     User,
 )
 from app.services import notify_i18n as nt
+from app.services import rewards
 from app.services.driver_pdf import build_driver_pdf
 from app.services.push import (
     check_push_receipts,
@@ -219,6 +220,32 @@ def _stats_payload() -> dict:
             Order.completed_at >= month_start,
         ).all()
         revenue_month = sum(effective_commission(o) for o in rev_month_result)
+
+        # Subtract discount reimbursements. On a free-trial ride the platform funds the
+        # passenger's bonus/promo by crediting the driver's balance rather than by forgoing
+        # a commission, so that cost appears in NO order-based figure above and both totals
+        # would overstate net revenue by it — most of all during the launch trial, when the
+        # drivers taking rides pay no commission at all. Summed with its reversal so a
+        # cancelled order nets to 0.
+        #
+        # Basis note: this term is keyed on the ledger row's own timestamp, while the
+        # commission above is keyed on `completed_at`. They can differ by minutes at a
+        # period boundary; using the ledger date is what keeps this reconcilable with the
+        # bot's /revenue, which reads the ledger throughout.
+        def _reimbursed_since(since):
+            return int(
+                session.query(
+                    func.coalesce(func.sum(BalanceTransaction.amount), 0)
+                ).filter(
+                    BalanceTransaction.source.in_(
+                        (rewards.REIMBURSEMENT_SOURCE, rewards.REIMBURSEMENT_REVERSAL_SOURCE)
+                    ),
+                    BalanceTransaction.created_at >= since,
+                ).scalar() or 0
+            )
+
+        revenue_today = max(0, revenue_today - _reimbursed_since(today_start))
+        revenue_month = max(0, revenue_month - _reimbursed_since(month_start))
 
         return {
             "drivers_count": drivers_count,

@@ -85,9 +85,13 @@ export default function OrderHistoryScreen() {
             </Text>
           )}
         </View>
-        {isCompleted && (item.commission || 0) > 0 && (
+        {/* The commission ACTUALLY deducted, which is net of any passenger discount. The
+            gross figure was shown next to a net `earned`, so the two numbers on this row
+            did not add up against the fare. */}
+        {isCompleted && (item.commission_effective ?? item.commission ?? 0) > 0 && (
           <Text style={[styles.commission, { color: colors.textMuted }]}>
-            {t('stats.commission')}: -{formatPrice(item.commission)} {t('more.currency')}
+            {t('stats.commission')}: -
+            {formatPrice(item.commission_effective ?? item.commission)} {t('more.currency')}
           </Text>
         )}
       </View>

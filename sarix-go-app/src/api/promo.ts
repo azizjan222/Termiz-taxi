@@ -59,3 +59,45 @@ export async function applyReferralCode(code: string): Promise<ApplyReferralResu
   const r = await api.post<ApplyReferralResult>('/api/referral/apply', { code });
   return r.data;
 }
+
+/**
+ * Where a bonus movement came from.
+ *
+ * Mirrors the `source` values written by app/services/rewards.py. Kept as a union so the
+ * history screen can label each row instead of showing the server's raw Uzbek `reason`
+ * string to a passenger who picked Russian or English.
+ */
+export type BonusTransactionSource =
+  | 'referral'
+  | 'loyalty'
+  | 'redeem'
+  | 'redeem_reversal'
+  | 'promo'
+  | 'admin';
+
+export interface BonusTransaction {
+  id: number;
+  /** Positive = earned, negative = spent. */
+  amount: number;
+  source: BonusTransactionSource | string;
+  reason: string;
+  order_id: number | null;
+  balance_after: number;
+  created_at: string;
+}
+
+export interface BonusHistory {
+  bonus_balance: number;
+  transactions: BonusTransaction[];
+}
+
+/**
+ * Bonus wallet history (referral + loyalty earnings and ride discounts).
+ *
+ * The endpoint has existed on the backend all along but nothing called it, so a passenger
+ * could see a balance and never find out how it got there or where it went.
+ */
+export async function getBonusTransactions(): Promise<BonusHistory> {
+  const r = await api.get<BonusHistory>('/api/bonus/transactions');
+  return r.data;
+}

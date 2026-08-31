@@ -213,6 +213,11 @@ class Order(Base):
     # bonus is ever silently consumed). bonus_used records how much bonus was actually
     # applied on completion; it is always <= the ride's commission, so the discount is
     # funded purely from forgone commission and the driver's net is never reduced.
+    #
+    # On a free-trial ride there is no commission to forgo, so the platform reimburses the
+    # discount to the driver's balance instead (source="discount_reimbursement" in
+    # BalanceTransaction). Either way the driver's net is unchanged; only the settlement
+    # route differs.
     use_bonus = Column(Boolean, default=False)
     bonus_used = Column(Integer, default=0)
 
@@ -229,6 +234,8 @@ class Order(Base):
     # During the free trial the scheduler marks commission_charged=True WITHOUT deducting
     # money, so commission_collected stays False -> trial orders count as 0 commission in
     # all money reports (admin dashboard, bot /revenue) and don't confuse the stats.
+    # A discount reimbursement on such an order is a separate BalanceTransaction and
+    # likewise does NOT set this flag: no commission was ever collected to report.
     commission_collected = Column(Boolean, default=False)
     # Set True once the driver has been sent the "commission will be charged in N
     # minutes" heads-up, so the scheduler never warns the same order twice.
@@ -344,7 +351,18 @@ class Payment(Base):
 
 
 class BalanceTransaction(Base):
-    """Immutable audit ledger for every driver balance mutation."""
+    """Immutable audit ledger for every driver balance mutation.
+
+    ``source`` values in use (all must fit VARCHAR(30)):
+
+    * ``topup``                   — approved payment, incl. the one-time 50% bonus.
+    * ``order_commission``        — deferred commission debit.
+    * ``commission_refund``       — reversal when a passenger cancels a charged order.
+    * ``discount_reimbursement``  — credit paid to a free-trial driver for a passenger's
+      bonus/promo discount, where there was no commission to reduce instead.
+    * ``reimbursement_reversal``  — take-back of the above when the ride is cancelled and
+      the discount is returned to the passenger.
+    """
     __tablename__ = "balance_transactions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)

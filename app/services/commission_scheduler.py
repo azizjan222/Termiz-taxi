@@ -4,6 +4,11 @@ After a driver accepts an order they get a 15-minute window to contact/agree wit
 passenger. The commission is charged once that window elapses — whether or not the ride
 was completed — UNLESS the driver is on the free trial / active subscription.
 
+A free ride still needs settling when the passenger used a bonus/promo discount: they paid
+the driver less cash, and there is no commission to reduce in compensation. This task
+therefore also REIMBURSES the driver's balance for that discount, which is what makes the
+bonus wallet spendable during the launch free trial instead of silently inert.
+
 This runs as a simple asyncio periodic loop started alongside the API server. It is
 intentionally lightweight (no apscheduler dependency wiring needed) and is safe to run
 on both SQLite and Postgres.
@@ -41,10 +46,19 @@ def _was_free_when_accepted(driver: Driver, order: Order) -> bool:
     return driver.subscription_until > order.accepted_at
 
 
-def charge_due_commissions(now: datetime | None = None) -> int:
+def charge_due_commissions(
+    now: datetime | None = None,
+    reimbursed_out: list | None = None,
+) -> int:
     """Charge commission for accepted orders whose 15-min window has elapsed.
 
-    Returns the number of orders charged. Synchronous (DB only) so it is easy to test.
+    Returns the number of orders CHARGED. Synchronous (DB only) so it is easy to test.
+
+    ``reimbursed_out``, when given, is appended with one
+    ``{"driver_id", "order_id", "amount"}`` dict per free-trial ride whose passenger
+    discount was reimbursed, so the async caller can push the driver a notification. It is
+    an out-parameter rather than a changed return type because the return value is the
+    "charged" count that callers and tests already assert on.
     """
     now = now or datetime.utcnow()
     cutoff = now - timedelta(minutes=config.COMMISSION_WINDOW_MINUTES)
@@ -107,8 +121,27 @@ def charge_due_commissions(now: datetime | None = None) -> int:
                     session.commit()
                     continue
                 if _subscription_active(driver, now) or _was_free_when_accepted(driver, order):
+                    # No commission is charged for this ride — so if the passenger got a
+                    # bonus/promo discount, reducing a charge settles nothing and the
+                    # driver is simply short that much CASH. Pay it back to their balance.
+                    #
+                    # This is the other half of allowing bonus on a trial driver's ride
+                    # (see rewards.reserve_bonus_for_order). Without it the platform would
+                    # be funding passenger bonuses out of drivers' pockets; with it the
+                    # discount costs the platform the same forgone commission it costs on
+                    # a paying ride, only settled as balance credit instead of a smaller
+                    # charge. `commission_collected` deliberately stays False so trial
+                    # rides keep reporting zero commission revenue.
+                    from app.services.rewards import reimburse_discount_for_order
+                    reimbursed = reimburse_discount_for_order(session, order, driver)
                     # Keep the claim so a subscribed driver isn't rescanned every cycle.
                     session.commit()
+                    if reimbursed and reimbursed_out is not None:
+                        reimbursed_out.append({
+                            "driver_id": driver.id,
+                            "order_id": order.id,
+                            "amount": reimbursed,
+                        })
                     continue
 
                 from app.services.rewards import effective_commission
@@ -183,15 +216,21 @@ async def warn_due_commissions(now: datetime | None = None) -> int:
 
         if orders:
             from app.services.push import notify_driver_commission_soon
+        from app.services.rewards import effective_commission
 
         # Commit the `commission_warned` flag PER ORDER, mirroring charge_due_commissions.
         # A single commit at the end meant any failure discarded the flags for the whole
         # batch, so the next cycle re-sent every warning the drivers had already received.
         for order in orders:
             driver = session.query(Driver).filter_by(id=order.driver_id).first()
-            # No driver, trial/subscription driver, or zero commission -> nothing to warn
-            # about, but mark handled so we don't re-scan every minute.
-            if not driver or _subscription_active(driver, now) or (order.commission or 0) <= 0:
+            # No driver, trial/subscription driver, or nothing actually left to charge ->
+            # nothing to warn about, but mark handled so we don't re-scan every minute.
+            #
+            # The zero-check reads the NET amount on purpose. Against gross `commission` a
+            # fully discounted ride still triggered a "commission will be charged" warning
+            # that was immediately followed by no charge at all.
+            due = effective_commission(order)
+            if not driver or _subscription_active(driver, now) or due <= 0:
                 order.commission_warned = True
                 session.commit()
                 continue
@@ -212,7 +251,11 @@ async def warn_due_commissions(now: datetime | None = None) -> int:
                         "type": "commission_warning",
                         "order_id": order.id,
                         "minutes_left": minutes_left,
-                        "commission": order.commission or 0,
+                        # Quote what will ACTUALLY be deducted, i.e. net of the
+                        # passenger's bonus/promo discount. Sending gross `commission`
+                        # here meant the warning and the subsequent balance change
+                        # disagreed whenever a discount was in play.
+                        "commission": due,
                     })
                 except Exception as e:  # pragma: no cover - defensive
                     logger.warning("commission warn WS failed (order %s): %s", order.id, e)
@@ -238,6 +281,42 @@ async def warn_due_commissions(now: datetime | None = None) -> int:
     return warned
 
 
+async def _notify_reimbursements(reimbursed: list) -> None:
+    """Push each driver a note about the discount credit added to their balance.
+
+    Best-effort per driver: a failed push must never stop the others, and the money has
+    already been committed by this point either way. The credit is also visible in the
+    driver's balance history, so this is a courtesy rather than the record of truth.
+
+    Each credit is re-checked first. This runs after the whole batch commits, so a
+    cancellation can land in between and reverse a credit we are about to announce —
+    telling a driver "+5 000 added, you lose nothing" about money that is already gone is
+    worse than saying nothing, since the cancel path sends its own reversal notice.
+    """
+    from app.services.push import notify_driver_discount_reimbursed
+    from app.services.rewards import reimbursement_is_reversed
+
+    session = get_session()
+    try:
+        for item in reimbursed:
+            order_id = item["order_id"]
+            try:
+                if reimbursement_is_reversed(session, order_id):
+                    logger.info(
+                        "Skipping reimbursement push for order %s: already reversed", order_id,
+                    )
+                    continue
+                await notify_driver_discount_reimbursed(
+                    session, item["driver_id"], item["amount"], order_id,
+                )
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning(
+                    "discount reimbursement push failed (order %s): %s", order_id, e,
+                )
+    finally:
+        session.close()
+
+
 async def commission_scheduler_loop(stop_event: asyncio.Event | None = None):
     """Periodically charge due commissions until stop_event is set (or forever)."""
     logger.info(
@@ -251,9 +330,16 @@ async def commission_scheduler_loop(stop_event: asyncio.Event | None = None):
             if w:
                 logger.info("Warned %s driver(s) about upcoming commission", w)
             # 2) Charge the orders whose window has elapsed.
-            n = await asyncio.to_thread(charge_due_commissions)
+            reimbursed: list = []
+            n = await asyncio.to_thread(charge_due_commissions, None, reimbursed)
             if n:
                 logger.info("Charged commission for %s order(s)", n)
+            # 3) Tell trial drivers about balance credits they'd otherwise see appear with
+            #    no explanation. Sent from the async loop because charge_due_commissions is
+            #    a sync DB function running in a worker thread.
+            if reimbursed:
+                logger.info("Reimbursed passenger discounts on %s order(s)", len(reimbursed))
+                await _notify_reimbursements(reimbursed)
         except Exception as e:  # pragma: no cover - defensive
             logger.error(f"Commission loop error: {e}")
 

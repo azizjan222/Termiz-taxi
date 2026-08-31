@@ -15,14 +15,19 @@ All defaults come from config (no Setting rows), matching a fresh install.
 from datetime import datetime, timedelta
 
 from app import config
-from app.models import BonusTransaction, Driver, Order, User
+from app.models import BalanceTransaction, BonusTransaction, Driver, Order, User
 from app.services.rewards import (
+    REIMBURSEMENT_REVERSAL_SOURCE,
+    REIMBURSEMENT_SOURCE,
     apply_ride_rewards,
     credit_bonus,
+    discount_total,
     effective_commission,
     passenger_payable,
+    reimburse_discount_for_order,
     release_bonus_for_order,
     reserve_bonus_for_order,
+    reverse_discount_reimbursement,
 )
 
 
@@ -55,11 +60,12 @@ def _make_order(db, passenger, *, commission=10000, use_bonus=False, **kwargs):
     return o
 
 
-def _make_driver(db, *, subscription_until=None):
+def _make_driver(db, *, subscription_until=None, balance=0):
     d = Driver(
         telegram_id=db.query(Driver).count() + 1000,
         phone=f"+99891{db.query(Driver).count():07d}",
         subscription_until=subscription_until,
+        balance=balance,
     )
     db.add(d)
     db.commit()
@@ -236,14 +242,24 @@ def test_reserve_noop_after_commission_charged(db):
     assert reserve_bonus_for_order(db, order, driver, passenger) == 0
 
 
-def test_reserve_noop_for_subscription_driver(db):
-    # A trial/subscription driver pays no commission, so there's nothing to fund a discount.
+def test_reserve_applies_for_subscription_driver(db):
+    """A free-trial driver's ride MUST still honour the passenger's bonus.
+
+    This used to return 0. With a launch trial running, that made the wallet unspendable:
+    a passenger ticked "use my bonus", was charged full price, and nothing explained why.
+    The discount is now applied and the platform reimburses the driver instead (see
+    test_reimburse_* below), so the driver is still not out of pocket.
+    """
     passenger = _make_user(db, bonus_balance=10000)
     driver = _make_driver(db, subscription_until=datetime.utcnow() + timedelta(days=5))
     order = _make_order(db, passenger, commission=10000, use_bonus=True)
 
-    assert reserve_bonus_for_order(db, order, driver, passenger) == 0
-    assert passenger.bonus_balance == 10000
+    used = reserve_bonus_for_order(db, order, driver, passenger)
+    db.commit()
+
+    assert used == config.BONUS_MAX_PER_RIDE
+    assert order.bonus_used == config.BONUS_MAX_PER_RIDE
+    assert passenger.bonus_balance == 10000 - config.BONUS_MAX_PER_RIDE
 
 
 def test_reserve_noop_when_no_commission(db):
@@ -285,6 +301,190 @@ def test_release_is_idempotent(db):
     # Nothing reserved -> releasing returns 0 and does not credit the wallet.
     assert release_bonus_for_order(db, order, passenger) == 0
     assert passenger.bonus_balance == 10000
+
+
+# ------------------------- discount reimbursement (free-trial rides) -------------------------
+#
+# The second half of letting bonus apply on a free-trial ride. Passengers pay CASH, so a
+# discount means the driver collected less. On a paying ride the platform compensates by
+# charging less commission; on a free ride there is no charge to reduce, so it must credit
+# the driver's balance instead. Without this leg the platform would be funding passenger
+# bonuses out of drivers' pockets.
+
+def test_discount_total_sums_bonus_and_promo(db):
+    o = Order(bonus_used=5000, promo_discount=2000,
+              passenger_phone="x", from_city="a", to_city="b")
+    assert discount_total(o) == 7000
+
+
+def test_discount_total_handles_none(db):
+    o = Order(bonus_used=None, promo_discount=None,
+              passenger_phone="x", from_city="a", to_city="b")
+    assert discount_total(o) == 0
+
+
+def test_reimburse_credits_driver_for_the_discount(db):
+    passenger = _make_user(db)
+    driver = _make_driver(db, balance=20000,
+                          subscription_until=datetime.utcnow() + timedelta(days=5))
+    order = _make_order(db, passenger, commission=10000, bonus_used=4000, promo_discount=1000)
+
+    paid = reimburse_discount_for_order(db, order, driver)
+    db.commit()
+
+    assert paid == 5000
+    assert driver.balance == 25000
+    txn = db.query(BalanceTransaction).filter_by(reference_id=order.id).one()
+    assert txn.source == REIMBURSEMENT_SOURCE
+    assert txn.amount == 5000
+    assert txn.balance_after == 25000
+    assert txn.idempotency_key == f"order:{order.id}:discount_reimbursement"
+
+
+def test_reimburse_is_idempotent(db):
+    passenger = _make_user(db)
+    driver = _make_driver(db, balance=0)
+    order = _make_order(db, passenger, commission=10000, bonus_used=3000)
+
+    assert reimburse_discount_for_order(db, order, driver) == 3000
+    db.commit()
+    # A re-scan by the scheduler must not pay twice.
+    assert reimburse_discount_for_order(db, order, driver) == 0
+    db.commit()
+    assert driver.balance == 3000
+    assert db.query(BalanceTransaction).filter_by(reference_id=order.id).count() == 1
+
+
+def test_reimburse_noop_without_a_discount(db):
+    passenger = _make_user(db)
+    driver = _make_driver(db, balance=1000)
+    order = _make_order(db, passenger, commission=10000, bonus_used=0, promo_discount=0)
+
+    assert reimburse_discount_for_order(db, order, driver) == 0
+    assert driver.balance == 1000
+    assert db.query(BalanceTransaction).count() == 0
+
+
+def test_reimburse_noop_without_a_driver(db):
+    passenger = _make_user(db)
+    order = _make_order(db, passenger, commission=10000, bonus_used=3000)
+    assert reimburse_discount_for_order(db, order, None) == 0
+
+
+def test_source_names_fit_the_ledger_column(db):
+    """`BalanceTransaction.source` is VARCHAR(30).
+
+    SQLite ignores the declared length, so an over-long value would pass every test here
+    and only fail in production on Postgres. Pin the lengths instead.
+    """
+    assert len(REIMBURSEMENT_SOURCE) <= 30
+    assert len(REIMBURSEMENT_REVERSAL_SOURCE) <= 30
+
+
+def test_reverse_reimbursement_takes_the_credit_back(db):
+    passenger = _make_user(db, bonus_balance=10000)
+    driver = _make_driver(db, balance=0,
+                          subscription_until=datetime.utcnow() + timedelta(days=5))
+    order = _make_order(db, passenger, commission=10000, use_bonus=True)
+    reserve_bonus_for_order(db, order, driver, passenger)
+    reimburse_discount_for_order(db, order, driver)
+    db.commit()
+    assert driver.balance == config.BONUS_MAX_PER_RIDE
+
+    # Now the ride is cancelled: the bonus goes back to the passenger, so the driver's
+    # credit must go back too -- otherwise the same money exists twice.
+    release_bonus_for_order(db, order, passenger)
+    returned = reverse_discount_reimbursement(db, order, driver)
+    db.commit()
+
+    assert returned == config.BONUS_MAX_PER_RIDE
+    assert driver.balance == 0
+    assert passenger.bonus_balance == 10000
+    txn = db.query(BalanceTransaction).filter_by(
+        source=REIMBURSEMENT_REVERSAL_SOURCE,
+    ).one()
+    assert txn.amount == -config.BONUS_MAX_PER_RIDE
+
+
+def test_reverse_reads_amount_from_the_ledger_not_the_order(db):
+    """The regression this guards.
+
+    Both cancel paths zero `bonus_used`/`promo_discount` while releasing, so recomputing
+    the amount from the order would always give 0 and the credit would silently stay with
+    the driver.
+    """
+    passenger = _make_user(db)
+    driver = _make_driver(db, balance=0)
+    order = _make_order(db, passenger, commission=10000, bonus_used=4000)
+    reimburse_discount_for_order(db, order, driver)
+    db.commit()
+
+    order.bonus_used = 0  # what release_bonus_for_order does
+    order.promo_discount = 0
+    assert reverse_discount_reimbursement(db, order, driver) == 4000
+    assert driver.balance == 0
+
+
+def test_reverse_is_idempotent(db):
+    passenger = _make_user(db)
+    driver = _make_driver(db, balance=0)
+    order = _make_order(db, passenger, commission=10000, bonus_used=4000)
+    reimburse_discount_for_order(db, order, driver)
+    db.commit()
+
+    assert reverse_discount_reimbursement(db, order, driver) == 4000
+    db.commit()
+    assert reverse_discount_reimbursement(db, order, driver) == 0
+    db.commit()
+    assert driver.balance == 0
+
+
+def test_reverse_noop_when_nothing_was_reimbursed(db):
+    passenger = _make_user(db)
+    driver = _make_driver(db, balance=7000)
+    order = _make_order(db, passenger, commission=10000, bonus_used=4000)
+    # No reimbursement was ever paid (a commission-paying ride), so nothing to take back.
+    assert reverse_discount_reimbursement(db, order, driver) == 0
+    assert driver.balance == 7000
+
+
+def test_reverse_refuses_a_different_driver(db):
+    """Never debit a driver who was not the one credited.
+
+    An order can be reassigned; charging the wrong driver for someone else's credit would
+    be an unexplained deduction from a live cash account.
+    """
+    passenger = _make_user(db)
+    credited = _make_driver(db, balance=0)
+    other = _make_driver(db, balance=9000)
+    order = _make_order(db, passenger, commission=10000, bonus_used=4000)
+    reimburse_discount_for_order(db, order, credited)
+    db.commit()
+
+    assert reverse_discount_reimbursement(db, order, other) == 0
+    assert other.balance == 9000
+
+
+def test_trial_ride_leaves_driver_net_unchanged(db):
+    """End-to-end invariant for a free-trial ride with a bonus discount.
+
+    The driver collects `passenger_payable` in cash instead of the full `price`, and is
+    credited the difference. Net must equal the no-discount case, which is the whole point
+    of the reimbursement leg.
+    """
+    passenger = _make_user(db, bonus_balance=5000)
+    driver = _make_driver(db, balance=0,
+                          subscription_until=datetime.utcnow() + timedelta(days=5))
+    order = _make_order(db, passenger, commission=10000, use_bonus=True)
+    price = order.price
+
+    reserve_bonus_for_order(db, order, driver, passenger)
+    credited = reimburse_discount_for_order(db, order, driver)
+    db.commit()
+
+    cash = passenger_payable(order)
+    # No commission is charged on a trial ride, so net = cash + the credit.
+    assert cash + credited == price
 
 
 # ------------------------------ apply_ride_rewards: loyalty ------------------------------
@@ -384,6 +584,28 @@ def test_non_referred_user_gets_no_referral_bonus(db):
     res = apply_ride_rewards(db, order, passenger)
     assert res["new_user_bonus"] == 0
     assert res["referrer_bonus"] == 0
+    assert res["referrer_user_id"] is None
+
+
+def test_result_identifies_the_referrer_to_notify(db):
+    """The summary must name the referrer and carry the balances.
+
+    The referrer is not part of the request that pays them, so the completion handler can
+    only push them a notification if this dict says who they are. Returning just the
+    amounts is what left every referral payout completely silent.
+    """
+    referrer = _make_user(db, bonus_balance=0)
+    invited = _make_user(db, bonus_balance=0, referred_by_user_id=referrer.id)
+    order = _make_order(db, invited)
+
+    res = apply_ride_rewards(db, order, invited)
+    db.commit()
+
+    assert res["referrer_user_id"] == referrer.id
+    assert res["referrer_balance"] == config.REFERRAL_REFERRER_BONUS
+    # The invited passenger's own wallet total, for their own notification.
+    assert res["passenger_balance"] == invited.bonus_balance
+    assert res["passenger_balance"] >= config.REFERRAL_NEW_USER_BONUS
 
 
 # ------------------------------ credit_bonus ------------------------------

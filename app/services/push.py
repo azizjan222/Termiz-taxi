@@ -641,6 +641,101 @@ async def notify_passenger_no_driver(session: Session, order):
     )
 
 
+async def notify_bonus_earned(session: Session, user_id: int, amount: int, balance: int):
+    """Tell a passenger their wallet grew (loyalty + invited-passenger referral bonus).
+
+    Called after a ride completes. ``amount`` is the total credited by that ride, so a ride
+    that triggers both programmes produces ONE push rather than two competing ones.
+    """
+    if not user_id or amount <= 0:
+        return
+    lang = _lang(session, "user", user_id)
+    title, body = nt.bonus_earned(
+        lang, amount_str=_fmt_amount(amount), balance_str=_fmt_amount(balance),
+    )
+    await send_push(
+        session,
+        recipient_type="user",
+        recipient_id=user_id,
+        title=title,
+        body=body,
+        data={"type": "bonus_earned", "amount": amount, "balance": balance},
+        channel_id="balance",
+    )
+
+
+async def notify_referral_reward(session: Session, user_id: int, amount: int, balance: int):
+    """Tell a REFERRER that an invited friend's first ride just paid out.
+
+    Deliberately a separate helper from :func:`notify_bonus_earned`: the recipient did not
+    take the ride, so "your friend completed a ride" is the only wording that explains
+    where the money came from.
+    """
+    if not user_id or amount <= 0:
+        return
+    lang = _lang(session, "user", user_id)
+    title, body = nt.referral_reward(
+        lang, amount_str=_fmt_amount(amount), balance_str=_fmt_amount(balance),
+    )
+    await send_push(
+        session,
+        recipient_type="user",
+        recipient_id=user_id,
+        title=title,
+        body=body,
+        data={"type": "referral_reward", "amount": amount, "balance": balance},
+        channel_id="balance",
+    )
+
+
+async def notify_driver_discount_reimbursed(
+    session: Session, driver_id: int, amount: int, order_id: int
+):
+    """Tell a free-trial driver why their balance just went UP.
+
+    They collected less cash because the passenger spent bonus, and no commission was
+    charged to compensate, so the platform credited the difference. An unexplained balance
+    change on a money-carrying account is exactly the kind of thing drivers call support
+    about.
+    """
+    if not driver_id or amount <= 0:
+        return
+    lang = _lang(session, "driver", driver_id)
+    title, body = nt.discount_reimbursed(
+        lang, amount_str=_fmt_amount(amount), order_id=order_id,
+    )
+    await send_push(
+        session,
+        recipient_type="driver",
+        recipient_id=driver_id,
+        title=title,
+        body=body,
+        data={"type": "discount_reimbursed", "order_id": order_id, "amount": amount},
+        channel_id="balance",
+    )
+
+
+async def notify_driver_reimbursement_reversed(
+    session: Session, driver_id: int, amount: int, order_id: int
+):
+    """Explain the debit when a cancelled ride's discount reimbursement is taken back."""
+    if not driver_id or amount <= 0:
+        return
+    lang = _lang(session, "driver", driver_id)
+    title, body = nt.reimbursement_reversed(
+        lang, amount_str=_fmt_amount(amount), order_id=order_id,
+    )
+    await send_push(
+        session,
+        recipient_type="driver",
+        recipient_id=driver_id,
+        title=title,
+        body=body,
+        data={"type": "reimbursement_reversed", "order_id": order_id, "amount": amount},
+        channel_id="balance",
+    )
+
+
 async def notify_driver_commission_soon(session: Session, order, minutes_left: int):
     """Heads-up to the driver that the deferred commission is about to be charged.
 
@@ -650,12 +745,16 @@ async def notify_driver_commission_soon(session: Session, order, minutes_left: i
     if not getattr(order, "driver_id", None):
         return
     lang = _lang(session, "driver", order.driver_id)
+    # Quote the NET amount that will actually be deducted. Using gross `order.commission`
+    # here promised a bigger deduction than the scheduler makes whenever the passenger
+    # spent bonus or a promo code on the ride.
+    from app.services.rewards import effective_commission
     title, body = nt.commission_soon(
         lang,
         from_city=order.from_city,
         to_city=order.to_city,
         minutes=minutes_left,
-        amount_str=_fmt_amount(order.commission or 0),
+        amount_str=_fmt_amount(effective_commission(order)),
     )
     await send_push(
         session,

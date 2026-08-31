@@ -140,14 +140,29 @@ export default function ReferralScreen() {
         </View>
 
         {/* Wallet balance. Loyalty and referral share one wallet, so this is the number that
-            actually matters to the passenger — and it was not shown anywhere in the app. */}
-        <View style={styles.walletBox}>
+            actually matters to the passenger — and it was not shown anywhere in the app.
+            Tapping it opens the ledger: a bare total cannot answer "where did this come
+            from?" or "why did it drop?", which is what passengers actually ask. */}
+        <TouchableOpacity
+          style={styles.walletBox}
+          onPress={() => router.push('/bonus-history')}
+          activeOpacity={0.85}
+        >
           <Text style={styles.walletLabel}>{t('referral.walletLabel')}</Text>
           <Text style={styles.walletValue}>
             {formatPrice(info.bonus_balance)} {t('common.currency')}
           </Text>
           <Text style={styles.walletHint}>{t('referral.walletHint')}</Text>
-        </View>
+          <IconText
+            name="history"
+            size={14}
+            color={colors.primary}
+            textStyle={styles.walletLink}
+            style={styles.walletLinkRow}
+          >
+            {t('bonusHistory.open')}
+          </IconText>
+        </TouchableOpacity>
 
         <View style={styles.codeBox}>
           <Text style={styles.codeLabel}>{t('referral.yourCode')}</Text>
@@ -270,6 +285,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
   },
+  walletLinkRow: { marginTop: spacing.sm },
+  walletLink: { ...typography.small, color: colors.primary, fontWeight: '700' },
   enterBox: {
     backgroundColor: colors.white,
     padding: spacing.md,

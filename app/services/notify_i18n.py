@@ -157,6 +157,89 @@ def balance_topup(lang: str, *, amount_str: str, bonus_str: Optional[str] = None
     return title, body
 
 
+def bonus_earned(lang: str, *, amount_str: str, balance_str: str) -> tuple[str, str]:
+    """Passenger earned bonus (loyalty and/or the invited-passenger referral bonus).
+
+    Sent when a ride completes. Before this existed the wallet simply grew in silence, so
+    passengers had no idea they had money to spend — the balance was only discoverable by
+    opening the referral screen on a hunch.
+    """
+    lang = norm_lang(lang)
+    ccy = currency(lang)
+    title = {"uz": "🎁 Bonus qo'shildi!", "uz-cyrl": "🎁 Бонус қўшилди!",
+             "ru": "🎁 Бонус начислен!", "en": "🎁 Bonus added!"}[lang]
+    body = {
+        "uz": f"+{amount_str} {ccy}. Bonus hisobingiz: {balance_str} {ccy}. Keyingi safarda chegirma sifatida ishlating.",
+        "uz-cyrl": f"+{amount_str} {ccy}. Бонус ҳисобингиз: {balance_str} {ccy}. Кейинги сафарда чегирма сифатида ишлатинг.",
+        "ru": f"+{amount_str} {ccy}. Бонусный счёт: {balance_str} {ccy}. Используйте как скидку в следующей поездке.",
+        "en": f"+{amount_str} {ccy}. Bonus balance: {balance_str} {ccy}. Use it as a discount on your next ride.",
+    }[lang]
+    return title, body
+
+
+def referral_reward(lang: str, *, amount_str: str, balance_str: str) -> tuple[str, str]:
+    """The REFERRER earned their reward because an invited friend completed a first ride.
+
+    This recipient is not part of the request that triggers it, so a push is the only way
+    they learn about it. A referral programme whose payouts are invisible stops spreading.
+    """
+    lang = norm_lang(lang)
+    ccy = currency(lang)
+    title = {"uz": "🎉 Do'stingiz safarni tugatdi!", "uz-cyrl": "🎉 Дўстингиз сафарни тугатди!",
+             "ru": "🎉 Ваш друг завершил поездку!", "en": "🎉 Your friend completed a ride!"}[lang]
+    body = {
+        "uz": f"Taklif mukofoti: +{amount_str} {ccy}. Bonus hisobingiz: {balance_str} {ccy}.",
+        "uz-cyrl": f"Таклиф мукофоти: +{amount_str} {ccy}. Бонус ҳисобингиз: {balance_str} {ccy}.",
+        "ru": f"Награда за приглашение: +{amount_str} {ccy}. Бонусный счёт: {balance_str} {ccy}.",
+        "en": f"Referral reward: +{amount_str} {ccy}. Bonus balance: {balance_str} {ccy}.",
+    }[lang]
+    return title, body
+
+
+def discount_reimbursed(lang: str, *, amount_str: str, order_id: int) -> tuple[str, str]:
+    """Driver's balance was credited for a passenger discount on a free-trial ride.
+
+    The driver collected less cash than the fare because the passenger spent bonus, and no
+    commission was charged that could have compensated them — so the platform credits the
+    difference. Without this message the credit would just appear in their balance
+    unannounced, which reads like a bug.
+    """
+    lang = norm_lang(lang)
+    ccy = currency(lang)
+    title = {"uz": "💚 Chegirma qoplandi", "uz-cyrl": "💚 Чегирма қопланди",
+             "ru": "💚 Скидка компенсирована", "en": "💚 Discount reimbursed"}[lang]
+    body = {
+        "uz": f"Zakas #{order_id}: yo'lovchi bonus chegirmasidan foydalandi. Balansingizga +{amount_str} {ccy} qo'shildi — siz hech narsa yo'qotmaysiz.",
+        "uz-cyrl": f"Заказ #{order_id}: йўловчи бонус чегирмасидан фойдаланди. Балансингизга +{amount_str} {ccy} қўшилди — сиз ҳеч нарса йўқотмайсиз.",
+        "ru": f"Заказ #{order_id}: пассажир использовал бонусную скидку. На баланс зачислено +{amount_str} {ccy} — вы ничего не теряете.",
+        "en": f"Order #{order_id}: the passenger used a bonus discount. +{amount_str} {ccy} was added to your balance — you lose nothing.",
+    }[lang]
+    return title, body
+
+
+def reimbursement_reversed(lang: str, *, amount_str: str, order_id: int) -> tuple[str, str]:
+    """The discount reimbursement was taken back because the ride was cancelled.
+
+    The counterpart to :func:`discount_reimbursed`. That message promises the driver they
+    lose nothing; when the ride is cancelled the passenger's bonus goes back to their
+    wallet, so the credit has to go back too. Without this the driver would just see an
+    unexplained deduction right after being told the opposite.
+    """
+    lang = norm_lang(lang)
+    ccy = currency(lang)
+    title = {"uz": "↩️ Chegirma qoplamasi qaytarildi",
+             "uz-cyrl": "↩️ Чегирма қопламаси қайтарилди",
+             "ru": "↩️ Компенсация скидки возвращена",
+             "en": "↩️ Discount reimbursement returned"}[lang]
+    body = {
+        "uz": f"Zakas #{order_id} bekor qilindi, shuning uchun {amount_str} {ccy} qoplama balansingizdan qaytarildi. Yo'lovchining bonusi ham unga qaytarildi.",
+        "uz-cyrl": f"Заказ #{order_id} бекор қилинди, шунинг учун {amount_str} {ccy} қоплама балансингиздан қайтарилди. Йўловчининг бонуси ҳам унга қайтарилди.",
+        "ru": f"Заказ #{order_id} отменён, поэтому компенсация {amount_str} {ccy} снята с баланса. Бонус пассажира также возвращён ему.",
+        "en": f"Order #{order_id} was cancelled, so the {amount_str} {ccy} reimbursement was taken back. The passenger's bonus was returned to them too.",
+    }[lang]
+    return title, body
+
+
 def commission_soon(lang: str, *, from_city: str, to_city: str,
                     minutes: int, amount_str: str) -> tuple[str, str]:
     lang = norm_lang(lang)

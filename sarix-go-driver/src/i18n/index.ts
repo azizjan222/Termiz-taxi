@@ -112,6 +112,16 @@ export const uz = {
     notFound: 'Buyurtma topilmadi yoki band',
     navigation: "Yo'l ko'rsatish",
     navigationHint: "Xaritada yo'lovchi oldiga yo'l",
+    // Passenger discounts. The driver app used to show gross `price` everywhere, so a
+    // driver asked for cash the passenger app had already discounted. `payable` is the
+    // figure that must be collected; the note explains the driver is not the one paying
+    // for it, because a smaller number with no explanation reads like being short-changed.
+    payable: "Yo'lovchidan olasiz",
+    bonusDiscount: 'Bonus chegirma',
+    promoDiscount: 'Promo chegirma',
+    commissionAfterDiscount: 'Komissiya (chegirmadan keyin)',
+    discountNote: "Chegirma komissiyadan qoplanadi — daromadingiz kamaymaydi",
+    mayUseBonus: "Yo'lovchi bonus ishlatishi mumkin. Chegirma komissiyadan qoplanadi, daromadingiz kamaymaydi.",
   },
   profile: {
     title: 'Profil',
@@ -725,6 +735,12 @@ export const ru = {
     accepted: 'Принят!', notFound: 'Заказ не найден или занят',
     navigation: 'Навигация',
     navigationHint: 'Маршрут до пассажира на карте',
+    payable: 'Получить с пассажира',
+    bonusDiscount: 'Бонусная скидка',
+    promoDiscount: 'Скидка по промокоду',
+    commissionAfterDiscount: 'Комиссия (после скидки)',
+    discountNote: 'Скидка покрывается из комиссии — ваш доход не уменьшается',
+    mayUseBonus: 'Пассажир может использовать бонус. Скидка покрывается из комиссии, ваш доход не уменьшается.',
   },
   profile: {
     title: 'Профиль', name: 'Имя', phone: 'Телефон', car: 'Машина',
@@ -1303,6 +1319,12 @@ export const en = {
     accepted: 'Accepted!', notFound: 'Order not found or taken',
     navigation: 'Navigation',
     navigationHint: 'Route to the passenger on the map',
+    payable: 'Collect from passenger',
+    bonusDiscount: 'Bonus discount',
+    promoDiscount: 'Promo discount',
+    commissionAfterDiscount: 'Commission (after discount)',
+    discountNote: 'The discount is covered from the commission — your earnings are unchanged',
+    mayUseBonus: 'The passenger may use bonus. The discount is covered from the commission, so your earnings are unchanged.',
   },
   profile: {
     title: 'Profile', name: 'Name', phone: 'Phone', car: 'Car',
@@ -1880,6 +1902,12 @@ export const uzCyrl = {
     accepted: 'Қабул қилинди!', notFound: 'Буюртма топилмади ёки банд',
     navigation: 'Йўл кўрсатиш',
     navigationHint: 'Харитада йўловчи олдига йўл',
+    payable: 'Йўловчидан оласиз',
+    bonusDiscount: 'Бонус чегирма',
+    promoDiscount: 'Промо чегирма',
+    commissionAfterDiscount: 'Комиссия (чегирмадан кейин)',
+    discountNote: 'Чегирма комиссиядан қопланади — даромадингиз камаймайди',
+    mayUseBonus: 'Йўловчи бонус ишлатиши мумкин. Чегирма комиссиядан қопланади, даромадингиз камаймайди.',
   },
   profile: {
     title: 'Профил', name: 'Исм', phone: 'Телефон', car: 'Машина',
