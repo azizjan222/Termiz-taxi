@@ -22,11 +22,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.migrate import _declared_constraints
 from app.models import BalanceTransaction, Driver, Order
-from app.services.rewards import (
-    COMMISSION_DEBT_SOURCE,
-    COMMISSION_SOURCE,
-    debit_commission,
-)
+from app.services.rewards import COMMISSION_DEBT_SOURCE, COMMISSION_SOURCE, debit_commission
 
 
 # --------------------------------------------------------------------------- #
