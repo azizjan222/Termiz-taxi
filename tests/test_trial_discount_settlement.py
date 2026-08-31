@@ -514,12 +514,16 @@ async def test_use_bonus_is_visible_before_the_discount_exists(db):
         assert data["payable"] == order.price
 
 
-async def test_history_earned_is_net_of_the_discount(db, monkeypatch):
-    """Per-ride `earned` must agree with the stats screen.
+async def test_history_earned_on_a_paying_ride_equals_price_minus_commission(db, monkeypatch):
+    """On a COMMISSION-PAYING ride the discount must not move `earned` at all.
 
-    It was `price - commission` — gross on gross — which OVERSTATED a discounted ride while
-    /api/driver/stats reported the correct lower total, so the driver's two earnings screens
-    contradicted each other on the same ride.
+    This is the core invariant restated at the reporting layer: the discount is funded from
+    commission, so the driver's net stays `price - commission` whatever the passenger spent.
+    Which is also why the old gross-on-gross formula happened to be right here — the bug
+    only bit when no commission was collected (see the trial-ride test below).
+
+    Kept as a regression guard in the other direction: it would catch a "fix" that
+    subtracted the discount from the driver's earnings, i.e. made them pay for it.
     """
     monkeypatch.setattr(config, "COMMISSION_WINDOW_MINUTES", 15)
     from app.api import drivers as drivers_api
@@ -545,14 +549,22 @@ async def test_history_earned_is_net_of_the_discount(db, monkeypatch):
     row = json.loads(response.text)["orders"][0]
 
     bonus = config.BONUS_MAX_PER_RIDE
-    # Cash collected (95 000) minus the commission actually charged (10 000 - 5 000).
+    # Cash collected (95 000) minus the commission actually charged (10 000 - 5 000)...
     assert row["earned"] == (100_000 - bonus) - (10_000 - bonus)
-    # The old gross-on-gross figure would have been 90 000; assert we are NOT reporting it.
-    assert row["earned"] != 100_000 - 10_000
+    # ...which is exactly price - commission. The driver is not charged for the discount.
+    assert row["earned"] == 100_000 - 10_000
+    # And the figure agrees with the reduced commission the row displays.
+    assert row["commission_effective"] == 10_000 - bonus
 
 
 async def test_trial_ride_history_earned_includes_the_reimbursement(db, monkeypatch):
-    """On a trial ride the credit is part of what the driver earned."""
+    """The case the old `price - commission` formula got WRONG.
+
+    No commission is charged on a trial ride, so the driver keeps the whole fare: the cash
+    they collected plus the credit that covered the discount. The old formula deducted a
+    commission that was never taken, understating the ride by the full commission — while
+    /api/driver/stats reported it correctly, so the two screens disagreed.
+    """
     monkeypatch.setattr(config, "COMMISSION_WINDOW_MINUTES", 15)
     from app.api import drivers as drivers_api
 
