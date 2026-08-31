@@ -314,6 +314,15 @@ async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ).first()
         old_balance = driver.balance or 0
         already_applied = existing is not None
+        # A deduction below zero would violate ck_driver_balance_nonnegative and blow up the
+        # command handler. Say so instead, with the amount that is actually available.
+        if not already_applied and amount < 0 and old_balance + amount < 0:
+            await update.message.reply_text(
+                f"❌ {abs(amount):,} so'm yechib bo'lmaydi.\n"
+                f"Hozirgi balans: {old_balance:,} so'm.\n"
+                f"Balans manfiy bo'lishi mumkin emas.".replace(",", " "),
+            )
+            return
         if existing:
             new_balance = old_balance
             amount = 0

@@ -8,7 +8,7 @@ from aiohttp import web
 from app import config
 from app.api.websocket import ws_manager
 from app.database import get_session
-from app.models import BalanceTransaction, Driver, Order, OrderHistory, Setting, User
+from app.models import Driver, Order, OrderHistory, Setting, User
 from app.services.dynamic_settings import (
     get_free_trial_days,
     get_free_trial_limit,
@@ -1504,18 +1504,15 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
         if d and not subscription_active and not order.commission_charged:
             commission = commission_owed
             if commission > 0:
-                d.balance = (d.balance or 0) - commission
-                session.add(BalanceTransaction(
-                    driver_id=d.id,
-                    amount=-commission,
-                    balance_after=d.balance,
-                    source="order_commission",
-                    reference_type="order",
-                    reference_id=order.id,
-                    idempotency_key=f"order:{order.id}:commission",
+                # Shared with the scheduler so both paths floor the debit identically and
+                # neither can drive the balance negative (ck_driver_balance_nonnegative).
+                from app.services.rewards import debit_commission
+                charged_now, _debt = debit_commission(
+                    session, d, order, commission,
                     note="Driver-cancelled order commission",
-                ))
-                order.commission_collected = True
+                )
+                if charged_now:
+                    order.commission_collected = True
                 charged = True
         # The scheduler reimburses a free-trial ride's discount 15 minutes after
         # acceptance, which can land BEFORE this cancellation. When the discounts have just

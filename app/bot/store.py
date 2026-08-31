@@ -500,18 +500,31 @@ class BotStore:
             if not claimed:
                 return AssignResult(ok=False, reason="taken", price=price)
 
-            driver.balance = int(driver.balance or 0) - price
+            # Floored at the available balance: this used to subtract unconditionally, and
+            # ck_driver_balance_nonnegative now rejects an overdraw outright. The caller
+            # gates on the minimum balance before assigning, so a shortfall here is an edge
+            # case (a concurrent debit) -- it is logged rather than silently swallowed.
+            available = max(0, int(driver.balance or 0))
+            charged = min(price, available)
+            driver.balance = available - charged
             new_balance = driver.balance
-            session.add(BalanceTransaction(
-                driver_id=driver.id,
-                amount=-price,
-                balance_after=new_balance,
-                source="bot_order_reserve",
-                reference_type="order",
-                reference_id=order_id,
-                idempotency_key=f"order:{order_id}:commission",
-                note="Bot order fare reserved on acceptance",
-            ))
+            if charged < price:
+                logger.warning(
+                    "Bot order %s: fare %s exceeded driver %s balance %s, reserved %s",
+                    order_id, price, driver.id, available, charged,
+                )
+            if charged > 0:
+                # ck_balance_transaction_amount_nonzero forbids a zero-amount ledger row.
+                session.add(BalanceTransaction(
+                    driver_id=driver.id,
+                    amount=-charged,
+                    balance_after=new_balance,
+                    source="bot_order_reserve",
+                    reference_type="order",
+                    reference_id=order_id,
+                    idempotency_key=f"order:{order_id}:commission",
+                    note="Bot order fare reserved on acceptance",
+                ))
             session.commit()
             session.refresh(order)
             session.expunge(order)

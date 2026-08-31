@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 
 from app import config
 from app.database import get_session
-from app.models import BalanceTransaction, Driver, Order
+from app.models import Driver, Order
 
 logger = logging.getLogger("sarixgo.commission")
 
@@ -144,21 +144,19 @@ def charge_due_commissions(
                         })
                     continue
 
-                from app.services.rewards import effective_commission
+                from app.services.rewards import debit_commission, effective_commission
                 commission = effective_commission(order)
                 if commission > 0:
-                    driver.balance = (driver.balance or 0) - commission
-                    session.add(BalanceTransaction(
-                        driver_id=driver.id,
-                        amount=-commission,
-                        balance_after=driver.balance,
-                        source="order_commission",
-                        reference_type="order",
-                        reference_id=order.id,
-                        idempotency_key=f"order:{order.id}:commission",
+                    # Floors the debit at the available balance and books any shortfall as
+                    # a `commission_debt` ledger row, so the wallet can never go negative.
+                    charged_now, _debt = debit_commission(
+                        session, driver, order, commission,
                         note="Deferred order commission",
-                    ))
-                    order.commission_collected = True
+                    )
+                    # Revenue is only "collected" if money actually moved. A ride that fell
+                    # entirely into debt must not report as collected commission.
+                    if charged_now:
+                        order.commission_collected = True
                     session.commit()
                     charged += 1
                 else:
