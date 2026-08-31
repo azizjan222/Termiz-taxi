@@ -18,7 +18,6 @@ Two regressions are locked in here.
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import CheckConstraint, UniqueConstraint
 
 from app.migrate import _declared_constraints
 from app.models import BalanceTransaction, Driver, Order
@@ -39,6 +38,8 @@ def test_every_declared_constraint_is_backfillable():
     This is the drift guard: it is what makes it impossible to add a constraint to a model
     and silently ship a production database without it.
     """
+    from sqlalchemy import CheckConstraint, UniqueConstraint
+
     from app.models import Base
 
     generated = {name for _table, name, _ddl, _v in _declared_constraints()}
