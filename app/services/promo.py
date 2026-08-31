@@ -20,6 +20,13 @@ from app.models import PromoCode, PromoUsage
 logger = logging.getLogger(__name__)
 
 
+#: Returned by :func:`redeem_promo` when the code is valid but worth nothing on this
+#: particular order (e.g. a parcel booking, whose fare is 0 until driver and passenger
+#: agree). Callers must treat this as a WARNING and still create the order -- it is not a
+#: validation failure, and rejecting the order over it loses a booking.
+NOT_APPLICABLE = "Bu buyurtmaga chegirma qo'llanilmaydi"
+
+
 def compute_discount(promo: PromoCode, price: int, commission: int) -> int:
     """Discount this code is worth on an order, capped so it never exceeds commission.
 
@@ -92,7 +99,12 @@ def redeem_promo(
 
     discount = compute_discount(promo, price, commission)
     if discount <= 0:
-        return 0, None, "Bu buyurtmaga chegirma qo'llanilmaydi"
+        # NOT_APPLICABLE is a distinct, non-fatal outcome: the code is perfectly valid, it
+        # simply cannot pay out on THIS order. A parcel booking prices at 0 (the fare is
+        # agreed directly with the driver), so compute_discount clamps to 0 and the caller
+        # used to turn that into a 400 -- entering a working promo code made the whole
+        # parcel booking fail, with a message that did not explain why.
+        return 0, None, NOT_APPLICABLE
 
     # Both claims run inside a SAVEPOINT so a failure rolls back only the promo work.
     #

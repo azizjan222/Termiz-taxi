@@ -21,6 +21,18 @@ async def list_cities(request: web.Request) -> web.Response:
     })
 
 
+def _route_full_car_price(route) -> int:
+    """The full-car fare a passenger will ACTUALLY be charged for this route.
+
+    Must stay in step with `_calc_price_and_commission` in app/api/orders.py. This endpoint
+    used to publish the stored `Route.full_car_price` column, which no code path has ever
+    charged -- so the API advertised one figure (its seeded default, 400 000) while order
+    creation charged `price_per_person * FULL_CAR_SEATS` (360 000 on Termiz-Sariosiyo).
+    Deriving it here means the quote and the charge cannot drift.
+    """
+    return (route.price_per_person or 0) * config.FULL_CAR_SEATS
+
+
 async def list_routes(request: web.Request) -> web.Response:
     """GET /api/routes - list all active routes with prices."""
     session = get_session()
@@ -33,8 +45,11 @@ async def list_routes(request: web.Request) -> web.Response:
                     "from_city": r.from_city,
                     "to_city": r.to_city,
                     "price_per_person": r.price_per_person,
-                    "full_car_price": r.full_car_price,
-                    "parcel_price": r.parcel_price,
+                    # Derived, not the stored column -- see _route_full_car_price().
+                    "full_car_price": _route_full_car_price(r),
+                    # Parcel fares are agreed between passenger and driver; 0 renders as
+                    # "Kelishiladi". The stored parcel_price column is likewise not charged.
+                    "parcel_price": 0,
                     "distance_km": r.distance_km,
                 }
                 for r in routes

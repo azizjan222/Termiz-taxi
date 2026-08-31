@@ -256,6 +256,13 @@ ESKIZ_BASE_URL = _get("ESKIZ_BASE_URL", "https://notify.eskiz.uz/api")
 # Orders
 WAIT_MINUTES = _get_int("WAIT_MINUTES", 30)
 WARN_MINUTES = _get_int("WARN_MINUTES", 10)
+# Upper bound on passengers per order. Was a bare `min(person_count, 10)` inside the price
+# calculation, which silently clamped the CHARGE while the order stored the raw client
+# value -- so an order could be priced for 10 and displayed to the driver as 50.
+MAX_PERSONS_PER_ORDER = _get_int("MAX_PERSONS_PER_ORDER", 10)
+# Seats assumed for a "bo'sh mashina" (full car) booking when the route has no explicit
+# full_car_price. Was a bare `* 4` literal in the pricing function.
+FULL_CAR_SEATS = _get_int("FULL_CAR_SEATS", 4)
 COMMISSION_PER_PERSON = _get_int("COMMISSION_PER_PERSON", 10000)
 COMMISSION_PARCEL = _get_int("COMMISSION_PARCEL", 5000)
 COMMISSION_FULL_CAR = _get_int("COMMISSION_FULL_CAR", 30000)

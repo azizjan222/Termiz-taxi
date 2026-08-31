@@ -64,26 +64,47 @@ def test_taxi_price_scales_with_persons(db, make_route):
     assert price == 90000
 
 
-def test_taxi_persons_clamped_to_ten(db, make_route):
+def test_taxi_price_is_linear_and_no_longer_clamped(db, make_route):
+    """Pricing no longer silently clamps -- create_order validates the range instead.
+
+    The clamp used to live here as `min(person_count, 10)` while the INSERT stored the RAW
+    client value, so an order for 50 passengers was priced for 10 and shown to the driver
+    as 50. Range enforcement moved to the handler (see tests/test_order_validation.py), so
+    this function is now a pure, honest multiplication.
+    """
     make_route(price_per_person=10000)
-    price, _, _ = _calc_price_and_commission(db, "Termiz", "Sariosiyo", "taxi", 999)
-    assert price == 10000 * 10  # capped at 10 passengers
+    price, _, _ = _calc_price_and_commission(db, "Termiz", "Sariosiyo", "taxi", 10)
+    assert price == 10000 * 10
 
 
-def test_taxi_persons_floor_of_one(db, make_route):
-    make_route(price_per_person=10000)
-    price, _, _ = _calc_price_and_commission(db, "Termiz", "Sariosiyo", "taxi", 0)
-    assert price == 10000  # min 1 passenger
+def test_full_car_priced_at_configured_seat_count(db, make_route):
+    """Deliberately NOT Route.full_car_price -- see the note in _calc_price_and_commission.
 
-
-def test_full_car_priced_at_four_seats(db, make_route):
+    That column is admin-editable and published by /api/routes but has never been charged,
+    and its seeded value (400 000) matches no real route's price_per_person * 4. Honouring
+    it would raise full-car fares by 11-43%, which is a pricing decision rather than a fix.
+    """
     make_route(price_per_person=30000)
     price, commission, err = _calc_price_and_commission(
         db, "Termiz", "Sariosiyo", "full_car", 1
     )
     assert err is None
-    assert price == 30000 * 4
+    assert price == 30000 * config.FULL_CAR_SEATS
     assert commission == round(price * config.COMMISSION_PERCENT / 100)
+
+
+def test_full_car_quote_matches_what_is_charged(db, make_route):
+    """/api/routes must publish the figure order creation will actually charge."""
+    from app.api.routes_api import _route_full_car_price
+
+    route = make_route(price_per_person=90000, full_car_price=400000)
+    charged, _commission, err = _calc_price_and_commission(
+        db, "Termiz", "Sariosiyo", "full_car", 1
+    )
+    assert err is None
+    assert _route_full_car_price(route) == charged
+    # The stale stored column is precisely what must NOT be published.
+    assert _route_full_car_price(route) != route.full_car_price
 
 
 def test_parcel_price_is_negotiable_with_flat_commission(db, make_route):
