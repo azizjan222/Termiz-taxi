@@ -39,6 +39,7 @@ import {
 } from '../../src/components/driverMap.helpers';
 import { typography, spacing, radius, gradients } from '../../src/theme';
 import { useThemeStore } from '../../src/store/theme';
+import { isAppForeground } from '../../src/utils/appForeground';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 import { formatDepartureTime } from '../../src/utils/departureTime';
 
@@ -102,21 +103,28 @@ export default function OrderDetailScreen() {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const load = async () => {
-      try {
-        const orders = await listMyActive();
-        if (!cancelled) {
-          const o = orders.find((x) => x.id.toString() === id);
-          if (o) {
-            setOrder(o);
-            setGone(false);
-          } else {
-            // A successful response that does not contain this order means it is no longer
-            // ours: the passenger cancelled, another driver took it, or it completed.
-            setGone(true);
+      // Skip the FETCH while backgrounded, but keep re-arming the timer below: an early
+      // return here would kill the poll permanently for the life of the screen. The driver
+      // typically backgrounds this screen to use navigation, so it used to keep fetching
+      // the whole way to the pickup.
+      if (isAppForeground()) {
+        try {
+          const orders = await listMyActive();
+          if (!cancelled) {
+            const o = orders.find((x) => x.id.toString() === id);
+            if (o) {
+              setOrder(o);
+              setGone(false);
+            } else {
+              // A successful response that does not contain this order means it is no
+              // longer ours: the passenger cancelled, another driver took it, or it
+              // completed.
+              setGone(true);
+            }
           }
+        } catch {
+          // Network/API failure: keep whatever we already have and retry.
         }
-      } catch {
-        // Network/API failure: keep whatever we already have and retry.
       }
       if (!cancelled) timer = setTimeout(load, ORDER_POLL_MS);
     };

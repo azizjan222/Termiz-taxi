@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon, IconText } from '../../src/components/Icon';
 import { listMyActive, type DriverOrder } from '../../src/api/driver';
 import { useThemeStore } from '../../src/store/theme';
+import { isAppForeground } from '../../src/utils/appForeground';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
@@ -52,7 +53,11 @@ export default function ActiveOrdersScreen() {
 
   useEffect(() => {
     load();
-    const i = setInterval(() => load(true), 15000);
+    // Foreground-gated — see src/utils/appForeground.ts. Pull-to-refresh and the mount
+    // call above are deliberately NOT gated.
+    const i = setInterval(() => {
+      if (isAppForeground()) load(true);
+    }, 15000);
     return () => clearInterval(i);
   }, [load]);
 

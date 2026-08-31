@@ -17,6 +17,7 @@ import { describeApiError } from '../../src/api/errors';
 import { useDriverStore } from '../../src/store/driver';
 import { useRealtimeStore } from '../../src/store/realtime';
 import { useThemeStore } from '../../src/store/theme';
+import { isAppForeground } from '../../src/utils/appForeground';
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { IncomingOrderModal } from '../../src/components/IncomingOrderModal';
 import { AcceptButton } from '../../src/components/AcceptButton';
@@ -123,7 +124,12 @@ export default function OrdersScreen() {
 
   useEffect(() => {
     load();
-    const interval = setInterval(() => load(true), 15000);
+    // Foreground-gated: a backgrounded app kept fetching the order list every 15s for as
+    // long as Android let the JS thread run. New orders arrive over the WebSocket
+    // (src/services/realtime.ts); this interval is only the fallback beneath it.
+    const interval = setInterval(() => {
+      if (isAppForeground()) load(true);
+    }, 15000);
     return () => clearInterval(interval);
   }, [load]);
 

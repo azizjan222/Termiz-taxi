@@ -21,6 +21,7 @@ import { getOrderRatingStatus } from '../../src/api/ratings';
 import { presentLocalNotification } from '../../src/services/notifications';
 import { addNotification } from '../../src/services/notificationHistory';
 import { useAuthStore } from '../../src/store/auth';
+import { isAppForeground } from '../../src/utils/appForeground';
 import { API_URL } from '../../src/api/client';
 import { connectPassengerSocket } from '../../src/services/passengerSocket';
 import { useThemeStore } from '../../src/store/theme';
@@ -122,8 +123,11 @@ export default function OrderDetailScreen() {
 
   useEffect(() => {
     load();
-    // Refresh every 10 seconds
-    const i = setInterval(load, 10000);
+    // Refresh every 10 seconds while the app is in the FOREGROUND. Backgrounded, this kept
+    // polling indefinitely; the live driver position arrives over the WebSocket anyway.
+    const i = setInterval(() => {
+      if (isAppForeground()) load();
+    }, 10000);
     return () => clearInterval(i);
     // Re-arm polling only when the order id changes; load() reads latest state via refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps

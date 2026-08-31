@@ -23,6 +23,7 @@ import { describeApiError } from '../src/api/errors';
 import { useAuthStore } from '../src/store/auth';
 import { connectPassengerSocket } from '../src/services/passengerSocket';
 import { presentLocalNotification } from '../src/services/notifications';
+import { isAppForeground } from '../src/utils/appForeground';
 import { addNotification } from '../src/services/notificationHistory';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -192,6 +193,11 @@ export default function SearchingScreen() {
     // on screen suggesting anything was wrong. After a few failures we surface it.
     let failures = 0;
     const poll = async () => {
+      // Backgrounded, this 5s poll had no ceiling and no backoff: a search screen left open
+      // for ten minutes issued ~120 requests. Returning early (rather than clearing the
+      // interval) keeps the tick alive so polling resumes the moment the app is foregrounded,
+      // and deliberately does not touch `failures` — being backgrounded is not a failure.
+      if (!isAppForeground()) return;
       try {
         const order = await getOrder(id);
         failures = 0;
