@@ -108,15 +108,22 @@ def _calc_price_and_commission(
 
     if service_type == "parcel":
         # Parcel price is negotiated directly between the passenger and the driver.
-        # price=0 means "to be agreed (Kelishiladi)". The driver pays a flat parcel commission.
+        # price=0 means "to be agreed (Kelishiladi)" -- notify_i18n.price_text() renders
+        # that word from the 0, so this must NOT become Route.parcel_price.
         return 0, config.COMMISSION_PARCEL, None
 
     if service_type == "full_car":
-        # Bo'sh (to'liq) mashina: narx 4 kishilik tarif bo'yicha hisoblanadi.
-        price = route.price_per_person * 4
+        # Bo'sh (to'liq) mashina: narx FULL_CAR_SEATS kishilik tarif bo'yicha.
+        #
+        # NOTE: Route.full_car_price is deliberately NOT read here. It is admin-editable and
+        # published by /api/routes, but nothing has ever charged it, and its seeded value
+        # (400 000) does not match price_per_person * 4 for any real route -- honouring it
+        # would silently raise full-car fares by 11-43%. Making that switch is a pricing
+        # decision, not a refactor. See _route_full_car_price() in routes_api.py, which now
+        # publishes the figure actually charged so the two cannot disagree.
+        price = route.price_per_person * config.FULL_CAR_SEATS
     else:
-        persons = max(1, min(person_count, 10))
-        price = route.price_per_person * persons
+        price = route.price_per_person * person_count
 
     commission_percent = get_commission_percent(session)
     commission = int(round(price * commission_percent / 100.0))
@@ -196,7 +203,37 @@ async def create_order(request: web.Request) -> web.Response:
     if from_city == to_city:
         return web.json_response({"error": "Boshlang'ich va manzil bir xil"}, status=400)
 
-    person_count = int(data.get("person_count", 1) or 1)
+    # Validated here rather than clamped during pricing. _calc_price_and_commission used to
+    # price `min(person_count, 10)` while the INSERT stored the RAW client value, so a
+    # request for 50 passengers was charged for 10 and shown to the driver as 50. And a
+    # zero/negative count fell through to the DB CheckConstraint, surfacing as a generic
+    # 500 -- or, on a database where that constraint had never been backfilled, being
+    # stored as-is.
+    # `... or 1` is deliberately NOT used for person_count: it maps an explicit 0 to 1,
+    # which hides a client bug instead of reporting it. Absent/null still defaults to 1.
+    raw_person_count = data.get("person_count", 1)
+    if raw_person_count is None:
+        raw_person_count = 1
+    try:
+        person_count = int(raw_person_count)
+        male_count = int(data.get("male_count", 0) or 0)
+        female_count = int(data.get("female_count", 0) or 0)
+    except (TypeError, ValueError):
+        return web.json_response(
+            {"error": "Yo'lovchi soni noto'g'ri", "code": "bad_person_count"}, status=400
+        )
+
+    if not 1 <= person_count <= config.MAX_PERSONS_PER_ORDER:
+        return web.json_response({
+            "error": (
+                f"Yo'lovchi soni 1 dan {config.MAX_PERSONS_PER_ORDER} gacha bo'lishi kerak"
+            ),
+            "code": "bad_person_count",
+        }, status=400)
+    if male_count < 0 or female_count < 0:
+        return web.json_response(
+            {"error": "Yo'lovchi soni noto'g'ri", "code": "bad_person_count"}, status=400
+        )
 
     # Optional: passenger tapped a specific recommended driver (group D).
     target_driver_id = data.get("target_driver_id")
@@ -241,12 +278,20 @@ async def create_order(request: web.Request) -> web.Response:
         # hard error rather than a silent no-op: the passenger was shown a discount.
         promo_discount = 0
         promo_code_used = None
+        promo_warning = None
         requested_promo = (data.get("promo_code") or "").strip().upper()
         if requested_promo:
             promo_discount, promo_code_used, promo_err = promo_service.redeem_promo(
                 session, requested_promo, user.id, price, commission
             )
-            if promo_err:
+            if promo_err == promo_service.NOT_APPLICABLE:
+                # Valid code, just worth nothing on this order (a parcel fare is 0 until
+                # it is agreed with the driver). Rejecting the order over this lost the
+                # booking entirely; carry it as a warning instead so the app can explain.
+                promo_discount, promo_code_used = 0, None
+                promo_warning = promo_err
+            elif promo_err:
+                # A real failure: unknown code, expired, limit reached, already used.
                 return web.json_response({"error": promo_err}, status=400)
 
         order = Order(
@@ -269,8 +314,8 @@ async def create_order(request: web.Request) -> web.Response:
             note=data.get("note"),
             has_roof_rack=bool(data.get("has_roof_rack", False)),
             female_only=bool(data.get("female_only", False)),
-            male_count=int(data.get("male_count", 0) or 0),
-            female_count=int(data.get("female_count", 0) or 0),
+            male_count=male_count,
+            female_count=female_count,
             # Passenger opted to spend bonus on this ride. Defaults False, so the feature
             # stays dormant until the app starts sending it (no bonus is silently spent).
             use_bonus=bool(data.get("use_bonus", False)),
@@ -380,10 +425,16 @@ async def create_order(request: web.Request) -> web.Response:
         # details to unverified accounts. Eligible approved drivers already receive the
         # filtered WebSocket and push notifications above.
 
-        return web.json_response({
+        response = {
             "success": True,
             "order": _serialize_order(order, include_passenger=True),
-        }, status=201)
+        }
+        # The passenger typed a code and was shown a discount, so silence here would look
+        # like the discount had been applied. Non-fatal, hence a warning alongside a
+        # successfully created order rather than a 4xx.
+        if promo_warning:
+            response["promo_warning"] = promo_warning
+        return web.json_response(response, status=201)
     finally:
         session.close()
 
