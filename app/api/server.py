@@ -198,30 +198,41 @@ async def health_db(request: web.Request) -> web.Response:
     from sqlalchemy import inspect
 
     from app.database import engine
-    expected = {
-        "drivers": ["profile_photo_url", "seats", "documents_submitted",
-                    "subscription_until", "pinfl", "car_year",
-                    "license_file_id", "tech_passport_file_id", "car_photo_file_id",
-                    "tech_passport_url", "license_back_url", "tech_passport_back_url"],
-        "users": ["profile_photo_url"],
-        "orders": ["target_driver_id", "commission_charged"],
-    }
+    from app.models import Base
+
+    # Derived from Base.metadata, NOT a hand-written list.
+    #
+    # This used to check 15 hardcoded columns and was the THIRD hand-maintained schema list
+    # in the repo (after migrate.py's `migrations` and models.py itself). It had already
+    # drifted: of the 34 columns the migration adds it verified only 15, so `schema_ok: true`
+    # was returned on databases missing orders.bonus_used / promo_discount / promo_code,
+    # users.loyalty_points / referral_* / push_token, drivers.contact_phone / language and
+    # more. It also asserted two columns (documents_submitted, subscription_until) that the
+    # migration list cannot add -- so if they were ever missing this reported a permanent
+    # failure the migration could never clear.
+    #
+    # An endpoint whose whole job is "confirm the migration ran" must not be able to give
+    # false assurance, so the expectation now comes from the same models the ORM queries.
     try:
         insp = inspect(engine)
+        live_tables = set(insp.get_table_names())
         report = {}
         all_ok = True
-        for table, cols in expected.items():
-            try:
-                have = {c["name"] for c in insp.get_columns(table)}
-            except Exception:
-                have = set()
-            missing = [c for c in cols if c not in have]
+        for table_name, table in Base.metadata.tables.items():
+            if table_name not in live_tables:
+                report[table_name] = {"missing_table": True, "missing": []}
+                all_ok = False
+                continue
+            have = {c["name"] for c in insp.get_columns(table_name)}
+            missing = sorted({c.name for c in table.columns} - have)
             if missing:
                 all_ok = False
-            report[table] = {"missing": missing}
+                report[table_name] = {"missing": missing}
         return web.json_response({
             "dialect": engine.dialect.name,
             "schema_ok": all_ok,
+            # Only problem tables are listed; a healthy database returns an empty object
+            # instead of every table in the schema.
             "tables": report,
         }, status=200 if all_ok else 500)
     except Exception as e:
