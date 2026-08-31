@@ -1,5 +1,6 @@
 """Migrate data from legacy taksi_baza.json to SQLite database."""
 import json
+import logging
 import os
 from datetime import datetime, timedelta
 
@@ -9,6 +10,11 @@ from app.database import DbContext, engine, init_db
 from app.models import Driver, Order, OrderHistory, Setting
 from app.seed_data import seed_routes
 
+#: Migration progress used to be reported with print(), which bypasses structured logging
+#: and therefore Sentry -- so a failed migration left no trace anywhere an operator looks,
+#: while startup treated the failure as non-fatal and served traffic on a broken schema.
+logger = logging.getLogger("sarixgo.migrate")
+
 #: Current schema revision. Bump this together with any change to the `migrations` list
 #: or the index/dedup block in `_apply_schema_migrations()`.
 #:
@@ -17,8 +23,109 @@ from app.seed_data import seed_routes
 #: migration list had moved on, so a database missing the newer columns was reported
 #: ready. Forgetting to bump it can no longer hide a missing COLUMN either -- the
 #: additive column pass below always runs (see the comment there).
-SCHEMA_VERSION = 2026082701
-SCHEMA_NAME = "announcement_inbox"
+SCHEMA_VERSION = 2026083101
+SCHEMA_NAME = "declared_constraint_backfill"
+
+
+def _declared_constraints():
+    """Every named CHECK/UNIQUE constraint and index declared in models.py.
+
+    Yields ``(table_name, constraint_name, ddl, violation_sql_or_None)``.
+
+    Derived from ``Base.metadata`` rather than a hand-written list on purpose. Three
+    hand-maintained column/constraint lists already existed in this repo (the `migrations`
+    list here, the `expected` dict in /health/db, and models.py itself) and they had
+    drifted apart. Generating the DDL from the models means a constraint added to a model
+    is backfilled automatically, with no second place to remember.
+    """
+    from sqlalchemy import CheckConstraint, UniqueConstraint
+    from sqlalchemy.schema import AddConstraint, CreateIndex
+
+    from app.models import Base
+
+    dialect = engine.dialect
+    for table in Base.metadata.sorted_tables:
+        for constraint in table.constraints:
+            if not isinstance(constraint, (CheckConstraint, UniqueConstraint)):
+                continue  # PK/FK are created with the table
+            if not constraint.name:
+                continue
+            ddl = str(AddConstraint(constraint).compile(dialect=dialect)).strip()
+            violation = None
+            if isinstance(constraint, CheckConstraint):
+                expr = str(constraint.sqltext.compile(
+                    dialect=dialect, compile_kwargs={"literal_binds": True}
+                ))
+                # NULL columns pass a CHECK (three-valued logic), and `NOT (NULL >= 0)` is
+                # NULL rather than TRUE, so this count matches the constraint's semantics.
+                violation = f"SELECT COUNT(*) FROM {table.name} WHERE NOT ({expr})"
+            yield table.name, constraint.name, ddl, violation
+
+        for index in table.indexes:
+            if not index.name:
+                continue
+            ddl = str(CreateIndex(index, if_not_exists=True).compile(dialect=dialect)).strip()
+            yield table.name, index.name, ddl, None
+
+
+def _backfill_declared_constraints(table_names: set) -> int:
+    """Create any declared constraint/index that the live database is missing.
+
+    Postgres only. SQLite cannot ``ALTER TABLE ... ADD CONSTRAINT`` at all, and a fresh
+    SQLite DB already has everything from ``create_all()``, so there is nothing to do there.
+
+    A constraint that cannot be created because existing rows VIOLATE it is reported at
+    ERROR level (with the offending row count and the constraint expression) and skipped.
+    It deliberately does NOT set the caller's ``failed`` flag: that would stop
+    SCHEMA_VERSION from being recorded, which makes /health and /ready answer 503 until an
+    operator intervenes. A data-quality problem should be loud, not an outage. The
+    violation counts are also surfaced by /health/db.
+    """
+    from sqlalchemy import text
+
+    if engine.dialect.name != "postgresql":
+        return 0
+
+    created = 0
+    with engine.connect() as conn:
+        existing_constraints = {
+            row[0] for row in conn.execute(text("SELECT conname FROM pg_constraint"))
+        }
+        existing_indexes = {
+            row[0] for row in conn.execute(text("SELECT indexname FROM pg_indexes"))
+        }
+        already = existing_constraints | existing_indexes
+
+        for table, name, ddl, violation_sql in _declared_constraints():
+            if table not in table_names or name in already:
+                continue
+            if violation_sql:
+                try:
+                    bad = conn.execute(text(violation_sql)).scalar() or 0
+                except Exception as e:
+                    conn.rollback()
+                    logger.error("Constraint %s: violation probe failed: %s", name, e)
+                    continue
+                if bad:
+                    conn.rollback()
+                    logger.error(
+                        "Constraint %s NOT created: %s existing row(s) in %s violate it. "
+                        "Fix the data, then redeploy. Offending rows: %s",
+                        name, bad, table, violation_sql,
+                    )
+                    continue
+            try:
+                conn.execute(text(ddl))
+                conn.commit()
+                created += 1
+                logger.info("Added constraint/index %s on %s", name, table)
+            except Exception as e:
+                conn.rollback()
+                logger.error("Constraint %s could not be created: %s", name, e)
+
+    if created:
+        logger.info("Backfilled %s declared constraint(s)/index(es)", created)
+    return created
 
 
 def _apply_schema_migrations() -> int:
@@ -258,6 +365,13 @@ def _apply_schema_migrations() -> int:
                     conn.rollback()
                     failed = True
                     print(f"  ⚠️  Skipping index {name}: {e}")
+
+    # Table-level constraints declared in models.py never reached an EXISTING database:
+    # create_all() only builds whole tables, and the block above only adds columns. So
+    # every CheckConstraint and idx_route_pair existed on fresh DBs (and therefore in the
+    # test suite) but NOT in production -- the tests were validating a schema production
+    # did not have. Backfill them here, derived from Base.metadata so this can never drift.
+    _backfill_declared_constraints(table_names)
 
     if not failed:
         with engine.begin() as conn:
@@ -537,10 +651,14 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
                 # Kabinet, so we adopt it as the single DB balance and log any divergence
                 # for the admin to audit (dual storage means the two could differ).
                 if first_import:
-                    json_balance = _json_balance(tg_id)
+                    # Clamped at 0: a legacy JSON wallet could hold a negative number, and
+                    # ck_driver_balance_nonnegative would reject the import outright.
+                    json_balance = max(0, _json_balance(tg_id))
                     if json_balance != int(existing.balance or 0):
-                        print(f"  ⚖️  balance reconcile tg={tg_id}: "
-                              f"db={existing.balance} -> json={json_balance}")
+                        logger.info(
+                            "balance reconcile tg=%s: db=%s -> json=%s",
+                            tg_id, existing.balance, json_balance,
+                        )
                         existing.balance = json_balance
                     if tg_id in banned_users:
                         existing.is_blocked = True

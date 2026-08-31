@@ -138,6 +138,17 @@ class Driver(Base):
         CheckConstraint("rating >= 1 AND rating <= 5", name="ck_driver_rating_range"),
         CheckConstraint("rating_count >= 0", name="ck_driver_rating_count_nonnegative"),
         CheckConstraint("total_orders >= 0", name="ck_driver_total_orders_nonnegative"),
+        # The passenger wallet has always had this; the driver wallet did not, and the
+        # commission debits were unconditional (`balance = (balance or 0) - commission`).
+        # Because the balance floor is only checked at ACCEPT time, a driver could hold
+        # MAX_ACTIVE_NONPARCEL_ORDERS rides against one commission's worth of balance and
+        # then be debited once per ride, going negative. The platform then carried
+        # uncollectable debt with nothing recording that it had happened.
+        #
+        # Enforcing this at the DB level is only safe because every debit now goes through
+        # rewards.debit_commission(), which floors the charge at the available balance and
+        # books the shortfall as a `commission_debt` ledger row instead of overdrawing.
+        CheckConstraint("balance >= 0", name="ck_driver_balance_nonnegative"),
     )
 
 
@@ -357,6 +368,9 @@ class BalanceTransaction(Base):
 
     * ``topup``                   — approved payment, incl. the one-time 50% bonus.
     * ``order_commission``        — deferred commission debit.
+    * ``commission_debt``         — the part of a commission that could NOT be debited
+      because the driver's balance was too low. Recorded so the shortfall is visible and
+      collectable instead of silently overdrawing the wallet (see ck_driver_balance_nonnegative).
     * ``commission_refund``       — reversal when a passenger cancels a charged order.
     * ``discount_reimbursement``  — credit paid to a free-trial driver for a passenger's
       bonus/promo discount, where there was no commission to reduce instead.

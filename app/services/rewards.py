@@ -87,6 +87,75 @@ def effective_commission(order) -> int:
     )
 
 
+COMMISSION_SOURCE = "order_commission"  # 16 chars
+COMMISSION_DEBT_SOURCE = "commission_debt"  # 15 chars
+
+
+def debit_commission(session, driver, order, commission: int, *, note: str) -> tuple[int, int]:
+    """Charge ``commission`` to ``driver``, never letting the balance go negative.
+
+    Returns ``(charged, debt)`` — how much was actually taken and how much could not be.
+
+    Both callers (the deferred-commission scheduler and the driver-cancel path) used to do
+    ``driver.balance = (driver.balance or 0) - commission`` unconditionally. Because the
+    balance floor is only enforced when a ride is ACCEPTED, a driver holding several rides
+    could be debited once per ride and end up negative — at which point
+    ``driver_can_accept`` locks them out, the platform is owed money, and *nothing in the
+    system records that*. The only trace was a negative number in a column.
+
+    The shortfall is now booked as its own immutable ``commission_debt`` ledger row, so it
+    is queryable and collectable, and the driver is taken offline rather than left in a
+    state where they appear available but cannot accept anything.
+
+    The caller owns the commit, and MUST have already claimed the commission (either the
+    conditional ``commission_charged`` UPDATE or a ``with_for_update()`` lock on the
+    driver) — this function does no claiming of its own.
+    """
+    if commission <= 0:
+        return 0, 0
+
+    available = max(0, driver.balance or 0)
+    charged = min(commission, available)
+    debt = commission - charged
+
+    if charged:
+        driver.balance = available - charged
+        session.add(BalanceTransaction(
+            driver_id=driver.id,
+            amount=-charged,
+            balance_after=driver.balance,
+            source=COMMISSION_SOURCE,
+            reference_type="order",
+            reference_id=order.id,
+            idempotency_key=f"order:{order.id}:commission",
+            note=note,
+        ))
+
+    if debt:
+        # Recorded against the unchanged balance: no money moved for this leg, it is a
+        # receivable. Keeping it in the same ledger means balance reconciliation and any
+        # "who owes us?" report both see it without a second table.
+        session.add(BalanceTransaction(
+            driver_id=driver.id,
+            amount=-debt,
+            balance_after=driver.balance,
+            source=COMMISSION_DEBT_SOURCE,
+            reference_type="order",
+            reference_id=order.id,
+            idempotency_key=f"order:{order.id}:commission_debt",
+            note=f"{note} — balans yetmadi, {debt} so'm qarz",
+        ))
+        # An online driver with an unpayable commission would keep being offered rides they
+        # cannot accept (the accept-time floor rejects them), which reads as a broken app.
+        driver.is_online = False
+        logger.warning(
+            "driver %s: commission %s exceeded balance %s on order %s, %s booked as debt",
+            driver.id, commission, available, order.id, debt,
+        )
+
+    return charged, debt
+
+
 def passenger_payable(order) -> int:
     """The cash the passenger actually hands over for this ride.
 
@@ -401,8 +470,27 @@ def reverse_discount_reimbursement(session, order, driver) -> int:
     if session.query(BalanceTransaction.id).filter_by(idempotency_key=key).first():
         return 0
 
-    amount = paid.amount
-    driver.balance = (driver.balance or 0) - amount
+    # Clamped at the available balance. The driver may already have spent the credit (a
+    # later commission debit, for example), and this used to subtract unconditionally --
+    # which drove the wallet negative and, now that ck_driver_balance_nonnegative exists,
+    # would fail the whole cancellation with a 500. Taking back what is actually there and
+    # recording that amount keeps the ledger truthful; the remainder is reported so a
+    # shortfall is visible rather than silently absorbed.
+    available = max(0, driver.balance or 0)
+    amount = min(paid.amount, available)
+    if amount <= 0:
+        logger.warning(
+            "Reimbursement for order %s not reversed: driver %s balance is %s, owed %s",
+            order.id, driver.id, available, paid.amount,
+        )
+        return 0
+    if amount < paid.amount:
+        logger.warning(
+            "Reimbursement for order %s only partially reversed: took %s of %s "
+            "(driver %s balance was %s)",
+            order.id, amount, paid.amount, driver.id, available,
+        )
+    driver.balance = available - amount
     session.add(BalanceTransaction(
         driver_id=driver.id,
         amount=-amount,

@@ -1019,6 +1019,20 @@ async def api_topup_driver_balance(request: web.Request) -> web.Response:
                 "replayed": True,
             })
 
+        # A deduction larger than the balance would violate ck_driver_balance_nonnegative
+        # and surface as an opaque 500. Refuse it with an actionable message instead, and
+        # tell the operator exactly how much is available.
+        current_balance = driver.balance or 0
+        if amount < 0 and current_balance + amount < 0:
+            return web.json_response({
+                "error": (
+                    f"Balansdan {abs(amount):,} so'm yechib bo'lmaydi: hozirgi balans "
+                    f"{current_balance:,} so'm. Balans manfiy bo'lishi mumkin emas."
+                ).replace(",", " "),
+                "code": "insufficient_balance",
+                "balance": current_balance,
+            }, status=400)
+
         session.query(Driver).filter(Driver.id == driver.id).update(
             {Driver.balance: func.coalesce(Driver.balance, 0) + amount},
             synchronize_session=False,
