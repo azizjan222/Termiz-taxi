@@ -103,6 +103,8 @@ def driver(db):
 
 def _order(db, driver, commission: int) -> Order:
     order = Order(
+        # NOT NULL on the model; every other test suite supplies it the same way.
+        passenger_phone="+998900000000",
         service_type="taxi",
         from_city="Termiz",
         to_city="Sariosiyo",
