@@ -34,7 +34,7 @@ from app.bot.state import BOT_TOKEN
 from app.bot.store import store
 from app.database import init_db
 from app.migrate import run_migration
-from app.services.monitoring import init_sentry
+from app.services.monitoring import capture_exception, init_sentry
 
 logger = logging.getLogger("sarixgo.bot")
 
@@ -227,17 +227,92 @@ def _log_startup_advisories() -> None:
 #: Live handles for the background scheduler tasks, so shutdown can cancel them.
 _BACKGROUND_TASKS: list[asyncio.Task] = []
 
+#: Seconds to wait before restarting a scheduler that exited on its own.
+_SCHEDULER_RESTART_DELAY = 5
+
+#: Give up after this many restarts of the SAME scheduler, to avoid a hot crash loop
+#: hammering the DB. Reaching it is reported at CRITICAL and left dead deliberately.
+_SCHEDULER_MAX_RESTARTS = 10
+
+_scheduler_restarts: dict[str, int] = {}
+
+
+def _start_supervised(name: str, factory) -> None:
+    """Start a background scheduler and restart it if it ever exits by itself.
+
+    The four schedulers each wrap their loop body in try/except and their task handles are
+    cancelled on shutdown, but NOTHING restarted a task that actually exited -- a
+    BaseException, an error raised inside the `finally`/stop-event path, or an unexpected
+    return would end it silently and permanently. Commission collection simply stops, and
+    the only symptom is revenue quietly not arriving; there is no alert, and /health only
+    checks the schema.
+
+    Restart is deliberately capped: an immediately-failing scheduler would otherwise spin
+    against the database forever.
+    """
+    try:
+        task = factory()
+    except Exception as start_error:
+        logger.critical("Scheduler '%s' failed to START", name, exc_info=True)
+        capture_exception(start_error)
+        return
+
+    def _on_done(finished: asyncio.Task) -> None:
+        if finished.cancelled():
+            return  # orderly shutdown
+        exc = finished.exception()
+        attempts = _scheduler_restarts.get(name, 0) + 1
+        _scheduler_restarts[name] = attempts
+        if attempts > _SCHEDULER_MAX_RESTARTS:
+            logger.critical(
+                "Scheduler '%s' died %s times — giving up. It is now NOT running.",
+                name, attempts, exc_info=exc,
+            )
+            if exc is not None:
+                capture_exception(exc)
+            return
+        logger.error(
+            "Scheduler '%s' exited unexpectedly (attempt %s/%s) — restarting in %ss",
+            name, attempts, _SCHEDULER_MAX_RESTARTS, _SCHEDULER_RESTART_DELAY,
+            exc_info=exc,
+        )
+        # A task that simply RETURNED has no exception to report, but exiting at all is
+        # still a bug worth the restart -- these loops are meant to run forever.
+        if exc is not None:
+            capture_exception(exc)
+        loop = asyncio.get_running_loop()
+        loop.call_later(_SCHEDULER_RESTART_DELAY, _start_supervised, name, factory)
+
+    task.add_done_callback(_on_done)
+    _BACKGROUND_TASKS.append(task)
+    logger.info("✅ Scheduler '%s' started", name)
+
 
 async def run():
     init_sentry()
     _log_startup_advisories()
 
-    print("🔄 Initializing database...")
+    logger.info("🔄 Initializing database...")
     init_db()
+    # Fail FAST on a migration error.
+    #
+    # This used to log "Migration error (non-fatal)" and carry on serving, which meant an
+    # instance whose schema was half-applied still accepted traffic: every Driver/User query
+    # 500s and the apps look broken with no obvious cause. It also contradicted the process
+    # itself -- /health and /ready already answer 503 when the migration is behind, so the
+    # code both refused to be routed traffic AND kept running.
+    #
+    # Raising here lets the platform restart policy (railway.json: ON_FAILURE, 10 retries)
+    # keep the PREVIOUS healthy release serving instead of promoting a broken one.
     try:
         run_migration()
-    except Exception as e:
-        logger.error("Migration error (non-fatal): %s", e)
+    except Exception as migration_error:
+        logger.critical(
+            "Migration failed — refusing to start on a schema we cannot trust",
+            exc_info=True,
+        )
+        capture_exception(migration_error)
+        raise
 
     issues = app_config.validate()
     for issue in issues:
@@ -258,33 +333,18 @@ async def run():
     # from an exception was garbage-collected without its error ever being retrieved.
     _BACKGROUND_TASKS.clear()
 
-    try:
-        from app.services.commission_scheduler import start_commission_scheduler
-        _BACKGROUND_TASKS.append(start_commission_scheduler())
-        logger.info("✅ Commission scheduler started")
-    except Exception as e:
-        logger.error("Commission scheduler failed to start: %s", e)
+    from app.api.payments import start_payment_cleanup_scheduler
+    from app.services.commission_scheduler import start_commission_scheduler
+    from app.services.order_expiry import start_order_expiry_scheduler
+    from app.services.push import start_receipt_scheduler
 
-    try:
-        from app.services.order_expiry import start_order_expiry_scheduler
-        _BACKGROUND_TASKS.append(start_order_expiry_scheduler())
-        logger.info("✅ Order-expiry scheduler started")
-    except Exception as e:
-        logger.error("Order-expiry scheduler failed to start: %s", e)
-
-    try:
-        from app.services.push import start_receipt_scheduler
-        _BACKGROUND_TASKS.append(start_receipt_scheduler())
-        logger.info("✅ Push receipt scheduler started")
-    except Exception as e:
-        logger.error("Push receipt scheduler failed to start: %s", e)
-
-    try:
-        from app.api.payments import start_payment_cleanup_scheduler
-        _BACKGROUND_TASKS.append(start_payment_cleanup_scheduler())
-        logger.info("✅ Payment cleanup scheduler started")
-    except Exception as e:
-        logger.error("Payment cleanup scheduler failed to start: %s", e)
+    for name, factory in (
+        ("commission", start_commission_scheduler),
+        ("order_expiry", start_order_expiry_scheduler),
+        ("push_receipts", start_receipt_scheduler),
+        ("payment_cleanup", start_payment_cleanup_scheduler),
+    ):
+        _start_supervised(name, factory)
 
     await app.initialize()
     await app.start()
