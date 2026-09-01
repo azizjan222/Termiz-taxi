@@ -61,6 +61,36 @@ def _document_like(width: int = 1000, height: int = 700) -> Image.Image:
     return image
 
 
+def _distinct_document(index: int, width: int = 1000, height: int = 700) -> Image.Image:
+    """One of four documents that differ in CONTENT, not merely in size.
+
+    The dark region occupies a different half of the frame per index, which puts the four
+    average hashes far apart (each cell is compared against the frame mean, so moving the
+    dark mass flips most of the 64 bits). Text-like bars are drawn on the light side to keep
+    edge content high enough to pass the sharpness floor.
+    """
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+    half = [
+        (0, 0, width // 2, height),           # left
+        (width // 2, 0, width, height),       # right
+        (0, 0, width, height // 2),           # top
+        (0, height // 2, width, height),      # bottom
+    ][index % 4]
+    draw.rectangle(list(half), fill="#141414")
+
+    # Bars on the light side: horizontal for the left/right variants, vertical for top/bottom.
+    if index % 4 in (0, 1):
+        x0 = width // 2 + 40 if index % 4 == 0 else 40
+        for y in range(60, height - 60, 44):
+            draw.rectangle([x0, y, x0 + width // 3, y + 18], fill="black")
+    else:
+        y0 = height // 2 + 40 if index % 4 == 2 else 40
+        for x in range(60, width - 60, 44):
+            draw.rectangle([x, y0, x + 18, y0 + height // 3], fill="black")
+    return image
+
+
 def test_rejects_bytes_that_are_not_a_decodable_image():
     # Passes the magic-byte sniff (real JPEG SOI) but is not a decodable image — exactly the
     # gap detect_image_extension cannot close on its own.
@@ -239,19 +269,37 @@ def test_another_drivers_identical_file_is_rejected(db):
 
 
 def test_distinct_documents_are_accepted_for_every_slot(db):
-    """Four genuinely different photos must fill all four slots without complaint."""
+    """Four genuinely different photos must fill all four slots without complaint.
+
+    Note what "genuinely different" has to mean here. An earlier version of this test drew
+    the same layout at four slightly different sizes and was rejected — correctly: the
+    perceptual hash downscales to a fixed 8x8 grid, so a resize of one picture hashes
+    identically to it. That is the property that catches a driver re-picking one gallery
+    photo, so the fixture has to differ in CONTENT, not in dimensions.
+    """
     driver = _driver(db, 506)
     kinds = ["license", "license_back", "tech_passport", "tech_passport_back"]
     for index, kind in enumerate(kinds):
-        # Different dimensions and bar layout per slot -> genuinely different pictures.
-        image = _document_like(900 + index * 130, 640 + index * 70)
-        analysis = analyse_document_image(_encode(image))
+        analysis = analyse_document_image(_encode(_distinct_document(index)))
         assert _find_conflicting_document(db, driver.id, kind, analysis) is None
         _store(db, driver.id, kind, analysis)
 
     stored = db.query(DriverDocumentImage).filter_by(driver_id=driver.id).all()
     assert len(stored) == 4
     assert len({row.sha256 for row in stored}) == 4
+
+
+def test_the_four_slot_fixtures_are_pairwise_distinct():
+    """Self-check for the fixture above, so a silent regression in it cannot mask a bug."""
+    hashes = [
+        analyse_document_image(_encode(_distinct_document(i))).phash for i in range(4)
+    ]
+    for i in range(4):
+        for j in range(i + 1, 4):
+            assert not is_near_duplicate(hashes[i], hashes[j]), (
+                f"fixtures {i} and {j} hash alike (distance "
+                f"{hamming_distance(hashes[i], hashes[j])}); they must differ in content"
+            )
 
 
 def test_fingerprint_upsert_keeps_one_row_per_slot(db):

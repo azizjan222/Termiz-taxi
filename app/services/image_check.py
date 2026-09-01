@@ -108,7 +108,9 @@ def _average_hash(gray: Image.Image) -> str:
     receipts. This survives re-encoding, mild scaling and recompression.
     """
     small = gray.resize((PHASH_SIDE, PHASH_SIDE), Image.Resampling.BICUBIC)
-    pixels = list(small.getdata())
+    # tobytes() rather than getdata(): mode "L" gives exactly PHASH_SIDE**2 bytes with no row
+    # padding, and getdata() is deprecated for removal in Pillow 14.
+    pixels = list(small.tobytes())
     mean = sum(pixels) / len(pixels)
     bits = 0
     for index, value in enumerate(pixels):
