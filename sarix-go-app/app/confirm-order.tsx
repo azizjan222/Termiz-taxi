@@ -63,7 +63,13 @@ export default function ConfirmOrderScreen() {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      if (!orderStore.fromCity || !orderStore.toCity) return;
+      // Clear the flag before returning. `quoteLoading` starts true and only the finally
+      // below ever cleared it, so this early return left "Buyurtma berish" disabled
+      // permanently — the same dead-screen latch /tariff had, one step later.
+      if (!orderStore.fromCity || !orderStore.toCity) {
+        if (active) setQuoteLoading(false);
+        return;
+      }
       setQuoteLoading(true);
       try {
         const q = await getPriceQuote(
@@ -88,7 +94,16 @@ export default function ConfirmOrderScreen() {
   const isParcel = orderStore.serviceType === 'parcel';
 
   const handleConfirm = async () => {
-    if (!orderStore.fromCity || !orderStore.toCity) return;
+    // Say something rather than swallowing the tap. A silent `return` here is
+    // indistinguishable from a frozen screen: the passenger presses "Buyurtma berish",
+    // nothing happens, and there is no hint that the route is what is missing.
+    if (!orderStore.fromCity || !orderStore.toCity) {
+      Alert.alert(t('tariff.noRouteTitle'), t('tariff.noRouteBody'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('tariff.selectRoute'), onPress: () => router.replace('/route-select') },
+      ]);
+      return;
+    }
     // Synchronous guard. The button's `loading` prop only disables it after a re-render,
     // which is a full React commit behind a fast second tap — and with a 20s axios timeout
     // there is a long window in which both taps passed the check and created TWO identical

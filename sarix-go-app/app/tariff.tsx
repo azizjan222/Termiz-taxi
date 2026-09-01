@@ -32,11 +32,33 @@ export default function TariffScreen() {
   const [quotesFailed, setQuotesFailed] = useState(false);
   // Bumped by the retry button to re-run the effect.
   const [reloadKey, setReloadKey] = useState(0);
+  // True when the draft has no from/to city at all. Kept separate from `quotesFailed`
+  // because the two need different exits: a failed quote is worth retrying, a missing
+  // route can only be fixed by picking one, so retrying would be an infinite no-op.
+  const [missingRoute, setMissingRoute] = useState(false);
 
   const isParcel = orderStore.serviceType === 'parcel';
 
   useEffect(() => {
-    if (!orderStore.fromCity || !orderStore.toCity) return;
+    // No route in the draft: there is nothing to quote, so say so and STOP LOADING.
+    //
+    // This early return used to happen with `loading` still true — its initial value — and
+    // nothing else ever cleared it. The screen then sat on "Yuklanmoqda..." forever with
+    // the "Davom etish" button permanently disabled and the retry button unreachable
+    // (it only renders in the `!loading` branch), i.e. a dead screen with no way out but
+    // the OS back gesture.
+    //
+    // It hit PARCEL orders specifically: /tariff is only ever reached when serviceType is
+    // 'parcel' (order-entry and route-select send taxi/full_car to /new-order, which has no
+    // such latch), and route-select would advance here as soon as the OTHER side had an
+    // address — a city was not required, so a pin whose reverse-geocode produced no city
+    // arrived with fromCity/toCity null.
+    if (!orderStore.fromCity || !orderStore.toCity) {
+      setMissingRoute(true);
+      setLoading(false);
+      return;
+    }
+    setMissingRoute(false);
 
     // `active` guard: without it a slower response for a previous route could resolve
     // last and overwrite the quotes for the route currently on screen.
@@ -175,6 +197,20 @@ export default function TariffScreen() {
             </>
           ) : loading ? (
             <Text style={styles.tariffHint}>{t('common.loading')}</Text>
+          ) : missingRoute ? (
+            // No route to quote. Retrying cannot help, so the action goes back to the
+            // picker instead of re-running a request that will return immediately.
+            <>
+              <Text style={styles.tariffName}>{t('tariff.noRouteTitle')}</Text>
+              <Text style={styles.tariffHint}>{t('tariff.noRouteBody')}</Text>
+              <TouchableOpacity
+                onPress={() => router.replace('/route-select')}
+                style={styles.retryBtn}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.retryText}>{t('tariff.selectRoute')}</Text>
+              </TouchableOpacity>
+            </>
           ) : (
             // Not loading and still no quote: this used to sit on "Yuklanmoqda..."
             // permanently, with the tariff selector hidden and no way to retry — while the

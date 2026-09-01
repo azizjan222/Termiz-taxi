@@ -92,6 +92,9 @@ export default {
     info: 'Up to {{persons}} passengers',
     unavailableTitle: 'Could not get the price',
     unavailableBody: 'Check your internet connection and try again, or choose a different route.',
+    noRouteTitle: 'No route selected',
+    noRouteBody: 'Choose where to send it from and to.',
+    selectRoute: 'Choose route',
   },
   newOrder: {
     personsStep: 'Number of passengers',

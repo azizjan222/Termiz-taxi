@@ -92,6 +92,9 @@ export default {
     info: '{{persons}} кишигача йўловчи олинади',
     unavailableTitle: 'Нархни аниқлаб бўлмади',
     unavailableBody: 'Интернет алоқасини текшириб, қайта уриниб кўринг ёки бошқа йўналиш танланг.',
+    noRouteTitle: 'Йўналиш танланмаган',
+    noRouteBody: 'Қаердан қаерга юборишни танланг.',
+    selectRoute: 'Йўналишни танлаш',
   },
   newOrder: {
     personsStep: 'Йўловчи сони',
