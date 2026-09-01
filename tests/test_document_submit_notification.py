@@ -176,6 +176,48 @@ async def test_notification_is_skipped_when_no_panel_url_is_configured(db, monke
     assert urls == []
 
 
+def test_admin_panel_url_resolves_without_any_configuration():
+    """The link must work out of the box, or the feature silently ships with no button."""
+    assert config.PUBLIC_BASE_URL, "PUBLIC_BASE_URL should default to this deployment's URL"
+    assert config.ADMIN_PANEL_URL == f"{config.PUBLIC_BASE_URL}/admin/"
+    assert config.ADMIN_PANEL_URL.startswith("https://")
+
+
+async def test_admin_panel_url_is_not_taken_from_a_request_header(db, monkeypatch):
+    """Guard against a tempting shortcut that would be a phishing hole.
+
+    Deriving the base URL from the request's Host header would remove the need to configure
+    anything — and would let a caller sending `Host: evil.example` put a link to
+    `https://evil.example/admin/` in front of the admin, who would then type the panel
+    password into it. The link must come from config, never from the request.
+    """
+    driver = _complete_driver(db, telegram_id=8008)
+    bot = _FakeBot()
+
+    app = _FakeApp()
+    app["bot"] = bot
+    request = _FakeRequest(driver, app)
+    request.headers = {"Host": "evil.example", "X-Forwarded-Host": "evil.example"}
+
+    monkeypatch.setattr(config, "ADMIN_ID", 999)
+    monkeypatch.setattr(notifications, "ADMIN_ID", 999)
+    monkeypatch.setattr(drivers, "_get_driver_from_request", lambda r: driver)
+
+    assert (await submit_documents(request)).status == 200
+
+    message = bot.sent[0]
+    markup = message["reply_markup"]
+    urls = [
+        button.url
+        for row in (markup.inline_keyboard if markup else [])
+        for button in row
+        if button.url
+    ]
+    assert urls, "the configured panel link should still be present"
+    assert all("evil.example" not in url for url in urls)
+    assert "evil.example" not in message["text"]
+
+
 @pytest.mark.parametrize("value,expected", [
     ("https://ok.example", "https://ok.example"),
     ("https://ok.example/", "https://ok.example"),

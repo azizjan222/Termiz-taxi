@@ -71,10 +71,23 @@ def _https_url(value: str) -> str:
     return value if value.startswith("https://") else ""
 
 
-# Where this deployment is reachable, e.g. https://sarixgo-production.up.railway.app.
-# There is deliberately NO default: a guessed host in an admin's Telegram message would
-# point them at somebody else's site, so an unset value omits the link instead.
-PUBLIC_BASE_URL = _https_url(_get("PUBLIC_BASE_URL", ""))
+# This deployment's own public URL.
+#
+# It is NOT derived from the request's Host header, which would be the obvious way to avoid
+# hardcoding anything. Host is supplied by the caller: a request carrying
+# `Host: evil.example` would put a link to `https://evil.example/admin/` into the admin's
+# Telegram message, and the admin would type their panel password into it. Deriving an
+# ADMIN link from caller-controlled input turns this notification into a phishing delivery
+# mechanism, so the value has to come from configuration.
+#
+# The default below is not a guess either — it is the URL this repo already treats as
+# canonical, shipped as the API base in both mobile apps (sarix-go-app/app.json,
+# sarix-go-driver/app.json, both eas.json files, sarix-go-app/src/api/client.ts and both
+# .env.example files). Shipping it here means the admin panel link works without an
+# operator having to set anything, which is the difference between the feature working and
+# silently having no button. A fork or a second environment overrides it via the env var.
+DEFAULT_PUBLIC_BASE_URL = "https://termiz-taxi-production.up.railway.app"
+PUBLIC_BASE_URL = _https_url(_get("PUBLIC_BASE_URL", DEFAULT_PUBLIC_BASE_URL))
 # Admin panel entry point. Derived from PUBLIC_BASE_URL unless set explicitly (useful when
 # the panel sits behind a different hostname from the API).
 ADMIN_PANEL_URL = _https_url(_get("ADMIN_PANEL_URL", "")) or (
