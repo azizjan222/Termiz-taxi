@@ -155,11 +155,17 @@ export const IncomingOrderModal: React.FC<Props> = ({
             )}
           </View>
 
-          {/* Route */}
+          {/* Route — labelled "Qayerdan" / "Qayerga" with a pin/flag icon, matching the
+              order card in app/(main)/orders.tsx. This popup is the version a driver sees
+              under time pressure (it auto-dismisses), so naming the legs matters more here
+              than anywhere else. */}
           <View style={styles.routeBlock}>
             <View style={styles.routeRow}>
-              <View style={styles.dotFrom} />
+              <View style={[styles.routeMarker, { backgroundColor: colors.successLight }]}>
+                <Icon name="location" size={13} color={colors.success} />
+              </View>
               <View style={{ flex: 1 }}>
+                <Text style={[styles.routeLabel, { color: colors.success }]}>{t('order.from')}</Text>
                 <Text style={styles.routeCity}>{order.from_city}</Text>
                 {!!order.from_address && (
                   <Text style={styles.routeAddr} numberOfLines={1}>{order.from_address}</Text>
@@ -168,8 +174,11 @@ export const IncomingOrderModal: React.FC<Props> = ({
             </View>
             <View style={styles.routeConnector} />
             <View style={styles.routeRow}>
-              <View style={styles.dotTo} />
+              <View style={[styles.routeMarker, { backgroundColor: colors.accentLight }]}>
+                <Icon name="flag" size={13} color={colors.accentDark} />
+              </View>
               <View style={{ flex: 1 }}>
+                <Text style={[styles.routeLabel, { color: colors.accentDark }]}>{t('order.to')}</Text>
                 <Text style={styles.routeCity}>{order.to_city}</Text>
                 {!!order.to_address && (
                   <Text style={styles.routeAddr} numberOfLines={1}>{order.to_address}</Text>
@@ -380,16 +389,34 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.md,
   },
-  routeRow: { flexDirection: 'row', alignItems: 'center' },
-  dotFrom: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.success, marginRight: spacing.md },
-  dotTo: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.accent, marginRight: spacing.md },
+  // flex-start: each leg is a label / city / address stack, so the marker pins to the top.
+  routeRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  // Replaces the bare dotFrom/dotTo circles — same slot, now holding the pin/flag icon.
+  routeMarker: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+    marginTop: 1,
+  },
+  routeLabel: {
+    ...typography.small,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
   routeConnector: {
     width: 0,
     height: 20,
     borderLeftWidth: 2,
     borderStyle: 'dashed',
     borderColor: colors.border,
-    marginLeft: 5,
+    // Centred under the 22px marker (11) less half the 2px border.
+    marginLeft: 10,
     marginVertical: 2,
   },
   routeCity: { ...typography.bodyBold, color: colors.text, fontSize: 16 },

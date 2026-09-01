@@ -374,11 +374,22 @@ export default function OrdersScreen() {
         {/* Route. The sub-line under each city is the passenger's ACTUAL address when they
             gave one — it used to be the literal word "Manzil" under the pickup and nothing
             under the destination, so the driver had to accept the order before finding out
-            where in town they were going. */}
+            where in town they were going.
+
+            Each leg is now NAMED ("Qayerdan" / "Qayerga") above its city, and the bare
+            coloured dot is a pin/flag icon. A green dot above a yellow dot only encodes
+            direction if you already know the convention — two identical circles are
+            indistinguishable at a glance, and a driver scanning a stack of cards had to
+            infer which line was the pickup from its position alone. The label states it,
+            and the icon carries the same meaning without depending on colour (which is
+            what a colour-blind driver, or a phone in bright sunlight, loses first). */}
         <View style={styles.routeBlock}>
           <View style={styles.routeRow}>
-            <View style={styles.routeDot} />
+            <View style={[styles.routeMarker, { backgroundColor: colors.successLight }]}>
+              <Icon name="location" size={13} color={colors.success} />
+            </View>
             <View style={{ flex: 1 }}>
+              <Text style={[styles.routeLabel, { color: colors.success }]}>{t('order.from')}</Text>
               <Text style={styles.routeText}>{item.from_city}</Text>
               {!!item.from_address && (
                 <Text style={styles.routeSub} numberOfLines={1}>
@@ -389,8 +400,11 @@ export default function OrdersScreen() {
           </View>
           <View style={styles.routeConnector} />
           <View style={styles.routeRow}>
-            <View style={[styles.routeDot, { backgroundColor: colors.accent }]} />
+            <View style={[styles.routeMarker, { backgroundColor: colors.accentLight }]}>
+              <Icon name="flag" size={13} color={colors.accentDark} />
+            </View>
             <View style={{ flex: 1 }}>
+              <Text style={[styles.routeLabel, { color: colors.accentDark }]}>{t('order.to')}</Text>
               <Text style={styles.routeText}>{item.to_city}</Text>
               {!!item.to_address && (
                 <Text style={styles.routeSub} numberOfLines={1}>
@@ -787,13 +801,28 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   sourceBadgeText: { ...typography.small, color: colors.info, fontWeight: '700' },
   routeBlock: { paddingVertical: spacing.xs },
-  routeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 2 },
-  routeDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.success,
+  // flex-start, not center: the leg is now a three-line stack (label / city / address) and
+  // centering would float the pin against the city name instead of the top of the leg.
+  routeRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 2 },
+  // Replaces the bare 12px dot — same slot, but it holds the pin/flag icon.
+  routeMarker: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: spacing.sm,
+    marginTop: 1,
+  },
+  // "QAYERDAN" / "QAYERGA". Deliberately smaller and wider-tracked than the city below it
+  // so it reads as a field label, not as part of the address.
+  routeLabel: {
+    ...typography.small,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   routeConnector: {
     width: 2,
@@ -803,7 +832,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderStyle: 'dotted',
     borderLeftWidth: 2,
     borderLeftColor: colors.border,
-    marginLeft: 5,
+    // Half the marker width (11) minus half the connector width (1) keeps the dotted line
+    // centred under the pin now that the marker is 22px, not 12px.
+    marginLeft: 10,
   },
   routeText: { ...typography.bodyBold, color: colors.text },
   routeSub: { ...typography.small, color: colors.textMuted },
