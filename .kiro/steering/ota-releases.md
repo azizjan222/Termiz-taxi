@@ -51,10 +51,14 @@ Update group ID    ...
 `app.config.js` explains why the `fingerprint` policy was abandoned. An update only reaches a
 build with the **same** runtimeVersion.
 
-| App | `app.json` runtimeVersion | Newest build in the store / on a device |
-| --- | --- | --- |
-| `sarix-go-driver` | `"3"` | `"2"` — **no build with `"3"` exists yet** |
-| `sarix-go-app` | `"2"` | `"2"` |
+Because a build carries the runtimeVersion it was built with, "does a matching build exist"
+is a **per-channel** question — the two channels are built by different workflows and drift
+apart. As of 2026-09-01, read from `eas build:list` by the pre-publish guard:
+
+| App | `app.json` runtimeVersion | `preview` channel | `production` channel |
+| --- | --- | --- | --- |
+| `sarix-go-driver` | `"3"` | `"3"` — matches, OTAs land | `1.0.0`, `2` — **no `"3"`, OTAs blocked** |
+| `sarix-go-app` | `"2"` | `"2"` — matches | `"2"` — matches |
 
 Bump it only when the native side changes (native dependency, Expo SDK upgrade, config
 plugin, native-affecting app.json change) — and remember that bumping it strands every
@@ -63,21 +67,36 @@ already-installed build until a new binary ships.
 Adding a JS-only package (e.g. `@expo/vector-icons`) does **not** require a bump. Verify
 rather than assume: publish to `preview` and read `Runtime version` from the log.
 
-### The driver app is currently mid-bump — read this before debugging an OTA
+### The driver app is mid-bump on `production` — read this before debugging an OTA
 
 `#249` (background location) bumped the driver to `"3"` because it added `expo-task-manager`
-and a foreground service. **No driver build carrying `"3"` has ever been produced**, so every
-driver OTA published from `main` right now is valid, succeeds, and reaches **zero devices**.
+and a foreground service. A `preview` build carrying `"3"` now exists, so **driver `preview`
+OTAs land normally**. `production` never got one: its newest builds are `1.0.0` and `2`, so a
+driver `production` OTA reaches **zero devices** — the guard added in `#280` now fails that
+publish instead of letting it report success, and its error prints the runtimeVersions the
+channel actually has.
+
+This is the current split, and it is easy to misread as "the OTA is broken":
+
+```
+driver  preview     -> published, runtime 3   (reaches sideloaded preview APKs)
+driver  production  -> BLOCKED,   wants 3     (channel has 1.0.0, 2)
+```
 
 Two consequences worth knowing before losing an afternoon to them:
 
-- A driver phone's newest JS is whatever the last `"2"`-era update delivered, NOT `main`. Do
-  not read "the fix isn't on my phone" as "the fix doesn't work".
-- This resolves itself the moment `release-driver.yml` ships an AAB from `main`; that binary
-  embeds the current JS and then starts listening on its channel. Update the table above when
-  it does.
+- A driver phone on `production` (e.g. installed through Play closed testing) runs whatever
+  the last `"2"`-era update delivered, NOT `main`. Do not read "the fix isn't on my phone" as
+  "the fix doesn't work" — check which channel the device listens to first.
+- This resolves itself the moment `release-driver.yml` ships a `production` AAB from `main`;
+  that binary embeds the current JS and then starts listening on `production`. Update the
+  table above when it does.
 
-The passenger app is unaffected — it is still on `"2"`, so its OTAs land normally.
+Until then, a driver-side change is only verifiable on a `preview` build. Publishing to both
+channels is still correct — the `production` attempt failing loudly is the guard doing its
+job, not a regression to investigate.
+
+The passenger app is unaffected — it is on `"2"` on both channels, so its OTAs land normally.
 
 ## Lockfiles cannot be regenerated locally
 
