@@ -17,6 +17,7 @@ import { OrderCtaButton } from '../src/components/OrderCtaButton';
 import { Input } from '../src/components/Input';
 import { createOrder, getPriceQuote, type PriceQuote } from '../src/api/orders';
 import { getReferralInfo } from '../src/api/promo';
+import { BONUS_UI_ENABLED } from '../src/config/features';
 import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -47,7 +48,10 @@ export default function ConfirmOrderScreen() {
   //
   // Silent on failure: the bonus toggle is an optional saving, and a config/network hiccup
   // must not block ordering a taxi. A zero balance simply hides the row.
+  //
+  // Skipped while BONUS_UI_ENABLED is false, so the hidden feature costs no request.
   useEffect(() => {
+    if (!BONUS_UI_ENABLED) return;
     let active = true;
     getReferralInfo()
       .then((info) => {
@@ -136,7 +140,7 @@ export default function ConfirmOrderScreen() {
         // Only sent when the passenger opted in AND has something to spend. The server caps
         // the actual amount at this ride's commission, so the final discount arrives as
         // `order.bonus_used` once a driver accepts.
-        use_bonus: useBonus && bonusBalance > 0 ? true : undefined,
+        use_bonus: BONUS_UI_ENABLED && useBonus && bonusBalance > 0 ? true : undefined,
       });
       // The draft is NOT reset here. It used to be, and the reset ran while this screen was
       // still mounted: wiping fromCity/toCity to null and serviceType back to 'taxi' forced
@@ -248,8 +252,10 @@ export default function ConfirmOrderScreen() {
             would just add noise to the one screen that must stay scannable.
 
             Not offered for parcels: their fare is negotiated with the driver, so there is no
-            server-side commission to fund a discount from and the toggle would do nothing. */}
-        {bonusBalance > 0 && !isParcel && (
+            server-side commission to fund a discount from and the toggle would do nothing.
+
+            Hidden entirely while BONUS_UI_ENABLED is false (see src/config/features.ts). */}
+        {BONUS_UI_ENABLED && bonusBalance > 0 && !isParcel && (
           <TouchableOpacity
             style={[styles.card, { marginTop: spacing.md }]}
             onPress={() => setUseBonus((v) => !v)}

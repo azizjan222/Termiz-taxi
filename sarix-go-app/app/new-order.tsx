@@ -24,6 +24,7 @@ import {
   type PriceQuote,
 } from '../src/api/orders';
 import { getReferralInfo } from '../src/api/promo';
+import { BONUS_UI_ENABLED } from '../src/config/features';
 import { Icon } from '../src/components/Icon';
 import { OrderCtaButton } from '../src/components/OrderCtaButton';
 import { useOrderStore } from '../src/store/order';
@@ -125,7 +126,12 @@ export default function NewOrderScreen() {
   //
   // Silent on failure, like confirm-order.tsx: the toggle is an optional saving and a
   // network hiccup must never block ordering a taxi. A zero balance just hides the row.
+  //
+  // Skipped entirely while BONUS_UI_ENABLED is false — no toggle means no reason to spend a
+  // request on the balance, and leaving `bonusBalance` at 0 keeps the row hidden and
+  // `use_bonus` out of the payload even if this effect is ever reordered.
   useEffect(() => {
+    if (!BONUS_UI_ENABLED) return;
     let active = true;
     getReferralInfo()
       .then((info) => {
@@ -242,8 +248,9 @@ export default function NewOrderScreen() {
         // never sent: the server caps it at this ride's commission (minus any promo) and at
         // BONUS_MAX_PER_RIDE, then reports the result as `order.bonus_used` once a driver
         // accepts. Sending `undefined` rather than `false` keeps the payload unchanged for
-        // everyone who has no bonus.
-        use_bonus: useBonus && bonusBalance > 0 ? true : undefined,
+        // everyone who has no bonus — which is also exactly what happens while
+        // BONUS_UI_ENABLED is false, so the flag needs no server-side counterpart.
+        use_bonus: BONUS_UI_ENABLED && useBonus && bonusBalance > 0 ? true : undefined,
       });
       // See confirm-order.tsx: resetting the draft here re-rendered this still-mounted
       // screen with a wiped draft, and `startOrder()` already resets before every new
@@ -454,8 +461,10 @@ export default function NewOrderScreen() {
         {/* Bonusdan foydalanish. Hidden at a zero balance — a row reading "0 so'm" would be
             pure noise on a screen whose job is to get one button pressed. No parcel check is
             needed here: this screen only ever creates taxi / full_car orders, both of which
-            carry a server-computed commission for the discount to come out of. */}
-        {bonusBalance > 0 && (
+            carry a server-computed commission for the discount to come out of.
+
+            Hidden entirely while BONUS_UI_ENABLED is false (see src/config/features.ts). */}
+        {BONUS_UI_ENABLED && bonusBalance > 0 && (
           <View style={[styles.fullCarRow, useBonus && styles.fullCarRowOn]}>
             <View style={styles.fullCarIcon}>
               <Icon name="gift" size={20} color={colors.primary} />
