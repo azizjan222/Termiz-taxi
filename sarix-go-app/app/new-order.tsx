@@ -23,6 +23,7 @@ import {
   getPriceQuote,
   type PriceQuote,
 } from '../src/api/orders';
+import { getReferralInfo } from '../src/api/promo';
 import { Icon } from '../src/components/Icon';
 import { OrderCtaButton } from '../src/components/OrderCtaButton';
 import { useOrderStore } from '../src/store/order';
@@ -73,6 +74,16 @@ export default function NewOrderScreen() {
   // commission for). confirm-order.tsx already guards its submit exactly this way.
   const submitInFlightRef = useRef(false);
 
+  // Bonus wallet. This screen is where taxi/full_car orders are actually created, and it
+  // never offered the toggle nor sent `use_bonus` — so `reserve_bonus_for_order` failed its
+  // very first guard on every ride and the wallet could only ever grow. The one screen that
+  // did have the checkbox (confirm-order) is reached only by parcels, which hide it because
+  // a negotiated fare has no commission to fund a discount from. Result: bonus was
+  // unspendable in practice. Balance is fetched (not stored) because every completed ride
+  // can change it server-side and a stale figure would misstate the discount on offer.
+  const [bonusBalance, setBonusBalance] = useState(0);
+  const [useBonus, setUseBonus] = useState(false);
+
   // Bottom action-bar sheets
   const [paymentSheet, setPaymentSheet] = useState(false);
   const [optionsSheet, setOptionsSheet] = useState(false);
@@ -109,6 +120,22 @@ export default function NewOrderScreen() {
     const w = e.nativeEvent.layout.width;
     setSegWidth((prev) => (Math.abs(prev - w) > 1 ? w : prev));
   };
+
+  // Bonus wallet balance, so the passenger can choose to spend it on this ride.
+  //
+  // Silent on failure, like confirm-order.tsx: the toggle is an optional saving and a
+  // network hiccup must never block ordering a taxi. A zero balance just hides the row.
+  useEffect(() => {
+    let active = true;
+    getReferralInfo()
+      .then((info) => {
+        if (active) setBonusBalance(info.bonus_balance || 0);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Price for the current route + passenger count (or full car = 4 people)
   useEffect(() => {
@@ -211,6 +238,12 @@ export default function NewOrderScreen() {
         // Redeem the code the passenger entered. The store already held promoCode but it
         // was never sent, so a code could never actually be applied to an order.
         promo_code: orderStore.promoCode.trim() || undefined,
+        // Only sent when the passenger opted in AND has something to spend. The amount is
+        // never sent: the server caps it at this ride's commission (minus any promo) and at
+        // BONUS_MAX_PER_RIDE, then reports the result as `order.bonus_used` once a driver
+        // accepts. Sending `undefined` rather than `false` keeps the payload unchanged for
+        // everyone who has no bonus.
+        use_bonus: useBonus && bonusBalance > 0 ? true : undefined,
       });
       // See confirm-order.tsx: resetting the draft here re-rendered this still-mounted
       // screen with a wiped draft, and `startOrder()` already resets before every new
@@ -417,6 +450,30 @@ export default function NewOrderScreen() {
             </View>
           </TouchableOpacity>
         </View>
+
+        {/* Bonusdan foydalanish. Hidden at a zero balance — a row reading "0 so'm" would be
+            pure noise on a screen whose job is to get one button pressed. No parcel check is
+            needed here: this screen only ever creates taxi / full_car orders, both of which
+            carry a server-computed commission for the discount to come out of. */}
+        {bonusBalance > 0 && (
+          <View style={[styles.fullCarRow, useBonus && styles.fullCarRowOn]}>
+            <View style={styles.fullCarIcon}>
+              <Icon name="gift" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.fullCarTexts}>
+              <Text style={styles.fullCarTitle}>{t('order.useBonus')}</Text>
+              <Text style={styles.fullCarHint}>
+                {t('order.useBonusHint', { amount: formatPrice(bonusBalance) })}
+              </Text>
+            </View>
+            <Switch
+              value={useBonus}
+              onValueChange={setUseBonus}
+              trackColor={{ true: colors.accent }}
+              accessibilityLabel={t('order.useBonus')}
+            />
+          </View>
+        )}
 
         {routeUnavailable && (
           <View style={styles.unavailableBar}>
