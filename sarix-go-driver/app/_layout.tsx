@@ -25,6 +25,18 @@ import { syncBackgroundLocationState } from '../src/services/backgroundLocation'
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 import { MaintenanceModal } from '../src/components/MaintenanceModal';
 import { isAppsMaintenance } from '../src/api/appConfig';
+import { CrashScreen } from '../src/components/CrashScreen';
+
+/**
+ * Catch render errors for the whole app.
+ *
+ * expo-router renders the `ErrorBoundary` exported from a layout instead of that segment's
+ * tree when it throws; exported from the ROOT layout it covers every screen. Without it a
+ * render exception produced a blank screen with no message and no way out. Added here as
+ * well as in the passenger app: a driver staring at a blank screen cannot take orders, and
+ * the failure would be just as unreportable.
+ */
+export { CrashScreen as ErrorBoundary };
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);

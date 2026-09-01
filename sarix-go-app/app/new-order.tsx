@@ -212,7 +212,9 @@ export default function NewOrderScreen() {
         // was never sent, so a code could never actually be applied to an order.
         promo_code: orderStore.promoCode.trim() || undefined,
       });
-      orderStore.reset();
+      // See confirm-order.tsx: resetting the draft here re-rendered this still-mounted
+      // screen with a wiped draft, and `startOrder()` already resets before every new
+      // order, so it was redundant as well as risky.
       router.replace({
         pathname: '/searching',
         params: { orderId: result.order.id.toString() },

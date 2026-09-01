@@ -17,6 +17,17 @@ import { registerPushToken } from '../src/services/notifications';
 import { addNotificationReceivedListener } from '../src/services/notifications';
 import { addNotification, syncAnnouncements } from '../src/services/notificationHistory';
 import Constants from 'expo-constants';
+import { CrashScreen } from '../src/components/CrashScreen';
+
+/**
+ * Catch render errors for the whole app.
+ *
+ * expo-router renders the `ErrorBoundary` exported from a layout instead of that segment's
+ * tree when it throws; exported from the ROOT layout it covers every screen. Without it a
+ * render exception produced a blank screen with no message and no way out — the app looked
+ * frozen and the failure was unreportable.
+ */
+export { CrashScreen as ErrorBoundary };
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);

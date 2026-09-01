@@ -138,7 +138,13 @@ export default function ConfirmOrderScreen() {
         // `order.bonus_used` once a driver accepts.
         use_bonus: useBonus && bonusBalance > 0 ? true : undefined,
       });
-      orderStore.reset();
+      // The draft is NOT reset here. It used to be, and the reset ran while this screen was
+      // still mounted: wiping fromCity/toCity to null and serviceType back to 'taxi' forced
+      // an immediate re-render of a screen built for a parcel with a draft that no longer
+      // described one, and it wiped the /tariff screen still sitting underneath in the stack
+      // (which is how that screen ended up latched on "Yuklanmoqda..." after a successful
+      // order). It was also redundant: home.tsx `startOrder()` already calls `resetOrder()`
+      // before every new order, so the draft is always clean when the next one begins.
       router.replace({
         pathname: '/searching',
         params: { orderId: result.order.id.toString() },
