@@ -98,8 +98,20 @@ export default function SettingsScreen() {
           })}
         </View>
 
-        {/* Foydalanish shartlari (Terms of Use) */}
+        {/* Yordam / FAQ + Foydalanish shartlari — the two reference screens, grouped
+            together at the bottom. FAQ moved here from the profile menu, which was
+            getting long enough that the rows a driver actually taps were scrolling
+            off-screen. */}
         <View style={[styles.card, { backgroundColor: colors.background, marginTop: spacing.lg }]}>
+          <TouchableOpacity
+            style={[styles.option, { borderBottomColor: colors.divider }]}
+            onPress={() => router.push('/faq')}
+            activeOpacity={0.7}
+          >
+            <Icon name="help" size={20} color={colors.textSecondary} style={styles.optionFlag} />
+            <Text style={[styles.optionLabel, { color: colors.text }]}>{t('settings.faq')}</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.option, { borderBottomWidth: 0 }]}
             onPress={() => router.push('/terms')}

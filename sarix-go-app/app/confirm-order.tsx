@@ -267,16 +267,21 @@ export default function ConfirmOrderScreen() {
         </View>
       </ScrollView>
 
-      {/* Footer */}
+      {/* Footer — the price sits in a row above a full-width CTA rather than beside it.
+          Side by side, the button only received the width the price block left over, so
+          on a narrow screen "Buyurtma berish" ellipsized to "Buyurtma b…". The new-order
+          footer has always used this stacked shape; the two screens now match. */}
       <View style={styles.footer}>
-        <View style={styles.footerInfo}>
-          <Text style={styles.footerLabel}>{t('order.price')}</Text>
+        <View style={styles.priceRow}>
+          <View style={styles.footerInfo}>
+            <Text style={styles.footerLabel}>{t('order.price')}</Text>
+            {isParcel && (
+              <Text style={styles.negotiableHint}>{t('order.parcelNegotiableHint')}</Text>
+            )}
+          </View>
           <Text style={styles.footerPrice}>
             {priceText}
           </Text>
-          {isParcel && (
-            <Text style={styles.negotiableHint}>{t('order.parcelNegotiableHint')}</Text>
-          )}
         </View>
         {/* Gold, like the other "Buyurtma berish": this is the tap that actually creates
             the order, and it should look the same wherever the passenger meets it. */}
@@ -289,7 +294,6 @@ export default function ConfirmOrderScreen() {
           // number they never agreed to. A parcel is genuinely negotiated with the driver,
           // so it only needs its quote to exist.
           disabled={quoteLoading || !(isParcel ? quote : quote && quote.price > 0)}
-          style={{ flex: 1, marginLeft: spacing.md }}
         />
       </View>
     </SafeAreaView>
@@ -352,14 +356,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   checkboxOn: { backgroundColor: colors.primary },
   bonusHint: { ...typography.small, color: colors.textSecondary, marginTop: spacing.xs },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
   },
-  footerInfo: {},
+  priceRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
+  // Takes the leftover width so the price stays hard right and the hint wraps instead of
+  // pushing anything off-screen — it no longer needs a hand-picked maxWidth to behave.
+  footerInfo: { flex: 1, marginRight: spacing.sm },
   footerLabel: { ...typography.caption, color: colors.textSecondary },
   footerPrice: { ...typography.h2, color: colors.primary },
-  negotiableHint: { ...typography.small, color: colors.textSecondary, maxWidth: 160 },
+  negotiableHint: { ...typography.small, color: colors.textSecondary },
 });
