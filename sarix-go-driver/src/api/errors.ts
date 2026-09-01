@@ -32,6 +32,23 @@ export function describeApiError(e: any, t: TFunction): string {
       return t('topUp.errTooManyPending');
     case 'duplicate_receipt':
       return t('topUp.errDuplicate');
+    // Document content rejections from app/services/image_check.py. These land on the
+    // onboarding screen that gates the whole app, so each one has to say what to DO — a
+    // driver told only "Xatolik" has no way to work out that the photo was too blurry.
+    case 'duplicate_document':
+      return t('docs.errDuplicateDoc');
+    case 'image_blurry':
+      return t('docs.errBlurry');
+    case 'image_blank':
+      return t('docs.errBlank');
+    case 'image_too_small':
+      return t('docs.errTooSmall');
+    case 'image_too_large':
+      return t('docs.errTooBig');
+    case 'image_bad_shape':
+      return t('docs.errBadShape');
+    case 'not_an_image':
+      return t('docs.errNotImage');
     case 'amount_out_of_range':
       return t('topUp.errAmountRange', {
         min: formatAmount(data?.min_amount ?? 1000),

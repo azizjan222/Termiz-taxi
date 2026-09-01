@@ -11,6 +11,7 @@ import {
   TextInput,
   Modal,
   FlatList,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -49,6 +50,12 @@ const formatPhone = (text: string): string => {
 };
 const localDigits = (text: string) => text.replace(/\D/g, '').replace(/^998/, '');
 const isValidPhone = (text: string) => localDigits(text).length === 9;
+
+// Local mirrors of the backend's document limits (app/services/image_check.py), kept only so
+// an unusable photo is refused before it costs an upload. The backend stays authoritative —
+// these numbers must never be stricter than its own.
+const MIN_DOC_SIDE_PX = 400;
+const MAX_DOC_ASPECT = 4.0;
 
 type DocKey = 'licenseFront' | 'licenseBack' | 'techFront' | 'techBack';
 
@@ -115,6 +122,10 @@ export default function DriverDocumentsScreen() {
   // here: a second picker launch usually rejects with "Different native picker already in
   // progress", and the shared catch below would then clear the slot the FIRST tap was
   // legitimately filling; and a double submit fired two router.replace calls.
+  // Dimensions+size of the image accepted for each slot, used to catch the same picture
+  // being chosen for a second slot. A ref, not state: it is never rendered, and it must be
+  // readable synchronously inside the pick handler.
+  const fingerprints = useRef<Partial<Record<DocKey, string>>>({});
   const pickInFlightRef = useRef(false);
   const submitInFlightRef = useRef(false);
 
@@ -124,21 +135,139 @@ export default function DriverDocumentsScreen() {
       .catch(() => {});
   }, []);
 
+  /**
+   * Ask for the permission a source needs, explaining why BEFORE the OS dialog appears.
+   *
+   * The screen used to call `launchImageLibraryAsync` cold. Two problems with that: the
+   * driver met a bare system prompt with no idea why an app about taxi orders wanted their
+   * photos, and a previously-denied permission produced an unexplained rejected promise that
+   * surfaced as a generic error. Now the rationale comes first, and a permanent denial ends
+   * in the one place that can actually fix it — system settings.
+   *
+   * Returns true only when the picker may be opened.
+   */
+  const ensurePermission = async (source: 'camera' | 'gallery'): Promise<boolean> => {
+    const current =
+      source === 'camera'
+        ? await ImagePicker.getCameraPermissionsAsync()
+        : await ImagePicker.getMediaLibraryPermissionsAsync();
+
+    if (current.granted) return true;
+
+    // Already refused for good: another request is a no-op, so send them to Settings.
+    if (!current.canAskAgain) {
+      Alert.alert(t('docs.permTitle'), t('docs.permDeniedBody'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('docs.openSettings'), onPress: () => Linking.openSettings() },
+      ]);
+      return false;
+    }
+
+    // Explain, then ask. Resolved through the dialog so the OS prompt only ever follows a
+    // deliberate "continue".
+    const proceed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        t('docs.permTitle'),
+        source === 'camera' ? t('docs.permCameraBody') : t('docs.permGalleryBody'),
+        [
+          { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+          { text: t('common.next'), onPress: () => resolve(true) },
+        ],
+        { onDismiss: () => resolve(false) }
+      );
+    });
+    if (!proceed) return false;
+
+    const requested =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!requested.granted) {
+      Alert.alert(t('docs.permTitle'), t('docs.permDeniedBody'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('docs.openSettings'), onPress: () => Linking.openSettings() },
+      ]);
+      return false;
+    }
+    return true;
+  };
+
+  /**
+   * Cheap local identity for a picked image: dimensions plus byte size.
+   *
+   * Not a hash — the app cannot read the file's bytes without pulling in another native
+   * dependency. It exists to catch the obvious case instantly (the very same gallery entry
+   * chosen for two slots) so the driver is told at the moment of choosing rather than after
+   * an upload round-trip. The backend's sha256 + perceptual hash remain the real check; this
+   * only makes the common mistake fail fast.
+   */
+  const assetFingerprint = (asset: ImagePicker.ImagePickerAsset): string =>
+    `${asset.width}x${asset.height}:${asset.fileSize ?? 'na'}`;
+
   const pickAndUpload = async (key: DocKey) => {
     if (pickInFlightRef.current || uploading) return;
     pickInFlightRef.current = true;
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality: 0.7,
+      // The slot says "Suratga olish", so the camera is offered first — and a photo taken
+      // now is far harder to fake than a file chosen from the gallery, which is how one
+      // screenshot ended up in all four slots. The gallery stays available because a driver
+      // may legitimately have photographed the document earlier.
+      const source = await new Promise<'camera' | 'gallery' | null>((resolve) => {
+        Alert.alert(
+          t('docs.chooseSourceTitle'),
+          t('docs.chooseSourceBody'),
+          [
+            { text: t('docs.takePhoto'), onPress: () => resolve('camera') },
+            { text: t('docs.pickFromGallery'), onPress: () => resolve('gallery') },
+            { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(null) },
+          ],
+          { onDismiss: () => resolve(null) }
+        );
       });
+      if (!source) return;
+
+      if (!(await ensurePermission(source))) return;
+
+      const result =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
+          : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+
       if (result.canceled || !result.assets?.[0]?.uri) return;
-      const uri = result.assets[0].uri;
+      const asset = result.assets[0];
+      const uri = asset.uri;
+
+      // Local sanity checks, so an unusable photo is refused before it costs an upload on a
+      // mobile connection. Guarded on the dimensions actually being reported: some providers
+      // omit them, and an absent width must not be read as "too small".
+      if (asset.width && asset.height) {
+        if (Math.min(asset.width, asset.height) < MIN_DOC_SIDE_PX) {
+          Alert.alert(t('common.error'), t('docs.errTooSmall'));
+          return;
+        }
+        const aspect = Math.max(asset.width, asset.height) / Math.min(asset.width, asset.height);
+        if (aspect > MAX_DOC_ASPECT) {
+          Alert.alert(t('common.error'), t('docs.errBadShape'));
+          return;
+        }
+      }
+
+      // Same picture already sitting in another slot? Refuse immediately.
+      const fingerprint = assetFingerprint(asset);
+      const clash = (Object.keys(fingerprints.current) as DocKey[]).find(
+        (other) => other !== key && fingerprints.current[other] === fingerprint
+      );
+      if (clash) {
+        Alert.alert(t('common.error'), t('docs.errDuplicateDoc'));
+        return;
+      }
+
       setUris((p) => ({ ...p, [key]: uri }));
       setUploaded((p) => ({ ...p, [key]: false }));
       setUploading(key);
       await uploaders[key](uri);
       if (!aliveRef.current) return;
+      fingerprints.current[key] = fingerprint;
       setUploaded((p) => ({ ...p, [key]: true }));
     } catch (e: any) {
       if (!aliveRef.current) return;
@@ -148,9 +277,14 @@ export default function DriverDocumentsScreen() {
       // gates access to the app, so a silent failure strands the driver here.
       setUris((p) => ({ ...p, [key]: null }));
       setUploaded((p) => ({ ...p, [key]: false }));
+      // Forget the fingerprint too: the slot is empty again, so keeping it would make a
+      // later, legitimate retry with the same photo look like a duplicate of nothing.
+      delete fingerprints.current[key];
       // describeApiError separates a 413 (four photos at quality 0.7 easily exceed the 5MB
-      // cap) from a timeout and from a real server error. On the one screen that gates
-      // access to the whole app, a misdiagnosed 413 traps the driver in onboarding.
+      // cap) from a timeout and from a real server error, and now also renders the document
+      // rejections (blurry / blank / duplicate) in the driver's own language. On the one
+      // screen that gates access to the whole app, a misdiagnosed error traps the driver in
+      // onboarding.
       Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
       pickInFlightRef.current = false;

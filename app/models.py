@@ -720,3 +720,52 @@ class TelegramAuthSession(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False)
+
+
+
+class DriverDocumentImage(Base):
+    """Fingerprint of the image currently accepted for one driver document slot.
+
+    Exists so "is this the same picture again?" is answerable. Before it, the four document
+    columns on ``drivers`` held URLs and nothing else, so four uploads of one screenshot were
+    four unrelated successes — the incident this table is here to prevent.
+
+    One row per (driver, slot): re-uploading a slot UPDATES its row rather than adding one,
+    which is what keeps the unique ``sha256`` below compatible with a driver legitimately
+    re-sending the identical file for the same document.
+
+    Both hashes are kept because they fail differently. ``sha256`` is exact and cheap but
+    changes completely on a re-encode — and the image picker re-encodes at ``quality: 0.7``,
+    so it alone would miss the same gallery photo picked twice. ``phash`` (average hash)
+    survives re-encoding, resizing and mild cropping, but is coarse enough that it is only
+    trusted for near-duplicate comparison within one driver's own slots.
+    """
+
+    __tablename__ = "driver_document_images"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=False, index=True)
+    # license | license_back | tech_passport | tech_passport_back | car_photo
+    kind = Column(String(30), nullable=False)
+    sha256 = Column(String(64), nullable=False, index=True)
+    phash = Column(String(16), nullable=False, index=True)
+    # Kept for the admin review screen: they explain WHY an upload was accepted and let a
+    # reviewer spot a technically-valid but poor photo without opening the file.
+    width = Column(Integer, nullable=False, default=0)
+    height = Column(Integer, nullable=False, default=0)
+    sharpness = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("driver_id", "kind", name="uq_driver_document_slot"),
+        # Globally unique: the same bytes must never back two documents, whether that is one
+        # driver filling two slots with one photo or two drivers sharing one. This also
+        # closes the check-then-insert race, since the DB refuses the second writer.
+        UniqueConstraint("sha256", name="uq_driver_document_sha256"),
+        CheckConstraint(
+            "kind IN ('license', 'license_back', 'tech_passport', "
+            "'tech_passport_back', 'car_photo')",
+            name="ck_driver_document_kind",
+        ),
+    )

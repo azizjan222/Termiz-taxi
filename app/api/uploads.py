@@ -1,14 +1,23 @@
 """Authenticated image uploads with private storage for identity documents."""
 import logging
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from aiohttp import web
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from app import config
 from app.api.drivers import _get_driver_from_request
 from app.database import get_session
-from app.models import Driver, User
+from app.models import Driver, DriverDocumentImage, User
+from app.services.image_check import (
+    DocumentImageAnalysis,
+    DocumentImageError,
+    analyse_document_image,
+    is_near_duplicate,
+)
 from app.utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -35,6 +44,11 @@ DOCUMENT_FIELD_BY_KIND = {
     "tech-passport": "tech_passport_url",
     "tech-passport-back": "tech_passport_back_url",
 }
+# Uploads that are evidence, so they get decoded, quality-checked and fingerprinted.
+# `car_photo` is included: it is part of what an admin approves. `profile` is not — that is a
+# portrait shown to passengers, plays no part in verification, and a driver reusing their own
+# face photo elsewhere is not fraud.
+FINGERPRINTED_UPLOAD_TYPES = PRIVATE_DOCUMENT_TYPES | {"car_photo"}
 
 
 def detect_image_extension(data: bytes) -> str | None:
@@ -209,6 +223,67 @@ async def upload_passenger_profile_photo(request: web.Request) -> web.Response:
     return web.json_response({"success": True, "url": url, "size": len(data)})
 
 
+def _find_conflicting_document(
+    session, driver_id: int, kind: str, analysis: DocumentImageAnalysis
+) -> str | None:
+    """Return the slot this image is already used for, or ``None`` if it is new.
+
+    Two rules, and they are deliberately scoped differently:
+
+    * **Byte-identical anywhere** — rejected globally. The only excluded row is this
+      driver's own same slot, which is a legitimate re-upload of the same file.
+    * **Near-identical (average hash) within THIS driver's other slots** — rejected. The
+      front and back of a licence are different pictures; if they hash alike, one of them is
+      not what it claims to be. This is not applied across drivers on purpose: average
+      hashing is coarse, and two genuine photos of the same document type on a similar
+      background could sit close enough to trip it, which would lock out an honest driver.
+    """
+    exact = (
+        session.query(DriverDocumentImage)
+        .filter(DriverDocumentImage.sha256 == analysis.sha256)
+        .filter(
+            or_(
+                DriverDocumentImage.driver_id != driver_id,
+                DriverDocumentImage.kind != kind,
+            )
+        )
+        .first()
+    )
+    if exact:
+        return exact.kind
+
+    others = (
+        session.query(DriverDocumentImage)
+        .filter(DriverDocumentImage.driver_id == driver_id)
+        .filter(DriverDocumentImage.kind != kind)
+        .all()
+    )
+    for row in others:
+        if is_near_duplicate(row.phash, analysis.phash):
+            return row.kind
+    return None
+
+
+def _record_document_fingerprint(
+    session, driver_id: int, kind: str, analysis: DocumentImageAnalysis
+) -> None:
+    """Upsert the fingerprint for one slot. Caller owns the transaction."""
+    row = (
+        session.query(DriverDocumentImage)
+        .filter_by(driver_id=driver_id, kind=kind)
+        .first()
+    )
+    if row is None:
+        row = DriverDocumentImage(driver_id=driver_id, kind=kind)
+        session.add(row)
+    row.sha256 = analysis.sha256
+    row.phash = analysis.phash
+    row.width = analysis.width
+    row.height = analysis.height
+    row.sharpness = analysis.sharpness
+    row.updated_at = datetime.utcnow()
+
+
 async def _handle_driver_upload(
     request: web.Request, driver: Driver, upload_type: str
 ) -> web.Response:
@@ -216,6 +291,34 @@ async def _handle_driver_upload(
     if error:
         return error
     assert data is not None and extension is not None
+
+    # Content checks for anything that gates verification. `profile` is excluded: it is a
+    # portrait the passenger sees, not evidence, and it is not part of approval.
+    analysis: DocumentImageAnalysis | None = None
+    if upload_type in FINGERPRINTED_UPLOAD_TYPES:
+        try:
+            analysis = analyse_document_image(data)
+        except DocumentImageError as exc:
+            return web.json_response({"error": exc.message, "code": exc.code}, status=400)
+
+        # Checked before the file is written so a rejected duplicate leaves nothing behind.
+        session = get_session()
+        try:
+            conflict = _find_conflicting_document(session, driver.id, upload_type, analysis)
+        finally:
+            session.close()
+        if conflict:
+            return web.json_response(
+                {
+                    "error": (
+                        "Bu rasm allaqachon boshqa hujjat uchun yuborilgan. "
+                        "Har bir hujjatni alohida suratga oling."
+                    ),
+                    "code": "duplicate_document",
+                    "conflict_kind": conflict,
+                },
+                status=409,
+            )
 
     private = upload_type in PRIVATE_DOCUMENT_TYPES
     path, stored_value = _write_image(
@@ -239,7 +342,24 @@ async def _handle_driver_upload(
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
         old_value = getattr(saved, field_name)
         setattr(saved, field_name, stored_value)
+        if analysis is not None:
+            _record_document_fingerprint(session, driver.id, upload_type, analysis)
         session.commit()
+    except IntegrityError:
+        # The unique sha256 index fired: another request stored these exact bytes between
+        # our check above and this commit. Same answer as the check, just decided by the DB.
+        session.rollback()
+        path.unlink(missing_ok=True)
+        return web.json_response(
+            {
+                "error": (
+                    "Bu rasm allaqachon boshqa hujjat uchun yuborilgan. "
+                    "Har bir hujjatni alohida suratga oling."
+                ),
+                "code": "duplicate_document",
+            },
+            status=409,
+        )
     except Exception:
         session.rollback()
         path.unlink(missing_ok=True)

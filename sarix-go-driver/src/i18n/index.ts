@@ -296,6 +296,38 @@ export const uz = {
     contactQuestion: "Yo'lovchilar shu raqam orqali bog'lanadi. To'g'ri bo'lsa davom eting, aks holda o'zgartiring.",
     errPhotoUpload: "Rasm yuklanmadi. Qayta urinib ko'ring.",
     errSubmit: "Hujjatlarni yuborib bo'lmadi.",
+    // Rasm manbasini tanlash + ruxsat so'rash (ruxsat tizim oynasidan OLDIN tushuntiriladi)
+    chooseSourceTitle: 'Hujjat rasmi',
+    chooseSourceBody: "Hujjatni hozir suratga oling yoki galereyadan tanlang.",
+    pickFromGallery: 'Galereyadan tanlash',
+    permTitle: 'Ruxsat kerak',
+    permCameraBody:
+      "Hujjatni suratga olish uchun kameraga ruxsat kerak. Rasm faqat hujjatlaringizni " +
+      "tekshirish uchun ishlatiladi.",
+    permGalleryBody:
+      "Hujjat rasmini tanlash uchun galereyaga ruxsat kerak. Faqat siz tanlagan rasm " +
+      "yuklanadi.",
+    permDeniedBody:
+      "Ruxsat berilmagan. Sozlamalar orqali ruxsat bering, so'ng qaytadan urinib ko'ring.",
+    openSettings: 'Sozlamalarni ochish',
+    // Hujjat rasmini tekshirishdan o'tmagan holatlar
+    errDuplicateDoc:
+      "Bu rasm allaqachon boshqa hujjat uchun yuborilgan. Har bir hujjatni alohida " +
+      "suratga oling.",
+    errBlurry:
+      "Rasm xira chiqqan — yozuvlar o'qilmaydi. Telefonni qimirlatmasdan, fokusni " +
+      "hujjatga qaratib qayta suratga oling.",
+    errBlank:
+      "Rasmda hujjat ko'rinmayapti — kadr bo'sh yoki kamera berkitilgan. Hujjatni " +
+      "yorug'da, to'liq kadrga olib suratga oling.",
+    errTooSmall:
+      "Rasm juda kichik — hujjatdagi yozuvlar o'qilmaydi. Hujjatni yaqindan, to'liq " +
+      "kadrga oling.",
+    errTooBig: "Rasm o'lchami juda katta. Oddiy telefon kamerasida suratga oling.",
+    errBadShape:
+      "Rasm juda cho'zilgan — hujjat to'liq ko'rinmayapti. Hujjatni to'liq kadrga olib, " +
+      "qaytadan suratga oling.",
+    errNotImage: 'Fayl haqiqiy rasm emas yoki buzilgan. Qaytadan suratga oling.',
   },
   driverInfo: {
     title: "Ma'lumotlarim",
@@ -883,6 +915,36 @@ export const ru = {
     contactQuestion: 'Пассажиры будут звонить на этот номер. Если он верный — продолжайте, иначе измените его.',
     errPhotoUpload: 'Фото не загрузилось. Попробуйте снова.',
     errSubmit: 'Не удалось отправить документы.',
+    chooseSourceTitle: 'Фото документа',
+    chooseSourceBody: 'Сфотографируйте документ сейчас или выберите фото из галереи.',
+    pickFromGallery: 'Выбрать из галереи',
+    permTitle: 'Нужно разрешение',
+    permCameraBody:
+      'Для съёмки документа нужен доступ к камере. Фото используется только для ' +
+      'проверки ваших документов.',
+    permGalleryBody:
+      'Для выбора фото документа нужен доступ к галерее. Загрузится только выбранное ' +
+      'вами фото.',
+    permDeniedBody:
+      'Доступ не разрешён. Разрешите его в настройках и попробуйте снова.',
+    openSettings: 'Открыть настройки',
+    errDuplicateDoc:
+      'Это фото уже отправлено для другого документа. Сфотографируйте каждый документ ' +
+      'отдельно.',
+    errBlurry:
+      'Фото размытое — текст не читается. Держите телефон неподвижно, наведите фокус на ' +
+      'документ и снимите заново.',
+    errBlank:
+      'На фото не видно документа — кадр пустой или камера закрыта. Снимите документ при ' +
+      'хорошем освещении, полностью в кадре.',
+    errTooSmall:
+      'Фото слишком маленькое — текст документа не читается. Снимите документ ближе и ' +
+      'полностью в кадре.',
+    errTooBig: 'Слишком большой размер изображения. Снимите обычной камерой телефона.',
+    errBadShape:
+      'Фото слишком вытянутое — документ виден не полностью. Снимите документ полностью ' +
+      'в кадре.',
+    errNotImage: 'Файл не является изображением или повреждён. Снимите заново.',
   },
   driverInfo: {
     title: 'Мои данные',
@@ -1466,6 +1528,35 @@ export const en = {
     contactQuestion: 'Passengers will call this number. If it is correct, continue; otherwise change it.',
     errPhotoUpload: 'The photo did not upload. Please try again.',
     errSubmit: 'Could not submit the documents.',
+    chooseSourceTitle: 'Document photo',
+    chooseSourceBody: 'Photograph the document now, or choose a photo from your gallery.',
+    pickFromGallery: 'Choose from gallery',
+    permTitle: 'Permission needed',
+    permCameraBody:
+      'Camera access is needed to photograph the document. The photo is used only to ' +
+      'verify your documents.',
+    permGalleryBody:
+      'Gallery access is needed to choose the document photo. Only the photo you pick is ' +
+      'uploaded.',
+    permDeniedBody: 'Access was denied. Allow it in Settings and try again.',
+    openSettings: 'Open Settings',
+    errDuplicateDoc:
+      'This photo has already been sent for another document. Photograph each document ' +
+      'separately.',
+    errBlurry:
+      'The photo is blurry — the text cannot be read. Hold the phone still, focus on the ' +
+      'document and take it again.',
+    errBlank:
+      'No document is visible — the frame is empty or the camera was covered. Photograph ' +
+      'the document in good light, fully in frame.',
+    errTooSmall:
+      'The photo is too small — the text cannot be read. Take it closer, with the ' +
+      'document fully in frame.',
+    errTooBig: 'The image is too large. Use your phone camera normally.',
+    errBadShape:
+      'The photo is too elongated — the document is not fully visible. Take it again ' +
+      'with the whole document in frame.',
+    errNotImage: 'The file is not a real image or is corrupted. Take the photo again.',
   },
   driverInfo: {
     title: 'My details',
@@ -2049,6 +2140,36 @@ export const uzCyrl = {
     contactQuestion: 'Йўловчилар шу рақам орқали боғланади. Тўғри бўлса давом этинг, акс ҳолда ўзгартиринг.',
     errPhotoUpload: 'Расм юкланмади. Қайта уриниб кўринг.',
     errSubmit: 'Ҳужжатларни юбориб бўлмади.',
+    chooseSourceTitle: 'Ҳужжат расми',
+    chooseSourceBody: 'Ҳужжатни ҳозир суратга олинг ёки галереядан танланг.',
+    pickFromGallery: 'Галереядан танлаш',
+    permTitle: 'Рухсат керак',
+    permCameraBody:
+      'Ҳужжатни суратга олиш учун камерага рухсат керак. Расм фақат ҳужжатларингизни ' +
+      'текшириш учун ишлатилади.',
+    permGalleryBody:
+      'Ҳужжат расмини танлаш учун галереяга рухсат керак. Фақат сиз танлаган расм ' +
+      'юкланади.',
+    permDeniedBody:
+      'Рухсат берилмаган. Созламалар орқали рухсат беринг, сўнг қайтадан уриниб кўринг.',
+    openSettings: 'Созламаларни очиш',
+    errDuplicateDoc:
+      'Бу расм аллақачон бошқа ҳужжат учун юборилган. Ҳар бир ҳужжатни алоҳида суратга ' +
+      'олинг.',
+    errBlurry:
+      'Расм хира чиққан — ёзувлар ўқилмайди. Телефонни қимирлатмасдан, фокусни ҳужжатга ' +
+      'қаратиб қайта суратга олинг.',
+    errBlank:
+      'Расмда ҳужжат кўринмаяпти — кадр бўш ёки камера беркитилган. Ҳужжатни ёруғда, ' +
+      'тўлиқ кадрга олиб суратга олинг.',
+    errTooSmall:
+      'Расм жуда кичик — ҳужжатдаги ёзувлар ўқилмайди. Ҳужжатни яқиндан, тўлиқ кадрга ' +
+      'олинг.',
+    errTooBig: 'Расм ўлчами жуда катта. Оддий телефон камерасида суратга олинг.',
+    errBadShape:
+      'Расм жуда чўзилган — ҳужжат тўлиқ кўринмаяпти. Ҳужжатни тўлиқ кадрга олиб, ' +
+      'қайтадан суратга олинг.',
+    errNotImage: 'Файл ҳақиқий расм эмас ёки бузилган. Қайтадан суратга олинг.',
   },
   driverInfo: {
     title: 'Маълумотларим',

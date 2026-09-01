@@ -13,4 +13,10 @@ bcrypt>=4.1.0
 
 fpdf2>=2.7.0
 
+# Decoding driver document photos to check they are real, legible images and to fingerprint
+# them (app/services/image_check.py). Already present transitively via fpdf2 and pinned in
+# the lock files; declared here because it is now used directly, so a future fpdf2 that drops
+# the dependency cannot silently break document uploads.
+Pillow>=10.0.0
+
 sentry-sdk>=2.0.0  # Optional error monitoring; inert unless SENTRY_DSN is set
