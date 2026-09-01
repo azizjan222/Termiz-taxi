@@ -94,6 +94,9 @@ export default {
     info: '{{persons}} kishigacha yo\'lovchi olinadi',
     unavailableTitle: 'Narxni aniqlab boʻlmadi',
     unavailableBody: 'Internet aloqasini tekshirib, qayta urinib koʻring yoki boshqa yoʻnalish tanlang.',
+    noRouteTitle: 'Yoʻnalish tanlanmagan',
+    noRouteBody: 'Qayerdan qayerga yuborishni tanlang.',
+    selectRoute: 'Yoʻnalishni tanlash',
   },
   newOrder: {
     personsStep: "Yo'lovchi soni",

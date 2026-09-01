@@ -133,12 +133,16 @@ export default function RouteSelectScreen() {
       setSearch('');
       setShowSuggestions(false);
 
-      const otherFilled =
-        field === 'from'
-          ? !!(orderStore.toCity || orderStore.toAddress)
-          : !!(orderStore.fromCity || orderStore.fromAddress);
-      if (otherFilled) proceed();
-      else setActive(field === 'from' ? 'to' : 'from');
+      // Require a real CITY on both sides before advancing, not merely an address.
+      //
+      // Every screen after this one quotes a price from (fromCity, toCity), so an address
+      // whose city never resolved — a suggestion whose geocode came back empty, a map pin
+      // in an unnamed area — used to advance into a screen that had nothing to quote. For a
+      // parcel that meant /tariff, which latched on "Yuklanmoqda..." forever. Staying on
+      // this screen instead lets the passenger pick the side that is actually missing.
+      const otherCity = field === 'from' ? orderStore.toCity : orderStore.fromCity;
+      if (city && otherCity) proceed();
+      else setActive(city ? (field === 'from' ? 'to' : 'from') : field);
     },
     [orderStore, proceed]
   );

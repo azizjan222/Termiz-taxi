@@ -92,6 +92,9 @@ export default {
     info: 'До {{persons}} пассажиров',
     unavailableTitle: 'Не удалось узнать цену',
     unavailableBody: 'Проверьте интернет-соединение и попробуйте снова или выберите другой маршрут.',
+    noRouteTitle: 'Маршрут не выбран',
+    noRouteBody: 'Укажите, откуда и куда отправляем.',
+    selectRoute: 'Выбрать маршрут',
   },
   newOrder: {
     personsStep: 'Количество пассажиров',
