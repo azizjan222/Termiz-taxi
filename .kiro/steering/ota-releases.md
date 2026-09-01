@@ -115,6 +115,43 @@ Two consequences:
 - The bot's commit does **not** trigger a new CI run (GitHub blocks recursive workflow
   triggering). Push a follow-up commit to get the checks to run on the fixed tree.
 
+## Play tracks: the name in the API is not the name in the Console
+
+`eas submit` takes Play's API track names, which do not match the Console's labels:
+
+| Play Console | API / `eas.json` track |
+| --- | --- |
+| Internal testing | `internal` |
+| **Closed testing** | **`alpha`** |
+| Open testing | `beta` |
+| Production | `production` |
+
+This mismatch cost a submission: the release workflows only offered `internal` and
+`production`, so while the app was serving out Google's required **closed-testing** period
+there was no way to submit to the track the enrolled testers were actually on — `internal`
+does not reach them and `production` is not available yet. Both `release-*.yml` workflows and
+both `eas.json` files now carry all four.
+
+Note which EAS *update* channel a Play build listens on: `release-*.yml` builds with the
+`production` profile, and that profile sets `channel: production`. So a build distributed
+through ANY Play track — internal, closed or production — takes its OTAs from the
+`production` channel, not `preview`. A sideloaded APK from `build-*.yml` is the only thing on
+`preview`.
+
+## Automated Play submission needs a service account key
+
+`eas submit` fails in CI without one:
+
+```
+Looking up credentials configuration for uz.sarixgo.driver...
+Google Service Account Keys cannot be set up in --non-interactive mode.
+```
+
+The key is created in Google Cloud, granted access in Play Console and stored in EAS — none
+of which can be done from CI, and the FIRST release of an app has to be uploaded to Play by
+hand anyway. Until it is configured, `release-*.yml` with `submit: false` is the useful mode:
+it produces the AAB, which is then uploaded manually from expo.dev.
+
 ## Play Store is a separate step
 
 `release-driver.yml` / `release-passenger.yml` build the AAB, and their "Submit to Google

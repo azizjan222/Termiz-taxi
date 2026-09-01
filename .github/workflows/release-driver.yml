@@ -14,10 +14,18 @@ on:
         # how the binary is compiled -- an R8 keep rule that turns out to be too narrow
         # surfaces as a crash on launch, and the internal track is where that should be
         # discovered. Choose `production` deliberately, once a build has been verified.
-        description: "Google Play track (verify on internal before production)"
+        #
+        # `alpha` is Play's CLOSED testing track and `beta` its OPEN testing track -- the
+        # names differ from the Play Console labels, which is why they were missing here.
+        # `alpha` is the one that matters while the app is serving out Google's required
+        # closed-testing period: builds have to land on THAT track for the enrolled testers
+        # to receive them, and neither `internal` nor `production` reaches them.
+        description: "Play track: internal | alpha (closed testing) | beta (open) | production"
         type: choice
         options:
           - internal
+          - alpha
+          - beta
           - production
         required: false
         default: internal
