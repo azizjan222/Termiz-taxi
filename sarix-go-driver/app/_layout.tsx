@@ -186,11 +186,28 @@ export default function RootLayout() {
       // order_cancelled / order_expired too, and opening a dead order is just confusing.
       if (data.type === 'order_cancelled' || data.type === 'order_expired') return;
 
-      const orderId = data.order_id ?? data.orderId;
-      if (orderId == null) return;
       // Only navigate once the driver is actually logged in, otherwise expo-router
       // would push an authenticated screen over the login flow.
       if (!useDriverStore.getState().isAuthenticated) return;
+
+      // A NEW order is not yet ours, so it must not open /order/[id] — that screen is the
+      // accepted-ride view, and its only data source is listMyActive() (my accepted /
+      // in_progress rides). A `new` order is unassigned by definition, so it is never in
+      // that list: the screen's first poll concluded "this order is gone", fired
+      // "Bu zakas endi faol emas — bekor qilingan yoki boshqa haydovchi oldi" and bounced
+      // the driver out. Every single new-order push a driver tapped produced that alert
+      // for a perfectly live order.
+      //
+      // The orders list is where an unaccepted order belongs: it shows the order with its
+      // Accept button, and the driver reaches /order/[id] through accepting — which is
+      // also the only point at which the ride actually becomes theirs.
+      if (data.type === 'new_order') {
+        router.push('/(main)/orders');
+        return;
+      }
+
+      const orderId = data.order_id ?? data.orderId;
+      if (orderId == null) return;
 
       const numericId = Number(orderId);
       if (!Number.isFinite(numericId)) return;

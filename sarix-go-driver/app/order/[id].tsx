@@ -72,6 +72,15 @@ export default function OrderDetailScreen() {
   // Set once the order is no longer among our active orders (cancelled / taken / done).
   const [gone, setGone] = useState(false);
   const goneHandledRef = useRef(false);
+  // Set when the order was NEVER ours to begin with (opened by id without accepting it).
+  // Kept apart from `gone` on purpose: "it disappeared while I was watching" is worth
+  // warning about, "it was never in my list" is not — conflating the two is what made a
+  // brand-new order announce itself as cancelled.
+  const [notMine, setNotMine] = useState(false);
+  // Only ever true after a poll actually found this order in our active list. `gone` must
+  // not be inferred from a single absent response before that: absence then means "not
+  // ours yet", not "no longer active".
+  const everLoadedRef = useRef(false);
   // True once WE completed the ride, so the `gone` watcher treats the order leaving the
   // active list as the expected outcome rather than something to warn about.
   const completedByMeRef = useRef(false);
@@ -113,13 +122,19 @@ export default function OrderDetailScreen() {
           if (!cancelled) {
             const o = orders.find((x) => x.id.toString() === id);
             if (o) {
+              everLoadedRef.current = true;
               setOrder(o);
               setGone(false);
-            } else {
-              // A successful response that does not contain this order means it is no
-              // longer ours: the passenger cancelled, another driver took it, or it
-              // completed.
+              setNotMine(false);
+            } else if (everLoadedRef.current) {
+              // We HAD it and now we don't: the passenger cancelled, another driver took
+              // it, or it completed. Worth telling the driver about.
               setGone(true);
+            } else {
+              // We never had it. Either the id belongs to somebody else's ride or it is
+              // still an unaccepted `new` order — neither is a cancellation, so show the
+              // neutral empty state instead of warning that it is "no longer active".
+              setNotMine(true);
             }
           }
         } catch {
@@ -504,7 +519,7 @@ export default function OrderDetailScreen() {
         </View>
         <View style={styles.center}>
           <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>
-            {gone ? t('order.notFound') : t('common.loading')}
+            {gone || notMine ? t('order.notFound') : t('common.loading')}
           </Text>
           <TouchableOpacity
             style={styles.emptyAction}
