@@ -2,18 +2,22 @@ name: OTA Update Driver App
 
 # Manual-only: OTA must be reviewed as JS/assets-only and must pass all checks.
 #
-# WHY THIS JOB MIRRORS THE RELEASE JOB
-# ------------------------------------
-# `runtimeVersion.policy` is `fingerprint`, so an update is only ever delivered to
-# a build whose native fingerprint is identical. The fingerprint hashes the
-# *contents* of google-services.json (see @expo/fingerprint `expoConfigExternalFile`),
-# so this job MUST restore that file exactly like release-driver.yml does.
-# If it doesn't, the update is published under a different runtimeVersion and
-# silently reaches nobody.
+# WHAT AN UPDATE CAN REACH
+# ------------------------
+# `runtimeVersion` is an explicit string in app.json (currently "3"), NOT a policy. The
+# `fingerprint` policy was abandoned because the CI runner and the EAS worker computed
+# different hashes for it — see the long comment in sarix-go-driver/app.config.js.
 #
-# Native changes (new/updated native deps, config plugins, SDK bumps, app config
-# that affects the native project) CANNOT ship over OTA — they change the
-# fingerprint. Those require a new build via release-driver.yml.
+# An update is only ever delivered to a build whose runtimeVersion is identical. So native
+# changes (new/updated native deps, config plugins, SDK bumps, app config that affects the
+# native project) CANNOT ship over OTA: they need a runtimeVersion bump AND a fresh binary
+# from build-driver.yml (preview APK) or release-driver.yml (Play Store AAB).
+#
+# `eas update` does not verify that a build with this runtimeVersion exists — it publishes
+# into thin air, prints a green summary and exits 0. Every driver update published between
+# 2026-08-29 (runtimeVersion bumped "2" -> "3") and 2026-09-01 reached zero devices that
+# way, because the build that would have carried "3" had failed and was never re-run.
+# The "Verify a matching build exists" step below is what turns that into a red job.
 on:
   workflow_dispatch:
     inputs:
@@ -65,7 +69,8 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci --legacy-peer-deps --no-audit --no-fund
       - name: Restore Firebase client configuration
-        # Required for fingerprint parity with the release build — see header.
+        # app.config.js only sets android.googleServicesFile when the file is present, so
+        # restoring it keeps the resolved app config identical to the one the build saw.
         run: |
           test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_DRIVER_JSON_B64 is required"; exit 1; }
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
@@ -77,11 +82,14 @@ jobs:
           npm run typecheck
           npm run lint
           npm test -- --ci
-      - name: Report native fingerprint
-        # Informational: this must match the fingerprint of the installed build,
-        # otherwise the update will not be delivered. Never fail the job on it.
-        continue-on-error: true
-        run: npx expo-updates fingerprint:generate --platform android
+      - name: Verify a matching build exists for this runtimeVersion
+        env:
+          UPDATE_CHANNEL: ${{ inputs.channel }}
+        # Deliberately NOT continue-on-error: an update no binary can receive is a failed
+        # release, not a warning. Replaces a `fingerprint:generate` report that was
+        # meaningless here — the runtimeVersion is an explicit string, so the fingerprint
+        # it printed had no bearing on whether the update would be delivered.
+        run: node ../scripts/assert-ota-target-build.mjs "$UPDATE_CHANNEL"
       - name: Publish update
         env:
           UPDATE_MESSAGE: ${{ inputs.message }}

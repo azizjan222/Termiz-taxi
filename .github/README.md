@@ -12,12 +12,20 @@ The repository has ten workflows. Verification workflows run automatically for r
 | `build-driver.yml` | Manual | Verifies source and builds a driver preview APK with pinned EAS CLI. |
 | `release-passenger.yml` | Manual | Verifies source and builds a production passenger AAB; optional `submit` sends that exact build ID to Google Play. |
 | `release-driver.yml` | Manual | Verifies source and builds a production driver AAB; optional `submit` sends that exact build ID to Google Play. |
-| `update-passenger.yml` | Manual | After all checks pass, publishes a reviewed JS/assets-only update to the passenger `preview` branch. |
-| `update-driver.yml` | Manual | After all checks pass, publishes a reviewed JS/assets-only update to the driver `preview` branch. |
+| `update-passenger.yml` | Manual | After all checks pass, publishes a reviewed JS/assets-only update to the chosen passenger channel (`preview` or `production`). |
+| `update-driver.yml` | Manual | After all checks pass, publishes a reviewed JS/assets-only update to the chosen driver channel (`preview` or `production`). |
 | `db-backup.yml` | Daily at 02:00 UTC and manual | Dumps PostgreSQL, validates gzip/SHA-256, restores into disposable PostgreSQL `17.5`, verifies tables, and retains the artifact for 30 days. |
 | `pages.yml` | Changes under `docs/` on `main`, or manual | Deploys privacy policy and terms pages to GitHub Pages. |
 
 OTA workflows must only be used when the change is compatible with the installed native runtime. Native dependencies, Android configuration, permissions, signing, Firebase configuration, Expo SDK/runtime changes and similar changes require a new binary build.
+
+### The runtimeVersion trap
+
+Each app pins an explicit `runtimeVersion` string in its `app.json` (the `fingerprint` policy was abandoned because the CI runner and the EAS worker disagreed on the hash — see `sarix-go-driver/app.config.js`). An update is delivered **only** to a build whose `runtimeVersion` is identical, so bumping it for a native change means every installed binary stops receiving updates until a new build ships.
+
+`eas update` does not check this. It publishes into a `runtimeVersion` nobody runs, prints a green summary and exits 0 — the update reaches zero devices with no signal anywhere. Every driver OTA published between 2026-08-29 (bump `"2"` → `"3"`) and 2026-09-01 was lost this way, because the build that would have carried `"3"` failed on an exhausted Expo build quota and was never re-run.
+
+Both OTA workflows therefore run `scripts/assert-ota-target-build.mjs`, which fails the job unless a finished Android build on the target channel carries the app's current `runtimeVersion`. If it fails, run that app's build/release workflow and wait for it to finish before retrying the update. The guard proves a compatible binary *exists*; it cannot prove users have installed it.
 
 ## Required repository secrets
 
