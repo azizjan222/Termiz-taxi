@@ -295,18 +295,38 @@ def _expected_origins(request: web.Request) -> set[str]:
 
 
 def check_origin(request: web.Request) -> bool:
-    """Reject a state-changing request whose Origin/Referer is another site.
+    """Reject a state-changing request whose origin is another site.
 
     A third defence next to SameSite=Strict and the signed double-submit token, and the
     one that does not depend on cookie behaviour: SameSite is enforced by the browser, so
     it does nothing for a client that ignores it, and the CSRF token is only proof that
     *some* valid token was issued.
 
-    Absence is allowed. A plain same-origin form POST does not always carry Origin, and
-    treating "no header" as hostile would break the login form on older browsers — the
-    header is only ever used to catch a value that is present and wrong.
+    ``Sec-Fetch-Site`` is consulted first. It is the browser's own statement about who
+    started the request, page script cannot forge it (``Sec-`` is a forbidden header
+    prefix), and — unlike ``Origin`` — it does not depend on the response's
+    Referrer-Policy. That dependency is what locked operators out of the panel: with
+    ``Referrer-Policy: no-referrer`` the browser sends ``Origin: null`` on a same-origin
+    form POST, which is indistinguishable from a sandboxed iframe and so was refused. The
+    header is fixed in :mod:`app.api.server`; reading fetch metadata here means a browser
+    or extension that forces ``no-referrer`` anyway still cannot break login.
+
+    Absence of every signal is allowed. A plain same-origin form POST does not always
+    carry Origin, and treating "no header" as hostile would break the login form on older
+    browsers — a header is only ever used to catch a value that is present and wrong.
     """
+    site = request.headers.get("Sec-Fetch-Site", "").lower()
+    if site:
+        # "none" is a user-initiated navigation (typed URL, bookmark), never a
+        # cross-site attack. "same-site" is a sibling subdomain, which the admin panel
+        # has no reason to trust.
+        return site in {"same-origin", "none"}
+
     stated = request.headers.get("Origin", "")
+    if stated == "null":
+        # An opaque origin: a sandboxed iframe, a data:/file: document, or a browser that
+        # was told to send no referrer at all. Nothing to compare against, so refuse.
+        return False
     if not stated:
         referer = request.headers.get("Referer", "")
         if not referer:

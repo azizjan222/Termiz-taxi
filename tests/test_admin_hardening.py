@@ -269,6 +269,74 @@ def test_origin_check_rejects_a_foreign_origin():
     ) is False
 
 
+def test_fetch_metadata_decides_when_the_browser_blanked_the_origin():
+    """The lockout regression: `Origin: null` on our OWN same-origin login POST.
+
+    A `Referrer-Policy: no-referrer` response makes the browser send `Origin: null` for
+    every non-GET request that is not in CORS mode — the login form POST included. The
+    origin comparison then failed and the panel answered "Sessiya eskirgan" forever.
+    `Sec-Fetch-Site` is not affected by referrer policy, so it still identifies the
+    request correctly.
+    """
+    assert check_origin(
+        make_mocked_request(
+            "POST", "/admin/login",
+            headers={
+                "Host": "panel.example",
+                "Origin": "null",
+                "Sec-Fetch-Site": "same-origin",
+            },
+        )
+    ) is True
+
+
+def test_fetch_metadata_rejects_cross_site_even_with_a_matching_origin():
+    for site in ("cross-site", "same-site"):
+        assert check_origin(
+            make_mocked_request(
+                "POST", "/admin/login",
+                headers={
+                    "Host": "panel.example",
+                    "Origin": "http://panel.example",
+                    "Sec-Fetch-Site": site,
+                },
+            )
+        ) is False
+
+
+async def test_referrer_policy_does_not_blank_the_origin_header(db):
+    """Guard the header itself: `no-referrer` here breaks admin login in every browser."""
+    client = await _client()
+    try:
+        response = await client.get("/admin/login")
+        assert response.headers["Referrer-Policy"] == "same-origin"
+    finally:
+        await client.close()
+
+
+async def test_login_succeeds_when_the_browser_reports_a_same_origin_post(db, monkeypatch):
+    """End-to-end shape of a real browser submitting the login form."""
+    monkeypatch.setattr(config, "ADMIN_COOKIE_SECURE", False)
+    reset_login_limiter()
+    reset_revoked_sessions()
+    client = await _client()
+    try:
+        assert (await client.get("/admin/login")).status == 200
+        response = await client.post(
+            "/admin/login",
+            data={
+                "username": config.ADMIN_USERNAME,
+                "password": config.ADMIN_PASSWORD,
+                "csrf_token": _csrf(client),
+            },
+            headers={"Origin": "null", "Sec-Fetch-Site": "same-origin"},
+            allow_redirects=False,
+        )
+        assert response.status == 302
+    finally:
+        await client.close()
+
+
 async def test_foreign_origin_is_refused_even_with_a_valid_csrf_token(db, monkeypatch):
     """The defence that does not rely on the browser honouring SameSite."""
     monkeypatch.setattr(config, "ADMIN_COOKIE_SECURE", False)

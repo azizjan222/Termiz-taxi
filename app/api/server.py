@@ -52,7 +52,14 @@ async def security_headers_middleware(request: web.Request, handler):
 
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    # NOT "no-referrer". Per the Fetch standard, a `no-referrer` policy also blanks the
+    # `Origin` header of every non-GET request that is not in CORS mode — i.e. exactly the
+    # admin panel's own login form POST and its same-origin fetch() mutations, which
+    # arrived as `Origin: null`. check_origin() correctly refuses an opaque origin, so the
+    # panel answered every login attempt with "Sessiya eskirgan" (CSRF) and could not be
+    # entered at all. `same-origin` is just as private towards other sites (they still get
+    # no referrer whatsoever) while letting our own requests state who they are.
+    response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault(
         "Permissions-Policy",
         "camera=(), microphone=(), geolocation=(), payment=()",
