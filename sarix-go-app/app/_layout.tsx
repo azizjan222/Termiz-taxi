@@ -166,6 +166,7 @@ export default function RootLayout() {
           <Stack.Screen name="saved-addresses" />
           <Stack.Screen name="notifications" />
           <Stack.Screen name="faq" />
+          <Stack.Screen name="support" />
           <Stack.Screen name="terms" />
         </Stack>
       </SafeAreaProvider>

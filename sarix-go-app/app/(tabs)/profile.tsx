@@ -52,7 +52,7 @@ const ICON_TINTS: Record<string, string> = {
   'profile.notifications': '#FEF3C7',    // yellow
   'profile.promoCodes': '#D1FAE5',       // green
   'ai.title': '#E0E7FF',                 // indigo
-  'profile.faq': '#FEE2E2',              // red
+  'profile.helpSupport': '#FEE2E2',      // red
   'profile.settings': '#EEF1F8',         // gray
 };
 
@@ -66,7 +66,7 @@ const ICON_COLORS: Record<string, string> = {
   'profile.notifications': '#D97706',
   'profile.promoCodes': '#059669',
   'ai.title': '#4F46E5',
-  'profile.faq': '#DC2626',
+  'profile.helpSupport': '#DC2626',
   'profile.settings': '#656B78',
 };
 
@@ -215,7 +215,11 @@ export default function ProfileScreen() {
     { icon: 'notification', labelKey: 'profile.notifications', onPress: () => router.push('/notifications') },
     { icon: 'tag', labelKey: 'profile.promoCodes', onPress: () => Alert.alert(t('common.comingSoon')) },
     { icon: 'robot', labelKey: 'ai.title', onPress: () => router.push('/ai-chat') },
-    { icon: 'help', labelKey: 'profile.faq', onPress: () => router.push('/faq') },
+    // Reaching a human, one tap from the profile — it used to be buried at the bottom of
+    // the Yordam / FAQ screen. "Yordam / FAQ" itself used to sit on this row and now lives
+    // inside Settings: this list is for things a passenger reaches often, and a page of
+    // reference answers is not one of them, whereas support is what they come looking for.
+    { icon: 'chat', labelKey: 'profile.helpSupport', onPress: () => router.push('/support') },
     { icon: 'settings', labelKey: 'profile.settings', onPress: () => router.push('/settings') },
   ];
 
