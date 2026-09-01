@@ -166,7 +166,7 @@ def _secrets_dir() -> str:
 
 
 def _persistent_secret(env_key: str, *, filename: str, label: str,
-                       nbytes: int = 48, log_value: bool = False) -> str:
+                       nbytes: int = 48) -> str:
     """Resolve a secret that MUST stay stable across restarts.
 
     Resolution order:
@@ -199,12 +199,18 @@ def _persistent_secret(env_key: str, *, filename: str, label: str,
         with open(path, "w") as f:
             f.write(generated)
         os.chmod(path, 0o600)
-        if log_value:
-            logger.warning("🔐 Generated %s: %s  — set the %s env var to use your own.",
-                           label, generated, env_key)
-        else:
-            logger.warning("🔐 Generated a persistent %s on the data volume. "
-                           "Set the %s env var to use your own.", label, env_key)
+        # The VALUE is never logged. The admin password used to be, so that a fresh
+        # deployment could be logged into straight from the platform console — which put
+        # the full-privilege credential for the money panel (balance top-ups, payment
+        # approvals, broadcasts) into the log stream permanently, where it is replicated
+        # to whatever the platform forwards logs to and readable by anyone with console
+        # access. The file below is the retrieval path instead: it is chmod 600 on the
+        # data volume, so it needs shell access to the container rather than log access.
+        logger.warning(
+            "🔐 Generated a persistent %s and stored it at %s (chmod 600). Read it there, "
+            "or set the %s env var to choose your own. The value is not logged.",
+            label, path, env_key,
+        )
     except OSError:
         logger.warning("⚠️ Could not persist %s (data volume not writable); using an "
                        "in-memory value that changes on restart. Set the %s env var.",
@@ -400,9 +406,12 @@ def security_warnings() -> list[str]:
                         "data volume (fine, but set JWT_SECRET to control it).")
     if not os.getenv("API_SECRET_KEY", "").strip():
         warnings.append("API_SECRET_KEY not set — using an auto-generated secret.")
-    if os.getenv("ADMIN_PASSWORD", "").strip() in INSECURE_VALUES:
+    admin_password_env = os.getenv("ADMIN_PASSWORD", "").strip()
+    if not ADMIN_PASSWORD_HASH.strip() and admin_password_env in INSECURE_VALUES:
         warnings.append("ADMIN_PASSWORD not set to a strong value — a random one was "
-                        "generated and printed above. Set ADMIN_PASSWORD to your own.")
+                        "generated and stored on the data volume (the path is logged "
+                        "above; the value is not). Set ADMIN_PASSWORD, or better "
+                        "ADMIN_PASSWORD_HASH, to your own.")
     if not TOPUP_CARD_NUMBER:
         warnings.append("TOPUP_CARD_NUMBER not set — the manual card top-up method is "
                         "hidden. Set it via env to enable card top-ups.")
@@ -461,15 +470,33 @@ SENTRY_TRACES_SAMPLE_RATE = _get_float("SENTRY_TRACES_SAMPLE_RATE", 0.0)
 BOT_USERNAME = _get("BOT_USERNAME", "termizsariosiyotaxi_bot")
 
 # Admin panel credentials. The password has NO weak default: if ADMIN_PASSWORD is not
-# set (or is a known-insecure value), a strong random password is generated once,
-# persisted on the data volume, and printed to the logs so you can retrieve it. Set the
-# ADMIN_PASSWORD env var to choose your own.
+# set (or is a known-insecure value), a strong random password is generated once and
+# persisted on the data volume (chmod 600). It is NOT logged — read it from the path the
+# startup warning names, or set ADMIN_PASSWORD to choose your own.
 ADMIN_USERNAME = _get("ADMIN_USERNAME", "admin")
+# nbytes=24 (~32 chars, 192 bits). This was 9 bytes / ~12 chars, the weakest generated
+# secret in the app, guarding the one surface that can move money.
 ADMIN_PASSWORD = _persistent_secret("ADMIN_PASSWORD", filename="admin_password",
-                                    label="admin password", nbytes=9, log_value=True)
+                                    label="admin password", nbytes=24)
+# Preferred over ADMIN_PASSWORD: a bcrypt hash, so the cleartext password exists nowhere
+# on the server. When set it takes precedence and ADMIN_PASSWORD is ignored entirely.
+# Generate with:  python -c "import bcrypt;print(bcrypt.hashpw(b'YOUR-PASSWORD', bcrypt.gensalt()).decode())"
+ADMIN_PASSWORD_HASH = _get("ADMIN_PASSWORD_HASH", "")
 # Admin browser security. Keep Secure enabled in production; set false only for a
 # trusted local HTTP development environment.
 ADMIN_COOKIE_SECURE = _get_bool("ADMIN_COOKIE_SECURE", True)
 ADMIN_SESSION_SECONDS = _get_int("ADMIN_SESSION_SECONDS", 86400)
+# Inactivity cut-off, enforced independently of the 24h absolute lifetime above. Without
+# it a captured cookie stayed usable for a full day of no activity at all.
+ADMIN_IDLE_SECONDS = _get_int("ADMIN_IDLE_SECONDS", 3600)
 ADMIN_LOGIN_MAX_ATTEMPTS = _get_int("ADMIN_LOGIN_MAX_ATTEMPTS", 5)
 ADMIN_LOGIN_WINDOW_SECONDS = _get_int("ADMIN_LOGIN_WINDOW_SECONDS", 900)
+# How many reverse proxies sit in front of the app. The client IP that keys the login
+# throttle, the API throttle and the audit trail is read from X-Forwarded-For, and only
+# the hop appended by our OWN proxy is trustworthy — earlier entries are supplied by the
+# caller. With the default 1 (one platform proxy) the last entry is used.
+#
+# Set to 0 when the app is reachable directly, with no proxy in front: X-Forwarded-For is
+# then entirely caller-controlled, and honouring it would let one attacker present a fresh
+# IP per request and bypass every rate limit while forging the IP recorded in audit rows.
+TRUSTED_PROXY_HOPS = _get_int("TRUSTED_PROXY_HOPS", 1)

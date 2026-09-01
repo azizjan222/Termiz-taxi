@@ -274,8 +274,16 @@ MAX_REQUEST_BODY_SIZE = 6 * 1024 * 1024
 
 def create_app(bot=None) -> web.Application:
     """Create and configure the API application."""
+    # Imported here rather than at module scope to keep the existing import order: the
+    # admin package is already imported lazily further down, in setup_admin_routes.
+    from app.admin.middleware import admin_auth_middleware
+
+    # Order matters. admin_auth_middleware runs innermost of the three, so an
+    # unauthenticated /admin request is still wrapped by the security headers and the
+    # CORS handling above it — a 401 or a login redirect carries the same headers as a
+    # normal page.
     app = web.Application(
-        middlewares=[security_headers_middleware, cors_middleware],
+        middlewares=[security_headers_middleware, cors_middleware, admin_auth_middleware],
         client_max_size=MAX_REQUEST_BODY_SIZE,
     )
 
