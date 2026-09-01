@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon, IconText } from '../src/components/Icon';
 import { describeApiError } from '../src/api/errors';
 import { applyReferralCode, getReferralInfo, type ReferralInfo } from '../src/api/promo';
+import { BONUS_UI_ENABLED } from '../src/config/features';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
@@ -143,6 +144,12 @@ export default function ReferralScreen() {
             actually matters to the passenger — and it was not shown anywhere in the app.
             Tapping it opens the ledger: a bare total cannot answer "where did this come
             from?" or "why did it drop?", which is what passengers actually ask. */}
+        {/* Hidden while BONUS_UI_ENABLED is false: this box, and the ledger behind it, are
+            the passenger's whole view of the wallet, and showing a balance that cannot be
+            spent anywhere invites exactly the question the feature is not ready to answer.
+            The wallet keeps earning server-side, so nothing is lost in the meantime.
+            /bonus-history stays registered and intact — it is simply unreachable. */}
+        {BONUS_UI_ENABLED && (
         <TouchableOpacity
           style={styles.walletBox}
           onPress={() => router.push('/bonus-history')}
@@ -163,6 +170,7 @@ export default function ReferralScreen() {
             {t('bonusHistory.open')}
           </IconText>
         </TouchableOpacity>
+        )}
 
         <View style={styles.codeBox}>
           <Text style={styles.codeLabel}>{t('referral.yourCode')}</Text>
