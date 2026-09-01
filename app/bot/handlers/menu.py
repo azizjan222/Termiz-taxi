@@ -4,6 +4,7 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from app import config
 from app.bot import keyboards as kb
 from app.bot.access import check_access, is_admin, money
 from app.bot.store import store
@@ -12,7 +13,9 @@ logger = logging.getLogger("sarixgo.bot.menu")
 
 #: Where an invited passenger has to go to actually use the invite. The bonus lives in the
 #: passenger app's wallet, so there is nothing for them to do inside the bot.
-PASSENGER_APP_URL = "https://play.google.com/store/apps/details?id=uz.sarixgo.passenger"
+#: Now sourced from config so the store link has ONE definition — the admin "Saytlar" reply
+#: shares it, and two hardcoded copies would drift the moment a listing URL changed.
+PASSENGER_APP_URL = config.PASSENGER_APP_URL
 
 
 async def _handle_referral_link(update: Update, telegram_id: int, raw_code: str) -> None:

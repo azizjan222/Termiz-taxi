@@ -11,6 +11,7 @@ from html import escape
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Forbidden, RetryAfter
 
+from app import config
 from app.bot.state import ADMIN_ID, BOT_TOKEN
 
 logger = logging.getLogger("sarixgo.bot.notifications")
@@ -37,6 +38,66 @@ async def notify_admin_new_driver(bot, telegram_id: int, phone: str, data: dict)
         await bot.send_message(ADMIN_ID, caption, parse_mode="HTML", reply_markup=keyboard)
     except Exception as e:
         logger.error("Admin new-driver notify error: %s", e)
+
+
+async def notify_admin_driver_documents(
+    bot,
+    *,
+    driver_id: int,
+    telegram_id: int | None,
+    phone: str | None,
+    data: dict,
+):
+    """Tell the admin a driver has finished uploading documents and needs reviewing.
+
+    Distinct from :func:`notify_admin_new_driver`, which fires when a driver REGISTERS in
+    the bot — at that point no documents exist yet. Nothing announced the moment they
+    actually arrived, so a driver could sit waiting for approval indefinitely while the
+    admin had no idea there was anything to look at.
+
+    The message carries a link into the web panel rather than the documents themselves:
+    the images are identity documents, and the panel endpoint that serves them is
+    authenticated and sends ``Cache-Control: private, no-store`` — pushing them into a chat
+    would copy them into Telegram's storage instead. The PINFL is likewise not included.
+    """
+    if not ADMIN_ID:
+        return
+
+    # Escape every driver-supplied field: an unescaped "<" or "&" makes Telegram reject the
+    # whole message, and the send below only logs — so the admin would silently never hear
+    # that documents were waiting, which is the exact failure this function exists to fix.
+    text = (
+        "🆕 <b>Yangi haydovchi qo'shildi</b>\n"
+        "📎 Hujjatlar yuborildi — tekshirish kerak\n\n"
+        f"👤 {escape(str(data.get('first_name', '') or ''))} "
+        f"{escape(str(data.get('last_name', '') or ''))}\n"
+        f"📞 {escape(str(phone or ''))}\n"
+        f"🚗 {escape(str(data.get('car_model', '') or ''))} · "
+        f"{escape(str(data.get('car_number', '') or ''))} · "
+        f"{escape(str(data.get('car_year', '') or ''))}\n"
+        f"🆔 Panelda ID: <code>{int(driver_id)}</code>"
+    )
+
+    buttons = []
+    panel_url = config.ADMIN_PANEL_URL
+    if panel_url:
+        # Straight to the drivers list, where the review modal opens. There is no
+        # per-driver page to deep-link to, which is why the ID is in the text above.
+        buttons.append([InlineKeyboardButton("🔍 Panelda tekshirish", url=f"{panel_url}drivers")])
+    if telegram_id:
+        buttons.append(
+            [InlineKeyboardButton("📄 PDF yuklab olish", callback_data=f"drvpdf_{telegram_id}")]
+        )
+
+    try:
+        await bot.send_message(
+            ADMIN_ID,
+            text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+        )
+    except Exception as e:
+        logger.error("Admin driver-documents notify error: %s", e)
 
 
 async def notify_admin_order_cancelled(driver_telegram_id, order_id, refunded):

@@ -530,6 +530,24 @@ def _serialize_driver(d: Driver) -> dict:
     }
 
 
+async def _notify_admin_documents_ready(request: web.Request, payload: dict) -> None:
+    """Best-effort admin ping. Deliberately cannot fail the driver's submission.
+
+    Runs after the commit and outside the DB session, and swallows everything: a Telegram
+    outage or a missing bot must never turn a successful document submission into an error
+    the driver sees. `app["bot"]` is absent on an API-only deployment.
+    """
+    bot = request.app.get("bot")
+    if not bot or not config.ADMIN_ID:
+        return
+    try:
+        from app.bot.notifications import notify_admin_driver_documents
+
+        await notify_admin_driver_documents(bot, **payload)
+    except Exception as e:
+        logger.error("Could not notify admin about submitted documents: %s", e)
+
+
 @require_driver
 async def submit_documents(request: web.Request) -> web.Response:
     """POST /api/driver/documents/submit
@@ -540,6 +558,7 @@ async def submit_documents(request: web.Request) -> web.Response:
     """
     driver: Driver = request["driver"]
     session = get_session()
+    notify_payload = None
     try:
         d = session.query(Driver).filter_by(id=driver.id).first()
         if not d:
@@ -553,15 +572,36 @@ async def submit_documents(request: web.Request) -> web.Response:
                 {"error": "Avval quyidagilarni to'ldiring: " + ", ".join(missing)},
                 status=400,
             )
+        # Read the flag BEFORE setting it: this endpoint can be called again (a retry, a
+        # re-upload, a second tap) and the admin should be told once, not once per call.
+        already_submitted = bool(d.documents_submitted)
         d.documents_submitted = True
         session.commit()
         # Ensure the 1-month bonus is granted once onboarding completes — covers
         # bot-registered drivers who may have entered before the grant ran at login.
         _grant_free_trial_if_eligible(session, d)
         session.refresh(d)
-        return web.json_response({"success": True, "driver": _serialize_driver(d)})
+        if not already_submitted:
+            # Collected while the session is open; the notification is sent after it closes.
+            notify_payload = {
+                "driver_id": d.id,
+                "telegram_id": d.telegram_id,
+                "phone": d.phone,
+                "data": {
+                    "first_name": d.first_name,
+                    "last_name": d.last_name,
+                    "car_model": d.car_model,
+                    "car_number": d.car_number,
+                    "car_year": d.car_year,
+                },
+            }
+        payload = _serialize_driver(d)
     finally:
         session.close()
+
+    if notify_payload:
+        await _notify_admin_documents_ready(request, notify_payload)
+    return web.json_response({"success": True, "driver": payload})
 
 
 def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
