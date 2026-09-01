@@ -1,13 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
-import { getSupportInfo } from '../src/api/ai';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
@@ -16,24 +15,21 @@ import type { ThemeColors } from '../src/theme/colors-themed';
 // selected language; this is just the list of indices to render.
 const FAQ_COUNT = 9;
 
+/**
+ * Yordam / FAQ — self-service answers only.
+ *
+ * Contacting a human used to live at the bottom of this list (a Telegram button and an
+ * email button). It now has its own screen, app/support.tsx, reached from the profile menu
+ * as "Yordam xizmati" — the same split the driver app makes. Two reasons it does not
+ * belong here: a passenger who wants a person had to open a page of FAQ entries and scroll
+ * past all nine of them to find the way out, and support is not reference material, so
+ * burying it under one made the fastest route to help the least discoverable one.
+ */
 export default function FaqScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [supportUrl, setSupportUrl] = useState('https://t.me/SarixGo_support_bot');
-  const [supportUsername, setSupportUsername] = useState('SarixGo_support_bot');
-  const [supportEmail, setSupportEmail] = useState('sarixgo.support@gmail.com');
   const [open, setOpen] = useState<number | null>(0);
-
-  useEffect(() => {
-    getSupportInfo()
-      .then((info) => {
-        if (info.telegram_url) setSupportUrl(info.telegram_url);
-        if (info.telegram_username) setSupportUsername(info.telegram_username);
-        if (info.email) setSupportEmail(info.email);
-      })
-      .catch(() => {});
-  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -67,31 +63,6 @@ export default function FaqScreen() {
             </TouchableOpacity>
           );
         })}
-
-        <TouchableOpacity
-          style={styles.supportBtn}
-          onPress={() => Linking.openURL(supportUrl)}
-          activeOpacity={0.85}
-        >
-          <Icon name="chat" size={20} color={colors.primary} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.supportTitle}>{t('faq.contactSupport')}</Text>
-            <Text style={styles.supportSub}>@{supportUsername}</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Email — questions & suggestions */}
-        <TouchableOpacity
-          style={styles.emailBtn}
-          onPress={() => Linking.openURL(`mailto:${supportEmail}`)}
-          activeOpacity={0.85}
-        >
-          <Icon name="email" size={20} color={colors.primary} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.emailTitle}>{t('faq.emailSupport')}</Text>
-            <Text style={styles.emailSub}>{supportEmail}</Text>
-          </View>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -121,26 +92,4 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   qRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   q: { ...typography.bodyBold, color: colors.text, flex: 1, paddingRight: spacing.sm },
   a: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 20 },
-  supportBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    marginTop: spacing.lg,
-    backgroundColor: colors.primary,
-  },
-  supportTitle: { ...typography.bodyBold, color: colors.textOnPrimary },
-  supportSub: { ...typography.small, color: colors.textOnPrimary, opacity: 0.8, marginTop: 2 },
-  emailBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    marginTop: spacing.sm,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  emailTitle: { ...typography.bodyBold, color: colors.primary },
-  emailSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
 });

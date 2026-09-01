@@ -114,8 +114,21 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Foydalanish shartlari va maxfiylik siyosati (Terms of Use) */}
+        {/* Yordam / FAQ + Foydalanish shartlari — the two reference screens, grouped
+            together at the bottom. FAQ moved here from the profile menu, which was long
+            enough that the rows a passenger actually taps were scrolling off-screen; the
+            profile now leads to support (a person) instead, and the answers-to-read live
+            here next to the terms. Same arrangement as the driver app. */}
         <View style={[styles.card, { marginTop: spacing.md }]}>
+          <TouchableOpacity
+            style={styles.option}
+            onPress={() => router.push('/faq')}
+            activeOpacity={0.7}
+          >
+            <Icon name="help" size={20} color={colors.textSecondary} style={styles.optionFlag} />
+            <Text style={styles.optionLabel}>{t('settings.faq')}</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.option, { borderBottomWidth: 0 }]}
             onPress={() => router.push('/terms')}
