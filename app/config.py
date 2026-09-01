@@ -57,6 +57,39 @@ BOT_TOKEN = _get("BOT_TOKEN")
 ADMIN_ID = _get_int("ADMIN_ID", 0)
 DRIVERS_GROUP_ID = _get_int("DRIVERS_GROUP_ID", 0)
 
+
+# Public URLs
+def _https_url(value: str) -> str:
+    """Return the URL only when it is https, else "".
+
+    Telegram refuses a non-https URL in an inline keyboard button, and it refuses the whole
+    message — so one http:// value in the config would silence the admin notification
+    entirely rather than just degrading the button. Filtering here means every call site
+    can treat "" as "no link available" and simply omit the button.
+    """
+    value = (value or "").strip().rstrip("/")
+    return value if value.startswith("https://") else ""
+
+
+# Where this deployment is reachable, e.g. https://sarixgo-production.up.railway.app.
+# There is deliberately NO default: a guessed host in an admin's Telegram message would
+# point them at somebody else's site, so an unset value omits the link instead.
+PUBLIC_BASE_URL = _https_url(_get("PUBLIC_BASE_URL", ""))
+# Admin panel entry point. Derived from PUBLIC_BASE_URL unless set explicitly (useful when
+# the panel sits behind a different hostname from the API).
+ADMIN_PANEL_URL = _https_url(_get("ADMIN_PANEL_URL", "")) or (
+    f"{PUBLIC_BASE_URL}/admin/" if PUBLIC_BASE_URL else ""
+)
+# Store listings, shared from the bot. These were hardcoded in app/bot/handlers/menu.py.
+PASSENGER_APP_URL = _https_url(_get(
+    "PASSENGER_APP_URL",
+    "https://play.google.com/store/apps/details?id=uz.sarixgo.passenger",
+))
+DRIVER_APP_URL = _https_url(_get(
+    "DRIVER_APP_URL",
+    "https://play.google.com/store/apps/details?id=uz.sarixgo.driver",
+))
+
 # Database
 # IMPORTANT (Railway / container hosting):
 # Only a *mounted volume* survives restarts & redeploys. The volume is usually mounted

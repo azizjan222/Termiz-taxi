@@ -8,11 +8,51 @@ from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from app import config
 from app.bot import keyboards as kb
 from app.bot.access import is_admin, money
 from app.bot.store import store
 
 logger = logging.getLogger("sarixgo.bot.admin")
+
+
+async def _send_site_links(update: Update) -> None:
+    """Reply with the admin panel and app store links.
+
+    Only reachable from the admin keyboard, which is only ever sent by admin_panel() behind
+    is_admin() — and the caller in handle_admin_text sits inside the same is_admin branch.
+    The panel URL stays out of main_menu() and /start, which every user sees.
+
+    Each link is emitted as a button only when it is configured and https (config._https_url
+    filters that): Telegram rejects a non-https URL button and drops the WHOLE message, so
+    an unset PUBLIC_BASE_URL must omit a row rather than break the reply.
+    """
+    rows = []
+    if config.ADMIN_PANEL_URL:
+        rows.append([InlineKeyboardButton("🛠 Web admin panel", url=config.ADMIN_PANEL_URL)])
+    if config.PASSENGER_APP_URL:
+        rows.append([InlineKeyboardButton("🚕 Yo'lovchi ilovasi", url=config.PASSENGER_APP_URL)])
+    if config.DRIVER_APP_URL:
+        rows.append([InlineKeyboardButton("🚗 Haydovchi ilovasi", url=config.DRIVER_APP_URL)])
+
+    lines = ["🌐 <b>Saytlar</b>", ""]
+    if config.ADMIN_PANEL_URL:
+        lines.append(f"🛠 Admin panel: {config.ADMIN_PANEL_URL}")
+    else:
+        # Say why rather than silently showing nothing.
+        lines.append("🛠 Admin panel: sozlanmagan (PUBLIC_BASE_URL yoki ADMIN_PANEL_URL)")
+    if config.PASSENGER_APP_URL:
+        lines.append(f"🚕 Yo'lovchi ilovasi: {config.PASSENGER_APP_URL}")
+    if config.DRIVER_APP_URL:
+        lines.append(f"🚗 Haydovchi ilovasi: {config.DRIVER_APP_URL}")
+
+    # The URLs are also in the text: a button cannot be copied or forwarded usefully.
+    await update.message.reply_text(
+        "\n".join(lines),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=InlineKeyboardMarkup(rows) if rows else None,
+    )
 
 
 async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -31,6 +71,7 @@ async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb.BTN_ADMIN_BROADCAST,
         kb.BTN_ADMIN_BAN,
         kb.BTN_ADMIN_UNBAN,
+        kb.BTN_ADMIN_LINKS,
     }:
         admin_state = None
         context.user_data.pop("admin_state", None)
@@ -61,6 +102,9 @@ async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == kb.BTN_ADMIN_UNBAN:
         context.user_data["admin_state"] = "unban"
         await update.message.reply_text("♻️ ID yuboring:")
+        return
+    if text == kb.BTN_ADMIN_LINKS:
+        await _send_site_links(update)
         return
 
     if admin_state in ("ban", "unban"):

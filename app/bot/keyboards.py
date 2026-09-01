@@ -30,6 +30,7 @@ BTN_ADMIN_EXPORT = "📄 Excel Export"
 BTN_ADMIN_BAN = "🚫 Ban"
 BTN_ADMIN_UNBAN = "♻️ Unban"
 BTN_ADMIN_MAINTENANCE = "🛠 Maintenance"
+BTN_ADMIN_LINKS = "🌐 Saytlar"
 BTN_ADMIN_BACK = "🔙 Foydalanuvchi menyusi"
 
 
@@ -50,6 +51,9 @@ def admin_menu() -> ReplyKeyboardMarkup:
             [KeyboardButton(BTN_ADMIN_STATS), KeyboardButton(BTN_ADMIN_BROADCAST)],
             [KeyboardButton(BTN_ADMIN_EXPORT), KeyboardButton(BTN_ADMIN_BAN)],
             [KeyboardButton(BTN_ADMIN_UNBAN), KeyboardButton(BTN_ADMIN_MAINTENANCE)],
+            # Admin-only on purpose: this keyboard is only ever sent from admin_panel(),
+            # which is behind is_admin(). The panel URL must not reach main_menu().
+            [KeyboardButton(BTN_ADMIN_LINKS)],
             [KeyboardButton(BTN_ADMIN_BACK)],
         ],
         resize_keyboard=True,
