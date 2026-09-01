@@ -602,8 +602,16 @@ async def notify_order_cancelled(
         # there made a cancellation sound identical to a new order. Route it to a
         # dedicated HIGH-importance channel that plays its own distinct sound
         # (order_cancelled.wav) so the two events are clearly distinguishable.
+        #
+        # "alerts_v2", not "alerts_v1": the v1 channel was created on devices before
+        # order_cancelled.wav was attached to it, and Android refuses to change a
+        # channel's sound after creation, so v1 is stuck on the default tone. Both
+        # clients now create v2 (sarix-go-driver and sarix-go-app,
+        # src/services/notifications.ts -> ALERTS_CHANNEL) — keep all three in sync,
+        # a channel id present here but absent on the device gets demoted to a
+        # low-importance fallback.
         sound="order_cancelled.wav",
-        channel_id="alerts_v1",
+        channel_id="alerts_v2",
     )
 
 
