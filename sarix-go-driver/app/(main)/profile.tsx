@@ -436,20 +436,9 @@ export default function ProfileScreen() {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push('/faq')}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: colors.error }]}>
-                <Icon name="help" size={20} color={TILE_FG} />
-              </View>
-              <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>{t('profile.faq')}</Text>
-                <Text style={styles.menuSub}>{t('more.faqSub')}</Text>
-              </View>
-            </TouchableOpacity>
-
+            {/* Yordam / FAQ used to sit here as its own row, right next to the support
+                row it duplicates. It now lives inside Settings: the profile list is for
+                things a driver reaches often, and reference material is not one of them. */}
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => router.push('/settings')}

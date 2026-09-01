@@ -387,7 +387,12 @@ export default function NewOrderScreen() {
           >
             <Icon name="cash" size={20} color={colors.textSecondary} />
             <Text style={styles.optionLabel}>{t('newOrder.payment')}</Text>
-            <Text style={styles.optionValue}>{t('order.cash')}</Text>
+            {/* Same arrow as the CTA below: without it these read as static summary
+                lines, and passengers were not discovering that they open a sheet. */}
+            <View style={styles.optionValueGroup}>
+              <Text style={styles.optionValue}>{t('order.cash')}</Text>
+              <Icon name="arrowRight" size={16} color={colors.textMuted} />
+            </View>
           </TouchableOpacity>
 
           <View style={styles.optionDivider} />
@@ -400,11 +405,14 @@ export default function NewOrderScreen() {
           >
             <Icon name="settings" size={20} color={colors.textSecondary} />
             <Text style={styles.optionLabel}>{t('newOrder.extras')}</Text>
-            <Text style={styles.optionValue}>
-              {extrasCount > 0
-                ? t('newOrder.extrasCount', { count: extrasCount })
-                : t('newOrder.extrasNone')}
-            </Text>
+            <View style={styles.optionValueGroup}>
+              <Text style={styles.optionValue}>
+                {extrasCount > 0
+                  ? t('newOrder.extrasCount', { count: extrasCount })
+                  : t('newOrder.extrasNone')}
+              </Text>
+              <Icon name="arrowRight" size={16} color={colors.textMuted} />
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -738,6 +746,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.md,
   },
   optionLabel: { ...typography.caption, color: colors.textSecondary, flex: 1 },
+  // Value and arrow are one group so the row's 16px gap stays between the label and the
+  // value, and the arrow keeps hugging the value it belongs to.
+  optionValueGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   optionValue: { ...typography.bodyBold, color: colors.text, fontSize: 15 },
   optionDivider: { height: 1, backgroundColor: colors.divider },
 

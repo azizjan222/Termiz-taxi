@@ -45,6 +45,7 @@ interface MenuItem {
 // foregrounds below are fixed dark shades, so each pair keeps its contrast in both light
 // and dark mode without needing a themed variant.
 const ICON_TINTS: Record<string, string> = {
+  'profile.inviteFriends': '#D1FAE5',    // green
   'profile.orderHistory': '#FFF3CC',     // gold
   'profile.savedAddresses': '#FEE2E2',   // red/pink
   'profile.paymentMethods': '#FFF3CC',   // gold
@@ -58,6 +59,7 @@ const ICON_TINTS: Record<string, string> = {
 // Foreground for the icon on each tint above. Emoji could not be coloured, so this pairing
 // did not exist before — the glyph was whatever hue the system font happened to use.
 const ICON_COLORS: Record<string, string> = {
+  'profile.inviteFriends': '#059669',
   'profile.orderHistory': '#B88700',
   'profile.savedAddresses': '#DC2626',
   'profile.paymentMethods': '#B88700',
@@ -204,9 +206,11 @@ export default function ProfileScreen() {
 
   const menu: MenuItem[] = [
     { icon: 'driver', labelKey: 'profile.becomeDriver', onPress: openDriverApp, highlight: true },
+    // Referral leads the list on purpose: it is the one row that asks something of the
+    // passenger rather than reporting back to them, and buried mid-list it went unseen.
+    { icon: 'gift', labelKey: 'profile.inviteFriends', onPress: () => router.push('/referral') },
     { icon: 'history', labelKey: 'profile.orderHistory', onPress: () => router.push('/(tabs)/history') },
     { icon: 'location', labelKey: 'profile.savedAddresses', onPress: () => router.push('/saved-addresses') },
-    { icon: 'gift', labelKey: 'profile.inviteFriends', onPress: () => router.push('/referral') },
     { icon: 'card', labelKey: 'profile.paymentMethods', onPress: () => Alert.alert(t('common.comingSoon')) },
     { icon: 'notification', labelKey: 'profile.notifications', onPress: () => router.push('/notifications') },
     { icon: 'tag', labelKey: 'profile.promoCodes', onPress: () => Alert.alert(t('common.comingSoon')) },
