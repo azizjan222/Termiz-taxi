@@ -57,7 +57,7 @@ apart. As of 2026-09-01, read from `eas build:list` by the pre-publish guard:
 
 | App | `app.json` runtimeVersion | `preview` channel | `production` channel |
 | --- | --- | --- | --- |
-| `sarix-go-driver` | `"3"` | `"3"` — matches, OTAs land | `1.0.0`, `2` — **no `"3"`, OTAs blocked** |
+| `sarix-go-driver` | `"3"` | `"3"` — matches, OTAs land | `"3"` — matches, OTAs publish (see the caveat below) |
 | `sarix-go-app` | `"2"` | `"2"` — matches | `"2"` — matches |
 
 Bump it only when the native side changes (native dependency, Expo SDK upgrade, config
@@ -67,36 +67,39 @@ already-installed build until a new binary ships.
 Adding a JS-only package (e.g. `@expo/vector-icons`) does **not** require a bump. Verify
 rather than assume: publish to `preview` and read `Runtime version` from the log.
 
-### The driver app is mid-bump on `production` — read this before debugging an OTA
+### The driver `"3"` bump is resolved on both channels — but read the Play caveat
 
 `#249` (background location) bumped the driver to `"3"` because it added `expo-task-manager`
-and a foreground service. A `preview` build carrying `"3"` now exists, so **driver `preview`
-OTAs land normally**. `production` never got one: its newest builds are `1.0.0` and `2`, so a
-driver `production` OTA reaches **zero devices** — the guard added in `#280` now fails that
-publish instead of letting it report success, and its error prints the runtimeVersions the
-channel actually has.
+and a foreground service, and for a while no build carried `"3"` at all, so every driver OTA
+reached zero devices. That is fixed: `release-driver.yml` produced a `production` AAB from
+`main` on 2026-09-01 (`appVersion 1.0.0`, `versionCode 18`, status `FINISHED`), and the
+`production` OTA published against runtime `"3"` immediately afterwards.
 
-This is the current split, and it is easy to misread as "the OTA is broken":
+**What the guard proves and what it does not.** `assert-ota-target-build.mjs` now passes
+because a finished `"3"` build exists on the channel. It does not prove any driver is
+*running* that build — see its own docstring. That AAB was built with `submit: false`, so it
+has not been sent to Google Play:
 
 ```
-driver  preview     -> published, runtime 3   (reaches sideloaded preview APKs)
-driver  production  -> BLOCKED,   wants 3     (channel has 1.0.0, 2)
+driver  production  -> OTA publishes (runtime 3)   <- guard satisfied
+driver  production  -> devices still run the "2"-era binary until the AAB ships via Play
 ```
 
-Two consequences worth knowing before losing an afternoon to them:
+So the remaining gap is **distribution, not the OTA pipeline**. Until
+`release-driver.yml` is re-run with `submit: true` (`track: internal` first) and the release
+is rolled out, a driver phone on `production` still runs whatever the last `"2"`-era update
+delivered. Do not read "the fix isn't on my phone" as "the fix doesn't work" — check the
+channel first, then check whether the device has the `versionCode 18` binary.
 
-- A driver phone on `production` (e.g. installed through Play closed testing) runs whatever
-  the last `"2"`-era update delivered, NOT `main`. Do not read "the fix isn't on my phone" as
-  "the fix doesn't work" — check which channel the device listens to first.
-- This resolves itself the moment `release-driver.yml` ships a `production` AAB from `main`;
-  that binary embeds the current JS and then starts listening on `production`. Update the
-  table above when it does.
+One consequence of that gap is worth spelling out, because it bites the notification
+channels specifically: when a backend change starts sending a NEW Android channel id
+(`alerts_v1` -> `alerts_v2` in `#281`), devices that cannot receive the JS update have not
+created that channel, so the push lands on a fallback and loses its custom sound. Backend
+changes that depend on a channel id therefore need the binary distributed, not just the OTA
+published.
 
-Until then, a driver-side change is only verifiable on a `preview` build. Publishing to both
-channels is still correct — the `production` attempt failing loudly is the guard doing its
-job, not a regression to investigate.
-
-The passenger app is unaffected — it is on `"2"` on both channels, so its OTAs land normally.
+The passenger app is unaffected — it is on `"2"` on both channels with matching builds, so
+its OTAs land normally.
 
 ## Lockfiles cannot be regenerated locally
 
