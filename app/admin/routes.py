@@ -1,9 +1,6 @@
 """Admin panel page route handlers (HTML responses)."""
-import hmac
-
 from aiohttp import web
 
-from app import config as app_config
 from app.admin.audit import add_admin_audit
 from app.admin.middleware import (
     check_csrf,
@@ -16,6 +13,7 @@ from app.admin.middleware import (
     record_login_failure,
     require_admin,
     revoke_session,
+    verify_admin_credentials,
 )
 from app.admin.templates import (
     AUDIT_HTML,
@@ -108,15 +106,7 @@ async def login_post(request: web.Request) -> web.Response:
             headers={"Retry-After": str(retry_after)},
         )
 
-    # Compare as bytes: hmac.compare_digest() raises TypeError on non-ASCII str input,
-    # which would escape the failure audit/rate limiter below and surface as a 500.
-    username_ok = hmac.compare_digest(
-        username.encode("utf-8"), app_config.ADMIN_USERNAME.encode("utf-8")
-    )
-    password_ok = hmac.compare_digest(
-        password.encode("utf-8"), app_config.ADMIN_PASSWORD.encode("utf-8")
-    )
-    if username_ok and password_ok:
+    if verify_admin_credentials(username, password):
         clear_login_failures(request, username)
         _record_auth_audit(request, "auth.login_success")
         response = web.HTTPFound("/admin/")

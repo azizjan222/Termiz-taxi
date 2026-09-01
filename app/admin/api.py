@@ -1411,6 +1411,16 @@ async def api_driver_pdf(request: web.Request) -> web.Response:
         driver = session.query(Driver).filter_by(id=driver_id).first()
         if not driver:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
+        # Reads were entirely unaudited, so bulk extraction of driver PII and identity
+        # documents left no trace at all. The PDF is the bulk vector — one request returns
+        # the licence, the tech passport, the PINFL and the phone in a single file — so it
+        # is recorded. Individual photo views are deliberately not, to keep the trail
+        # readable: opening one driver's modal fetches up to five images.
+        add_admin_audit(
+            session, request, "driver.pdf_export",
+            target_type="driver", target_id=driver_id,
+        )
+        session.commit()
         # Extract everything we need before closing the session (build is async I/O).
         driver_data = {
             "first_name": driver.first_name,
@@ -2637,6 +2647,13 @@ async def api_push_receipts(request: web.Request) -> web.Response:
     session = get_session()
     try:
         result = await check_push_receipts(session)
+        # This was the one mutating admin route with no audit row: it writes
+        # NotificationLog rows, so it belongs in the trail like every other write.
+        add_admin_audit(
+            session, request, "push.receipts_check",
+            details={"checked": result.get("checked"), "updated": result.get("updated")},
+        )
+        session.commit()
         return web.json_response(result)
     except Exception:
         # check_push_receipts writes NotificationLog rows; roll back explicitly so a

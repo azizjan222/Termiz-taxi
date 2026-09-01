@@ -1,6 +1,7 @@
 """Admin authentication, CSRF protection, and login throttling."""
 import hashlib
 import hmac
+import logging
 import secrets
 import time
 from collections import defaultdict, deque
@@ -10,9 +11,17 @@ from aiohttp import web
 
 from app import config as app_config
 
+logger = logging.getLogger(__name__)
+
 COOKIE_NAME = "admin_session"
 CSRF_COOKIE_NAME = "admin_csrf"
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+# Don't re-sign the activity stamp on every single request — once a minute is enough to
+# keep an active operator logged in without adding a Set-Cookie to every response.
+SESSION_REFRESH_AFTER_SECONDS = 60
+# Admin paths reachable without a session: the bare redirect and the login form itself.
+# Everything else under /admin is gated by admin_auth_middleware.
+PUBLIC_ADMIN_PATHS = frozenset({"/admin", "/admin/login"})
 _LOGIN_FAILURES: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 # Upper bound on tracked (ip, username) buckets — see _evict_stale_failures().
 _MAX_LOGIN_BUCKETS = 10_000
@@ -26,6 +35,54 @@ def _signature(payload: str, purpose: str) -> str:
     key = app_config.API_SECRET_KEY.encode()
     message = f"{purpose}:{payload}".encode()
     return hmac.new(key, message, hashlib.sha256).hexdigest()
+
+
+def _password_secret() -> str:
+    """The credential material the session signature is bound to.
+
+    The bcrypt hash when one is configured, else the cleartext password. Either way it is
+    a value that changes when the operator changes the password, which is what makes the
+    binding in :func:`_session_purpose` work.
+    """
+    return app_config.ADMIN_PASSWORD_HASH or app_config.ADMIN_PASSWORD
+
+
+def verify_admin_credentials(username: str, password: str) -> bool:
+    """Constant-time credential check, preferring a bcrypt hash over cleartext.
+
+    ADMIN_PASSWORD_HASH lets a deployment keep no recoverable password on the server at
+    all: a stolen volume or a leaked env dump then yields a bcrypt hash rather than the
+    key to the money panel. ADMIN_PASSWORD stays supported so existing deployments keep
+    working untouched.
+
+    Both halves are always evaluated before the result is combined — returning early on a
+    wrong username would answer faster than a wrong password and so confirm the username.
+    """
+    username_ok = hmac.compare_digest(
+        username.encode("utf-8"), app_config.ADMIN_USERNAME.encode("utf-8")
+    )
+
+    hashed = app_config.ADMIN_PASSWORD_HASH.strip()
+    if hashed:
+        try:
+            import bcrypt
+
+            password_ok = bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+        except (ValueError, TypeError):
+            # Malformed hash: refuse rather than silently falling back to the cleartext
+            # password, which an operator who set a hash believes is no longer in use.
+            password_ok = False
+        except ImportError:
+            logger.error("ADMIN_PASSWORD_HASH is set but bcrypt is not installed")
+            password_ok = False
+    else:
+        # Compare as bytes: hmac.compare_digest() raises TypeError on non-ASCII str input,
+        # which would escape the failure audit/rate limiter and surface as a 500.
+        password_ok = hmac.compare_digest(
+            password.encode("utf-8"), app_config.ADMIN_PASSWORD.encode("utf-8")
+        )
+
+    return username_ok and password_ok
 
 
 def _session_purpose() -> str:
@@ -42,7 +99,7 @@ def _session_purpose() -> str:
     This stays fully stateless (no storage, survives restarts) and the digest never
     leaves the server — only the resulting signature is sent to the browser.
     """
-    raw = f"{app_config.ADMIN_USERNAME}:{app_config.ADMIN_PASSWORD}".encode()
+    raw = f"{app_config.ADMIN_USERNAME}:{_password_secret()}".encode()
     return f"session:{hashlib.sha256(raw).hexdigest()[:16]}"
 
 
@@ -68,20 +125,70 @@ def create_csrf_cookie(response: web.StreamResponse) -> str:
     return value
 
 
+def _session_value(issued: int, seen: int, nonce: str) -> str:
+    """Build the signed cookie value: ``issued:seen:nonce:signature``.
+
+    ``issued`` bounds the absolute lifetime and never changes; ``seen`` is refreshed as the
+    operator works and bounds inactivity. Both are inside the signed payload, so neither
+    can be moved by the browser.
+    """
+    payload = f"{issued}:{seen}:{nonce}"
+    return f"{payload}:{_signature(payload, _session_purpose())}"
+
+
 def create_session_cookie(response: web.StreamResponse) -> web.StreamResponse:
     """Set a nonce-bearing, HMAC-signed session and rotate the CSRF token."""
-    timestamp = str(int(time.time()))
+    now = int(time.time())
     nonce = secrets.token_urlsafe(24)
-    payload = f"{timestamp}:{nonce}"
-    value = f"{payload}:{_signature(payload, _session_purpose())}"
     response.set_cookie(
         COOKIE_NAME,
-        value,
+        _session_value(now, now, nonce),
         max_age=app_config.ADMIN_SESSION_SECONDS,
         **_cookie_options(httponly=True),
     )
     create_csrf_cookie(response)
     return response
+
+
+def _parse_session(cookie: str) -> tuple[int, int | None, str, str, str] | None:
+    """Split a session cookie into ``(issued, seen, nonce, signature, payload)``.
+
+    Accepts both shapes:
+
+    * ``issued:seen:nonce:signature`` — current, carries the activity stamp.
+    * ``issued:nonce:signature`` — issued before idle expiry existed. Returned with
+      ``seen=None`` so it stays valid until its absolute expiry instead of logging every
+      operator out the moment this ships. New cookies are always the 4-part form.
+
+    The nonce is ``token_urlsafe``, whose alphabet excludes ``:``, so splitting is exact.
+    """
+    parts = cookie.split(":")
+    try:
+        if len(parts) == 4:
+            issued, seen, nonce, signature = parts
+            return int(issued), int(seen), nonce, signature, f"{issued}:{seen}:{nonce}"
+        if len(parts) == 3:
+            issued, nonce, signature = parts
+            return int(issued), None, nonce, signature, f"{issued}:{nonce}"
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def session_refresh_value(request: web.Request) -> str | None:
+    """A re-signed cookie value with ``seen`` moved to now, or ``None`` if not needed.
+
+    Returns ``None`` when the cookie is invalid, or when its activity stamp is recent
+    enough that re-issuing it would only add a Set-Cookie header to every response.
+    """
+    parsed = _parse_session(request.cookies.get(COOKIE_NAME, ""))
+    if not parsed:
+        return None
+    issued, seen, nonce, _signature_value, _payload = parsed
+    now = int(time.time())
+    if seen is not None and now - seen < SESSION_REFRESH_AFTER_SECONDS:
+        return None
+    return _session_value(issued, now, nonce)
 
 
 def clear_session_cookie(response: web.StreamResponse) -> web.StreamResponse:
@@ -117,13 +224,15 @@ def revoke_session(request: web.Request) -> None:
     a restart clears the list, but a restart also can only ever make a cookie expire
     sooner or leave it as it was, never extend it.
     """
-    cookie = request.cookies.get(COOKIE_NAME, "")
-    parts = cookie.split(":", 2)
-    if len(parts) != 3 or not parts[1]:
+    parsed = _parse_session(request.cookies.get(COOKIE_NAME, ""))
+    if not parsed:
+        return
+    nonce = parsed[2]
+    if not nonce:
         return
     now = time.time()
     _prune_revoked(now)
-    _REVOKED_SESSIONS[parts[1]] = now + app_config.ADMIN_SESSION_SECONDS
+    _REVOKED_SESSIONS[nonce] = now + app_config.ADMIN_SESSION_SECONDS
 
 
 def reset_revoked_sessions() -> None:
@@ -132,24 +241,35 @@ def reset_revoked_sessions() -> None:
 
 
 def check_session(request: web.Request) -> bool:
-    """Validate signature, timestamp syntax, expiration, future skew, and revocation."""
-    cookie = request.cookies.get(COOKIE_NAME, "")
-    try:
-        timestamp, nonce, signature = cookie.split(":", 2)
-        created = int(timestamp)
-    except (TypeError, ValueError):
+    """Validate signature, expiration, inactivity, future skew, and revocation."""
+    parsed = _parse_session(request.cookies.get(COOKIE_NAME, ""))
+    if not parsed:
         return False
-    payload = f"{timestamp}:{nonce}"
+    issued, seen, nonce, signature, payload = parsed
     if not nonce or not hmac.compare_digest(
         signature, _signature(payload, _session_purpose())
     ):
         return False
-    age = time.time() - created
+
+    now = time.time()
+    # Absolute lifetime. The negative bound tolerates small clock skew while refusing a
+    # cookie stamped far in the future.
+    age = now - issued
     if not (-60 <= age <= app_config.ADMIN_SESSION_SECONDS):
         return False
+
+    # Inactivity. Independent of the absolute bound above: a 24h absolute lifetime alone
+    # meant a captured cookie kept opening the money panel for a full day even if the
+    # operator had closed the tab minutes after logging in. `seen is None` is a cookie
+    # issued before this existed — it keeps its old behaviour until it expires naturally.
+    if seen is not None:
+        idle_limit = app_config.ADMIN_IDLE_SECONDS
+        if idle_limit > 0 and not (-60 <= now - seen <= idle_limit):
+            return False
+
     # Explicitly logged out (see revoke_session).
     expires = _REVOKED_SESSIONS.get(nonce)
-    return not (expires is not None and expires > time.time())
+    return not (expires is not None and expires > now)
 
 
 def _valid_csrf_cookie(value: str) -> bool:
@@ -160,8 +280,49 @@ def _valid_csrf_cookie(value: str) -> bool:
     return bool(token) and hmac.compare_digest(signature, _signature(token, "csrf"))
 
 
+def _expected_origins(request: web.Request) -> set[str]:
+    """The origin values a same-origin admin request may legitimately carry."""
+    host = request.headers.get("Host", "")
+    if not host:
+        return set()
+    # Behind a TLS-terminating proxy request.secure is False while the browser used https,
+    # so the forwarded scheme has to be honoured. Spoofing it only ever ADDS the https
+    # origin to the accepted set, which is the origin a real browser would send anyway.
+    forwarded_https = request.headers.get("X-Forwarded-Proto", "").lower() == "https"
+    if request.secure or forwarded_https:
+        return {f"https://{host}"}
+    return {f"http://{host}", f"https://{host}"}
+
+
+def check_origin(request: web.Request) -> bool:
+    """Reject a state-changing request whose Origin/Referer is another site.
+
+    A third defence next to SameSite=Strict and the signed double-submit token, and the
+    one that does not depend on cookie behaviour: SameSite is enforced by the browser, so
+    it does nothing for a client that ignores it, and the CSRF token is only proof that
+    *some* valid token was issued.
+
+    Absence is allowed. A plain same-origin form POST does not always carry Origin, and
+    treating "no header" as hostile would break the login form on older browsers — the
+    header is only ever used to catch a value that is present and wrong.
+    """
+    stated = request.headers.get("Origin", "")
+    if not stated:
+        referer = request.headers.get("Referer", "")
+        if not referer:
+            return True
+        # Compare only the origin part of the Referer.
+        parts = referer.split("/")
+        if len(parts) < 3:
+            return False
+        stated = f"{parts[0]}//{parts[2]}"
+    return stated.rstrip("/") in _expected_origins(request)
+
+
 async def check_csrf(request: web.Request) -> bool:
-    """Validate a signed cookie against the submitted header or form value."""
+    """Validate origin, then a signed cookie against the submitted header or form value."""
+    if not check_origin(request):
+        return False
     cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
     if not _valid_csrf_cookie(cookie):
         return False
@@ -188,14 +349,27 @@ def _client_ip(request: web.Request) -> str:
     `admin` and lock the real administrator out of the money panel, while distributed
     attackers were not throttled per source at all.
 
-    Only the LAST hop of X-Forwarded-For is trustworthy here (earlier entries are
-    client-supplied and trivially spoofed), and it is the one our own proxy appended.
+    Only the hop appended by our OWN proxy is trustworthy (earlier entries are
+    client-supplied and trivially spoofed), so the number of proxies is configuration, not
+    a guess: TRUSTED_PROXY_HOPS (default 1) says how many to skip from the right.
+
+    Trusting the header unconditionally was the flaw. Nothing asserted a proxy was
+    actually in front, and the app binds 0.0.0.0 — so on any deployment reachable directly
+    a caller could send its own X-Forwarded-For, become the "last hop", and get a fresh
+    identity per request: unlimited login attempts despite ADMIN_LOGIN_MAX_ATTEMPTS,
+    unlimited API calls despite every bucket, and a forged remote_ip in the audit trail.
+    Such a deployment now sets TRUSTED_PROXY_HOPS=0 and the header is ignored outright.
     """
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
-        if parts:
-            return parts[-1][:64]
+    hops = app_config.TRUSTED_PROXY_HOPS
+    if hops > 0:
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+            # Fewer entries than configured hops means the header is not the shape this
+            # deployment was told to expect. Fall back to the socket peer rather than
+            # reading an entry the caller may have authored.
+            if len(parts) >= hops:
+                return parts[-hops][:64]
     return (request.remote or "unknown")[:64]
 
 
@@ -331,6 +505,54 @@ def api_retry_after(request: web.Request) -> int:
         ]:
             _API_CALLS.pop(stale_key, None)
     return 0
+
+
+@web.middleware
+async def admin_auth_middleware(request: web.Request, handler):
+    """Deny-by-default gate for everything under /admin, plus idle-session renewal.
+
+    Authorization used to live only in the @require_admin / @require_admin_api decorators.
+    Every route did carry one — but that is a property nobody enforces: adding a route to
+    ``setup_api_routes`` and forgetting the decorator silently publishes it, and the ones
+    behind it move money and read identity documents. A path-based gate makes the default
+    "denied" and reduces a forgotten decorator to redundancy rather than a breach.
+
+    The decorators stay. They are what produces the right KIND of rejection per route
+    (JSON 401 vs a redirect) and they carry the CSRF and rate-limit checks; this only
+    guarantees no unauthenticated request reaches a handler in the first place.
+    """
+    path = request.path
+    if not path.startswith("/admin"):
+        return await handler(request)
+
+    if path not in PUBLIC_ADMIN_PATHS and not check_session(request):
+        if path.startswith("/admin/api/"):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        raise web.HTTPFound("/admin/login")
+
+    raised = False
+    try:
+        response = await handler(request)
+    except web.HTTPException as exc:
+        response = exc
+        raised = True
+
+    # Slide the inactivity window for an operator who is actually working. Skipped on the
+    # login/logout responses, which set or clear the cookie themselves — refreshing there
+    # would re-issue a cookie that is being deliberately replaced or deleted.
+    if path not in PUBLIC_ADMIN_PATHS and path != "/admin/logout":
+        refreshed = session_refresh_value(request)
+        if refreshed:
+            response.set_cookie(
+                COOKIE_NAME,
+                refreshed,
+                max_age=app_config.ADMIN_SESSION_SECONDS,
+                **_cookie_options(httponly=True),
+            )
+
+    if raised:
+        raise response
+    return response
 
 
 def require_admin(handler):
