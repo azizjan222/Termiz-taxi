@@ -96,23 +96,41 @@ Notifications.setNotificationHandler({
 // so bumping the id is the only reliable way to (re)apply the custom sound.
 export const ORDERS_CHANNEL = 'orders_v2';
 
-// Channel for order cancellations / general updates. Uses the DEFAULT system sound
-// (distinct from the loud new-order tone on ORDERS_CHANNEL). MUST match the channel id
-// the backend sends for cancellations (app/services/push.py -> "alerts_v1").
-export const ALERTS_CHANNEL = 'alerts_v1';
+// Channel for order cancellations / general updates. Carries its OWN sound
+// (order_cancelled.wav) so a cancellation never sounds like a new order.
+//
+// Versioned to _v2 for the same reason ORDERS_CHANNEL is versioned, and it is worth
+// spelling out because this one actually bit us: `alerts_v1` first shipped with NO sound
+// key at all, i.e. the default system tone. order_cancelled.wav was attached to the same
+// id in a later commit — and Android had already created the channel on every device that
+// ran the earlier build, so it kept the default tone forever. Channel settings are owned
+// by the OS after first creation; the app cannot change the sound, only the user can.
+// A fresh id is the only way to deliver the new sound to those installs.
+//
+// MUST match the channel id the backend sends for cancellations
+// (app/services/push.py -> "alerts_v2").
+export const ALERTS_CHANNEL = 'alerts_v2';
 
 // ---------------------------------------------------------------------------
 // Notification channels (Android only)
 // ---------------------------------------------------------------------------
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
-    // Remove the legacy channel — on existing installs its sound got "stuck"
+    // Remove superseded channels. On existing installs their sound is "stuck"
     // (Android caches channel settings and won't update the sound), which is
-    // why new-order alerts went silent. Creating a fresh, versioned channel
-    // (ORDERS_CHANNEL) guarantees the custom sound is actually applied.
-    try {
-      await Notifications.deleteNotificationChannelAsync('orders');
-    } catch {}
+    // why the alerts went silent / kept the default tone. Creating a fresh,
+    // versioned channel guarantees the custom sound is actually applied.
+    //
+    // Deleting the old id also keeps the driver's notification settings screen
+    // honest: an undeleted channel lingers there as a second, mute entry that
+    // looks like it still controls order alerts.
+    //   'orders'    -> ORDERS_CHANNEL ('orders_v2'), silent custom sound
+    //   'alerts_v1' -> ALERTS_CHANNEL ('alerts_v2'), created without a sound key
+    for (const stale of ['orders', 'alerts_v1']) {
+      try {
+        await Notifications.deleteNotificationChannelAsync(stale);
+      } catch {}
+    }
 
     await Notifications.setNotificationChannelAsync(ORDERS_CHANNEL, {
       name: i18n.t('channels.orders'),

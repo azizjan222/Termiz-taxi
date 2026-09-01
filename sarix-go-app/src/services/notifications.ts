@@ -50,16 +50,27 @@ Notifications.setNotificationHandler({
 export const ORDERS_CHANNEL = 'orders_v2';
 
 // Channel for order cancellations / general updates. MUST match the channel id the
-// backend sends for cancellations (app/services/push.py -> "alerts_v1"). Kept separate
+// backend sends for cancellations (app/services/push.py -> "alerts_v2"). Kept separate
 // from ORDERS_CHANNEL so cancellations are grouped/handled independently of order alerts.
-export const ALERTS_CHANNEL = 'alerts_v1';
+//
+// Versioned to _v2 because `alerts_v1` first shipped with NO sound key (the default system
+// tone) and order_cancelled.wav was attached to the same id in a later commit. Android
+// hands channel settings to the OS on first creation — the app can never change the sound
+// afterwards, only the user can — so every install that ran the earlier build kept the
+// default tone. A fresh id is the only way to actually deliver the cancel sound.
+export const ALERTS_CHANNEL = 'alerts_v2';
 
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
-    // Drop the legacy "orders" channel so we don't leave a stale duplicate.
-    try {
-      await Notifications.deleteNotificationChannelAsync('orders');
-    } catch {}
+    // Drop superseded channels so we don't leave stale duplicates in the system
+    // notification settings, where they look like they still control these alerts.
+    //   'orders'    -> ORDERS_CHANNEL ('orders_v2')
+    //   'alerts_v1' -> ALERTS_CHANNEL ('alerts_v2'), created without a sound key
+    for (const stale of ['orders', 'alerts_v1']) {
+      try {
+        await Notifications.deleteNotificationChannelAsync(stale);
+      } catch {}
+    }
     await Notifications.setNotificationChannelAsync(ORDERS_CHANNEL, {
       name: i18n.t('channels.orders'),
       importance: Notifications.AndroidImportance.MAX,
