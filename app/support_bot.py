@@ -20,6 +20,7 @@ Notes
 import logging
 
 from telegram import Update
+from telegram.error import Forbidden
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -54,6 +55,14 @@ async def _cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text(_WELCOME)
 
 
+async def _cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reply with the chat's numeric Telegram id — handy for setting SUPPORT_ADMIN_ID."""
+    if update.message and update.effective_chat:
+        await update.message.reply_text(
+            f"🆔 Sizning Telegram ID: {update.effective_chat.id}"
+        )
+
+
 async def _on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.message
     if msg is None or update.effective_chat is None:
@@ -84,6 +93,17 @@ async def _on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     # ---- User side: relay the message to the admin. ----
+    # If no admin is configured we can't relay anywhere — say so instead of a vague error.
+    if not admin_id:
+        logger.error(
+            "Support bot: admin id is not configured (set SUPPORT_ADMIN_ID or ADMIN_ID). "
+            "Incoming user message cannot be relayed."
+        )
+        await msg.reply_text(
+            "❌ Qo'llab-quvvatlash hozircha sozlanmagan. Iltimos keyinroq urinib ko'ring."
+        )
+        return
+
     user = update.effective_user
     uname = f"@{user.username}" if user and user.username else "—"
     full_name = " ".join(filter(None, [user.first_name, user.last_name])) if user else ""
@@ -101,8 +121,19 @@ async def _on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         _relay_map[copied.message_id] = chat_id
         await msg.reply_text("✅ Murojaatingiz qabul qilindi. Tez orada javob beramiz.")
+    except Forbidden as e:
+        # The single most common cause: the admin account has never opened this bot,
+        # so Telegram forbids the bot from messaging them. Make the log actionable.
+        logger.error(
+            "Support relay FAILED: the admin account (id=%s) has not started "
+            "@SarixGo_support_bot yet, so the bot cannot message them. Ask the admin to "
+            "open the bot and press Start, and verify SUPPORT_ADMIN_ID/ADMIN_ID. (%s)",
+            admin_id,
+            e,
+        )
+        await msg.reply_text("❌ Kechirasiz, xatolik yuz berdi. Birozdan so'ng urinib ko'ring.")
     except Exception as e:  # noqa: BLE001
-        logger.error("support relay to admin failed: %s", e)
+        logger.error("Support relay to admin failed (admin id=%s): %s", admin_id, e)
         await msg.reply_text("❌ Kechirasiz, xatolik yuz berdi. Birozdan so'ng urinib ko'ring.")
 
 
@@ -119,11 +150,17 @@ async def start_support_bot():
 
     application = ApplicationBuilder().token(token).build()
     application.add_handler(CommandHandler("start", _cmd_start))
+    application.add_handler(CommandHandler("id", _cmd_id))
     # Everything else (text, photos, voice, ...) that is not a command is relayed.
     application.add_handler(MessageHandler(~filters.COMMAND, _on_message))
 
     await application.initialize()
     await application.start()
     await application.updater.start_polling(drop_pending_updates=True)
-    logger.info("✅ Support bot (@SarixGo_support_bot feedback) started")
+    resolved_admin = _admin_id()
+    logger.info(
+        "✅ Support bot (@SarixGo_support_bot feedback) started — admin id = %s%s",
+        resolved_admin,
+        "" if resolved_admin else " (⚠️ NOT set — replies won't be delivered)",
+    )
     return application
