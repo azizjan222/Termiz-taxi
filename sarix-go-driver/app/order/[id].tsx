@@ -281,21 +281,22 @@ export default function OrderDetailScreen() {
 
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted' || torndown) return;
-
-        // Hand reporting to the OS so it survives the app being backgrounded or killed.
-        // Best-effort: if the driver declines the disclosure or the background permission
-        // this returns false and the foreground watcher below keeps reporting, exactly as it
-        // used to. Safe to call on every re-run: it no-ops when already tracking this order.
-        startBackgroundLocation({
+        // Ask the background-location service first. It shows the prominent
+        // in-app disclosure BEFORE any runtime location permission prompt, as required
+        // by Google Play. If background access is declined, foreground tracking can
+        // still continue after the foreground permission is requested below.
+        await startBackgroundLocation({
           orderId: id,
           labels: {
             title: t('tracking.serviceTitle'),
             body: t('tracking.serviceBody'),
           },
           confirm: confirmBackgroundTracking,
-        }).catch(() => {});
+        });
+        if (torndown) return;
+
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted' || torndown) return;
 
         const sub = await Location.watchPositionAsync(
           {
