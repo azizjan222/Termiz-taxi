@@ -333,20 +333,16 @@ export async function startBackgroundLocation(
       const sameOrder = existing?.orderId === String(orderId);
       if (sameOrder && (await osTaskRunning())) return syncFlag();
 
-      // Check background access BEFORE requesting any runtime location permission.
-      // Google Play requires the prominent in-app disclosure to immediately precede
-      // the permission flow when background location has not yet been granted.
-      const background = await Location.getBackgroundPermissionsAsync();
-      if (background.status !== 'granted') {
-        if (!(await confirm())) return syncFlag();
-      }
-
-      // Foreground permission is a prerequisite for background location. It is requested
-      // only AFTER the disclosure above, so no runtime location prompt can appear first.
+      // Foreground access is required first. The calling screen awaits this function,
+      // so there is no competing foreground permission request racing this flow.
       const foreground = await Location.requestForegroundPermissionsAsync();
       if (foreground.status !== 'granted') return syncFlag();
 
+      // The prominent disclosure must be shown immediately before requesting background
+      // location. Do not put another permission prompt between confirm() and this request.
+      const background = await Location.getBackgroundPermissionsAsync();
       if (background.status !== 'granted') {
+        if (!(await confirm())) return syncFlag();
         const requested = await Location.requestBackgroundPermissionsAsync();
         if (requested.status !== 'granted') return syncFlag();
       }
