@@ -328,23 +328,25 @@ export async function startBackgroundLocation(
   const { orderId, labels, confirm } = options;
   return serialize(async () => {
     try {
-      // Foreground permission is a prerequisite for the background one on both platforms.
-      const foreground = await Location.requestForegroundPermissionsAsync();
-      if (foreground.status !== 'granted') return syncFlag();
-
-      // Already running for this same order: nothing to ask, nothing to restart. This is
-      // the common path now that the screen re-invokes us on every status change, and it is
-      // what keeps the foreground-service notification from flickering at pickup.
+      // Already running for this same order: nothing to ask, nothing to restart.
       const existing = await readState();
       const sameOrder = existing?.orderId === String(orderId);
       if (sameOrder && (await osTaskRunning())) return syncFlag();
 
-      // Prominent disclosure BEFORE the OS prompt — Play policy, not a UX preference.
-      // Checked against the current permission state so a driver who already granted
-      // "Allow all the time" is not re-interrogated on every trip.
+      // Check background access BEFORE requesting any runtime location permission.
+      // Google Play requires the prominent in-app disclosure to immediately precede
+      // the permission flow when background location has not yet been granted.
       const background = await Location.getBackgroundPermissionsAsync();
       if (background.status !== 'granted') {
         if (!(await confirm())) return syncFlag();
+      }
+
+      // Foreground permission is a prerequisite for background location. It is requested
+      // only AFTER the disclosure above, so no runtime location prompt can appear first.
+      const foreground = await Location.requestForegroundPermissionsAsync();
+      if (foreground.status !== 'granted') return syncFlag();
+
+      if (background.status !== 'granted') {
         const requested = await Location.requestBackgroundPermissionsAsync();
         if (requested.status !== 'granted') return syncFlag();
       }
