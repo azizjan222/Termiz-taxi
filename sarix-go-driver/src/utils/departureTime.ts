@@ -45,5 +45,10 @@ export function formatDepartureTime(
 ): string {
   const code = departureCodeFromRaw(raw);
   if (code) return t(departureKey(code));
-  return raw?.trim() || t('departure.now');
+  const trimmed = raw?.trim() || '';
+  const tomorrowMatch = trimmed.match(/^(ertaga|эртага|завтра|tomorrow)\s+(\d{1,2}:\d{2})$/i);
+  if (tomorrowMatch) {
+    return `${t('departure.tomorrow')} • ${tomorrowMatch[2]}`;
+  }
+  return trimmed || t('departure.now');
 }

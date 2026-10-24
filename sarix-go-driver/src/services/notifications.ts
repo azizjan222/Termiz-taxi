@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import * as Location from 'expo-location';
 import { Platform, AppState, Vibration } from 'react-native';
 import Constants from 'expo-constants';
 
@@ -110,28 +111,23 @@ export const ORDERS_CHANNEL = 'orders_v2';
 // MUST match the channel id the backend sends for cancellations
 // (app/services/push.py -> "alerts_v2").
 export const ALERTS_CHANNEL = 'alerts_v2';
+export const BALANCE_CHANNEL = 'balance_v2';
+export const STATUS_ACCEPTED_CHANNEL = 'order_accepted_v1';
+export const STATUS_ARRIVED_CHANNEL = 'driver_arrived_v1';
+export const STATUS_COMPLETED_CHANNEL = 'order_completed_v1';
 
 // ---------------------------------------------------------------------------
 // Notification channels (Android only)
 // ---------------------------------------------------------------------------
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
-    // Remove superseded channels. On existing installs their sound is "stuck"
-    // (Android caches channel settings and won't update the sound), which is
-    // why the alerts went silent / kept the default tone. Creating a fresh,
-    // versioned channel guarantees the custom sound is actually applied.
-    //
-    // Deleting the old id also keeps the driver's notification settings screen
-    // honest: an undeleted channel lingers there as a second, mute entry that
-    // looks like it still controls order alerts.
-    //   'orders'    -> ORDERS_CHANNEL ('orders_v2'), silent custom sound
-    //   'alerts_v1' -> ALERTS_CHANNEL ('alerts_v2'), created without a sound key
     for (const stale of ['orders', 'alerts_v1']) {
       try {
         await Notifications.deleteNotificationChannelAsync(stale);
       } catch {}
     }
 
+    // 1. New order channel -> warm rising marimba chime (new_order.wav)
     await Notifications.setNotificationChannelAsync(ORDERS_CHANNEL, {
       name: i18n.t('channels.orders'),
       importance: Notifications.AndroidImportance.MAX,
@@ -143,15 +139,20 @@ export async function setupNotificationChannels() {
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
 
-    await Notifications.setNotificationChannelAsync('balance', {
-      name: i18n.t('channels.balance'),
-      importance: Notifications.AndroidImportance.HIGH,
-      lightColor: '#10B981',
-    });
+    // 2. Balance & bonus channel -> sparkling wallet chime (balance_bonus.wav)
+    for (const balId of ['balance', BALANCE_CHANNEL]) {
+      await Notifications.setNotificationChannelAsync(balId, {
+        name: i18n.t('channels.balance'),
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 220, 120, 220],
+        enableVibrate: true,
+        sound: 'balance_bonus.wav',
+        lightColor: '#10B981',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+    }
 
-    // Dedicated channel for order cancellations / updates. Uses its OWN distinct sound
-    // (order_cancelled.wav) so a cancellation is clearly different from the loud
-    // new-order tone (new_order.wav) on ORDERS_CHANNEL. HIGH importance keeps it prompt.
+    // 3. Order cancelled / expired channel -> gentle descending marimba motif (order_cancelled.wav)
     await Notifications.setNotificationChannelAsync(ALERTS_CHANNEL, {
       name: i18n.t('channels.alerts'),
       importance: Notifications.AndroidImportance.HIGH,
@@ -160,6 +161,34 @@ export async function setupNotificationChannels() {
       sound: 'order_cancelled.wav',
       lightColor: '#EF4444',
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+
+    // 4. Order accepted / trip started / trip completed channels
+    await Notifications.setNotificationChannelAsync(STATUS_ACCEPTED_CHANNEL, {
+      name: i18n.t('channels.orders'),
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 200, 100, 200],
+      enableVibrate: true,
+      sound: 'order_accepted.wav',
+      lightColor: '#10B981',
+    });
+
+    await Notifications.setNotificationChannelAsync(STATUS_ARRIVED_CHANNEL, {
+      name: i18n.t('channels.orders'),
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 200, 100, 200],
+      enableVibrate: true,
+      sound: 'driver_arrived.wav',
+      lightColor: '#3B82F6',
+    });
+
+    await Notifications.setNotificationChannelAsync(STATUS_COMPLETED_CHANNEL, {
+      name: i18n.t('channels.orders'),
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 120, 250],
+      enableVibrate: true,
+      sound: 'order_completed.wav',
+      lightColor: '#10B981',
     });
 
     await Notifications.setNotificationChannelAsync('default', {
@@ -172,15 +201,24 @@ export async function setupNotificationChannels() {
 // ---------------------------------------------------------------------------
 // Push token management
 // ---------------------------------------------------------------------------
-export async function requestNotificationPermissions(): Promise<boolean> {
+export async function requestNotificationPermissions(forcePrompt = false): Promise<boolean> {
   if (!Device.isDevice) return false;
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
+  if (existingStatus === 'granted') return true;
+
+  // Never trigger the Android 13+ POST_NOTIFICATIONS runtime dialog before the user
+  // has completed the Google Play Location Prominent Disclosure + Location runtime dialog.
+  // Otherwise two OS permission dialogs can collide or a runtime dialog can appear
+  // before the prominent disclosure modal on first launch.
+  if (!forcePrompt) {
+    const fgLoc = await Location.getForegroundPermissionsAsync().catch(() => null);
+    if (fgLoc?.status !== 'granted') {
+      return false;
+    }
   }
-  return finalStatus === 'granted';
+
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status === 'granted';
 }
 
 export async function getExpoPushToken(): Promise<string | null> {
@@ -387,5 +425,37 @@ export async function playOrderCancelledAlert() {
   // 2) VIBRATION — strong one-shot pattern (works even in silent mode).
   try {
     Vibration.vibrate(ALERT_VIBRATION, false);
+  } catch {}
+}
+
+/**
+ * Play a pleasant in-app chime for driver actions (order accepted, trip started,
+ * trip completed, or balance/bonus event) without cluttering the notification tray.
+ */
+export async function playDriverStatusChime(
+  kind: 'accepted' | 'started' | 'completed' | 'balance'
+): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createAudioPlayer } = require('expo-audio');
+    const soundAsset =
+      kind === 'accepted'
+        ? // eslint-disable-next-line @typescript-eslint/no-require-imports
+          require('../../assets/sounds/order_accepted.wav')
+        : kind === 'started'
+          ? // eslint-disable-next-line @typescript-eslint/no-require-imports
+            require('../../assets/sounds/driver_arrived.wav')
+          : kind === 'completed'
+            ? // eslint-disable-next-line @typescript-eslint/no-require-imports
+              require('../../assets/sounds/order_completed.wav')
+            : // eslint-disable-next-line @typescript-eslint/no-require-imports
+              require('../../assets/sounds/balance_bonus.wav');
+    const player = createAudioPlayer(soundAsset);
+    player.play();
+    setTimeout(() => {
+      try {
+        player.remove();
+      } catch {}
+    }, 2000);
   } catch {}
 }

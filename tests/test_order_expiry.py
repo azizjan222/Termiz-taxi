@@ -279,3 +279,16 @@ def test_sweep_closes_only_the_stale_one_of_several(db, monkeypatch):
     assert [i["order_id"] for i in closed] == [stale.id]
     assert _reload(db, stale).status == "cancelled"
     assert _reload(db, fresh).status == "accepted"
+
+
+def test_parse_scheduled_departure_utc_handles_ertaga_and_relative_slots():
+    from app.services.order_expiry import _parse_scheduled_departure_utc
+
+    base_utc = datetime(2026, 10, 21, 10, 0, 0)  # 15:00 local Tashkent time
+    assert _parse_scheduled_departure_utc("Hozir", base_utc, base_utc) is None
+    assert _parse_scheduled_departure_utc("30 daqiqada", base_utc, base_utc) == base_utc + timedelta(minutes=30)
+    assert _parse_scheduled_departure_utc("1 soatda", base_utc, base_utc) == base_utc + timedelta(hours=1)
+    # "Ertaga 07:00" local (2026-10-22 07:00 UTC+5) == 2026-10-22 02:00 UTC
+    assert _parse_scheduled_departure_utc("Ertaga 07:00", base_utc, base_utc) == datetime(2026, 10, 22, 2, 0, 0)
+    # "Bugun 18:30" local (2026-10-21 18:30 UTC+5) == 2026-10-21 13:30 UTC
+    assert _parse_scheduled_departure_utc("Bugun 18:30", base_utc, base_utc) == datetime(2026, 10, 21, 13, 30, 0)

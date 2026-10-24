@@ -274,21 +274,48 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
         # This link bypassed the limit entirely, so a driver could hoard rides they had no
         # intention of completing and starve everyone else.
         if order.service_type != "parcel":
-            active_nonparcel = (
+            active_nonparcel_orders = (
                 session.query(Order)
                 .filter(
                     Order.driver_id == driver.id,
                     Order.status.in_(["accepted", "in_progress"]),
                     Order.service_type != "parcel",
                 )
-                .count()
+                .all()
             )
-            if active_nonparcel >= config.MAX_ACTIVE_NONPARCEL_ORDERS:
+            if len(active_nonparcel_orders) >= config.MAX_ACTIVE_NONPARCEL_ORDERS:
                 await context.bot.send_message(
                     driver_telegram_id,
                     (f"❌ Sizda {config.MAX_ACTIVE_NONPARCEL_ORDERS} ta faol zakas bor. "
                      f"Yangi zakas olish uchun avval ularni yoping. "
                      f"(Pochta zakaslari cheklanmagan)"))
+                return
+
+            seat_capacity = max(4, int(driver.seats or 4))
+            occupied_seats = sum(
+                seat_capacity if ao.service_type == "full_car" else max(1, int(ao.person_count or 1))
+                for ao in active_nonparcel_orders
+            )
+            needed_seats = (
+                seat_capacity
+                if order.service_type == "full_car"
+                else max(1, int(order.person_count or 1))
+            )
+            if occupied_seats + needed_seats > seat_capacity:
+                free_seats = max(0, seat_capacity - occupied_seats)
+                await context.bot.send_message(
+                    driver_telegram_id,
+                    f"❌ Mashina salonida bo'sh joy yetarli emas (bo'sh: {free_seats}, kerak: {needed_seats}).",
+                )
+                return
+
+            if getattr(order, "front_seat", False) and any(
+                bool(getattr(ao, "front_seat", False)) for ao in active_nonparcel_orders
+            ):
+                await context.bot.send_message(
+                    driver_telegram_id,
+                    "❌ Old o'rindiq boshqa faol zakasda allaqachon band qilingan.",
+                )
                 return
 
         now = datetime.utcnow()
@@ -385,6 +412,47 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
         session.close()
 
 
+def _format_tumanlararo_extra(order) -> str:
+    """Format extra inter-district order details (front seat, pitak, landmark, parcel) for Telegram HTML."""
+    lines: list[str] = []
+    if getattr(order, "front_seat", False) and order.service_type != "parcel":
+        lines.append("💺 <b>Old o'rindiq so'ralgan</b>")
+    pickup_type = getattr(order, "pickup_type", None)
+    pitak_title = getattr(order, "pitak_title", None)
+    if pickup_type == "pitak":
+        pitak_str = f": {escape(str(pitak_title))}" if pitak_title else ""
+        lines.append(f"🅿️ Pitakdan chiqadi{pitak_str}")
+    elif pickup_type == "address":
+        lines.append("🏠 Uy oldidan olish")
+    landmark = getattr(order, "landmark", None)
+    if landmark:
+        lines.append(f"🧭 Mo'ljal: {escape(str(landmark))}")
+    if order.service_type == "parcel":
+        p_type = getattr(order, "parcel_type", None)
+        if p_type:
+            p_labels = {
+                "hujjat": "📄 Hujjat / konvert",
+                "sumka": "👜 Sumka / paket",
+                "quti": "📦 Quti / korobka",
+                "yukxona": "🧳 Katta yuk (bagaj)",
+            }
+            lines.append(f"📦 Posilka: {p_labels.get(p_type, escape(str(p_type)))}")
+        r_name = getattr(order, "parcel_recipient_name", None)
+        r_phone = getattr(order, "parcel_recipient_phone", None)
+        if r_name or r_phone:
+            lines.append(
+                f"📬 Qabul qiluvchi: {escape(str(r_name or '—'))} ({escape(str(r_phone or '—'))})"
+            )
+        payer = getattr(order, "parcel_payer", None)
+        if payer in ("sender", "recipient"):
+            payer_txt = "Yuboruvchi to'laydi" if payer == "sender" else "Qabul qiluvchi to'laydi"
+            lines.append(f"💳 To'lov: {payer_txt}")
+        p_note = getattr(order, "parcel_note", None)
+        if p_note:
+            lines.append(f"🗒 Posilka izohi: {escape(str(p_note))}")
+    return ("\n" + "\n".join(lines)) if lines else ""
+
+
 async def _notify_admin_order_accepted(context, order, driver):
     if not ADMIN_ID:
         return
@@ -394,6 +462,7 @@ async def _notify_admin_order_accepted(context, order, driver):
         name = (driver.first_name or "Haydovchi").strip()
         car = " · ".join(p for p in [driver.car_model, driver.car_number] if p) or "—"
         price = nt.price_text("uz", order.price)
+        extra = _format_tumanlararo_extra(order)
         await context.bot.send_message(
             ADMIN_ID,
             ("✅ <b>Zakas qabul qilindi</b>\n\n"
@@ -403,7 +472,7 @@ async def _notify_admin_order_accepted(context, order, driver):
              f"🚗 {escape(car)}\n"
              f"📍 {escape(str(order.from_city or '—'))} → "
              f"{escape(str(order.to_city or '—'))}\n"
-             f"{service_label} · 💰 {price}"),
+             f"{service_label} · 💰 {price}{extra}"),
             parse_mode="HTML")
     except Exception as e:
         logger.error("Admin accept notify (bot) failed: %s", e)
@@ -419,6 +488,7 @@ async def _confirm_accept_to_driver(context, driver_telegram_id, order):
     # price=0 encodes "to be agreed" (how parcel orders are created), so it must not be
     # printed as "0 so'm". nt.price_text owns that rule for every channel.
     price_txt = nt.price_text("uz", order.price)
+    extra = _format_tumanlararo_extra(order)
     text = (
         "🚕 <b>BUYURTMA QABUL QILINDI!</b>\n\n"
         f"📍 {escape(str(order.from_city or '—'))} → "
@@ -427,6 +497,7 @@ async def _confirm_accept_to_driver(context, driver_telegram_id, order):
         f"💰 Narxi: {price_txt}\n"
         f"📞 Yo'lovchi: {escape(str(order.passenger_phone or '—'))}\n"
         f"👤 {escape(order.passenger_name or 'Nomalum')}"
+        f"{extra}"
     )
     if order.note:
         text += f"\n📝 {escape(order.note)}"

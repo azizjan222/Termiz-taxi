@@ -188,6 +188,14 @@ async def update_profile(request: web.Request) -> web.Response:
             if cp and not (cp.startswith("+998") and len(cp) == 13):
                 return web.json_response({"error": "Telefon raqam noto'g'ri"}, status=400)
             u.contact_phone = cp or None
+            if cp and (u.phone or "").startswith("google:"):
+                existing_phone = (
+                    session.query(User)
+                    .filter(User.phone == cp, User.id != u.id)
+                    .first()
+                )
+                if not existing_phone:
+                    u.phone = cp
         if "language" in data and data["language"] in SUPPORTED_LANGUAGES:
             u.language = data["language"]
 
@@ -213,7 +221,10 @@ async def update_profile(request: web.Request) -> web.Response:
 
 
 # ============= TELEGRAM AUTH (passenger) =============
+from types import SimpleNamespace
+
 from app import config as _cfg
+from app.services import google_auth as _gauth
 from app.services import telegram_auth as _tg
 from app.services.otp import normalize_phone as _normalize
 
@@ -265,17 +276,28 @@ async def telegram_check(request: web.Request) -> web.Response:
     )
 
 
-def _issue_passenger_login(db, sess) -> web.Response:
+def _issue_passenger_login(db, sess, profile_photo_url: str = "") -> web.Response:
     """Create/link the User for a consumed auth session and return its JWT.
 
-    Only ``telegram_verify_code`` reaches this: the session must already have been
-    consumed by a correct one-time code.
+    Used by ``telegram_verify_code`` and Google Sign-In endpoints once account
+    control has been verified.
     """
-    phone = _normalize(sess.phone) if sess.phone else None
+    raw_phone = (sess.phone or "").strip()
+    is_google_placeholder = raw_phone.startswith("google:")
+    phone = (
+        raw_phone[:20]
+        if is_google_placeholder
+        else (_normalize(raw_phone) if raw_phone else None)
+    )
     if not phone:
         return web.json_response({"status": "expired"})
 
-    user = db.query(User).filter_by(phone=phone).first()
+    user = None
+    if sess.telegram_id:
+        user = db.query(User).filter_by(telegram_id=sess.telegram_id).first()
+    if not user:
+        user = db.query(User).filter_by(phone=phone).first()
+
     is_new = False
     if not user:
         user = User(
@@ -283,6 +305,7 @@ def _issue_passenger_login(db, sess) -> web.Response:
             telegram_id=sess.telegram_id,
             first_name=sess.first_name or None,
             last_name=sess.last_name or None,
+            profile_photo_url=profile_photo_url or None,
         )
         db.add(user)
         db.commit()
@@ -293,6 +316,8 @@ def _issue_passenger_login(db, sess) -> web.Response:
             user.telegram_id = sess.telegram_id
         if sess.first_name and not user.first_name:
             user.first_name = sess.first_name
+        if profile_photo_url and not user.profile_photo_url:
+            user.profile_photo_url = profile_photo_url
         user.last_active = datetime.utcnow()
         db.commit()
         db.refresh(user)
@@ -388,3 +413,141 @@ async def telegram_verify_code(request: web.Request) -> web.Response:
         return _issue_passenger_login(db, sess)
     finally:
         db.close()
+
+
+# ============= GOOGLE AUTH (passenger) =============
+def _passenger_google_callback_uri() -> str:
+    base = _cfg.PUBLIC_BASE_URL or _cfg.DEFAULT_PUBLIC_BASE_URL
+    return f"{base.rstrip('/')}/api/auth/google/callback"
+
+
+async def google_login(request: web.Request) -> web.Response:
+    """POST /api/auth/google
+    Body: {"id_token": "...", "access_token": "..."}
+    """
+    try:
+        data = await read_json_object(request)
+        id_token = read_str(data, "id_token", max_length=4096)
+        access_token = read_str(data, "access_token", max_length=4096)
+    except BodyError as e:
+        return e.response
+
+    if not id_token and not access_token:
+        return web.json_response(
+            {"error": "Google id_token yoki access_token kerak"}, status=400
+        )
+
+    profile = await _gauth.verify_google_token(
+        id_token=id_token, access_token=access_token
+    )
+    if not profile:
+        return web.json_response(
+            {"status": "invalid_token", "error": "Google tasdiqlash muvaffaqiyatsiz"},
+            status=401,
+        )
+
+    sub = profile["sub"]
+    pseudo_sess = SimpleNamespace(
+        telegram_id=_gauth.synthetic_telegram_id_for_google(sub),
+        phone=_gauth.synthetic_phone_for_google(sub),
+        first_name=profile.get("first_name") or "",
+        last_name=profile.get("last_name") or "",
+    )
+    db = get_session()
+    try:
+        return _issue_passenger_login(
+            db, pseudo_sess, profile_photo_url=profile.get("picture") or ""
+        )
+    finally:
+        db.close()
+
+
+async def google_start(request: web.Request) -> web.Response:
+    """POST /api/auth/google/start - start browser-based Google OAuth session."""
+    base = _cfg.PUBLIC_BASE_URL or _cfg.DEFAULT_PUBLIC_BASE_URL
+    db = get_session()
+    try:
+        sess = _tg.create_session(db, role="passenger")
+        auth_url = f"{base.rstrip('/')}/api/auth/google/authorize?token={sess.token}"
+        return web.json_response({
+            "token": sess.token,
+            "auth_url": auth_url,
+            "configured": bool(_gauth.primary_google_client_id()),
+            "expires_in": _tg.SESSION_TTL_MINUTES * 60,
+        })
+    finally:
+        db.close()
+
+
+async def google_authorize(request: web.Request) -> web.Response:
+    """GET /api/auth/google/authorize?token=... - redirect to Google OAuth 2.0."""
+    token = (request.query.get("token") or "").strip()
+    if not token:
+        return web.json_response({"error": "token kerak"}, status=400)
+
+    url = _gauth.build_google_authorize_url(
+        redirect_uri=_passenger_google_callback_uri(),
+        state=token,
+    )
+    if not url:
+        return web.json_response(
+            {
+                "error": "Google orqali kirish serverda hali sozlanmagan (GOOGLE_CLIENT_ID).",
+                "code": "google_not_configured",
+            },
+            status=503,
+        )
+    raise web.HTTPFound(location=url)
+
+
+async def google_callback(request: web.Request) -> web.Response:
+    """GET /api/auth/google/callback - handle OAuth redirect and issue 6-digit login code."""
+    code = (request.query.get("code") or "").strip()
+    state = (request.query.get("state") or "").strip()
+    if not code or not state:
+        return web.json_response(
+            {"error": "Google avtorizatsiya bekor qilindi yoki xato"}, status=400
+        )
+
+    profile = await _gauth.exchange_google_code(
+        code=code, redirect_uri=_passenger_google_callback_uri()
+    )
+    if not profile:
+        return web.json_response(
+            {"error": "Google kodini tekshirishda xatolik yuz berdi"}, status=400
+        )
+
+    sub = profile["sub"]
+    db = get_session()
+    try:
+        sess = _tg.mark_verified(
+            db,
+            token=state,
+            telegram_id=_gauth.synthetic_telegram_id_for_google(sub),
+            phone=_gauth.synthetic_phone_for_google(sub),
+            first_name=profile.get("first_name") or "",
+            last_name=profile.get("last_name") or "",
+        )
+        if not sess or not sess.login_code:
+            return web.json_response(
+                {"error": "Sessiya muddati tugagan. Ilovadan qaytadan urinib ko'ring."},
+                status=400,
+            )
+        deep_link = (
+            f"sarixgo://telegram-login?google_token={sess.token}&code={sess.login_code}"
+        )
+        page = _gauth.render_google_code_page(
+            login_code=sess.login_code,
+            deep_link=deep_link,
+            email=profile.get("email") or "",
+            app_title="Sarix Go",
+        )
+        return web.Response(text=page, content_type="text/html")
+    finally:
+        db.close()
+
+
+async def google_verify_code(request: web.Request) -> web.Response:
+    """POST /api/auth/google/verify-code"""
+    return await telegram_verify_code(request)
+

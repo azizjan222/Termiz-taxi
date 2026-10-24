@@ -1,7 +1,7 @@
 import { api } from './client';
 
 export interface PaymentMethod {
-  id: 'card' | 'click' | 'payme';
+  id: 'card' | 'atmos' | 'click' | 'payme';
   name: string;
   icon: string;
   description: string;
@@ -15,13 +15,15 @@ export interface PaymentCreateResponse {
   payment_id: number;
   url: string;
   amount: number;
+  transaction_id?: string | null;
 }
 
 export interface PaymentStatus {
   id: number;
   amount: number;
   bonus_amount: number;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'processing';
+  balance?: number;
   created_at: string;
   processed_at?: string | null;
 }
@@ -29,6 +31,16 @@ export interface PaymentStatus {
 export async function listMethods(): Promise<PaymentMethod[]> {
   const response = await api.get<{ methods: PaymentMethod[] }>('/api/payments/methods');
   return response.data.methods;
+}
+
+export async function createAtmosPayment(amount: number): Promise<PaymentCreateResponse> {
+  const response = await api.post('/api/payments/atmos/create', { amount });
+  return response.data;
+}
+
+export async function verifyAtmosPayment(id: number): Promise<PaymentStatus> {
+  const response = await api.post<PaymentStatus>(`/api/payments/atmos/${id}/verify`);
+  return response.data;
 }
 
 export async function createClickPayment(amount: number): Promise<PaymentCreateResponse> {

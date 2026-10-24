@@ -317,6 +317,56 @@ export interface StartBackgroundLocationOptions {
 }
 
 /**
+ * Remembers if the driver declined the prominent disclosure for a given order in this
+ * session so re-renders or status transitions (accepted -> in_progress) do not nag them
+ * repeatedly on the same ride. Reset when tracking stops or a different order starts.
+ */
+let declinedOrderId: string | null = null;
+
+/**
+ * Google Play Prominent Disclosure & Runtime Permission helper.
+ *
+ * Ensures that:
+ * 1. If foreground location permission (`ACCESS_FINE_LOCATION`) is already granted, we NEVER
+ *    re-display the Prominent Disclosure modal (because Android will not show a runtime
+ *    permission dialog again once granted, and showing a disclosure without an immediate
+ *    runtime permission prompt violates Google Play's Prominent Disclosure policy).
+ * 2. If foreground location permission is not granted yet (and `canAskAgain !== false`),
+ *    we display the in-app Prominent Disclosure modal (`confirm()`), and IMMEDIATELY after
+ *    the user taps "Roziman" (`true`), we trigger `Location.requestForegroundPermissionsAsync()`
+ *    so the Android OS runtime permission dialog appears right away.
+ */
+export async function ensureLocationPermissionWithDisclosure(
+  confirm: () => Promise<boolean>,
+  orderKey?: string,
+): Promise<boolean> {
+  const fgCurrent = await Location.getForegroundPermissionsAsync();
+  if (fgCurrent.status === 'granted') {
+    return true;
+  }
+
+  // If the user permanently denied permission ("Don't ask again"), the OS will not show
+  // a runtime dialog, so we must not show the Prominent Disclosure modal either.
+  if (fgCurrent.canAskAgain === false) {
+    return false;
+  }
+
+  if (orderKey && declinedOrderId === orderKey) {
+    return false;
+  }
+
+  const accepted = await confirm();
+  if (!accepted) {
+    if (orderKey) declinedOrderId = orderKey;
+    return false;
+  }
+  declinedOrderId = null;
+
+  const fgRequested = await Location.requestForegroundPermissionsAsync();
+  return fgRequested.status === 'granted';
+}
+
+/**
  * Start OS-driven location updates. Safe to call repeatedly.
  *
  * Returns false when the driver declined either permission or the disclosure — the caller
@@ -328,29 +378,21 @@ export async function startBackgroundLocation(
   const { orderId, labels, confirm } = options;
   return serialize(async () => {
     try {
+      const orderKey = String(orderId);
       // Already running for this same order: nothing to ask, nothing to restart.
       const existing = await readState();
-      const sameOrder = existing?.orderId === String(orderId);
+      const sameOrder = existing?.orderId === orderKey;
       if (sameOrder && (await osTaskRunning())) return syncFlag();
 
-      // Foreground access is required first. The calling screen awaits this function,
-      // so there is no competing foreground permission request racing this flow.
-      const foreground = await Location.requestForegroundPermissionsAsync();
-      if (foreground.status !== 'granted') return syncFlag();
-
-      // The prominent disclosure must be shown immediately before requesting background
-      // location. Do not put another permission prompt between confirm() and this request.
-      const background = await Location.getBackgroundPermissionsAsync();
-      if (background.status !== 'granted') {
-        if (!(await confirm())) return syncFlag();
-        const requested = await Location.requestBackgroundPermissionsAsync();
-        if (requested.status !== 'granted') return syncFlag();
+      const hasPermission = await ensureLocationPermissionWithDisclosure(confirm, orderKey);
+      if (!hasPermission) {
+        return syncFlag();
       }
 
       // Written BEFORE starting: the task can fire as soon as the OS accepts the request,
       // and a task that finds no state stops itself.
       await writeState({
-        orderId: String(orderId),
+        orderId: orderKey,
         // Preserve the original baseline across restarts for the same order, otherwise a
         // remounting screen would push the safety deadline out indefinitely.
         startedAt: sameOrder && existing ? existing.startedAt : Date.now(),
@@ -361,25 +403,32 @@ export async function startBackgroundLocation(
       await persistDiagnostics();
 
       if (!(await osTaskRunning())) {
-        await Location.startLocationUpdatesAsync(DRIVER_LOCATION_TASK, {
-          accuracy: Location.Accuracy.Balanced,
-          // The task throttles to BACKEND_MIN_INTERVAL_MS anyway; asking the OS for a
-          // similar cadence keeps it from waking us far more often than we can use.
-          timeInterval: BACKEND_MIN_INTERVAL_MS,
-          distanceInterval: 25,
-          // A parked car must not keep the service spinning, but iOS deciding on its own to
-          // pause updates would silently end tracking mid-trip.
-          pausesUpdatesAutomatically: false,
-          activityType: Location.ActivityType.AutomotiveNavigation,
-          showsBackgroundLocationIndicator: true,
-          foregroundService: {
-            notificationTitle: labels.title,
-            notificationBody: labels.body,
-            // Brand blue, matching the app's primary colour.
-            notificationColor: '#2E6BE0',
-            killServiceOnDestroy: false,
-          },
-        });
+        try {
+          await Location.startLocationUpdatesAsync(DRIVER_LOCATION_TASK, {
+            accuracy: Location.Accuracy.Balanced,
+            // The task throttles to BACKEND_MIN_INTERVAL_MS anyway; asking the OS for a
+            // similar cadence keeps it from waking us far more often than we can use.
+            timeInterval: BACKEND_MIN_INTERVAL_MS,
+            distanceInterval: 25,
+            // A parked car must not keep the service spinning, but iOS deciding on its own to
+            // pause updates would silently end tracking mid-trip.
+            pausesUpdatesAutomatically: false,
+            activityType: Location.ActivityType.AutomotiveNavigation,
+            showsBackgroundLocationIndicator: true,
+            foregroundService: {
+              notificationTitle: labels.title,
+              notificationBody: labels.body,
+              // Brand blue, matching the app's primary colour.
+              notificationColor: '#2E6BE0',
+              killServiceOnDestroy: false,
+            },
+          });
+        } catch {
+          // On Android 11+, if the user granted "While using the app" (foreground) rather
+          // than "Allow all the time", startLocationUpdatesAsync may reject if the OS
+          // enforces ACCESS_BACKGROUND_LOCATION. In that case the screen's foreground
+          // watchPositionAsync subscription handles live tracking without error.
+        }
       }
       return syncFlag();
     } catch {
@@ -393,6 +442,7 @@ export async function startBackgroundLocation(
 /** Stop OS-driven updates. Safe to call when they were never started. */
 export async function stopBackgroundLocation(): Promise<void> {
   await serialize(async () => {
+    declinedOrderId = null;
     // Cleared first: if `stopLocationUpdatesAsync` fails, the next task invocation finds no
     // state and stops itself rather than reporting forever.
     await clearState();

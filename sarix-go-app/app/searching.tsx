@@ -221,9 +221,19 @@ export default function SearchingScreen() {
           if (alerted) return;
           alerted = true;
           clearInterval(interval);
+          const cancelTitle = t(
+            order.status === 'expired' ? 'searching.expiredTitle' : 'searching.cancelledTitle'
+          );
+          const cancelBody = t(
+            order.status === 'expired' ? 'searching.expiredBody' : 'searching.cancelledBody'
+          );
+          presentLocalNotification(cancelTitle, cancelBody, {
+            type: order.status === 'expired' ? 'order_expired' : 'order_cancelled',
+            order_id: id,
+          });
           Alert.alert(
-            t(order.status === 'expired' ? 'searching.expiredTitle' : 'searching.cancelledTitle'),
-            t(order.status === 'expired' ? 'searching.expiredBody' : 'searching.cancelledBody'),
+            cancelTitle,
+            cancelBody,
             [{ text: t('common.ok'), onPress: () => router.replace('/(tabs)/home') }]
           );
         }

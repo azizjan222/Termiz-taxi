@@ -18,7 +18,5 @@ export default function Index() {
   // First launch: choose a language (4 languages), like the passenger app.
   if (!onboarded) return <Redirect href="/language" />;
   if (!isAuth) return <Redirect href="/login" />;
-  // Authenticated but documents still required -> collect them in-app.
-  if (driver?.documents_required) return <Redirect href="/driver-documents" />;
   return <Redirect href="/(main)/orders" />;
 }

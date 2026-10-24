@@ -2,7 +2,7 @@
   "expo": {
     "name": "Sarix Driver",
     "slug": "sarix-go-driver",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "sarixgodriver",
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uz.sarixgo.driver",
-      "buildNumber": "1.0.0",
+      "buildNumber": "1.0.2",
       "infoPlist": {
         "UIBackgroundModes": [
           "location"
@@ -30,7 +30,7 @@
     },
     "android": {
       "package": "uz.sarixgo.driver",
-      "versionCode": 1,
+      "versionCode": 10,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -64,7 +64,11 @@
         {
           "sounds": [
             "./assets/sounds/new_order.wav",
-            "./assets/sounds/order_cancelled.wav"
+            "./assets/sounds/order_cancelled.wav",
+            "./assets/sounds/order_accepted.wav",
+            "./assets/sounds/driver_arrived.wav",
+            "./assets/sounds/order_completed.wav",
+            "./assets/sounds/balance_bonus.wav"
           ]
         }
       ],

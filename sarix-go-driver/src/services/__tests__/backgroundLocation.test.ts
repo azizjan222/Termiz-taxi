@@ -21,7 +21,12 @@ interface FakeWorld {
   osRunning: boolean;
   startCalls: number;
   stopCalls: number;
+  /** What `getForegroundPermissionsAsync` reports — i.e. already-granted or not. */
   fgStatus: string;
+  /** What the OS foreground prompt returns when we do ask. */
+  fgRequestStatus: string;
+  /** How many times the OS foreground-permission prompt was reached. */
+  fgRequestCalls: number;
   /** What `getBackgroundPermissionsAsync` reports — i.e. already-granted or not. */
   bgStatus: string;
   /** What the OS prompt returns when we do ask. */
@@ -56,6 +61,8 @@ const mockWorld: FakeWorld = {
   startCalls: 0,
   stopCalls: 0,
   fgStatus: 'granted',
+  fgRequestStatus: 'granted',
+  fgRequestCalls: 0,
   bgStatus: 'granted',
   bgRequestStatus: 'granted',
   latency: 0,
@@ -93,10 +100,16 @@ jest.mock('expo-location', () => ({
     mockWorld.stopCalls += 1;
     mockWorld.osRunning = false;
   },
-  requestForegroundPermissionsAsync: async () => ({ status: mockWorld.fgStatus }),
+  getForegroundPermissionsAsync: async () => ({ status: mockWorld.fgStatus }),
+  requestForegroundPermissionsAsync: async () => {
+    mockWorld.fgRequestCalls += 1;
+    mockWorld.fgStatus = mockWorld.fgRequestStatus;
+    return { status: mockWorld.fgRequestStatus };
+  },
   getBackgroundPermissionsAsync: async () => ({ status: mockWorld.bgStatus }),
   requestBackgroundPermissionsAsync: async () => {
     mockWorld.bgRequestCalls += 1;
+    mockWorld.bgStatus = mockWorld.bgRequestStatus;
     return { status: mockWorld.bgRequestStatus };
   },
 }));
@@ -157,6 +170,8 @@ beforeEach(() => {
   mockWorld.startCalls = 0;
   mockWorld.stopCalls = 0;
   mockWorld.fgStatus = 'granted';
+  mockWorld.fgRequestStatus = 'granted';
+  mockWorld.fgRequestCalls = 0;
   mockWorld.bgStatus = 'granted';
   mockWorld.bgRequestStatus = 'granted';
   mockWorld.latency = 0;
@@ -259,21 +274,63 @@ describe('starting', () => {
     expect(second).toBe(first);
   });
 
-  it('refuses background permission without an accepted disclosure', async () => {
+  it('shows prominent disclosure BEFORE requesting either foreground or background OS permission', async () => {
     const mod = load();
+    mockWorld.fgStatus = 'undetermined';
+    mockWorld.bgStatus = 'undetermined';
+    const orderOfEvents: string[] = [];
+
+    const ok = await mod.startBackgroundLocation({
+      orderId: 1,
+      labels,
+      confirm: async () => {
+        // At the moment confirm() runs, NEITHER OS prompt may have been triggered yet.
+        orderOfEvents.push(`confirm(fg=${mockWorld.fgRequestCalls},bg=${mockWorld.bgRequestCalls})`);
+        return true;
+      },
+    });
+
+    expect(ok).toBe(true);
+    expect(orderOfEvents).toEqual(['confirm(fg=0,bg=0)']);
+    expect(mockWorld.fgRequestCalls).toBe(1);
+    expect(mockWorld.bgRequestCalls).toBe(1);
+  });
+
+  it('refuses BOTH foreground and background OS prompts when disclosure is declined', async () => {
+    const mod = load();
+    mockWorld.fgStatus = 'undetermined';
     mockWorld.bgStatus = 'undetermined';
 
     const ok = await mod.startBackgroundLocation({ orderId: 1, labels, confirm: deny });
 
     expect(ok).toBe(false);
-    // Play policy: the OS prompt must not appear before the driver accepted the in-app
-    // explanation. Asking first is what gets an app's updates blocked.
+    // Play policy: declining the in-app disclosure must not trigger any OS permission prompt.
+    expect(mockWorld.fgRequestCalls).toBe(0);
     expect(mockWorld.bgRequestCalls).toBe(0);
     expect(mockWorld.startCalls).toBe(0);
   });
 
-  it('skips the disclosure when background permission is already granted', async () => {
+  it('does not repeatedly nag the driver for the same order after declining disclosure', async () => {
     const mod = load();
+    mockWorld.fgStatus = 'undetermined';
+    mockWorld.bgStatus = 'undetermined';
+    let confirmCalls = 0;
+    const confirm = async () => {
+      confirmCalls += 1;
+      return false;
+    };
+
+    await mod.startBackgroundLocation({ orderId: 99, labels, confirm });
+    await mod.startBackgroundLocation({ orderId: 99, labels, confirm });
+
+    expect(confirmCalls).toBe(1);
+    expect(mockWorld.fgRequestCalls).toBe(0);
+    expect(mockWorld.bgRequestCalls).toBe(0);
+  });
+
+  it('skips the disclosure when both foreground and background permissions are already granted', async () => {
+    const mod = load();
+    mockWorld.fgStatus = 'granted';
     mockWorld.bgStatus = 'granted';
     let confirmCalls = 0;
 
@@ -290,14 +347,19 @@ describe('starting', () => {
     // A driver who already chose "Allow all the time" must not be re-interrogated at the
     // start of every trip.
     expect(confirmCalls).toBe(0);
+    expect(mockWorld.fgRequestCalls).toBe(0);
     expect(mockWorld.bgRequestCalls).toBe(0);
   });
 
-  it('returns false without starting when foreground permission is denied', async () => {
+  it('returns false without starting when foreground permission is denied after accepting disclosure', async () => {
     const mod = load();
-    mockWorld.fgStatus = 'denied';
+    mockWorld.fgStatus = 'undetermined';
+    mockWorld.fgRequestStatus = 'denied';
+    mockWorld.bgStatus = 'undetermined';
     const ok = await mod.startBackgroundLocation({ orderId: 1, labels, confirm: allow });
     expect(ok).toBe(false);
+    expect(mockWorld.fgRequestCalls).toBe(1);
+    expect(mockWorld.bgRequestCalls).toBe(0);
     expect(mockWorld.startCalls).toBe(0);
   });
 });

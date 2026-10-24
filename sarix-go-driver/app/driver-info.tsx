@@ -14,7 +14,7 @@ import { API_URL, getAuthToken } from '../src/api/client';
 import { describeApiError } from '../src/api/errors';
 import { useDriverStore } from '../src/store/driver';
 import {
-  getMe, updateDriverInfo, uploadTechPassport, uploadLicenseImage, getCarModels,
+  getMe, updateDriverInfo, uploadTechPassport, uploadLicenseImage, getCarModels, DEFAULT_CAR_MODELS,
 } from '../src/api/driver';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -61,7 +61,7 @@ export default function DriverInfoScreen() {
   const [licenseUri, setLicenseUri] = useState<string | null>(null);
   const [documentToken, setDocumentToken] = useState<string | null>(null);
 
-  const [models, setModels] = useState<string[]>([]);
+  const [models, setModels] = useState<string[]>(DEFAULT_CAR_MODELS);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -329,12 +329,27 @@ export default function DriverInfoScreen() {
           <View style={{ padding: spacing.md }}>
             <TextInput style={styles.input} value={search} onChangeText={setSearch} placeholder={t('driverInfo.search')} />
           </View>
+          {search.trim().length > 1 &&
+            !filteredModels.some((m) => m.toLowerCase() === search.trim().toLowerCase()) && (
+              <TouchableOpacity
+                style={styles.modelRow}
+                onPress={() => {
+                  setCarModel(search.trim());
+                  setPickerOpen(false);
+                }}
+              >
+                <Text style={[styles.modelText, { fontWeight: '700', color: colors.primary }]}>
+                  + «{search.trim()}»
+                </Text>
+              </TouchableOpacity>
+            )}
           {models.length === 0 ? (
             <ActivityIndicator style={{ marginTop: spacing.lg }} color={colors.primary} />
           ) : (
             <FlatList
               data={filteredModels}
               keyExtractor={(item, i) => item + i}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.modelRow}

@@ -22,7 +22,21 @@ import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
-import { DEPARTURE_WIRE, departureKey } from '../src/utils/departureTime';
+import {
+  DEPARTURE_CODES,
+  SCHEDULE_TIME_SLOTS,
+  departureKey,
+  formatDepartureTime,
+  resolveDepartureWire,
+} from '../src/utils/departureTime';
+
+const LANDMARK_CHIP_KEYS = [
+  'newOrder.landmarkChipPitak',
+  'newOrder.landmarkChipBozor',
+  'newOrder.landmarkChipMaktab',
+  'newOrder.landmarkChipMasjid',
+  'newOrder.landmarkChipShifoxona',
+] as const;
 
 export default function ConfirmOrderScreen() {
   const { t } = useTranslation();
@@ -44,12 +58,6 @@ export default function ConfirmOrderScreen() {
   const formatPrice = (p: number) =>
     p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
-  // Bonus wallet balance, so the passenger can choose to spend it on this ride.
-  //
-  // Silent on failure: the bonus toggle is an optional saving, and a config/network hiccup
-  // must not block ordering a taxi. A zero balance simply hides the row.
-  //
-  // Skipped while BONUS_UI_ENABLED is false, so the hidden feature costs no request.
   useEffect(() => {
     if (!BONUS_UI_ENABLED) return;
     let active = true;
@@ -67,9 +75,6 @@ export default function ConfirmOrderScreen() {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      // Clear the flag before returning. `quoteLoading` starts true and only the finally
-      // below ever cleared it, so this early return left "Buyurtma berish" disabled
-      // permanently — the same dead-screen latch /tariff had, one step later.
       if (!orderStore.fromCity || !orderStore.toCity) {
         if (active) setQuoteLoading(false);
         return;
@@ -98,9 +103,6 @@ export default function ConfirmOrderScreen() {
   const isParcel = orderStore.serviceType === 'parcel';
 
   const handleConfirm = async () => {
-    // Say something rather than swallowing the tap. A silent `return` here is
-    // indistinguishable from a frozen screen: the passenger presses "Buyurtma berish",
-    // nothing happens, and there is no hint that the route is what is missing.
     if (!orderStore.fromCity || !orderStore.toCity) {
       Alert.alert(t('tariff.noRouteTitle'), t('tariff.noRouteBody'), [
         { text: t('common.cancel'), style: 'cancel' },
@@ -108,16 +110,14 @@ export default function ConfirmOrderScreen() {
       ]);
       return;
     }
-    // Synchronous guard. The button's `loading` prop only disables it after a re-render,
-    // which is a full React commit behind a fast second tap — and with a 20s axios timeout
-    // there is a long window in which both taps passed the check and created TWO identical
-    // orders. The passenger then went to /searching for the second one while the first
-    // stayed open, got accepted by another driver, and produced a call about a ride they
-    // had no record of. The driver app already guards its accept the same way.
     if (submitInFlightRef.current) return;
     submitInFlightRef.current = true;
     setLoading(true);
     try {
+      const wireDep = resolveDepartureWire(
+        orderStore.departureTime,
+        orderStore.customDepartureTime
+      );
       const result = await createOrder({
         service_type: orderStore.serviceType,
         from_city: orderStore.fromCity,
@@ -131,31 +131,30 @@ export default function ConfirmOrderScreen() {
         person_count: orderStore.personCount,
         male_count: orderStore.maleCount,
         female_count: orderStore.femaleCount,
-        // Canonical wire value, not the localized label the passenger saw.
-        departure_time: DEPARTURE_WIRE[orderStore.departureTime],
+        departure_time: wireDep,
         note: note || undefined,
         has_roof_rack: orderStore.hasRoofRack,
         female_only: orderStore.femaleOnly,
+        front_seat: !isParcel && orderStore.frontSeat ? true : undefined,
+        pickup_type: orderStore.pickupType,
+        landmark: orderStore.landmark.trim() || undefined,
+        parcel_recipient_name: isParcel
+          ? orderStore.parcelRecipientName.trim() || undefined
+          : undefined,
+        parcel_recipient_phone: isParcel
+          ? orderStore.parcelRecipientPhone.trim() || undefined
+          : undefined,
+        parcel_payer: isParcel ? orderStore.parcelPayer : undefined,
+        parcel_type: isParcel ? orderStore.parcelType : undefined,
+        parcel_note: isParcel ? note || undefined : undefined,
         promo_code: orderStore.promoCode.trim() || undefined,
-        // Only sent when the passenger opted in AND has something to spend. The server caps
-        // the actual amount at this ride's commission, so the final discount arrives as
-        // `order.bonus_used` once a driver accepts.
         use_bonus: BONUS_UI_ENABLED && useBonus && bonusBalance > 0 ? true : undefined,
       });
-      // The draft is NOT reset here. It used to be, and the reset ran while this screen was
-      // still mounted: wiping fromCity/toCity to null and serviceType back to 'taxi' forced
-      // an immediate re-render of a screen built for a parcel with a draft that no longer
-      // described one, and it wiped the /tariff screen still sitting underneath in the stack
-      // (which is how that screen ended up latched on "Yuklanmoqda..." after a successful
-      // order). It was also redundant: home.tsx `startOrder()` already calls `resetOrder()`
-      // before every new order, so the draft is always clean when the next one begins.
       router.replace({
         pathname: '/searching',
         params: { orderId: result.order.id.toString() },
       });
     } catch (e: any) {
-      // Only release the guard on failure. On success we navigate away, and re-enabling
-      // the button during the replace animation would just reopen the double-submit window.
       submitInFlightRef.current = false;
       setLoading(false);
       Alert.alert(t('common.error'), describeApiError(e, t));
@@ -173,7 +172,6 @@ export default function ConfirmOrderScreen() {
     }
   };
 
-  // Real price from backend. Parcel price is negotiated with the driver -> "negotiable".
   const priceText = quoteLoading
     ? '...'
     : isParcel
@@ -181,6 +179,11 @@ export default function ConfirmOrderScreen() {
     : quote
     ? `${formatPrice(quote.price)} ${t('common.currency')}`
     : '—';
+
+  const wirePreview = resolveDepartureWire(
+    orderStore.departureTime,
+    orderStore.customDepartureTime
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -215,25 +218,240 @@ export default function ConfirmOrderScreen() {
                 <View style={styles.divider} />
                 <View style={styles.row}>
                   <Text style={styles.label}>{t('order.persons')}</Text>
-                  {/* Dedicated key instead of splitting a translated string: the old
-                      `t('tariff.onePerson').split(' ')[1]` only worked because every
-                      locale happened to be "<digit> <word>", and it produced wrong
-                      grammar in Russian ("3 человек") and English ("3 person"). */}
                   <Text style={styles.value}>
                     {t('order.personsCount', { count: orderStore.personCount })}
+                    {orderStore.frontSeat ? ` (${t('newOrder.frontSeat')})` : ''}
                   </Text>
                 </View>
               </>
             )}
           <View style={styles.divider} />
           <View style={styles.row}>
-            {/* A parcel is sent, not "departed" — same wording the driver sees. */}
             <Text style={styles.label}>
               {t(isParcel ? 'order.dispatchTime' : 'order.departureTime')}
             </Text>
-            <Text style={styles.value}>{t(departureKey(orderStore.departureTime))}</Text>
+            <Text style={styles.value}>{formatDepartureTime(wirePreview, t)}</Text>
           </View>
         </View>
+
+        {/* Feature 3: Pickup Type (Uy oldidan / Mahalladan vs Pitakdan) & Mo'ljal */}
+        <View style={[styles.card, { marginTop: spacing.md }]}>
+          <Text style={styles.cardTitle}>{t('newOrder.pickupSection')}</Text>
+          <View style={styles.toggleRow}>
+            {(['door', 'pitak'] as const).map((pt) => {
+              const active = orderStore.pickupType === pt;
+              return (
+                <TouchableOpacity
+                  key={pt}
+                  style={[styles.toggleCard, active && styles.toggleCardActive]}
+                  onPress={() => orderStore.setField('pickupType', pt)}
+                  activeOpacity={0.85}
+                >
+                  <Icon
+                    name={pt === 'door' ? 'home' : 'pin'}
+                    size={18}
+                    color={active ? colors.primary : colors.textSecondary}
+                  />
+                  <Text
+                    style={[styles.toggleTitle, active && styles.toggleTitleActive]}
+                  >
+                    {t(pt === 'door' ? 'newOrder.pickupDoor' : 'newOrder.pickupPitak')}
+                  </Text>
+                  <Text style={styles.toggleSub} numberOfLines={2}>
+                    {t(
+                      pt === 'door'
+                        ? 'newOrder.pickupDoorHint'
+                        : 'newOrder.pickupPitakHint'
+                    )}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={{ marginTop: spacing.md }}>
+            <Input
+              label={t('newOrder.landmarkLabel')}
+              value={orderStore.landmark}
+              onChangeText={(v) => orderStore.setField('landmark', v)}
+              placeholder={t('newOrder.landmarkPlaceholder')}
+              maxLength={140}
+            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipRow}
+            >
+              {LANDMARK_CHIP_KEYS.map((chipKey) => {
+                const label = t(chipKey);
+                const selected = orderStore.landmark === label;
+                return (
+                  <TouchableOpacity
+                    key={chipKey}
+                    style={[styles.chip, selected && styles.chipActive]}
+                    onPress={() =>
+                      orderStore.setField('landmark', selected ? '' : label)
+                    }
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.chipText, selected && styles.chipTextActive]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+
+        {/* Feature 4: Scheduled Departure Time & Exact Commuter Time Slots */}
+        <View style={[styles.card, { marginTop: spacing.md }]}>
+          <Text style={styles.cardTitle}>
+            {t(isParcel ? 'order.dispatchTime' : 'order.departureTime')}
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+          >
+            {DEPARTURE_CODES.map((code) => {
+              const selected =
+                orderStore.departureTime === code && !orderStore.customDepartureTime;
+              return (
+                <TouchableOpacity
+                  key={code}
+                  style={[styles.chip, selected && styles.chipActive]}
+                  onPress={() => {
+                    orderStore.setField('departureTime', code);
+                    orderStore.setField('customDepartureTime', '');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.chipText, selected && styles.chipTextActive]}>
+                    {t(departureKey(code))}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <Text style={styles.subLabel}>{t('newOrder.pickExactTime')}</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+          >
+            {SCHEDULE_TIME_SLOTS.map((slot) => {
+              const selected = orderStore.customDepartureTime === slot;
+              return (
+                <TouchableOpacity
+                  key={slot}
+                  style={[styles.chip, selected && styles.chipActive]}
+                  onPress={() =>
+                    orderStore.setField('customDepartureTime', selected ? '' : slot)
+                  }
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.chipText, selected && styles.chipTextActive]}>
+                    {slot}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Feature 5: Tumanlararo Pochta (Amanat) Extended Details */}
+        {isParcel && (
+          <View style={[styles.card, { marginTop: spacing.md }]}>
+            <Text style={styles.cardTitle}>{t('order.parcelDetailsTitle')}</Text>
+
+            <Text style={styles.subLabel}>{t('order.parcelTypeLabel')}</Text>
+            <View style={styles.parcelTypeRow}>
+              {(
+                [
+                  { id: 'hujjat', labelKey: 'order.parcelTypeHujjat', icon: 'document' },
+                  { id: 'sumka', labelKey: 'order.parcelTypeSumka', icon: 'parcel' },
+                  { id: 'quti', labelKey: 'order.parcelTypeQuti', icon: 'parcel' },
+                  { id: 'yukxona', labelKey: 'order.parcelTypeYukxona', icon: 'luggage' },
+                ] as const
+              ).map((pt) => {
+                const active = orderStore.parcelType === pt.id;
+                return (
+                  <TouchableOpacity
+                    key={pt.id}
+                    style={[styles.parcelTypeBtn, active && styles.parcelTypeBtnActive]}
+                    onPress={() => orderStore.setField('parcelType', pt.id)}
+                    activeOpacity={0.85}
+                  >
+                    <Icon
+                      name={pt.icon}
+                      size={18}
+                      color={active ? colors.primary : colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.parcelTypeText,
+                        active && styles.parcelTypeTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {t(pt.labelKey)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={{ marginTop: spacing.md }}>
+              <Input
+                label={t('order.parcelRecipientNameLabel')}
+                value={orderStore.parcelRecipientName}
+                onChangeText={(v) => orderStore.setField('parcelRecipientName', v)}
+                placeholder={t('order.parcelRecipientNamePlaceholder')}
+                maxLength={100}
+              />
+            </View>
+
+            <View style={{ marginTop: spacing.sm }}>
+              <Input
+                label={t('order.parcelRecipientPhoneLabel')}
+                value={orderStore.parcelRecipientPhone}
+                onChangeText={(v) => orderStore.setField('parcelRecipientPhone', v)}
+                placeholder={t('order.parcelRecipientPhonePlaceholder')}
+                keyboardType="phone-pad"
+                maxLength={20}
+              />
+            </View>
+
+            <Text style={[styles.subLabel, { marginTop: spacing.md }]}>
+              {t('order.parcelPayerLabel')}
+            </Text>
+            <View style={styles.toggleRow}>
+              {(['sender', 'recipient'] as const).map((payer) => {
+                const active = orderStore.parcelPayer === payer;
+                return (
+                  <TouchableOpacity
+                    key={payer}
+                    style={[styles.toggleCard, active && styles.toggleCardActive]}
+                    onPress={() => orderStore.setField('parcelPayer', payer)}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[styles.toggleTitle, active && styles.toggleTitleActive]}
+                    >
+                      {t(
+                        payer === 'sender'
+                          ? 'order.parcelPayerSender'
+                          : 'order.parcelPayerRecipient'
+                      )}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* Note */}
         <View style={{ marginTop: spacing.md }}>
@@ -248,13 +466,6 @@ export default function ConfirmOrderScreen() {
           />
         </View>
 
-        {/* Bonus wallet. Hidden at a zero balance — an always-visible row saying "0 so'm"
-            would just add noise to the one screen that must stay scannable.
-
-            Not offered for parcels: their fare is negotiated with the driver, so there is no
-            server-side commission to fund a discount from and the toggle would do nothing.
-
-            Hidden entirely while BONUS_UI_ENABLED is false (see src/config/features.ts). */}
         {BONUS_UI_ENABLED && bonusBalance > 0 && !isParcel && (
           <TouchableOpacity
             style={[styles.card, { marginTop: spacing.md }]}
@@ -294,10 +505,6 @@ export default function ConfirmOrderScreen() {
         </View>
       </ScrollView>
 
-      {/* Footer — the price sits in a row above a full-width CTA rather than beside it.
-          Side by side, the button only received the width the price block left over, so
-          on a narrow screen "Buyurtma berish" ellipsized to "Buyurtma b…". The new-order
-          footer has always used this stacked shape; the two screens now match. */}
       <View style={styles.footer}>
         <View style={styles.priceRow}>
           <View style={styles.footerInfo}>
@@ -310,16 +517,10 @@ export default function ConfirmOrderScreen() {
             {priceText}
           </Text>
         </View>
-        {/* Gold, like the other "Buyurtma berish": this is the tap that actually creates
-            the order, and it should look the same wherever the passenger meets it. */}
         <OrderCtaButton
           title={t('order.confirm')}
           onPress={handleConfirm}
           loading={loading}
-          // Confirm used to stay enabled while the price read '...' or '—', so a passenger
-          // could commit to a ride whose fare had never loaded — and then be quoted a
-          // number they never agreed to. A parcel is genuinely negotiated with the driver,
-          // so it only needs its quote to exist.
           disabled={quoteLoading || !(isParcel ? quote : quote && quote.price > 0)}
         />
       </View>
@@ -345,6 +546,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: spacing.md,
   },
   cardTitle: { ...typography.bodyBold, color: colors.primary, marginBottom: spacing.sm },
+  subLabel: {
+    ...typography.captionBold,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -354,6 +561,87 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   label: { ...typography.caption, color: colors.textSecondary },
   value: { ...typography.bodyBold, color: colors.text },
   divider: { height: 1, backgroundColor: colors.divider },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  toggleCard: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  toggleCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.accentSoft,
+  },
+  toggleTitle: {
+    ...typography.captionBold,
+    color: colors.text,
+    marginTop: 4,
+  },
+  toggleTitleActive: {
+    color: colors.primary,
+  },
+  toggleSub: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  chipRow: {
+    gap: spacing.xs,
+    paddingTop: spacing.xs,
+  },
+  chip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    ...typography.small,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  chipTextActive: {
+    color: colors.textOnPrimary,
+  },
+  parcelTypeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  parcelTypeBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.md,
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    gap: 4,
+  },
+  parcelTypeBtnActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.accentSoft,
+  },
+  parcelTypeText: {
+    ...typography.small,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  parcelTypeTextActive: {
+    color: colors.primary,
+  },
   radio: {
     width: 24,
     height: 24,
@@ -369,8 +657,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: 6,
     backgroundColor: colors.accent,
   },
-  // Square, unlike the payment radio: cash is a choice between options, the bonus is an
-  // independent on/off, and using the same control for both would suggest otherwise.
   checkbox: {
     width: 24,
     height: 24,
@@ -388,8 +674,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderTopColor: colors.divider,
   },
   priceRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
-  // Takes the leftover width so the price stays hard right and the hint wraps instead of
-  // pushing anything off-screen — it no longer needs a hand-picked maxWidth to behave.
   footerInfo: { flex: 1, marginRight: spacing.sm },
   footerLabel: { ...typography.caption, color: colors.textSecondary },
   footerPrice: { ...typography.h2, color: colors.primary },

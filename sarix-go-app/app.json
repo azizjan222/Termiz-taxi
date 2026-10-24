@@ -52,7 +52,13 @@
       [
         "expo-notifications",
         {
-          "sounds": ["./assets/sounds/order_cancelled.wav"]
+          "sounds": [
+            "./assets/sounds/order_accepted.wav",
+            "./assets/sounds/driver_arrived.wav",
+            "./assets/sounds/order_completed.wav",
+            "./assets/sounds/order_cancelled.wav",
+            "./assets/sounds/balance_bonus.wav"
+          ]
         }
       ],
       [

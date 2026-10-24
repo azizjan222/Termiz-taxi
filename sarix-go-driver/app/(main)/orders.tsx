@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
-  TouchableOpacity, Alert, Switch,
+  TouchableOpacity, Alert, Switch, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { router, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
 
@@ -21,10 +22,12 @@ import { isAppForeground } from '../../src/utils/appForeground';
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { IncomingOrderModal } from '../../src/components/IncomingOrderModal';
 import { AcceptButton } from '../../src/components/AcceptButton';
-import { stopAlert } from '../../src/services/notifications';
+import { stopAlert, playDriverStatusChime } from '../../src/services/notifications';
+import { ensureLocationPermissionWithDisclosure } from '../../src/services/backgroundLocation';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 import { formatDepartureTime } from '../../src/utils/departureTime';
+import { GUIDE_SEEN_KEY } from '../guide';
 
 export default function OrdersScreen() {
   const { t } = useTranslation();
@@ -40,6 +43,7 @@ export default function OrdersScreen() {
   const [orders, setOrders] = useState<DriverOrder[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [accepting, setAccepting] = useState<number | null>(null);
+  const [showGuideBanner, setShowGuideBanner] = useState(false);
   // Synchronous guard so two rapid taps cannot both pass the check before a re-render.
   const acceptInFlightRef = useRef(false);
   const [canReceive, setCanReceive] = useState(true);
@@ -68,6 +72,39 @@ export default function OrdersScreen() {
   // Synchronous guard for the online switch, plus a state copy to disable the control.
   const onlineInFlightRef = useRef(false);
   const [togglingOnline, setTogglingOnline] = useState(false);
+  const [cabinOccupied, setCabinOccupied] = useState(0);
+  const [cabinCapacity, setCabinCapacity] = useState(4);
+  const [corridorFilter, setCorridorFilter] = useState<{ from: string; to: string } | null>(
+    null
+  );
+  const [includeTransit, setIncludeTransit] = useState(true);
+  const [disclosureVisible, setDisclosureVisible] = useState(false);
+  const disclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
+
+  const answerDisclosure = (accepted: boolean) => {
+    setDisclosureVisible(false);
+    const resolve = disclosureResolverRef.current;
+    disclosureResolverRef.current = null;
+    if (resolve) {
+      setTimeout(() => resolve(accepted), 220);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (disclosureResolverRef.current) {
+        const resolve = disclosureResolverRef.current;
+        disclosureResolverRef.current = null;
+        resolve(false);
+      }
+    };
+  }, []);
+
+  const confirmLocationDisclosure = () =>
+    new Promise<boolean>((resolve) => {
+      disclosureResolverRef.current = resolve;
+      setDisclosureVisible(true);
+    });
 
   useEffect(() => {
     incomingOrderRef.current = incomingOrder;
@@ -87,11 +124,21 @@ export default function OrdersScreen() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setRefreshing(true);
     try {
-      const res = await listAvailableOrders();
+      const res = await listAvailableOrders(
+        corridorFilter
+          ? {
+              corridor_from: corridorFilter.from,
+              corridor_to: corridorFilter.to,
+              include_transit: includeTransit,
+            }
+          : undefined
+      );
       setCanReceive(res.can_receive !== false);
       setReceiveMsg(res.message || '');
       setReceiveCode(res.code || '');
       setOrders(res.can_receive === false ? [] : res.orders);
+      setCabinOccupied(res.cabin_occupied ?? 0);
+      setCabinCapacity(res.cabin_capacity ?? 4);
       const currentDriver = useDriverStore.getState().driver;
       if (currentDriver && res.is_verified !== undefined) {
         useDriverStore.getState().setDriver({
@@ -99,19 +146,11 @@ export default function OrdersScreen() {
           is_verified: res.is_verified,
           documents_submitted:
             res.documents_submitted ?? currentDriver.documents_submitted,
-          // Same in-flight guard as setOnlineLocal below. This write was NOT guarded, so a
-          // poll response that started before the driver flipped the switch still wrote
-          // the old value onto the driver object. realtime.ts gates `new_order` delivery
-          // on the driver being online, so a driver who had just gone online silently
-          // stopped receiving order events.
           is_online: onlineInFlightRef.current
             ? currentDriver.is_online
             : res.is_online ?? currentDriver.is_online,
         });
       }
-      // Don't let the 15s poll overwrite a toggle the driver just made and that is still
-      // in flight — the server hasn't seen it yet, so its answer is stale by definition
-      // and would snap the switch back under the driver's finger.
       if (res.is_online !== undefined && !onlineInFlightRef.current) {
         setOnlineLocal(res.is_online);
         isOnlineRef.current = res.is_online;
@@ -120,7 +159,7 @@ export default function OrdersScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [setOnlineLocal]);
+  }, [setOnlineLocal, corridorFilter, includeTransit]);
 
   useEffect(() => {
     load();
@@ -192,10 +231,25 @@ export default function OrdersScreen() {
         t('docsStatus.notVerifiedTitle'),
         driver?.documents_submitted
           ? t('docsStatus.underReview')
-          : t('docsStatus.submitFirst')
+          : t('docsStatus.submitFirst'),
+        driver?.documents_submitted
+          ? [{ text: t('common.ok') }]
+          : [
+              { text: t('common.cancel'), style: 'cancel' },
+              { text: t('docsStatus.fillIn'), onPress: () => router.push('/driver-documents') },
+            ]
       );
       return;
     }
+
+    // When switching ONLINE, ensure location permission is checked via Google Play's
+    // required Prominent Disclosure modal -> immediate OS runtime permission prompt.
+    if (val) {
+      try {
+        await ensureLocationPermissionWithDisclosure(confirmLocationDisclosure);
+      } catch {}
+    }
+
     onlineInFlightRef.current = true;
     setTogglingOnline(true);
     setOnlineLocal(val);
@@ -274,6 +328,7 @@ export default function OrdersScreen() {
     setAccepting(order.id);
     try {
       await acceptOrder(order.id);
+      playDriverStatusChime('accepted');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // Commission is now deferred: it is charged 15 minutes after acceptance by the
       // backend (skipped during the free trial). So we DON'T deduct the balance here.
@@ -413,16 +468,45 @@ export default function OrdersScreen() {
               )}
             </View>
           </View>
+          {!!item.landmark && (
+            <View style={{ marginTop: 6, marginLeft: 30 }}>
+              <Text style={styles.landmarkText} numberOfLines={2}>
+                📍 {t('order.landmarkLabel')}: {item.landmark}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Qo'shimcha talablar — prominent, right under the route so the driver clearly
-            sees special requirements before accepting. */}
-        {(item.female_only || item.has_roof_rack) && (
+        {/* Tumanlararo badges: Transit match, Front seat, Pickup type (Mahalla/Pitak), Parcel payer */}
+        {(item.corridor_match === 'transit' ||
+          item.front_seat ||
+          item.pickup_type ||
+          item.female_only ||
+          item.has_roof_rack ||
+          (isParcel && item.parcel_payer)) && (
           <View style={styles.extrasBlock}>
-            <IconText name="history" size={12} color="#B45309" textStyle={styles.extrasTitle}>
-              {t('more.extras')}
-            </IconText>
-            <View style={styles.extrasRow}>
+            <View style={[styles.extrasRow, { marginTop: 0 }]}>
+              {item.corridor_match === 'transit' && (
+                <View style={[styles.extraTag, { backgroundColor: '#DBEAFE', borderColor: '#3B82F6' }]}>
+                  <Text style={[styles.extraTagText, { color: '#1D4ED8' }]}>
+                    🛣 {t('order.corridorTransitBadge')}
+                  </Text>
+                </View>
+              )}
+              {item.front_seat && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>💺 {t('order.frontSeatBadge')}</Text>
+                </View>
+              )}
+              {item.pickup_type && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>
+                    {item.pickup_type === 'pitak'
+                      ? `🚏 ${t('order.pickupPitakBadge')}`
+                      : `🏠 ${t('order.pickupDoorBadge')}`}
+                  </Text>
+                </View>
+              )}
               {item.female_only && (
                 <View style={styles.extraTag}>
                   <IconText name="female" size={12} color="#B45309" textStyle={styles.extraTagText}>
@@ -437,6 +521,18 @@ export default function OrdersScreen() {
                   </IconText>
                 </View>
               )}
+              {isParcel && item.parcel_payer && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>
+                    💳{' '}
+                    {t(
+                      item.parcel_payer === 'recipient'
+                        ? 'order.parcelPayerRecipient'
+                        : 'order.parcelPayerSender'
+                    )}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -445,15 +541,15 @@ export default function OrdersScreen() {
           <IconText name="profile" size={13} color={colors.textSecondary} textStyle={styles.cardInfoText}>
             {item.passenger_name || t('more.passenger')}
           </IconText>
+          {isParcel && item.parcel_recipient_name ? (
+            <IconText name="parcel" size={13} color={colors.textSecondary} textStyle={styles.cardInfoText}>
+              {t('order.parcelRecipient')}: {item.parcel_recipient_name}
+            </IconText>
+          ) : null}
           <IconText name="clock" size={13} color={colors.textSecondary} textStyle={styles.cardInfoText}>
-            {/* A parcel is sent, not "departed" — same distinction the passenger app makes. */}
             {t(item.service_type === 'parcel' ? 'more.dispatch' : 'more.departure')}
             : {formatDepartureTime(item.departure_time, t)}
           </IconText>
-          {/* The fare is what the driver is deciding on, so it gets its own emphasised row
-              rather than sharing the muted styling of the metadata above it. A parcel has
-              no fare to show — its price is agreed with the sender — so it says so
-              instead of printing a passenger count that means nothing for a parcel. */}
           <View style={styles.fareRow}>
             <Icon
               name={isParcel ? 'parcel' : 'people'}
@@ -461,8 +557,6 @@ export default function OrdersScreen() {
               color={colors.textSecondary}
             />
             {isParcel ? (
-              // `more.negotiable` ("Kelishiladi"), not `more.parcelNegotiable`
-              // ("Pochta · Narx: Kelishiladi") — the header already says "Pochta".
               <Text style={styles.fareNegotiable}>{t('more.negotiable')}</Text>
             ) : (
               <Text style={styles.fareText}>
@@ -525,11 +619,30 @@ export default function OrdersScreen() {
     );
   };
 
+  useEffect(() => {
+    AsyncStorage.getItem(GUIDE_SEEN_KEY)
+      .then((seen) => {
+        if (seen !== 'true' || (driver && (driver.total_orders || 0) === 0 && seen !== 'dismissed')) {
+          setShowGuideBanner(true);
+        } else {
+          setShowGuideBanner(false);
+        }
+      })
+      .catch(() => {});
+  }, [driver]);
+
+  const dismissGuideBanner = async () => {
+    setShowGuideBanner(false);
+    try {
+      await AsyncStorage.setItem(GUIDE_SEEN_KEY, 'dismissed');
+    } catch {}
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header — title + sleek online/offline pill */}
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.title}>{t('home.available')}</Text>
           {/* Surface realtime health. The "Onlayn" pill reflects the driver's own toggle,
               not the socket, so a dead connection used to look identical to a quiet night:
@@ -542,37 +655,77 @@ export default function OrdersScreen() {
             <Text style={styles.headerSub}>Sarix Go Driver</Text>
           )}
         </View>
-        <View style={[styles.onlinePill, onlineEnabled && styles.onlinePillActive]}>
-          <View
-            style={[
-              styles.statusDot,
-              { backgroundColor: onlineEnabled ? colors.success : colors.textMuted },
-            ]}
-          />
-          <Text style={[styles.onlineLabel, onlineEnabled && styles.onlineLabelActive]}>
-            {onlineEnabled ? t('home.online') : t('home.offline')}
-          </Text>
-          <Switch
-            value={onlineEnabled}
-            onValueChange={toggleOnline}
-            disabled={!isVerified || togglingOnline}
-            trackColor={{ false: colors.border, true: colors.success }}
-            thumbColor={colors.white}
-            accessibilityRole="switch"
-            accessibilityLabel={t('more.a11yOnlineToggle')}
-            accessibilityHint={
-              isVerified
-                ? t('more.a11yOnlineToggleHint')
-                : t('more.a11yOnlineToggleLocked')
-            }
-            accessibilityState={{
-              checked: onlineEnabled,
-              disabled: !isVerified || togglingOnline,
-              busy: togglingOnline,
-            }}
-          />
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.guideHeaderBtn}
+            onPress={() => router.push('/guide')}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={t('guide.title')}
+          >
+            <Icon name="book" size={18} color={colors.primary} />
+          </TouchableOpacity>
+          <View style={[styles.onlinePill, onlineEnabled && styles.onlinePillActive]}>
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: onlineEnabled ? colors.success : colors.textMuted },
+              ]}
+            />
+            <Text style={[styles.onlineLabel, onlineEnabled && styles.onlineLabelActive]}>
+              {onlineEnabled ? t('home.online') : t('home.offline')}
+            </Text>
+            <Switch
+              value={onlineEnabled}
+              onValueChange={toggleOnline}
+              disabled={togglingOnline}
+              trackColor={{ false: colors.border, true: colors.success }}
+              thumbColor={colors.white}
+              accessibilityRole="switch"
+              accessibilityLabel={t('more.a11yOnlineToggle')}
+              accessibilityHint={
+                isVerified
+                  ? t('more.a11yOnlineToggleHint')
+                  : t('more.a11yOnlineToggleLocked')
+              }
+              accessibilityState={{
+                checked: onlineEnabled,
+                disabled: togglingOnline,
+                busy: togglingOnline,
+              }}
+            />
+          </View>
         </View>
       </View>
+
+      {/* New driver interactive guide banner */}
+      {showGuideBanner && (
+        <View style={styles.guideBanner}>
+          <TouchableOpacity
+            style={styles.guideBannerMain}
+            onPress={() => router.push('/guide')}
+            activeOpacity={0.85}
+          >
+            <View style={styles.guideBannerIcon}>
+              <Icon name="book" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guideBannerTitle}>{t('guide.bannerTitle')}</Text>
+              <Text style={styles.guideBannerSub}>{t('guide.bannerSub')}</Text>
+            </View>
+            <View style={styles.guideBannerCta}>
+              <Text style={styles.guideBannerCtaText}>{t('guide.menuTitle')}</Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.guideBannerClose}
+            onPress={dismissGuideBanner}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Icon name="close" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Free-trial chip.
           The balance card that used to sit here was removed: this screen is for reading
@@ -590,13 +743,100 @@ export default function OrdersScreen() {
         </View>
       )}
 
+      {/* Feature 1 & 2: Cabin Occupancy & Tumanlararo Corridor / Transit Filter Bar */}
+      <View style={styles.corridorBar}>
+        <View style={styles.corridorTopRow}>
+          <View style={styles.cabinRow}>
+            <Icon name="car" size={15} color={colors.primary} />
+            <Text style={styles.cabinText}>
+              {t('order.cabinStatusTitle')}:{' '}
+              <Text style={{ fontWeight: '800', color: colors.primary }}>
+                {t('order.cabinSeatsFilled', {
+                  occupied: cabinOccupied,
+                  capacity: cabinCapacity,
+                })}
+              </Text>
+            </Text>
+            <View style={styles.seatDots}>
+              {[0, 1, 2, 3].map((i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.seatDot,
+                    i < cabinOccupied && styles.seatDotFilled,
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+
+          {corridorFilter && (
+            <TouchableOpacity
+              style={[
+                styles.transitToggle,
+                includeTransit && styles.transitToggleActive,
+              ]}
+              onPress={() => setIncludeTransit((v) => !v)}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.transitToggleText,
+                  includeTransit && styles.transitToggleTextActive,
+                ]}
+              >
+                🛣 {t('order.corridorIncludeTransit')}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={[
+            { label: t('order.corridorAll'), value: null },
+            { label: 'Termiz → Sariosiyo', value: { from: 'Termiz', to: 'Sariosiyo' } },
+            { label: 'Sariosiyo → Termiz', value: { from: 'Sariosiyo', to: 'Termiz' } },
+            { label: 'Termiz → Denov', value: { from: 'Termiz', to: 'Denov' } },
+            { label: 'Denov → Termiz', value: { from: 'Denov', to: 'Termiz' } },
+            { label: 'Termiz → Uzun', value: { from: 'Termiz', to: 'Uzun' } },
+            { label: 'Uzun → Termiz', value: { from: 'Uzun', to: 'Termiz' } },
+          ]}
+          keyExtractor={(item, idx) => idx.toString()}
+          contentContainerStyle={styles.corridorChips}
+          renderItem={({ item }) => {
+            const active =
+              (!item.value && !corridorFilter) ||
+              (item.value &&
+                corridorFilter?.from === item.value.from &&
+                corridorFilter?.to === item.value.to);
+            return (
+              <TouchableOpacity
+                style={[styles.corridorChip, active && styles.corridorChipActive]}
+                onPress={() => setCorridorFilter(item.value)}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[
+                    styles.corridorChipText,
+                    active && styles.corridorChipTextActive,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+
       {!canReceive && ['verification_pending', 'documents_required'].includes(receiveCode) ? (
         <TouchableOpacity
           style={styles.topupBanner}
-          onPress={() => receiveCode === 'documents_required' && router.push('/driver-info')}
-          disabled={receiveCode !== 'documents_required'}
+          onPress={() => router.push('/driver-documents')}
           activeOpacity={0.85}
-          accessibilityRole={receiveCode === 'documents_required' ? 'button' : undefined}
+          accessibilityRole="button"
           accessibilityLabel={t('docsStatus.a11yBanner')}
           accessibilityHint={
             receiveCode === 'documents_required'
@@ -692,6 +932,45 @@ export default function OrdersScreen() {
           setIncomingOrder(null);
         }}
       />
+
+      {/* Prominent Disclosure Modal required by Google Play User Data policy before
+          requesting runtime location permissions. */}
+      <Modal
+        visible={disclosureVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.disclosureBackdrop}>
+          <View style={styles.disclosureCard}>
+            <View style={styles.disclosureIconWrap}>
+              <Icon name="location" size={32} color={colors.primary} />
+            </View>
+            <Text style={styles.disclosureTitle}>{t('tracking.disclosureTitle')}</Text>
+            <Text style={styles.disclosureBody}>{t('tracking.disclosureBody')}</Text>
+            <View style={styles.disclosureActions}>
+              <TouchableOpacity
+                style={styles.disclosureDenyBtn}
+                onPress={() => answerDisclosure(false)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={t('tracking.disclosureDeny')}
+              >
+                <Text style={styles.disclosureDenyText}>{t('tracking.disclosureDeny')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.disclosureAllowBtn}
+                onPress={() => answerDisclosure(true)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t('tracking.disclosureAllow')}
+              >
+                <Text style={styles.disclosureAllowText}>{t('tracking.disclosureAllow')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -706,6 +985,61 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
     backgroundColor: colors.surface,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  guideHeaderBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guideBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.sm,
+    borderRadius: radius.lg,
+    gap: spacing.xs,
+  },
+  guideBannerMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  guideBannerIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guideBannerTitle: { ...typography.bodyBold, color: colors.text, fontSize: 14 },
+  guideBannerSub: { ...typography.small, color: colors.textSecondary, marginTop: 1 },
+  guideBannerCta: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+  },
+  guideBannerCtaText: { ...typography.small, color: colors.textOnPrimary, fontWeight: '700' },
+  guideBannerClose: {
+    padding: 4,
   },
   title: { ...typography.h1, color: colors.text },
   headerSub: { ...typography.small, color: colors.textMuted, marginTop: 2, fontWeight: '600' },
@@ -926,5 +1260,168 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   pullHint: {
     ...typography.caption,
     color: colors.textMuted,
+  },
+  landmarkText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  corridorBar: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs,
+    gap: 6,
+  },
+  corridorTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  cabinRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 6,
+  },
+  cabinText: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  seatDots: {
+    flexDirection: 'row',
+    gap: 4,
+    marginLeft: 2,
+  },
+  seatDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.border,
+  },
+  seatDotFilled: {
+    backgroundColor: colors.success,
+  },
+  transitToggle: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  transitToggleActive: {
+    backgroundColor: '#DBEAFE',
+    borderColor: '#3B82F6',
+  },
+  transitToggleText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '700',
+  },
+  transitToggleTextActive: {
+    color: '#1D4ED8',
+  },
+  corridorChips: {
+    gap: 6,
+    paddingVertical: 2,
+  },
+  corridorChip: {
+    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  corridorChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  corridorChipText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '700',
+  },
+  corridorChipTextActive: {
+    color: colors.textOnPrimary,
+  },
+  disclosureBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(14, 23, 48, 0.68)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  disclosureCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: colors.background,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  disclosureIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  disclosureTitle: {
+    ...typography.h3,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  disclosureBody: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: spacing.lg,
+  },
+  disclosureActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    width: '100%',
+  },
+  disclosureDenyBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  disclosureDenyText: {
+    ...typography.bodyBold,
+    color: colors.textSecondary,
+  },
+  disclosureAllowBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  disclosureAllowText: {
+    ...typography.bodyBold,
+    color: colors.textOnPrimary,
   },
 });

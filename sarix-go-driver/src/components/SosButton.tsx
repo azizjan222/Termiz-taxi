@@ -45,7 +45,7 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
       let lat: number | undefined;
       let lon: number | undefined;
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await Location.getForegroundPermissionsAsync();
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
           lat = loc.coords.latitude;

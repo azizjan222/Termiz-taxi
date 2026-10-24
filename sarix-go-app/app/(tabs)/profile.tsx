@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Icon, type IconName } from '../../src/components/Icon';
+import { LogoutConfirmModal } from '../../src/components/LogoutConfirmModal';
 import { useAuthStore } from '../../src/store/auth';
 import { uploadProfilePhoto, updateProfile } from '../../src/api/auth';
 import { API_URL } from '../../src/api/client';
@@ -89,6 +90,8 @@ export default function ProfileScreen() {
   const photoInFlightRef = useRef(false);
   const saveInFlightRef = useRef(false);
   const [editVisible, setEditVisible] = useState(false);
+  const [logoutVisible, setLogoutVisible] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -166,17 +169,19 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert(t('profile.logout'), t('common.confirm') + '?', [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('profile.logout'),
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-          router.replace('/(auth)/telegram-login');
-        },
-      },
-    ]);
+    setLogoutVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      setLogoutVisible(false);
+      router.replace('/(auth)/telegram-login');
+    } finally {
+      if (aliveRef.current) setLoggingOut(false);
+    }
   };
 
   const openDriverApp = async () => {
@@ -272,7 +277,11 @@ export default function ProfileScreen() {
           </TouchableOpacity>
 
           <Text style={styles.userName}>{user?.first_name || ''}</Text>
-          <Text style={styles.userPhone}>{user?.phone}</Text>
+          <Text style={styles.userPhone}>
+            {user?.phone?.startsWith('google:')
+              ? user?.contact_phone || 'Google'
+              : user?.phone}
+          </Text>
         </LinearGradient>
 
         {/* TEMP: invite-a-friend promo hidden — re-enable later */}
@@ -343,6 +352,13 @@ export default function ProfileScreen() {
           {t('profile.version', { version: '1.0.0' })}
         </Text>
       </ScrollView>
+
+      <LogoutConfirmModal
+        visible={logoutVisible}
+        loading={loggingOut}
+        onCancel={() => setLogoutVisible(false)}
+        onConfirm={confirmLogout}
+      />
 
       {/* Edit profile modal */}
       <Modal

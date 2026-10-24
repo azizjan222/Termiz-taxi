@@ -58,6 +58,16 @@ export function departureCodeFromRaw(raw?: string | null): DepartureCode | null 
   return RAW_TO_CODE[raw.trim().toLowerCase()] ?? null;
 }
 
+export const SCHEDULE_TIME_SLOTS = ['06:00', '07:00', '08:00', '10:00', '13:00', '16:00', '18:00', '20:00'] as const;
+
+export function resolveDepartureWire(code: DepartureCode, customTime?: string | null): string {
+  const clean = (customTime || '').trim();
+  if (clean) {
+    return code === 'tomorrow' ? `Ertaga ${clean}` : clean;
+  }
+  return DEPARTURE_WIRE[code];
+}
+
 /**
  * Render a raw `departure_time` in the active language.
  * Custom values (a clock time like "14:30", an ISO datetime) are passed through as-is —
@@ -69,5 +79,10 @@ export function formatDepartureTime(
 ): string {
   const code = departureCodeFromRaw(raw);
   if (code) return t(departureKey(code));
-  return raw?.trim() || t('departure.now');
+  const trimmed = raw?.trim() || '';
+  const tomorrowMatch = trimmed.match(/^(ertaga|эртага|завтра|tomorrow)\s+(\d{1,2}:\d{2})$/i);
+  if (tomorrowMatch) {
+    return `${t('departure.tomorrow')} • ${tomorrowMatch[2]}`;
+  }
+  return trimmed || t('departure.now');
 }

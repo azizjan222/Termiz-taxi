@@ -119,6 +119,9 @@ const GLYPHS = {
   idea: 'lightbulb-outline',
   edit: 'pencil',
   run: 'run',
+  google: 'google',
+  school: 'school-outline',
+  shieldCheck: 'shield-check-outline',
 } as const;
 
 export type IconName = keyof typeof GLYPHS;

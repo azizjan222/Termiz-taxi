@@ -118,11 +118,38 @@ def test_automated_payment_routes_are_not_registered():
     paths = {resource.canonical for resource in app.router.resources()}
 
     assert "/api/driver/payments/topup" in paths
+    assert "/api/payments/atmos/create" in paths
+    assert "/api/payments/atmos/webhook" in paths
+    assert "/api/payments/atmos/{id}/verify" in paths
     assert "/api/payments/click/create" not in paths
     assert "/api/payments/click/prepare" not in paths
     assert "/api/payments/click/complete" not in paths
     assert "/api/payments/payme/create" not in paths
     assert "/api/payments/payme/webhook" not in paths
+
+
+def test_atmos_signature_fails_closed_and_verifies_valid_md5(monkeypatch):
+    import hashlib
+
+    from app.api.payments import _verify_atmos_signature
+
+    monkeypatch.setattr(config, "ATMOS_ENABLED", False)
+    monkeypatch.setattr(config, "ATMOS_SECRET_KEY", "")
+    assert _verify_atmos_signature({"sign": "anything"}) is False
+
+    monkeypatch.setattr(config, "ATMOS_ENABLED", True)
+    monkeypatch.setattr(config, "ATMOS_STORE_ID", "1050")
+    monkeypatch.setattr(config, "ATMOS_SECRET_KEY", "super-secret-atmos")
+
+    payload = {
+        "store_id": "1050",
+        "transaction_id": "998877",
+        "invoice": "42",
+        "amount": "5000000",
+    }
+    valid_sign = hashlib.md5(b"1050998877425000000super-secret-atmos").hexdigest()
+    assert _verify_atmos_signature({**payload, "sign": valid_sign}) is True
+    assert _verify_atmos_signature({**payload, "sign": "0" * 32}) is False
 
 
 def test_request_body_limit_admits_a_full_size_screenshot():

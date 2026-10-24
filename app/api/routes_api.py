@@ -123,3 +123,100 @@ async def get_route_price(request: web.Request) -> web.Response:
         })
     finally:
         session.close()
+
+
+async def get_route_live_stats(request: web.Request) -> web.Response:
+    """GET /api/routes/live-stats?from=Termiz&to=Sariosiyo
+    Returns live Pitak / corridor queue stats: online drivers, cars currently filling
+    along this route/corridor, remaining seats in filling cars, and front-seat availability.
+    """
+    from app.models import Driver, Order
+    from app.services.corridor import corridor_relationship
+
+    from_city = request.query.get("from", "").strip()
+    to_city = request.query.get("to", "").strip()
+    if not from_city or not to_city:
+        return web.json_response({"error": "from and to required"}, status=400)
+
+    session = get_session()
+    try:
+        online_drivers = (
+            session.query(Driver)
+            .filter(
+                Driver.is_online == True,  # noqa: E712
+                Driver.is_verified == True,  # noqa: E712
+                Driver.is_blocked == False,  # noqa: E712
+            )
+            .all()
+        )
+        active_orders = (
+            session.query(Order)
+            .filter(
+                Order.status.in_(["accepted", "in_progress"]),
+                Order.service_type != "parcel",
+                Order.driver_id.isnot(None),
+            )
+            .all()
+        )
+        waiting_orders = (
+            session.query(Order)
+            .filter(
+                Order.status == "new",
+                Order.from_city == from_city,
+                Order.to_city == to_city,
+                Order.service_type != "parcel",
+            )
+            .all()
+        )
+
+        by_driver: dict[int, list] = {}
+        for o in active_orders:
+            if o.driver_id:
+                by_driver.setdefault(o.driver_id, []).append(o)
+
+        filling_cars = 0
+        free_seats_in_filling = 0
+        front_seat_open_count = 0
+
+        for d in online_drivers:
+            cap = d.seats or 4
+            d_orders = by_driver.get(d.id, [])
+            if not d_orders:
+                front_seat_open_count += 1
+                continue
+
+            # Check if this driver's active ride is on the same corridor
+            primary = d_orders[0]
+            rel = corridor_relationship(
+                primary.from_city, primary.to_city, from_city, to_city
+            )
+            if rel is None:
+                continue
+
+            occupied = sum(
+                cap if ao.service_type == "full_car" else (ao.person_count or 1)
+                for ao in d_orders
+            )
+            free = max(0, cap - occupied)
+            if free > 0:
+                filling_cars += 1
+                free_seats_in_filling += free
+                if not any(bool(getattr(ao, "front_seat", False)) for ao in d_orders):
+                    front_seat_open_count += 1
+
+        waiting_passengers = sum(
+            (4 if wo.service_type == "full_car" else (wo.person_count or 1))
+            for wo in waiting_orders
+        )
+
+        return web.json_response({
+            "from_city": from_city,
+            "to_city": to_city,
+            "online_drivers": len(online_drivers),
+            "filling_cars": filling_cars,
+            "free_seats_in_filling_cars": free_seats_in_filling,
+            "front_seat_available": front_seat_open_count > 0,
+            "waiting_passengers": waiting_passengers,
+        })
+    finally:
+        session.close()

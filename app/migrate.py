@@ -23,8 +23,8 @@ logger = logging.getLogger("sarixgo.migrate")
 #: migration list had moved on, so a database missing the newer columns was reported
 #: ready. Forgetting to bump it can no longer hide a missing COLUMN either -- the
 #: additive column pass below always runs (see the comment there).
-SCHEMA_VERSION = 2026083101
-SCHEMA_NAME = "declared_constraint_backfill"
+SCHEMA_VERSION = 2026102101
+SCHEMA_NAME = "tumanlararo_order_fields"
 
 
 def _declared_constraints():
@@ -227,6 +227,9 @@ def _apply_schema_migrations() -> int:
         ("orders", "rewards_applied", BOOL_FALSE),
         ("orders", "promo_code", "VARCHAR(30)"),
         ("orders", "promo_discount", "INTEGER DEFAULT 0"),
+        ("orders", "front_seat", BOOL_FALSE),
+        ("orders", "pickup_type", "VARCHAR(20) DEFAULT 'door'"),
+        ("orders", "landmark", "VARCHAR(200)"),
         # OTP codes are now scoped to the flow that issued them.
         ("otp_codes", "purpose", "VARCHAR(20) DEFAULT 'passenger'"),
         # One-time code the bot sends after contact sharing (app login).

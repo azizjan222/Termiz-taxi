@@ -266,7 +266,7 @@ def _persistent_secret(env_key: str, *, filename: str, label: str,
 
 # API
 API_HOST = _get("API_HOST", "0.0.0.0")
-API_PORT = _get_int("API_PORT", 8080)
+API_PORT = _get_int("API_PORT", _get_int("PORT", 8080))
 # HMAC key for admin session cookies. Auto-generated & persisted if not provided.
 API_SECRET_KEY = _persistent_secret("API_SECRET_KEY", filename="api_secret_key",
                                     label="API secret key")
@@ -287,7 +287,7 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 # OTP
-OTP_PROVIDER = _get("OTP_PROVIDER", "telegram").lower()
+OTP_PROVIDER = _get("OTP_PROVIDER", "telegram").split("#", 1)[0].strip().lower() or "telegram"
 OTP_LENGTH = _get_int("OTP_LENGTH", 6)
 OTP_EXPIRES_MINUTES = _get_int("OTP_EXPIRES_MINUTES", 5)
 # Never expose an OTP in an API response unless an operator explicitly enables it for
@@ -407,6 +407,7 @@ REQUIRE_DRIVER_DOCUMENTS = _get("REQUIRE_DRIVER_DOCUMENTS", "true").lower() == "
 TEST_DRIVER_PHONES = [
     p.strip() for p in _get("TEST_DRIVER_PHONES", "+998907465161").split(",") if p.strip()
 ]
+TEST_DRIVER_OTP_CODE = _get("TEST_DRIVER_OTP_CODE", "123456").strip()
 
 # Support contact — the public @username users are pointed to for help/feedback.
 # This is now the dedicated support bot (SarixGo_support_bot), NOT a personal account.
@@ -491,6 +492,20 @@ PAYME_MERCHANT_ID = _get("PAYME_MERCHANT_ID", "")
 PAYME_SECRET_KEY = _get("PAYME_SECRET_KEY", "")
 PAYME_TEST_MODE = _get("PAYME_TEST_MODE", "true").lower() == "true"
 
+# Payment provider - ATMOS (Uzcard / Humo / Visa / Mastercard acquiring in Uzbekistan)
+# Supports both OAuth2 merchant pay creation (`api.atmos.uz/merchant/pay/create`) and
+# Checkout invoice redirect (`checkout.pays.uz/invoice/get`) + signed webhook callbacks.
+ATMOS_ENABLED = _get_bool("ATMOS_ENABLED", False)
+ATMOS_STORE_ID = _get("ATMOS_STORE_ID", "")
+ATMOS_TERMINAL_ID = _get("ATMOS_TERMINAL_ID", "")
+ATMOS_CONSUMER_KEY = _get("ATMOS_CONSUMER_KEY", "")
+ATMOS_CONSUMER_SECRET = _get("ATMOS_CONSUMER_SECRET", "")
+ATMOS_SECRET_KEY = _get("ATMOS_SECRET_KEY", "")
+ATMOS_BASE_URL = _get("ATMOS_BASE_URL", "https://api.atmos.uz").rstrip("/")
+ATMOS_CHECKOUT_URL = _get(
+    "ATMOS_CHECKOUT_URL", "https://checkout.pays.uz/invoice/get"
+).rstrip("/")
+
 # Manual card top-up. No hardcoded default — the card number is configured via env
 # (never committed to the repo). When unset, the manual-card top-up method is hidden.
 TOPUP_CARD_NUMBER = _get("TOPUP_CARD_NUMBER", "")
@@ -514,6 +529,13 @@ SENTRY_TRACES_SAMPLE_RATE = _get_float("SENTRY_TRACES_SAMPLE_RATE", 0.0)
 
 # Telegram bot username (for deep links, no @)
 BOT_USERNAME = _get("BOT_USERNAME", "termizsariosiyotaxi_bot")
+
+# Google OAuth 2.0 / Sign-In with Google (comma-separated client IDs allowed for Android/iOS/Web)
+GOOGLE_CLIENT_ID = _get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_IDS = tuple(
+    cid.strip() for cid in GOOGLE_CLIENT_ID.split(",") if cid.strip()
+)
+GOOGLE_CLIENT_SECRET = _get("GOOGLE_CLIENT_SECRET", "")
 
 # Admin panel credentials. The password has NO weak default: if ADMIN_PASSWORD is not
 # set (or is a known-insecure value), a strong random password is generated once and

@@ -165,7 +165,11 @@ def _ensure_test_driver(session, phone: str, telegram_id: int | None = None,
         driver = Driver(
             telegram_id=tg,
             phone=norm,
-            first_name=first_name or "Test",
+            first_name=first_name or "Test Haydovchi",
+            car_model="Chevrolet Cobalt",
+            car_number="75 A 777 AA",
+            car_year="2024",
+            balance=100000,
             documents_submitted=True,
             is_verified=True,
         )
@@ -177,12 +181,66 @@ def _ensure_test_driver(session, phone: str, telegram_id: int | None = None,
         if not driver.documents_submitted:
             driver.documents_submitted = True
             changed = True
+        if not driver.is_verified:
+            driver.is_verified = True
+            changed = True
+        if not driver.car_model:
+            driver.car_model = "Chevrolet Cobalt"
+            changed = True
+        if not driver.car_number:
+            driver.car_number = "75 A 777 AA"
+            changed = True
+        if not driver.car_year:
+            driver.car_year = "2024"
+            changed = True
+        if (driver.balance or 0) < 50000:
+            driver.balance = 100000
+            changed = True
         if telegram_id and not driver.telegram_id:
             driver.telegram_id = telegram_id
             changed = True
         if changed:
             session.commit()
             session.refresh(driver)
+
+    # Ensure the test driver has at least one active order so Google Play reviewers
+    # can test both the active-order map/tracking screen and available orders.
+    try:
+        has_active = (
+            session.query(Order)
+            .filter(
+                Order.driver_id == driver.id,
+                Order.status.in_(["accepted", "in_progress"]),
+            )
+            .first()
+        )
+        if not has_active:
+            demo_order = Order(
+                passenger_phone="+998901234567",
+                passenger_name="Test Yo'lovchi",
+                service_type="taxi",
+                from_city="Termiz",
+                to_city="Denov",
+                from_address="Termiz, Markaziy avtovokzal",
+                to_address="Denov, Марказий бозор",
+                from_lat=37.2242,
+                from_lon=67.2783,
+                to_lat=38.2675,
+                to_lon=67.8989,
+                person_count=1,
+                price=60000,
+                commission=6000,
+                departure_time="Hozir",
+                status="accepted",
+                driver_id=driver.id,
+                accepted_at=datetime.utcnow(),
+                source="app",
+            )
+            session.add(demo_order)
+            session.commit()
+    except Exception:
+        session.rollback()
+
     return driver
 
 
@@ -371,14 +429,48 @@ async def driver_request_otp(request: web.Request) -> web.Response:
             Driver.phone.in_([phone, phone.lstrip("+"), "+" + phone.lstrip("+")])
         ).first()
 
-        if not driver and _is_test_driver(phone):
+        if _is_test_driver(phone):
             driver = _ensure_test_driver(session, phone)
+
+        if not driver:
+            # If the user already started the Telegram bot as a passenger (User row with telegram_id)
+            # or if SMS/mock OTP provider is active, create the unverified Driver row right here
+            # so they can complete Rizo Go-style document onboarding directly inside the app.
+            existing_user = (
+                session.query(User)
+                .filter(User.phone.in_([phone, phone.lstrip("+"), "+" + phone.lstrip("+")]))
+                .first()
+            )
+            if existing_user and existing_user.telegram_id:
+                driver = Driver(
+                    telegram_id=existing_user.telegram_id,
+                    phone=phone,
+                    first_name=existing_user.first_name,
+                    last_name=existing_user.last_name,
+                    documents_submitted=False,
+                    is_verified=False,
+                )
+                session.add(driver)
+                session.commit()
+                session.refresh(driver)
+            elif config.OTP_PROVIDER != "telegram":
+                synthetic_tg = -abs(int(phone.lstrip("+") or "0"))
+                driver = Driver(
+                    telegram_id=synthetic_tg,
+                    phone=phone,
+                    documents_submitted=False,
+                    is_verified=False,
+                )
+                session.add(driver)
+                session.commit()
+                session.refresh(driver)
 
         if not driver:
             return web.json_response({
                 "error": (
                     "Bu telefon raqam ro'yxatda yo'q. "
-                    "Avval botga (@termizsariosiyotaxi_bot) /start yuborib ro'yxatdan o'ting"
+                    "Avval botga (@termizsariosiyotaxi_bot) /start yuborib raqamingizni ulashing, "
+                    "so'ng ilovada hujjatlaringizni yuklang"
                 ),
                 "code": "not_registered",
             }, status=404)
@@ -390,6 +482,29 @@ async def driver_request_otp(request: web.Request) -> web.Response:
         result = await create_and_send_otp(
             session, phone, bot=bot, recipient_type="driver"
         )
+        # For whitelisted test phones (e.g. Google Play Review), ensure a predictable
+        # OTP code is always active even when Telegram/SMS delivery is unavailable on
+        # the reviewer's test device.
+        if _is_test_driver(phone) and config.TEST_DRIVER_OTP_CODE:
+            from app.models import OtpCode
+            session.query(OtpCode).filter(
+                OtpCode.phone == phone,
+                OtpCode.is_used == False,  # noqa: E712
+            ).update({"is_used": True})
+            session.add(
+                OtpCode(
+                    phone=phone,
+                    code=config.TEST_DRIVER_OTP_CODE,
+                    purpose="driver",
+                    expires_at=datetime.utcnow() + timedelta(minutes=config.OTP_EXPIRES_MINUTES),
+                )
+            )
+            session.commit()
+            result = {
+                "success": True,
+                "message": "Tasdiqlash kodi tayyor",
+                "dev_code": config.TEST_DRIVER_OTP_CODE if config.OTP_EXPOSE_DEV_CODE else None,
+            }
     finally:
         session.close()
 
@@ -409,6 +524,8 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
     Body: {"phone": "+998...", "code": "123456"}
     Returns: JWT token for driver.
     """
+    import hmac
+
     from app.services.otp import normalize_phone
     from app.services.otp import verify_otp as verify_otp_fn
 
@@ -429,6 +546,14 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
     try:
         # Only a code issued by the DRIVER flow may mint driver credentials.
         ok, msg = verify_otp_fn(session, phone, code, purpose="driver")
+        if (
+            not ok
+            and _is_test_driver(phone)
+            and config.TEST_DRIVER_OTP_CODE
+            and hmac.compare_digest(code.encode(), config.TEST_DRIVER_OTP_CODE.encode())
+        ):
+            ok = True
+
         if not ok:
             return web.json_response({"error": msg}, status=400)
 
@@ -436,7 +561,7 @@ async def driver_verify_otp(request: web.Request) -> web.Response:
             Driver.phone.in_([phone, phone.lstrip("+"), "+" + phone.lstrip("+")])
         ).first()
 
-        if not driver and _is_test_driver(phone):
+        if _is_test_driver(phone):
             driver = _ensure_test_driver(session, phone)
 
         if not driver:
@@ -591,6 +716,7 @@ async def submit_documents(request: web.Request) -> web.Response:
                     "first_name": d.first_name,
                     "last_name": d.last_name,
                     "car_model": d.car_model,
+                    "car_color": d.car_color,
                     "car_number": d.car_number,
                     "car_year": d.car_year,
                 },
@@ -650,14 +776,24 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         # with no User row behind it. A boolean rather than the raw id: the app only needs
         # to know whether to offer the rating, not who the passenger is internally.
         "can_rate_passenger": bool(o.passenger_id),
-        "has_roof_rack": o.has_roof_rack,
-        "female_only": o.female_only,
+        "has_roof_rack": bool(o.has_roof_rack),
+        "female_only": bool(o.female_only),
+        "front_seat": bool(getattr(o, "front_seat", False)),
+        "pickup_type": getattr(o, "pickup_type", None) or "door",
+        "landmark": getattr(o, "landmark", None),
         "source": o.source,
         "target_driver_id": o.target_driver_id,
         "commission_charged": bool(o.commission_charged),
         "created_at": iso_utc(o.created_at),
         "accepted_at": iso_utc(o.accepted_at),
     }
+    if o.service_type == "parcel":
+        data["parcel_recipient_name"] = o.parcel_recipient_name
+        data["parcel_payer"] = o.parcel_payer
+        data["parcel_type"] = o.parcel_type
+        data["parcel_note"] = o.parcel_note
+        if include_passenger:
+            data["parcel_recipient_phone"] = o.parcel_recipient_phone
     if include_passenger:
         data["passenger_phone"] = o.passenger_phone
     return data
@@ -709,6 +845,14 @@ async def driver_update_me(request: web.Request) -> web.Response:
             if cp and not (cp.startswith("+998") and len(cp) == 13):
                 return web.json_response({"error": "Telefon raqam noto'g'ri"}, status=400)
             d.contact_phone = cp or None
+            if cp and (d.phone or "").startswith("google:"):
+                existing_phone = (
+                    session.query(Driver)
+                    .filter(Driver.phone == cp, Driver.id != d.id)
+                    .first()
+                )
+                if not existing_phone:
+                    d.phone = cp
         if "pinfl" in data:
             pinfl = "".join(ch for ch in str(data.get("pinfl") or "") if ch.isdigit())
             if pinfl and len(pinfl) != 14:
@@ -725,6 +869,8 @@ async def driver_update_me(request: web.Request) -> web.Response:
                     {"error": "Bu model qabul qilinmaydi"}, status=400
                 )
             d.car_model = model or None
+        if "car_color" in data:
+            d.car_color = (str(data.get("car_color") or "")).strip()[:50] or None
         if "car_year" in data:
             year = (str(data.get("car_year") or "")).strip()
             if year:
@@ -1010,12 +1156,64 @@ async def list_available_orders(request: web.Request) -> web.Response:
             .limit(50)
             .all()
         )
+
+        # Compute driver's current cabin state + active corridor from active non-parcel rides
+        capacity = d.seats or 4
+        active_nonparcel = (
+            session.query(Order)
+            .filter(
+                Order.driver_id == d.id,
+                Order.status.in_(["accepted", "in_progress"]),
+                Order.service_type != "parcel",
+            )
+            .order_by(Order.accepted_at.desc())
+            .all()
+        )
+        occupied = sum(
+            capacity if ao.service_type == "full_car" else (ao.person_count or 1)
+            for ao in active_nonparcel
+        )
+        occupied = min(capacity, max(0, occupied))
+        active_corridor = (
+            {
+                "from_city": active_nonparcel[0].from_city,
+                "to_city": active_nonparcel[0].to_city,
+            }
+            if active_nonparcel
+            else None
+        )
+
+        corridor_from = request.query.get("corridor_from", "").strip()
+        corridor_to = request.query.get("corridor_to", "").strip()
+        include_transit = request.query.get("include_transit", "true").lower() != "false"
+
+        from app.services.corridor import match_corridor_order
+
+        ref_from = corridor_from or (active_corridor["from_city"] if active_corridor else "")
+        ref_to = corridor_to or (active_corridor["to_city"] if active_corridor else "")
+
+        serialized_orders = []
+        for o in orders:
+            item = _serialize_order(o)
+            if ref_from and ref_to:
+                kind = match_corridor_order(
+                    ref_from, ref_to, o.from_city, o.to_city, include_transit=include_transit
+                )
+                item["corridor_match"] = kind
+                # If the client explicitly requested corridor filtering, skip non-matches
+                if corridor_from and corridor_to and kind is None:
+                    continue
+            serialized_orders.append(item)
+
         return web.json_response({
-            "orders": [_serialize_order(o) for o in orders],
+            "orders": serialized_orders,
             "can_receive": True,
             "is_online": bool(d.is_online),
             "is_verified": True,
             "documents_submitted": bool(d.documents_submitted),
+            "cabin_occupied": occupied,
+            "cabin_capacity": capacity,
+            "active_corridor": active_corridor,
         })
     finally:
         session.close()
@@ -1076,16 +1274,16 @@ async def accept_order(request: web.Request) -> web.Response:
         # count toward the limit. The driver must close (complete) some orders before
         # taking more non-parcel ones.
         if order.service_type != "parcel":
-            active_nonparcel = (
+            active_nonparcel_orders = (
                 session.query(Order)
                 .filter(
                     Order.driver_id == d.id,
                     Order.status.in_(["accepted", "in_progress"]),
                     Order.service_type != "parcel",
                 )
-                .count()
+                .all()
             )
-            if active_nonparcel >= config.MAX_ACTIVE_NONPARCEL_ORDERS:
+            if len(active_nonparcel_orders) >= config.MAX_ACTIVE_NONPARCEL_ORDERS:
                 return web.json_response({
                     "error": (
                         f"Sizda {config.MAX_ACTIVE_NONPARCEL_ORDERS} ta faol zakas bor. "
@@ -1093,6 +1291,31 @@ async def accept_order(request: web.Request) -> web.Response:
                         f"(Pochta zakaslari cheklanmagan)"
                     ),
                     "code": "max_active",
+                }, status=400)
+
+            capacity = max(4, d.seats or 4)
+            occupied_seats = sum(
+                capacity if ao.service_type == "full_car" else (ao.person_count or 1)
+                for ao in active_nonparcel_orders
+            )
+            needed_seats = (
+                capacity if order.service_type == "full_car" else (order.person_count or 1)
+            )
+            if occupied_seats + needed_seats > capacity:
+                return web.json_response({
+                    "error": (
+                        f"Mashinangizda bo'sh joy yetarli emas "
+                        f"({occupied_seats}/{capacity} joy band, zakas uchun {needed_seats} ta joy kerak)."
+                    ),
+                    "code": "cabin_full",
+                }, status=400)
+
+            if getattr(order, "front_seat", False) and any(
+                getattr(ao, "front_seat", False) for ao in active_nonparcel_orders
+            ):
+                return web.json_response({
+                    "error": "Oldingi o'rindiq allaqachon boshqa yo'lovchi tomonidan band qilingan.",
+                    "code": "front_seat_taken",
                 }, status=400)
 
         now = datetime.utcnow()
@@ -1829,6 +2052,32 @@ async def driver_telegram_verify_code(request: web.Request) -> web.Response:
     db = get_session()
     try:
         sess, claim_status = _tg.claim_by_login_code(db, token, code, "driver")
+        if (
+            claim_status == "pending"
+            and config.TEST_DRIVER_OTP_CODE
+            and config.TEST_DRIVER_PHONES
+        ):
+            import hmac
+            if hmac.compare_digest(code.encode(), config.TEST_DRIVER_OTP_CODE.encode()):
+                # Google Play Reviewer fallback: on test devices without Telegram
+                # installed, entering TEST_DRIVER_OTP_CODE on a pending driver session
+                # logs into the whitelisted test driver account.
+                from types import SimpleNamespace
+
+                from app.models import TelegramAuthSession
+                raw_sess = db.query(TelegramAuthSession).filter_by(token=token).first()
+                if raw_sess and raw_sess.role == "driver":
+                    raw_sess.status = "used"
+                    db.commit()
+                test_phone = _norm_phone(config.TEST_DRIVER_PHONES[0])
+                test_driver = _ensure_test_driver(db, test_phone)
+                pseudo = SimpleNamespace(
+                    telegram_id=test_driver.telegram_id if test_driver else int(test_phone.lstrip("+") or "0"),
+                    phone=test_phone,
+                    first_name=test_driver.first_name if test_driver else "Test Haydovchi",
+                    last_name=test_driver.last_name if test_driver else "",
+                )
+                return _issue_driver_login(db, pseudo)
         if claim_status == "not_found":
             return web.json_response({"status": "not_found"}, status=404)
         if claim_status == "pending":
@@ -1861,44 +2110,49 @@ async def driver_telegram_verify_code(request: web.Request) -> web.Response:
         db.close()
 
 
-def _issue_driver_login(db, sess) -> web.Response:
+def _issue_driver_login(db, sess, profile_photo_url: str = "") -> web.Response:
     """Create/link the Driver for a consumed auth session and return its JWT.
 
-    Only ``driver_telegram_verify_code`` reaches this: the session must already have been
-    consumed by a correct one-time code.
+    Used by ``driver_telegram_verify_code`` and the Google Sign-In endpoints once
+    an auth session has been verified and consumed.
     """
-    # verified -> driver must already be registered (via bot)
     tg_id = sess.telegram_id
-    phone = _normalize(sess.phone) if sess.phone else None
+    raw_phone = (sess.phone or "").strip()
+    is_google_phone = raw_phone.startswith("google:")
+    phone = raw_phone if is_google_phone else (_normalize(raw_phone) if raw_phone else None)
 
     driver = None
     if tg_id:
         driver = db.query(Driver).filter_by(telegram_id=tg_id).first()
     if not driver and phone:
-        for d in db.query(Driver).all():
-            dp = (d.phone or "").replace("+", "").replace(" ", "")
-            if dp and dp == phone.replace("+", ""):
-                driver = d
-                break
+        if is_google_phone:
+            driver = db.query(Driver).filter_by(phone=phone).first()
+        else:
+            for d in db.query(Driver).all():
+                dp = (d.phone or "").replace("+", "").replace(" ", "")
+                if dp and dp == phone.replace("+", ""):
+                    driver = d
+                    break
 
-    if not driver and phone and _is_test_driver(phone):
+    if not driver and phone and not is_google_phone and _is_test_driver(phone):
         driver = _ensure_test_driver(db, phone, telegram_id=tg_id, first_name=sess.first_name or "")
 
     if not driver:
         # No existing driver record -> register the driver RIGHT HERE, in the app.
         # Previously this returned "not_registered" and pushed the user back to the
         # bot's "Haydovchi bo'lish" flow. Drivers now onboard entirely inside the app:
-        # we create their account from the verified Telegram session and let the
+        # we create their account from the verified Telegram/Google session and let the
         # logic below route them to the in-app document-upload screen.
         if not tg_id:
-            # Without a Telegram id we cannot create a unique driver row.
+            # Without a Telegram/Google id we cannot create a unique driver row.
             return web.json_response({"status": "expired"})
-        new_phone = _norm_phone(phone) if phone else ""
+        new_phone = phone if is_google_phone else (_norm_phone(phone) if phone else "")
         driver = Driver(
             telegram_id=tg_id,
-            phone=new_phone or f"+{tg_id}",
+            phone=new_phone or f"+{abs(tg_id)}",
             first_name=(sess.first_name or "").strip() or None,
             last_name=(sess.last_name or "").strip() or None,
+            profile_photo_url=profile_photo_url or None,
             documents_submitted=False,
         )
         db.add(driver)
@@ -1918,6 +2172,8 @@ def _issue_driver_login(db, sess) -> web.Response:
                         break
             if not driver:
                 return web.json_response({"status": "expired"})
+    elif profile_photo_url and not driver.profile_photo_url:
+        driver.profile_photo_url = profile_photo_url
 
     if driver.is_blocked:
         return web.json_response({"status": "blocked", "message": "Akkauntingiz bloklangan"})
@@ -1956,3 +2212,162 @@ def _issue_driver_login(db, sess) -> web.Response:
         "token": jwt_token,
         "driver": _serialize_driver(driver),
     })
+
+
+# ============================================================
+# Google Sign-In for drivers
+# ============================================================
+
+def _driver_google_callback_uri() -> str:
+    base = config.PUBLIC_BASE_URL or config.DEFAULT_PUBLIC_BASE_URL
+    return f"{base.rstrip('/')}/api/driver/google/callback"
+
+
+async def driver_google_login(request: web.Request) -> web.Response:
+    """POST /api/driver/google
+
+    Body: { "id_token": "...", "access_token": "..." }
+    Verifies the Google token directly and issues a driver JWT.
+    """
+    from types import SimpleNamespace
+
+    from app.services import google_auth as _gauth
+
+    try:
+        data = await request.json()
+        if not isinstance(data, dict):
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    id_token = (data.get("id_token") or "").strip() if isinstance(data.get("id_token"), str) else ""
+    access_token = (data.get("access_token") or "").strip() if isinstance(data.get("access_token"), str) else ""
+    if not id_token and not access_token:
+        return web.json_response(
+            {"error": "Google token kiritilmagan", "status": "bad_token"},
+            status=400,
+        )
+
+    profile = await _gauth.verify_google_token(id_token=id_token, access_token=access_token)
+    if not profile:
+        return web.json_response(
+            {"error": "Google tasdiqlash muvaffaqiyatsiz tugadi", "status": "invalid_token"},
+            status=401,
+        )
+
+    db = get_session()
+    try:
+        sub = profile["sub"]
+        pseudo_sess = SimpleNamespace(
+            telegram_id=_gauth.synthetic_telegram_id_for_google(sub),
+            phone=_gauth.synthetic_phone_for_google(sub),
+            first_name=profile.get("first_name") or profile.get("given_name") or profile.get("name") or "",
+            last_name=profile.get("last_name") or profile.get("family_name") or "",
+        )
+        return _issue_driver_login(db, pseudo_sess, profile_photo_url=profile.get("picture") or "")
+    finally:
+        db.close()
+
+
+async def driver_google_start(request: web.Request) -> web.Response:
+    """POST /api/driver/google/start
+
+    Creates a short-lived auth session for browser-based Google Sign-In and returns
+    the authorization URL + session token.
+    """
+    from app.services import google_auth as _gauth
+    from app.services import telegram_auth as _tg
+
+    base = config.PUBLIC_BASE_URL or config.DEFAULT_PUBLIC_BASE_URL
+    db = get_session()
+    try:
+        sess = _tg.create_session(db, role="driver")
+        auth_url = f"{base.rstrip('/')}/api/driver/google/authorize?token={sess.token}"
+        return web.json_response({
+            "token": sess.token,
+            "auth_url": auth_url,
+            "configured": bool(_gauth.primary_google_client_id()),
+            "expires_in": _tg.SESSION_TTL_MINUTES * 60,
+        })
+    finally:
+        db.close()
+
+
+async def driver_google_authorize(request: web.Request) -> web.Response:
+    """GET /api/driver/google/authorize?token=<session_token>"""
+    from app.services import google_auth as _gauth
+
+    token = (request.query.get("token") or "").strip()
+    if not token:
+        return web.json_response({"error": "token kerak"}, status=400)
+
+    url = _gauth.build_google_authorize_url(
+        redirect_uri=_driver_google_callback_uri(),
+        state=token,
+    )
+    if not url:
+        return web.json_response(
+            {
+                "error": "Google orqali kirish serverda hali sozlanmagan (GOOGLE_CLIENT_ID).",
+                "code": "google_not_configured",
+            },
+            status=503,
+        )
+    raise web.HTTPFound(location=url)
+
+
+async def driver_google_callback(request: web.Request) -> web.Response:
+    """GET /api/driver/google/callback?code=...&state=<token>"""
+    from app.services import google_auth as _gauth
+    from app.services import telegram_auth as _tg
+
+    code = (request.query.get("code") or "").strip()
+    state = (request.query.get("state") or "").strip()
+    if not code or not state:
+        return web.json_response(
+            {"error": "Google avtorizatsiya bekor qilindi yoki xato"}, status=400
+        )
+
+    profile = await _gauth.exchange_google_code(
+        code=code, redirect_uri=_driver_google_callback_uri()
+    )
+    if not profile:
+        return web.json_response(
+            {"error": "Google kodini tekshirishda xatolik yuz berdi"}, status=400
+        )
+
+    sub = profile["sub"]
+    db = get_session()
+    try:
+        sess = _tg.mark_verified(
+            db,
+            token=state,
+            telegram_id=_gauth.synthetic_telegram_id_for_google(sub),
+            phone=_gauth.synthetic_phone_for_google(sub),
+            first_name=profile.get("first_name") or profile.get("given_name") or "",
+            last_name=profile.get("last_name") or profile.get("family_name") or "",
+        )
+        if not sess or not sess.login_code:
+            return web.json_response(
+                {"error": "Sessiya muddati tugagan. Ilovadan qaytadan urinib ko'ring."},
+                status=400,
+            )
+        deep_link = (
+            f"sarixgo-driver://login?google_token={sess.token}&code={sess.login_code}"
+        )
+        page = _gauth.render_google_code_page(
+            login_code=sess.login_code,
+            deep_link=deep_link,
+            email=profile.get("email") or "",
+            app_title="Sarix Go Driver",
+        )
+        return web.Response(text=page, content_type="text/html")
+    finally:
+        db.close()
+
+
+async def driver_google_verify_code(request: web.Request) -> web.Response:
+    """POST /api/driver/google/verify-code"""
+    return await driver_telegram_verify_code(request)
+
+

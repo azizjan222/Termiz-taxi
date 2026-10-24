@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Linking, Alert, Platform, ActivityIndicator, Image,
+  Linking, Alert, Platform, ActivityIndicator, Image, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +17,7 @@ import {
 
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { listMyActive, completeOrder, startTrip, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
+import { playDriverStatusChime } from '../../src/services/notifications';
 import { API_URL } from '../../src/api/client';
 import { useRealtimeStore } from '../../src/store/realtime';
 import YandexMap, { type YandexMapHandle } from '../../src/components/YandexMap';
@@ -222,33 +223,43 @@ export default function OrderDetailScreen() {
   const mmss = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-  // Prominent disclosure for background location, shown BEFORE the OS prompt.
+  // Prominent disclosure for location & background location, shown BEFORE any OS prompt.
   //
-  // This is a Google Play requirement, not a UX nicety: an app that asks for
-  // ACCESS_BACKGROUND_LOCATION without first disclosing, in the app itself, what is
-  // collected and why can have its updates blocked or be removed from the store. It has to
-  // say what data, while what is happening, and for whose benefit — hence the wording in
-  // `tracking.disclosure*` rather than a generic "we need location" line.
+  // This is a strict Google Play requirement: an app that requests location permissions
+  // (including ACCESS_FINE_LOCATION and ACCESS_BACKGROUND_LOCATION) must first display a
+  // prominent in-app disclosure explaining what data is collected, how it is used, and that
+  // it is collected even when the app is closed or not in use.
   //
-  // Resolves false on dismiss (Android back button closes the dialog without invoking any
-  // button), because "did not agree" is the only safe reading of an unanswered disclosure.
+  // Rendered as a dedicated non-dismissible Modal so the driver must make an explicit choice
+  // ("Roziman" / "Rad etish") and cannot accidentally bypass or dismiss it via back tap.
+  const [disclosureVisible, setDisclosureVisible] = useState(false);
+  const disclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
+
+  const answerDisclosure = (accepted: boolean) => {
+    setDisclosureVisible(false);
+    const resolve = disclosureResolverRef.current;
+    disclosureResolverRef.current = null;
+    if (resolve) {
+      // Allow the React Native <Modal> native DialogWindow to detach completely on Android
+      // before launching the OS runtime permission dialog right after.
+      setTimeout(() => resolve(accepted), 220);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (disclosureResolverRef.current) {
+        const resolve = disclosureResolverRef.current;
+        disclosureResolverRef.current = null;
+        resolve(false);
+      }
+    };
+  }, []);
+
   const confirmBackgroundTracking = () =>
     new Promise<boolean>((resolve) => {
-      let settled = false;
-      const answer = (value: boolean) => {
-        if (settled) return;
-        settled = true;
-        resolve(value);
-      };
-      Alert.alert(
-        t('tracking.disclosureTitle'),
-        t('tracking.disclosureBody'),
-        [
-          { text: t('tracking.disclosureDeny'), style: 'cancel', onPress: () => answer(false) },
-          { text: t('tracking.disclosureAllow'), onPress: () => answer(true) },
-        ],
-        { onDismiss: () => answer(false) },
-      );
+      disclosureResolverRef.current = resolve;
+      setDisclosureVisible(true);
     });
 
   // While the order is active, continuously watch the driver's GPS position. The
@@ -283,8 +294,7 @@ export default function OrderDetailScreen() {
       try {
         // Ask the background-location service first. It shows the prominent
         // in-app disclosure BEFORE any runtime location permission prompt, as required
-        // by Google Play. If background access is declined, foreground tracking can
-        // still continue after the foreground permission is requested below.
+        // by Google Play.
         await startBackgroundLocation({
           orderId: id,
           labels: {
@@ -295,7 +305,11 @@ export default function OrderDetailScreen() {
         });
         if (torndown) return;
 
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        // Read-only check: NEVER call `requestForegroundPermissionsAsync()` here, because if
+        // the driver declined the prominent disclosure above, calling `request...` would
+        // still pop up the OS runtime permission dialog without consent (violating Google
+        // Play's Prominent Disclosure and Consent policy).
+        const { status } = await Location.getForegroundPermissionsAsync();
         if (status !== 'granted' || torndown) return;
 
         const sub = await Location.watchPositionAsync(
@@ -436,6 +450,7 @@ export default function OrderDetailScreen() {
             setLoading(true);
             try {
               const res = await startTrip(parseInt(id));
+              playDriverStatusChime('started');
               if (res?.order) setOrder(res.order);
             } catch (e: any) {
               Alert.alert(t('common.error'), describeApiError(e, t));
@@ -464,6 +479,7 @@ export default function OrderDetailScreen() {
             const passengerName = order?.passenger_name || '';
             const canRate = order?.can_rate_passenger === true;
             await completeOrder(parseInt(String(id)));
+            playDriverStatusChime('completed');
             // Claim this exit BEFORE the poll can notice the order left the active list,
             // so the `gone` handler above stays quiet.
             completedByMeRef.current = true;
@@ -717,12 +733,65 @@ export default function OrderDetailScreen() {
           </View>
         </View>
 
+        {/* Parcel Recipient Card (if parcel has recipient info) */}
+        {isParcel && (order.parcel_recipient_name || order.parcel_recipient_phone || order.parcel_payer) && (
+          <View style={[styles.card, { marginTop: spacing.md }]}>
+            <Text style={styles.cardTitle}>{t('order.parcelRecipient')}</Text>
+            <View style={styles.passengerRow}>
+              <View style={styles.avatar}>
+                <Icon name="parcel" size={20} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.passengerName}>
+                  {order.parcel_recipient_name || t('order.parcelRecipient')}
+                </Text>
+                {order.parcel_recipient_phone ? (
+                  <Text style={styles.passengerPhone}>{order.parcel_recipient_phone}</Text>
+                ) : null}
+                {order.parcel_payer ? (
+                  <Text style={[styles.passengerPhone, { color: colors.primary, fontWeight: '700', marginTop: 2 }]}>
+                    {t(
+                      order.parcel_payer === 'recipient'
+                        ? 'order.parcelPayerRecipient'
+                        : 'order.parcelPayerSender'
+                    )}
+                  </Text>
+                ) : null}
+              </View>
+              {order.parcel_recipient_phone ? (
+                <TouchableOpacity
+                  style={styles.callBtn}
+                  onPress={() => Linking.openURL(`tel:${order.parcel_recipient_phone}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('order.callRecipient')}
+                >
+                  <Icon name="phone" size={22} color={colors.textOnPrimary} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        )}
+
         {/* Qo'shimcha talablar (extras) — placed high, right under the passenger, so the
-            driver immediately sees special requirements (female in cabin, roof rack). */}
-        {(order.female_only || order.has_roof_rack) && (
+            driver immediately sees special requirements (female in cabin, roof rack, front seat, pickup type). */}
+        {(order.female_only || order.has_roof_rack || order.front_seat || order.pickup_type) && (
           <View style={[styles.card, { marginTop: spacing.md }]}>
             <Text style={styles.cardTitle}>{t('more.extras')}</Text>
             <View style={styles.extrasRow}>
+              {order.front_seat && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>💺 {t('order.frontSeatBadge')}</Text>
+                </View>
+              )}
+              {order.pickup_type && (
+                <View style={styles.extraTag}>
+                  <Text style={styles.extraTagText}>
+                    {order.pickup_type === 'pitak'
+                      ? `🚏 ${t('order.pickupPitakBadge')}`
+                      : `🏠 ${t('order.pickupDoorBadge')}`}
+                  </Text>
+                </View>
+              )}
               {order.female_only && (
                 <View style={styles.extraTag}>
                   <IconText name="female" size={12} color="#B45309" textStyle={styles.extraTagText}>
@@ -768,10 +837,20 @@ export default function OrderDetailScreen() {
               {shortenAddress(order.to_address, order.to_city)}
             </Text>
           </View>
+          {order.landmark ? (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <Text style={styles.label}>📍 {t('order.landmarkLabel')}</Text>
+                <Text style={[styles.value, { color: colors.primary }]} numberOfLines={2}>
+                  {order.landmark}
+                </Text>
+              </View>
+            </>
+          ) : null}
           <View style={styles.divider} />
           <View style={styles.row}>
             <IconText name="clock" size={12} color={colors.textSecondary} textStyle={styles.label}>
-              {/* A parcel is sent, not "departed". */}
               {t(isParcel ? 'more.dispatchTime' : 'more.departureTime')}
             </IconText>
             <Text style={styles.value}>{formatDepartureTime(order.departure_time, t)}</Text>
@@ -789,7 +868,10 @@ export default function OrderDetailScreen() {
               <IconText name="people" size={12} color={colors.textSecondary} textStyle={styles.label}>
                 {t('order.persons')}
               </IconText>
-              <Text style={styles.value}>{order.person_count}</Text>
+              <Text style={styles.value}>
+                {order.person_count}
+                {order.front_seat ? ` (${t('order.frontSeatBadge')})` : ''}
+              </Text>
             </View>
           )}
           <View style={styles.divider} />
@@ -968,12 +1050,127 @@ export default function OrderDetailScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Prominent Disclosure Modal required by Google Play User Data policy before
+          requesting runtime location / background location permissions. */}
+      <Modal
+        visible={disclosureVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          // Do not dismiss on hardware back press without an explicit choice;
+          // Google Play requires affirmative user action (accept or decline).
+        }}
+      >
+        <View style={styles.disclosureBackdrop}>
+          <View style={styles.disclosureCard}>
+            <View style={styles.disclosureIconWrap}>
+              <Icon name="location" size={32} color={colors.primary} />
+            </View>
+            <Text style={styles.disclosureTitle}>{t('tracking.disclosureTitle')}</Text>
+            <Text style={styles.disclosureBody}>{t('tracking.disclosureBody')}</Text>
+            <View style={styles.disclosureActions}>
+              <TouchableOpacity
+                style={styles.disclosureDenyBtn}
+                onPress={() => answerDisclosure(false)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={t('tracking.disclosureDeny')}
+              >
+                <Text style={styles.disclosureDenyText}>{t('tracking.disclosureDeny')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.disclosureAllowBtn}
+                onPress={() => answerDisclosure(true)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t('tracking.disclosureAllow')}
+              >
+                <Text style={styles.disclosureAllowText}>{t('tracking.disclosureAllow')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
+  disclosureBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(14, 23, 48, 0.68)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  disclosureCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: colors.white,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    alignItems: 'center',
+    shadowColor: '#0E1730',
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  disclosureIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primary100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  disclosureTitle: {
+    ...typography.h3,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  disclosureBody: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: spacing.lg,
+  },
+  disclosureActions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: spacing.sm,
+  },
+  disclosureDenyBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disclosureDenyText: {
+    ...typography.bodyBold,
+    color: colors.textSecondary,
+  },
+  disclosureAllowBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disclosureAllowText: {
+    ...typography.bodyBold,
+    color: colors.textOnPrimary,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

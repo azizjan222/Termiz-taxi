@@ -56,6 +56,14 @@ export interface Order {
   note?: string | null;
   has_roof_rack: boolean;
   female_only: boolean;
+  front_seat?: boolean;
+  pickup_type?: 'door' | 'pitak';
+  landmark?: string | null;
+  parcel_recipient_name?: string | null;
+  parcel_recipient_phone?: string | null;
+  parcel_payer?: 'sender' | 'recipient' | string | null;
+  parcel_type?: string | null;
+  parcel_note?: string | null;
   source: string;
   created_at: string;
   accepted_at?: string | null;
@@ -73,6 +81,10 @@ export interface Order {
     current_lat?: number | null;
     current_lon?: number | null;
     location_updated_at?: string | null;
+    cabin_occupied?: number;
+    cabin_capacity?: number;
+    cabin_has_female?: boolean;
+    cabin_front_taken?: boolean;
   };
 }
 
@@ -93,6 +105,9 @@ export interface CreateOrderInput {
   note?: string;
   has_roof_rack?: boolean;
   female_only?: boolean;
+  front_seat?: boolean;
+  pickup_type?: 'door' | 'pitak';
+  landmark?: string;
   target_driver_id?: number;
   /**
    * Promo code to redeem with this order. The server recomputes the discount from the
@@ -185,4 +200,24 @@ export async function getRecommendedDrivers(
     { params: { from, to, persons } }
   );
   return response.data.drivers || [];
+}
+
+export interface RouteLiveStats {
+  from_city: string;
+  to_city: string;
+  online_drivers: number;
+  filling_cars: number;
+  free_seats_in_filling_cars: number;
+  front_seat_available: boolean;
+  waiting_passengers: number;
+}
+
+export async function getRouteLiveStats(
+  from: string,
+  to: string
+): Promise<RouteLiveStats> {
+  const response = await api.get<RouteLiveStats>('/api/routes/live-stats', {
+    params: { from, to },
+  });
+  return response.data;
 }

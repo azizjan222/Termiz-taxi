@@ -69,6 +69,17 @@ export const uz = {
     errBadCode: "Kod noto'g'ri",
     errTooManyAttempts: "Juda ko'p urinish. Qaytadan boshlang.",
     errPendingContact: "Avval Telegram'da raqamingizni ulashing",
+    googleLogin: 'Google orqali kirish',
+    googleHint: 'Google akkauntingiz orqali tez va xavfsiz kirish',
+    googleEnterCodeHint: 'Google tasdiqlash sahifasidagi 6 xonali kodni kiriting',
+    reopenGoogle: "Google'ni qayta ochish",
+    googleNotConfigured: "Google orqali kirish hozircha sozlanmagan. Iltimos, Telegram orqali kiring.",
+    orDivider: 'yoki',
+    phoneLabel: 'Telefon raqami orqali kirish',
+    phonePlaceholder: '90 123 45 67',
+    phoneLoginBtn: 'Kod olish',
+    phoneHint: 'Telefon raqamingizni kiriting va tasdiqlash kodi orqali kiring',
+    errInvalidPhone: "To'g'ri telefon raqamini kiriting (9 ta raqam)",
   },
   carPhoto: {
     title: 'Mashina rasmi',
@@ -78,6 +89,9 @@ export const uz = {
     gallery: 'Galereya',
     upload: 'Yuklash',
     uploaded: "Mashina rasmi yuklandi! Admin tasdiqlashi bilan yo'lovchilar ko'radi.",
+    cameraPermissionTitle: 'Kameraga ruxsat kerak',
+    cameraPermissionBody:
+      "Sarix Driver ilovasi mashinangiz rasmini suratga olish va yo'lovchilarga ko'rsatish uchun qurilmangiz kamerasidan foydalanadi.",
     errCameraPermission: 'Kamera ruxsati berilmadi',
     errUpload: "Yuklab bo'lmadi",
   },
@@ -122,6 +136,21 @@ export const uz = {
     commissionAfterDiscount: 'Komissiya (chegirmadan keyin)',
     discountNote: "Chegirma komissiyadan qoplanadi — daromadingiz kamaymaydi",
     mayUseBonus: "Yo'lovchi bonus ishlatishi mumkin. Chegirma komissiyadan qoplanadi, daromadingiz kamaymaydi.",
+    cabinStatusTitle: 'Salon holati',
+    cabinSeatsFilled: '{{occupied}} / {{capacity}} joy band',
+    frontSeatBadge: "Old o'rindiq",
+    pickupDoorBadge: 'Uy oldidan (Mahalla)',
+    pickupPitakBadge: 'Pitakdan / Trassa',
+    landmarkLabel: "Mo'ljal",
+    corridorFilterTitle: "Yo'nalish va Tranzit",
+    corridorAll: 'Barcha tumanlar',
+    corridorIncludeTransit: "Yo'l-yo'lakay tumanlar (Tranzit)",
+    corridorTransitBadge: "Yo'l-yo'lakay (Tranzit)",
+    corridorExactBadge: "To'g'ridan-to'g'ri",
+    parcelRecipient: 'Qabul qiluvchi',
+    parcelPayerSender: "To'lov: Jo'natuvchidan",
+    parcelPayerRecipient: "To'lov: Qabul qiluvchidan",
+    callRecipient: "Qabul qiluvchiga qo'ng'iroq",
   },
   profile: {
     title: 'Profil',
@@ -143,6 +172,10 @@ export const uz = {
     supportHint: 'Telegram orqali yordam',
     topUp: "Balansni to'ldirish",
     topUpHint: 'Bot orqali chek yuboring',
+    logoutConfirmTitle: 'Akkauntdan chiqish',
+    logoutConfirmBody:
+      "Haqiqatan ham akkauntingizdan chiqmoqchimisiz? Chiqishdan so'ng yangi zakaslar haqida bildirishnomalar kelmaydi.",
+    logoutConfirmYes: 'Ha, chiqish',
   },
   stats: {
     title: 'Statistika',
@@ -271,10 +304,23 @@ export const uz = {
     changePhone: "Raqamni o'zgartirish",
     carInfo: "Mashina ma'lumotlari",
     carModel: 'Markasi (modeli)',
+    carColor: 'Mashina rangi',
+    carColorPlaceholder: 'Oq, Qora, Kulrang...',
     carYear: 'Ishlab chiqarilgan yili',
     carNumber: 'Davlat raqami',
-    license: 'Haydovchilik guvohnomasi',
-    techPassport: 'Texnik pasport',
+    pinfl: 'JSHSHIR (PINFL — 14 raqam)',
+    pinflPlaceholder: '14 xonali JSHSHIR raqami',
+    errPinfl: "JSHSHIR 14 ta raqamdan iborat bo'lishi kerak.",
+    license: 'Haydovchilik guvohnomasi (Prava)',
+    techPassport: 'Texnik pasport (Texpasport)',
+    carAndSelfie: 'Avtomobil va haydovchi rasmi',
+    carAndSelfieHint: "Mashina oldidan davlat raqami ko'rinsin, selfida guvohnoma bilan yuzingiz aniq ko'rinsin",
+    slotCarPhoto: 'Mashina old rasmi',
+    guideCarPhoto: "Davlat raqami aniq ko'rinsin",
+    slotDriverSelfie: 'Guvohnoma bilan selfi',
+    guideDriverSelfie: "Yuzingiz va prava ko'rinsin",
+    stepProgress: 'Yuklangan hujjatlar: {{done}} / {{total}}',
+    skipForNow: "Keyinroq yuklash — Ilovaga kirish",
     bothSides: 'Ikkala tomonini ham suratga oling',
     sideFront: 'Old tomoni',
     sideBack: 'Orqa tomoni',
@@ -671,14 +717,54 @@ export const uz = {
     serviceBody: "Yo'lovchi sizni xaritada ko'rib turishi uchun joylashuv yuborilmoqda",
     // Google Play talab qiladigan "prominent disclosure": OS so'rovidan OLDIN ko'rsatiladi.
     // Nima yig'ilishi, qachon, nima uchun va qachon to'xtashi aytilishi shart.
-    disclosureTitle: 'Fon rejimida joylashuv',
+    disclosureTitle: "Joylashuv ma'lumotlariga ruxsat",
     disclosureBody:
-      "Safar davomida joylashuvingiz serverga yuboriladi — ilova yopiq yoki fonda bo'lsa " +
-      "ham. Bu yo'lovchi sizni xaritada kuzatib turishi uchun kerak. Yuborish safar " +
-      "tugashi bilan avtomatik to'xtaydi. Keyingi oynada \u00abDoimo ruxsat berish\u00bb " +
-      'variantini tanlang.',
+      "Sarix Driver ilovasi faol safar davomida yo'lovchiga sizning harakatingizni xaritada " +
+      "jonli ko'rsatish hamda manzilgacha bo'lgan masofani hisoblash uchun joylashuv " +
+      "ma'lumotlarini yig'adi va serverga yuboradi — ilova yopiq bo'lganda yoki " +
+      "ishlatilmayotganda ham. Safar yakunlangach kuzatuv avtomatik to'xtaydi.",
     disclosureAllow: 'Roziman',
     disclosureDeny: 'Rad etish',
+  },
+  guide: {
+    title: "Haydovchi qo'llanmasi",
+    subtitle: "Ilovadan to'g'ri va samarali foydalanish bo'yicha 5 qadam",
+    menuTitle: "Qo'llanma",
+    menuSub: "Yangi haydovchilar uchun yo'riqnoma",
+    bannerTitle: "Yangi haydovchimisiz? Qo'llanmani o'qing",
+    bannerSub: "Zakas qabul qilish, balans va komissiya tartibi haqida qisqacha",
+    loginLink: "Yangi haydovchilar uchun qo'llanma",
+    stepOf: '{{current}} / {{total}} qadam',
+    prevBtn: 'Oldingi',
+    nextBtn: 'Keyingi',
+    finishBtn: 'Tushunarli, boshlash',
+    skipBtn: "O'tkazib yuborish",
+    allStepsTitle: 'Barcha bosqichlar',
+    step1Title: "1. Ro'yxatdan o'tish va hujjatlar",
+    step1Body:
+      "Telegram yoki Google orqali kiring. So'ng mashina rusumi, davlat raqami, ishlab chiqarilgan yili hamda haydovchilik guvohnomasi va texpasportning old-orqa rasmlarini ilova ichida yuklang.",
+    step1Tip:
+      "Maslahat: Hujjat rasmlari yorug' joyda, yozuvlari aniq o'qiladigan qilib olinishi kerak. Admin tekshirib tasdiqlagach zakas olishingiz mumkin.",
+    step2Title: '2. Balans va bepul bonus davri',
+    step2Body:
+      "Yangi haydovchilarga dastlabki sinov davrida komissiyasiz ishlash imkoniyati beriladi. Bepul davr tugagach, zakas qabul qilish uchun hisobingizda minimal balans bo'lishi kerak.",
+    step2Tip:
+      "Maslahat: «Profil → Balansni to'ldirish» bo'limida karta raqamiga pul o'tkazib, to'lov chekini ilova orqali yuboring — birinchi to'lovga +50% bonus beriladi!",
+    step3Title: '3. Onlayn rejim va zakas qabul qilish',
+    step3Body:
+      "Asosiy oynaning yuqori qismidagi «Onlayn» tugmasini yoqing. Yangi zakas tushganda ovozli signal chalinadi va zakas kartasi (yo'nalish, odam soni, narx va komissiya) chiqadi.",
+    step3Tip:
+      "Maslahat: Zakas barcha onlayn haydovchilarga bir vaqtda ko'rinadi — «Qabul qilish» tugmasini birinchi bo'lib bosgan haydovchi zakasni oladi.",
+    step4Title: "4. Yo'lovchini olish va safarni yakunlash",
+    step4Body:
+      "Zakasni qabul qilgach, yo'lovchiga qo'ng'iroq qiling va xarita yoki Navigator orqali uning oldiga boring. Yo'lovchi mashinaga o'tirgach «Yo'lga chiqdik» tugmasini, manzilga yetgach esa «Yakunlash» tugmasini bosing.",
+    step4Tip:
+      "Maslahat: Faol safar vaqtida joylashuvga ruxsat bering — yo'lovchi sizning yaqinlashayotganingizni xaritada jonli ko'rib turadi.",
+    step5Title: '5. Komissiya, bekor qilish va reyting',
+    step5Body:
+      "Komissiya zakas qabul qilinganidan 15 daqiqa o'tib balansdan yechiladi. Agar yo'lovchi bilan kelisha olmasangiz, dastlabki 5 daqiqa ichida komissiyasiz bekor qilishingiz mumkin.",
+    step5Tip:
+      "Maslahat: Safar yakunida yo'lovchini baholang va xushmuomala bo'ling — yuqori reyting yo'lovchilar ishonchini oshiradi. Savol tug'ilsa, AI Yordamchi yoki Yordam xizmatiga yozing.",
   },
   maintenance: {
     title: 'Texnik ishlar olib borilmoqda',
@@ -734,6 +820,17 @@ export const ru = {
     errBadCode: 'Неверный код',
     errTooManyAttempts: 'Слишком много попыток. Начните заново.',
     errPendingContact: 'Сначала поделитесь номером в Telegram',
+    googleLogin: 'Войти через Google',
+    googleHint: 'Быстрый и безопасный вход через аккаунт Google',
+    googleEnterCodeHint: 'Введите 6-значный код со страницы подтверждения Google',
+    reopenGoogle: 'Открыть Google снова',
+    googleNotConfigured: 'Вход через Google пока не настроен. Пожалуйста, войдите через Telegram.',
+    orDivider: 'или',
+    phoneLabel: 'Вход по номеру телефона',
+    phonePlaceholder: '90 123 45 67',
+    phoneLoginBtn: 'Получить код',
+    phoneHint: 'Введите номер телефона для входа по коду подтверждения',
+    errInvalidPhone: 'Введите корректный номер телефона (9 цифр)',
   },
   carPhoto: {
     title: 'Фото машины',
@@ -743,6 +840,9 @@ export const ru = {
     gallery: 'Галерея',
     upload: 'Загрузить',
     uploaded: 'Фото машины загружено! После подтверждения администратором его увидят пассажиры.',
+    cameraPermissionTitle: 'Требуется доступ к камере',
+    cameraPermissionBody:
+      'Приложение Sarix Driver использует камеру устройства, чтобы сделать фото вашего автомобиля для показа пассажирам.',
     errCameraPermission: 'Доступ к камере не предоставлен',
     errUpload: 'Не удалось загрузить',
   },
@@ -772,6 +872,21 @@ export const ru = {
     commissionAfterDiscount: 'Комиссия (после скидки)',
     discountNote: 'Скидка покрывается из комиссии — ваш доход не уменьшается',
     mayUseBonus: 'Пассажир может использовать бонус. Скидка покрывается из комиссии, ваш доход не уменьшается.',
+    cabinStatusTitle: 'Заполненность салона',
+    cabinSeatsFilled: 'Занято {{occupied}} из {{capacity}} мест',
+    frontSeatBadge: 'Переднее место',
+    pickupDoorBadge: 'От дома (Махалля)',
+    pickupPitakBadge: 'С пятака / трассы',
+    landmarkLabel: 'Ориентир',
+    corridorFilterTitle: 'Направление и транзит',
+    corridorAll: 'Все районы',
+    corridorIncludeTransit: 'Попутные районы (Транзит)',
+    corridorTransitBadge: 'По пути (Транзит)',
+    corridorExactBadge: 'Прямой рейс',
+    parcelRecipient: 'Получатель посылки',
+    parcelPayerSender: 'Оплата: Отправитель',
+    parcelPayerRecipient: 'Оплата: Получатель',
+    callRecipient: 'Позвонить получателю',
   },
   profile: {
     title: 'Профиль', name: 'Имя', phone: 'Телефон', car: 'Машина',
@@ -783,6 +898,10 @@ export const ru = {
     aiAssistant: 'AI Помощник', aiAssistantHint: 'Ответит на ваши вопросы',
     support: 'Служба поддержки', supportHint: 'Помощь через Telegram',
     topUp: 'Пополнить баланс', topUpHint: 'Отправьте чек через бот',
+    logoutConfirmTitle: 'Выход из аккаунта',
+    logoutConfirmBody:
+      'Вы действительно хотите выйти из аккаунта? После выхода уведомления о новых заказах приходить не будут.',
+    logoutConfirmYes: 'Да, выйти',
   },
   stats: {
     title: 'Статистика', today: 'Сегодня', week: 'Неделя', month: 'Месяц',
@@ -890,10 +1009,23 @@ export const ru = {
     changePhone: 'Изменить номер',
     carInfo: 'Данные автомобиля',
     carModel: 'Марка (модель)',
+    carColor: 'Цвет автомобиля',
+    carColorPlaceholder: 'Белый, Чёрный, Серый...',
     carYear: 'Год выпуска',
     carNumber: 'Госномер',
+    pinfl: 'ПИНФЛ (14 цифр)',
+    pinflPlaceholder: '14-значный ПИНФЛ',
+    errPinfl: 'ПИНФЛ должен состоять из 14 цифр.',
     license: 'Водительское удостоверение',
     techPassport: 'Техпаспорт',
+    carAndSelfie: 'Фото автомобиля и водителя',
+    carAndSelfieHint: 'Сфотографируйте автомобиль спереди с госномером и сделайте селфи с удостоверением',
+    slotCarPhoto: 'Фото авто спереди',
+    guideCarPhoto: 'Госномер должен быть виден',
+    slotDriverSelfie: 'Селфи с правами',
+    guideDriverSelfie: 'Лицо и права должны быть видны',
+    stepProgress: 'Загружено документов: {{done}} / {{total}}',
+    skipForNow: 'Загрузить позже — Войти в приложение',
     bothSides: 'Сфотографируйте обе стороны',
     sideFront: 'Лицевая сторона',
     sideBack: 'Обратная сторона',
@@ -1286,14 +1418,54 @@ export const ru = {
   tracking: {
     serviceTitle: 'Поездка продолжается',
     serviceBody: 'Местоположение отправляется, чтобы пассажир видел вас на карте',
-    disclosureTitle: 'Местоположение в фоновом режиме',
+    disclosureTitle: 'Доступ к данным о местоположении',
     disclosureBody:
-      'Во время поездки ваше местоположение отправляется на сервер — даже если приложение ' +
-      'закрыто или работает в фоне. Это нужно, чтобы пассажир видел вас на карте. Передача ' +
-      'автоматически прекращается по завершении поездки. В следующем окне выберите ' +
-      '\u00abРазрешать всегда\u00bb.',
+      'Приложение Sarix Driver собирает и передаёт данные о местоположении во время активной ' +
+      'поездки, чтобы показывать ваше движение пассажиру на карте в реальном времени и ' +
+      'рассчитывать расстояние до адреса — даже когда приложение закрыто или не используется. ' +
+      'Передача автоматически прекращается по завершении поездки.',
     disclosureAllow: 'Согласен',
     disclosureDeny: 'Отклонить',
+  },
+  guide: {
+    title: 'Руководство водителя',
+    subtitle: '5 шагов для правильного и удобного использования приложения',
+    menuTitle: 'Инструкция',
+    menuSub: 'Руководство для новых водителей',
+    bannerTitle: 'Новый водитель? Прочитайте инструкцию',
+    bannerSub: 'Кратко о приёме заказов, балансе и комиссии',
+    loginLink: 'Инструкция для новых водителей',
+    stepOf: 'Шаг {{current}} из {{total}}',
+    prevBtn: 'Назад',
+    nextBtn: 'Далее',
+    finishBtn: 'Понятно, начать',
+    skipBtn: 'Пропустить',
+    allStepsTitle: 'Все этапы',
+    step1Title: '1. Регистрация и документы',
+    step1Body:
+      'Войдите через Telegram или Google. Затем укажите марку, госномер и год выпуска автомобиля и загрузите фото водительского удостоверения и техпаспорта с обеих сторон прямо в приложении.',
+    step1Tip:
+      'Совет: делайте фото при хорошем освещении, чтобы все надписи легко читались. После проверки администратором вы сможете принимать заказы.',
+    step2Title: '2. Баланс и бесплатный период',
+    step2Body:
+      'Новым водителям предоставляется бесплатный пробный период без комиссии. После его окончания для приёма заказов на балансе должна быть минимальная сумма.',
+    step2Tip:
+      'Совет: пополните баланс через раздел «Профиль → Пополнить баланс» переводом на карту и отправьте чек — на первое пополнение начисляется бонус +50%!',
+    step3Title: '3. Режим «Онлайн» и приём заказов',
+    step3Body:
+      'Включите переключатель «Онлайн» в верхней части главного экрана. При поступлении нового заказа прозвучит сигнал и откроется карточка с маршрутом, числом мест, ценой и комиссией.',
+    step3Tip:
+      'Совет: заказ виден всем водителям онлайн одновременно — его получает тот, кто первым нажмёт «Принять».',
+    step4Title: '4. Посадка пассажира и завершение поездки',
+    step4Body:
+      'Приняв заказ, свяжитесь с пассажиром и следуйте к нему по карте или Навигатору. Когда пассажир сядет в машину, нажмите «Выехали», а по прибытии — «Завершить».',
+    step4Tip:
+      'Совет: разрешите доступ к геолокации во время активной поездки, чтобы пассажир видел ваше приближение на карте в реальном времени.',
+    step5Title: '5. Комиссия, отмена и рейтинг',
+    step5Body:
+      'Комиссия списывается с баланса через 15 минут после принятия заказа. Если поездка не состоялась, в первые 5 минут заказ можно отменить без комиссии.',
+    step5Tip:
+      'Совет: оценивайте пассажира после поездки и будьте вежливы — высокий рейтинг повышает доверие. При вопросах обращайтесь к AI Помощнику или в поддержку.',
   },
   maintenance: {
     title: 'Идут технические работы',
@@ -1348,6 +1520,17 @@ export const en = {
     errBadCode: 'Wrong code',
     errTooManyAttempts: 'Too many attempts. Start over.',
     errPendingContact: 'First share your number on Telegram',
+    googleLogin: 'Sign in with Google',
+    googleHint: 'Fast and secure sign-in with your Google account',
+    googleEnterCodeHint: 'Enter the 6-digit code from the Google verification page',
+    reopenGoogle: 'Reopen Google',
+    googleNotConfigured: 'Google sign-in is not configured yet. Please sign in with Telegram.',
+    orDivider: 'or',
+    phoneLabel: 'Sign in with phone number',
+    phonePlaceholder: '90 123 45 67',
+    phoneLoginBtn: 'Get code',
+    phoneHint: 'Enter your phone number to sign in with a verification code',
+    errInvalidPhone: 'Enter a valid 9-digit phone number',
   },
   carPhoto: {
     title: 'Car photo',
@@ -1357,6 +1540,9 @@ export const en = {
     gallery: 'Gallery',
     upload: 'Upload',
     uploaded: 'Car photo uploaded. Passengers will see it once an admin approves it.',
+    cameraPermissionTitle: 'Camera access needed',
+    cameraPermissionBody:
+      'Sarix Driver uses your device camera to take a photo of your car so passengers can recognise your vehicle.',
     errCameraPermission: 'Camera access was not granted',
     errUpload: 'Upload failed',
   },
@@ -1386,6 +1572,21 @@ export const en = {
     commissionAfterDiscount: 'Commission (after discount)',
     discountNote: 'The discount is covered from the commission — your earnings are unchanged',
     mayUseBonus: 'The passenger may use bonus. The discount is covered from the commission, so your earnings are unchanged.',
+    cabinStatusTitle: 'Cabin occupancy',
+    cabinSeatsFilled: '{{occupied}} / {{capacity}} seats filled',
+    frontSeatBadge: 'Front seat',
+    pickupDoorBadge: 'From door (Mahalla)',
+    pickupPitakBadge: 'From stand / highway',
+    landmarkLabel: 'Landmark',
+    corridorFilterTitle: 'Direction & Transit',
+    corridorAll: 'All districts',
+    corridorIncludeTransit: 'Waypoints along route (Transit)',
+    corridorTransitBadge: 'Along route (Transit)',
+    corridorExactBadge: 'Direct route',
+    parcelRecipient: 'Recipient',
+    parcelPayerSender: 'Paid by: Sender',
+    parcelPayerRecipient: 'Paid by: Recipient',
+    callRecipient: 'Call recipient',
   },
   profile: {
     title: 'Profile', name: 'Name', phone: 'Phone', car: 'Car',
@@ -1397,6 +1598,10 @@ export const en = {
     aiAssistant: 'AI Assistant', aiAssistantHint: 'Answers your questions',
     support: 'Support service', supportHint: 'Help via Telegram',
     topUp: 'Top up balance', topUpHint: 'Send a receipt via the bot',
+    logoutConfirmTitle: 'Log out of account',
+    logoutConfirmBody:
+      'Are you sure you want to log out of your account? You will stop receiving new order notifications after logging out.',
+    logoutConfirmYes: 'Yes, log out',
   },
   stats: {
     title: 'Statistics', today: 'Today', week: 'Week', month: 'Month',
@@ -1503,10 +1708,23 @@ export const en = {
     changePhone: 'Change number',
     carInfo: 'Car details',
     carModel: 'Make (model)',
+    carColor: 'Car color',
+    carColorPlaceholder: 'White, Black, Gray...',
     carYear: 'Year of manufacture',
     carNumber: 'Plate number',
+    pinfl: 'Personal ID (PINFL — 14 digits)',
+    pinflPlaceholder: '14-digit PINFL number',
+    errPinfl: 'PINFL must contain 14 digits.',
     license: 'Driving licence',
     techPassport: 'Vehicle registration',
+    carAndSelfie: 'Car & Driver photos',
+    carAndSelfieHint: 'Take a front photo of the car showing the plate, and a selfie holding your licence',
+    slotCarPhoto: 'Car front photo',
+    guideCarPhoto: 'Plate number clearly visible',
+    slotDriverSelfie: 'Selfie with licence',
+    guideDriverSelfie: 'Your face & licence visible',
+    stepProgress: 'Uploaded documents: {{done}} / {{total}}',
+    skipForNow: 'Upload later — Enter the app',
     bothSides: 'Photograph both sides',
     sideFront: 'Front side',
     sideBack: 'Back side',
@@ -1898,14 +2116,53 @@ export const en = {
   tracking: {
     serviceTitle: 'Trip in progress',
     serviceBody: 'Sending your location so the passenger can see you on the map',
-    disclosureTitle: 'Background location',
+    disclosureTitle: 'Location Data Access',
     disclosureBody:
-      'During a trip your location is sent to our server — even when the app is closed or ' +
-      'in the background. This lets the passenger follow you on the map. It stops ' +
-      'automatically when the trip ends. Choose \u201cAllow all the time\u201d on the next ' +
-      'screen.',
+      'Sarix Driver collects location data to enable live trip tracking on the passenger\u2019s ' +
+      'map and calculate live distance to the pickup and destination even when the app is ' +
+      'closed or not in use. Location sharing stops automatically when the trip ends.',
     disclosureAllow: 'I agree',
     disclosureDeny: 'Decline',
+  },
+  guide: {
+    title: 'Driver Guide',
+    subtitle: '5 steps to use the app effectively',
+    menuTitle: 'Driver Guide',
+    menuSub: 'Step-by-step guide for new drivers',
+    bannerTitle: 'New driver? Read the quick guide',
+    bannerSub: 'Learn how orders, balance, and commission work',
+    loginLink: 'Guide for new drivers',
+    stepOf: 'Step {{current}} of {{total}}',
+    prevBtn: 'Previous',
+    nextBtn: 'Next',
+    finishBtn: 'Got it, start',
+    skipBtn: 'Skip',
+    allStepsTitle: 'All steps',
+    step1Title: '1. Registration & Documents',
+    step1Body:
+      'Sign in via Telegram or Google. Then fill in your car model, plate number, and year, and upload clear front and back photos of your driver licence and vehicle registration in the app.',
+    step1Tip:
+      'Tip: Take photos in good lighting so all text is readable. Once an admin approves your documents, you can start accepting rides.',
+    step2Title: '2. Balance & Free Trial',
+    step2Body:
+      'New drivers get a commission-free trial period. After the free trial ends, you need at least the minimum required balance in your account to accept orders.',
+    step2Tip:
+      'Tip: Top up via "Profile → Top up balance" by transferring to the card and uploading the receipt — your first top-up gets a +50% bonus!',
+    step3Title: '3. Going Online & Accepting Orders',
+    step3Body:
+      'Turn on the "Online" switch at the top of the main screen. When a new order arrives, an alert sounds and a card shows the route, passenger count, fare, and commission.',
+    step3Tip:
+      'Tip: Orders are broadcast to all online drivers at the same time — the first driver to tap "Accept" gets the ride.',
+    step4Title: '4. Picking Up Passenger & Completing Ride',
+    step4Body:
+      'After accepting an order, call the passenger and navigate to the pickup point. Tap "Start trip" once the passenger is in the car, and tap "Complete" when you reach the destination.',
+    step4Tip:
+      'Tip: Allow location access during active trips so the passenger can see you approaching live on the map.',
+    step5Title: '5. Commission, Cancellation & Rating',
+    step5Body:
+      'Commission is deducted 15 minutes after accepting an order. If you cannot proceed with the ride, you can cancel within the first 5 minutes without paying commission.',
+    step5Tip:
+      'Tip: Rate the passenger after each trip and provide great service to maintain a high rating. Use AI Assistant or Support anytime you need help.',
   },
   maintenance: {
     title: 'Under maintenance',
@@ -1960,6 +2217,17 @@ export const uzCyrl = {
     errBadCode: 'Код нотўғри',
     errTooManyAttempts: 'Жуда кўп уриниш. Қайтадан бошланг.',
     errPendingContact: 'Аввал Telegram’да рақамингизни улашинг',
+    googleLogin: 'Google орқали кириш',
+    googleHint: 'Google аккаунтингиз орқали тез ва хавфсиз кириш',
+    googleEnterCodeHint: 'Google тасдиқлаш саҳифасидаги 6 хонали кодни киритинг',
+    reopenGoogle: 'Google’ни қайта очиш',
+    googleNotConfigured: 'Google орқали кириш ҳозирча созланмаган. Илтимос, Telegram орқали киринг.',
+    orDivider: 'ёки',
+    phoneLabel: 'Телефон рақами орқали кириш',
+    phonePlaceholder: '90 123 45 67',
+    phoneLoginBtn: 'Код олиш',
+    phoneHint: 'Телефон рақамингизни киритинг ва тасдиқлаш коди орқали киринг',
+    errInvalidPhone: 'Тўғри телефон рақамини киритинг (9 та рақам)',
   },
   carPhoto: {
     title: 'Машина расми',
@@ -1969,6 +2237,9 @@ export const uzCyrl = {
     gallery: 'Галерея',
     upload: 'Юклаш',
     uploaded: 'Машина расми юкланди! Админ тасдиқлаши билан йўловчилар кўради.',
+    cameraPermissionTitle: 'Камерага рухсат керак',
+    cameraPermissionBody:
+      'Sarix Driver иловаси машинангиз расмини суратга олиш ва йўловчиларга кўрсатиш учун қурилмангиз камерасидан фойдаланади.',
     errCameraPermission: 'Камера рухсати берилмади',
     errUpload: 'Юклаб бўлмади',
   },
@@ -1998,6 +2269,21 @@ export const uzCyrl = {
     commissionAfterDiscount: 'Комиссия (чегирмадан кейин)',
     discountNote: 'Чегирма комиссиядан қопланади — даромадингиз камаймайди',
     mayUseBonus: 'Йўловчи бонус ишлатиши мумкин. Чегирма комиссиядан қопланади, даромадингиз камаймайди.',
+    cabinStatusTitle: 'Салон ҳолати',
+    cabinSeatsFilled: '{{occupied}} / {{capacity}} жой банд',
+    frontSeatBadge: 'Олд ўриндиқ',
+    pickupDoorBadge: 'Уй олдидан (Маҳалла)',
+    pickupPitakBadge: 'Питакдан / Трасса',
+    landmarkLabel: 'Мўлжал',
+    corridorFilterTitle: 'Йўналиш ва Транзит',
+    corridorAll: 'Барча туманлар',
+    corridorIncludeTransit: 'Йўл-йўлакай туманлар (Транзит)',
+    corridorTransitBadge: 'Йўл-йўлакай (Транзит)',
+    corridorExactBadge: 'Тўғридан-тўғри',
+    parcelRecipient: 'Қабул қилувчи',
+    parcelPayerSender: 'Тўлов: Жўнатувчидан',
+    parcelPayerRecipient: 'Тўлов: Қабул қилувчидан',
+    callRecipient: 'Қабул қилувчига қўнғироқ',
   },
   profile: {
     title: 'Профил', name: 'Исм', phone: 'Телефон', car: 'Машина',
@@ -2009,6 +2295,10 @@ export const uzCyrl = {
     aiAssistant: 'AI Ёрдамчи', aiAssistantHint: 'Саволларингизга жавоб беради',
     support: 'Ёрдам хизмати', supportHint: 'Telegram орқали ёрдам',
     topUp: 'Балансни тўлдириш', topUpHint: 'Бот орқали чек юборинг',
+    logoutConfirmTitle: 'Аккаунтдан чиқиш',
+    logoutConfirmBody:
+      'Ҳақиқатан ҳам аккаунтингиздан чиқмоқчимисиз? Чиқишдан сўнг янги закаслар ҳақида билдиришномалар келмайди.',
+    logoutConfirmYes: 'Ҳа, чиқиш',
   },
   stats: {
     title: 'Статистика', today: 'Бугун', week: 'Ҳафта', month: 'Ой',
@@ -2115,10 +2405,23 @@ export const uzCyrl = {
     changePhone: 'Рақамни ўзгартириш',
     carInfo: 'Машина маълумотлари',
     carModel: 'Маркаси (модели)',
+    carColor: 'Машина ранги',
+    carColorPlaceholder: 'Оқ, Қора, Кулранг...',
     carYear: 'Ишлаб чиқарилган йили',
     carNumber: 'Давлат рақами',
-    license: 'Ҳайдовчилик гувоҳномаси',
-    techPassport: 'Техник паспорт',
+    pinfl: 'ЖШШИР (ПИНФЛ — 14 рақам)',
+    pinflPlaceholder: '14 хонали ЖШШИР рақами',
+    errPinfl: 'ЖШШИР 14 та рақамдан иборат бўлиши керак.',
+    license: 'Ҳайдовчилик гувоҳномаси (Права)',
+    techPassport: 'Техник паспорт (Техпаспорт)',
+    carAndSelfie: 'Автомобил ва ҳайдовчи расми',
+    carAndSelfieHint: 'Машина олдидан давлат рақами кўринсин, селфида гувоҳнома билан юзингиз аниқ кўринсин',
+    slotCarPhoto: 'Машина олд расми',
+    guideCarPhoto: 'Давлат рақами аниқ кўринсин',
+    slotDriverSelfie: 'Гувоҳнома билан селфи',
+    guideDriverSelfie: 'Юзингиз ва права кўринсин',
+    stepProgress: 'Юкланган ҳужжатлар: {{done}} / {{total}}',
+    skipForNow: 'Кейинроқ юклаш — Иловага кириш',
     bothSides: 'Иккала томонини ҳам суратга олинг',
     sideFront: 'Олд томони',
     sideBack: 'Орқа томони',
@@ -2511,13 +2814,54 @@ export const uzCyrl = {
   tracking: {
     serviceTitle: 'Сафар давом этмоқда',
     serviceBody: 'Йўловчи сизни харитада кўриб туриши учун жойлашув юборилмоқда',
-    disclosureTitle: 'Фон режимида жойлашув',
+    disclosureTitle: 'Жойлашув маълумотларига рухсат',
     disclosureBody:
-      'Сафар давомида жойлашувингиз серверга юборилади — илова ёпиқ ёки фонда бўлса ҳам. ' +
-      'Бу йўловчи сизни харитада кузатиб туриши учун керак. Юбориш сафар тугаши билан ' +
-      'автоматик тўхтайди. Кейинги ойнада \u00abДоимо рухсат бериш\u00bb вариантини танланг.',
+      'Sarix Driver иловаси фаол сафар давомида йўловчига сизнинг ҳаракатингизни харитада ' +
+      'жонли кўрсатиш ҳамда манзилгача бўлган масофани ҳисоблаш учун жойлашув ' +
+      'маълумотларини йиғади ва серверга юборади — илова ёпиқ бўлганда ёки ' +
+      'ишлатилмаётганда ҳам. Сафар якунлангач кузатув автоматик тўхтайди.',
     disclosureAllow: 'Розиман',
     disclosureDeny: 'Рад этиш',
+  },
+  guide: {
+    title: 'Ҳайдовчи қўлланмаси',
+    subtitle: 'Иловадан тўғри ва самарали фойдаланиш бўйича 5 қадам',
+    menuTitle: 'Қўлланма',
+    menuSub: 'Янги ҳайдовчилар учун йўриқнома',
+    bannerTitle: 'Янги ҳайдовчимисиз? Қўлланмани ўқинг',
+    bannerSub: 'Закас қабул қилиш, баланс ва комиссия тартиби ҳақида қисқача',
+    loginLink: 'Янги ҳайдовчилар учун қўлланма',
+    stepOf: '{{current}} / {{total}} қадам',
+    prevBtn: 'Олдинги',
+    nextBtn: 'Кейинги',
+    finishBtn: 'Тушунарли, бошлаш',
+    skipBtn: 'Ўтказиб юбориш',
+    allStepsTitle: 'Барча босқичлар',
+    step1Title: '1. Рўйхатдан ўтиш ва ҳужжатлар',
+    step1Body:
+      'Telegram ёки Google орқали киринг. Сўнг машина русуми, давлат рақами, ишлаб чиқарилган йили ҳамда ҳайдовчилик гувоҳномаси ва техпаспортнинг олд-орқа расмларини илова ичида юкланг.',
+    step1Tip:
+      'Маслаҳат: Ҳужжат расмлари ёруғ жойда, ёзувлари аниқ ўқиладиган қилиб олиниши керак. Админ текшириб тасдиқлагач закас олишингиз мумкин.',
+    step2Title: '2. Баланс ва бепул бонус даври',
+    step2Body:
+      'Янги ҳайдовчиларга дастлабки синов даврида комиссиясиз ишлаш имконияти берилади. Бепул давр тугагач, закас қабул қилиш учун ҳисобингизда минимал баланс бўлиши керак.',
+    step2Tip:
+      'Маслаҳат: «Профил → Балансни тўлдириш» бўлимида карта рақамига пул ўтказиб, тўлов чекини илова орқали юборинг — биринчи тўловга +50% бонус берилади!',
+    step3Title: '3. Онлайн режим ва закас қабул қилиш',
+    step3Body:
+      'Асосий ойнанинг юқори қисмидаги «Онлайн» тугмасини ёқинг. Янги закас тушганда овозли сигнал чалинади ва закас картаси (йўналиш, одам сони, нарх ва комиссия) чиқади.',
+    step3Tip:
+      'Маслаҳат: Закас барча онлайн ҳайдовчиларга бир вақтда кўринади — «Қабул қилиш» тугмасини биринчи бўлиб босган ҳайдовчи закасни олади.',
+    step4Title: '4. Йўловчини олиш ва сафарни якунлаш',
+    step4Body:
+      'Закасни қабул қилгач, йўловчига қўнғироқ қилинг ва харита ёки Навигатор орқали унинг олдига боринг. Йўловчи машинага ўтиргач «Йўлга чиқдик» тугмасини, манзилга етгач эса «Якунлаш» тугмасини босинг.',
+    step4Tip:
+      'Маслаҳат: Фаол сафар вақтида жойлашувга рухсат беринг — йўловчи сизнинг яқинлашаётганингизни харитада жонли кўриб туради.',
+    step5Title: '5. Комиссия, бекор қилиш ва рейтинг',
+    step5Body:
+      'Комиссия закас қабул қилинганидан 15 дақиқа ўтиб балансдан ечилади. Агар йўловчи билан келиша олмасангиз, дастлабки 5 дақиқа ичида комиссиясиз бекор қилишингиз мумкин.',
+    step5Tip:
+      'Маслаҳат: Сафар якунида йўловчини баҳоланг ва хушмуомала бўлинг — юқори рейтинг йўловчилар ишончини оширади. Савол туғилса, AI Ёрдамчи ёки Ёрдам хизматига ёзинг.',
   },
   maintenance: {
     title: 'Техник ишлар олиб борилмоқда',

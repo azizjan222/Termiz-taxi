@@ -35,7 +35,7 @@ const formatPhone = (text: string): string => {
   return out;
 };
 const localDigits = (text: string) => text.replace(/\D/g, '').replace(/^998/, '');
-const isValidPhone = (text: string) => localDigits(text).length === 9;
+const isValidPhone = (text: string) => !text.startsWith('google:') && localDigits(text).length === 9;
 
 type Mode = 'idle' | 'confirmed' | 'editing';
 
@@ -53,7 +53,7 @@ export default function NameScreen() {
   // The number currently registered for this account (Telegram contact / OTP phone).
   const registered = user?.contact_phone || user?.phone || '';
   const hasRegistered = isValidPhone(registered);
-  const [displayNumber, setDisplayNumber] = useState(registered);
+  const [displayNumber, setDisplayNumber] = useState(hasRegistered ? registered : '');
   // Phone is REQUIRED: if we have no valid registered number, start in editing mode
   // so the user must enter one before continuing.
   const [mode, setMode] = useState<Mode>(hasRegistered ? 'idle' : 'editing');

@@ -129,3 +129,42 @@ export async function telegramVerifyCode(
   }
   return response.data;
 }
+
+// ===== Google Sign-In =====
+export interface GoogleStartResponse {
+  token: string;
+  auth_url: string;
+  configured: boolean;
+  expires_in: number;
+}
+
+export async function googleStart(): Promise<GoogleStartResponse> {
+  const response = await api.post<GoogleStartResponse>('/api/auth/google/start', {});
+  return response.data;
+}
+
+export async function googleVerifyCode(
+  token: string,
+  code: string
+): Promise<TelegramCheckResponse> {
+  const response = await api.post<TelegramCheckResponse>(
+    '/api/auth/google/verify-code',
+    { token, code }
+  );
+  if (response.data.status === 'verified' && response.data.token) {
+    await setAuthToken(response.data.token);
+  }
+  return response.data;
+}
+
+export async function googleLogin(payload: {
+  id_token?: string;
+  access_token?: string;
+}): Promise<TelegramCheckResponse> {
+  const response = await api.post<TelegramCheckResponse>('/api/auth/google', payload);
+  if (response.data.status === 'verified' && response.data.token) {
+    await setAuthToken(response.data.token);
+  }
+  return response.data;
+}
+

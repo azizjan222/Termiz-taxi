@@ -74,7 +74,24 @@ export default function CarPhotoScreen() {
     if (pickInFlightRef.current) return;
     pickInFlightRef.current = true;
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      const existing = await ImagePicker.getCameraPermissionsAsync();
+      let status = existing.status;
+      if (status !== 'granted') {
+        const confirmed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            t('carPhoto.cameraPermissionTitle'),
+            t('carPhoto.cameraPermissionBody'),
+            [
+              { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+              { text: t('common.continue'), onPress: () => resolve(true) },
+            ],
+            { cancelable: false }
+          );
+        });
+        if (!confirmed) return;
+        const requested = await ImagePicker.requestCameraPermissionsAsync();
+        status = requested.status;
+      }
       if (status !== 'granted') {
         Alert.alert(t('common.error'), t('carPhoto.errCameraPermission'));
         return;

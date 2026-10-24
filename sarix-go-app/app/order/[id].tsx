@@ -8,12 +8,14 @@ import {
   Linking,
   Alert,
   Image,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
+import { CabinDiagram } from '../../src/components/CabinDiagram';
 import { Button } from '../../src/components/Button';
 import YandexMap, { type MapMarker, type YandexMapHandle } from '../../src/components/YandexMap';
 import { getOrder, cancelOrder, type Order } from '../../src/api/orders';
@@ -21,6 +23,7 @@ import { getOrderRatingStatus } from '../../src/api/ratings';
 import { presentLocalNotification } from '../../src/services/notifications';
 import { addNotification } from '../../src/services/notificationHistory';
 import { useAuthStore } from '../../src/store/auth';
+import { useOrderStore } from '../../src/store/order';
 import { isAppForeground } from '../../src/utils/appForeground';
 import { API_URL } from '../../src/api/client';
 import { connectPassengerSocket } from '../../src/services/passengerSocket';
@@ -56,6 +59,7 @@ export default function OrderDetailScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
+  const orderStore = useOrderStore();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -153,6 +157,23 @@ export default function OrderDetailScreen() {
           presentLocalNotification(title, body, { type: 'order_started', order_id: msg.order_id });
           addNotification({ title, body, type: 'order_started', data: { order_id: msg.order_id } });
           // Refresh so the screen reflects the in-progress status.
+          load();
+        } else if (msg.type === 'order_completed' && msg.order_id?.toString() === id) {
+          const title = t('order.completed');
+          const body = t('order.rateDriver');
+          presentLocalNotification(title, body, { type: 'order_completed', order_id: msg.order_id });
+          addNotification({ title, body, type: 'order_completed', data: { order_id: msg.order_id } });
+          load();
+        } else if (
+          (msg.type === 'order_cancelled' || msg.type === 'order_expired') &&
+          msg.order_id?.toString() === id
+        ) {
+          const title = t('order.cancelled');
+          const body = t('searching.cancelledBody');
+          presentLocalNotification(title, body, { type: msg.type, order_id: msg.order_id });
+          addNotification({ title, body, type: msg.type, data: { order_id: msg.order_id } });
+          load();
+        } else if (msg.type === 'order_accepted' && msg.order_id?.toString() === id) {
           load();
         }
       },
@@ -521,6 +542,19 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
+        {/* Feature 1: Live car occupancy & cabin diagram while waiting/riding */}
+        {order.driver && !isParcel && typeof order.driver.cabin_occupied === 'number' && (
+          <View style={{ marginBottom: spacing.md }}>
+            <CabinDiagram
+              personCount={order.person_count}
+              frontSeat={!!order.front_seat}
+              isFullCar={isFullCar}
+              liveOccupied={order.driver.cabin_occupied}
+              liveCapacity={order.driver.cabin_capacity || 4}
+            />
+          </View>
+        )}
+
         {/* Route */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t('order.summary')}</Text>
@@ -548,9 +582,38 @@ export default function OrderDetailScreen() {
               <IconText name="people" size={12} color={colors.textSecondary} textStyle={styles.label}>
                 {t('order.persons')}
               </IconText>
-              <Text style={styles.value}>{order.person_count}</Text>
+              <Text style={styles.value}>
+                {order.person_count}
+                {order.front_seat ? ` (${t('newOrder.frontSeat')})` : ''}
+              </Text>
             </View>
           )}
+          {order.pickup_type && (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <IconText name="pin" size={12} color={colors.textSecondary} textStyle={styles.label}>
+                  {t('order.pickupTypeLabel')}
+                </IconText>
+                <Text style={styles.value}>
+                  {t(
+                    order.pickup_type === 'pitak'
+                      ? 'order.pickupPitakBadge'
+                      : 'order.pickupDoorBadge'
+                  )}
+                </Text>
+              </View>
+            </>
+          )}
+          {order.landmark ? (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <Text style={styles.label}>{t('order.landmarkTitle')}</Text>
+                <Text style={styles.value}>{order.landmark}</Text>
+              </View>
+            </>
+          ) : null}
           <View style={styles.divider} />
           <View style={styles.row}>
             <IconText name="cash" size={12} color={colors.textSecondary} textStyle={styles.label}>
@@ -612,12 +675,103 @@ export default function OrderDetailScreen() {
           )}
         </View>
 
+        {isParcel && (
+          <View style={[styles.card, { marginTop: spacing.md }]}>
+            <Text style={styles.cardTitle}>{t('order.parcelDetailsTitle')}</Text>
+            {order.parcel_recipient_name ? (
+              <View style={styles.row}>
+                <Text style={styles.label}>{t('order.parcelRecipientNameLabel')}</Text>
+                <Text style={styles.value}>{order.parcel_recipient_name}</Text>
+              </View>
+            ) : null}
+            {order.parcel_recipient_phone ? (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.row}>
+                  <Text style={styles.label}>{t('order.parcelRecipientPhoneLabel')}</Text>
+                  <Text style={styles.value}>{order.parcel_recipient_phone}</Text>
+                </View>
+              </>
+            ) : null}
+            {order.parcel_payer ? (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.row}>
+                  <Text style={styles.label}>{t('order.parcelPayerLabel')}</Text>
+                  <Text style={styles.value}>
+                    {t(
+                      order.parcel_payer === 'recipient'
+                        ? 'order.parcelPayerRecipient'
+                        : 'order.parcelPayerSender'
+                    )}
+                  </Text>
+                </View>
+              </>
+            ) : null}
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                title={t('order.shareWithRecipient')}
+                variant="outline"
+                onPress={() => {
+                  const carText = order.driver
+                    ? `${order.driver.car_model || ''} ${order.driver.car_number || ''}`.trim() || '—'
+                    : '—';
+                  Share.share({
+                    message: t('order.shareMessageText', {
+                      id: order.id,
+                      from: order.from_city,
+                      to: order.to_city,
+                      car: carText,
+                      driver: order.driver?.first_name || '—',
+                      phone: order.driver?.phone || '—',
+                    }),
+                  }).catch(() => {});
+                }}
+              />
+            </View>
+          </View>
+        )}
+
         {order.note && (
           <View style={[styles.card, { marginTop: spacing.md }]}>
             <Text style={styles.cardTitle}>
               {isParcel ? t('order.parcel') : t('order.note')}
             </Text>
             <Text style={styles.noteText}>{order.note}</Text>
+          </View>
+        )}
+
+        {/* Feature 4: 1-tap Return Trip ("Qaytish reysi") after completed order */}
+        {order.status === 'completed' && (
+          <View style={[styles.card, { marginTop: spacing.md }]}>
+            <Text style={[styles.cardTitle, { marginBottom: spacing.md }]}>
+              {t('order.bookReturnTrip', {
+                from: order.to_city,
+                to: order.from_city,
+              })}
+            </Text>
+            <Button
+              title={`${order.to_city} → ${order.from_city}`}
+              onPress={() => {
+                orderStore.reset();
+                orderStore.setRoute(order.to_city, order.from_city);
+                orderStore.setField(
+                  'serviceType',
+                  order.service_type === 'parcel' ? 'parcel' : 'taxi'
+                );
+                if (order.to_address) orderStore.setField('fromAddress', order.to_address);
+                if (order.from_address) orderStore.setField('toAddress', order.from_address);
+                if (order.to_lat != null && order.to_lon != null) {
+                  orderStore.setField('fromLat', order.to_lat);
+                  orderStore.setField('fromLon', order.to_lon);
+                }
+                if (order.from_lat != null && order.from_lon != null) {
+                  orderStore.setField('toLat', order.from_lat);
+                  orderStore.setField('toLon', order.from_lon);
+                }
+                router.push('/tariff');
+              }}
+            />
           </View>
         )}
       </ScrollView>

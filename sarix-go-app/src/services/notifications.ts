@@ -59,34 +59,64 @@ export const ORDERS_CHANNEL = 'orders_v2';
 // afterwards, only the user can — so every install that ran the earlier build kept the
 // default tone. A fresh id is the only way to actually deliver the cancel sound.
 export const ALERTS_CHANNEL = 'alerts_v2';
+export const ORDER_ACCEPTED_CHANNEL = 'order_accepted_v1';
+export const DRIVER_ARRIVED_CHANNEL = 'driver_arrived_v1';
+export const ORDER_COMPLETED_CHANNEL = 'order_completed_v1';
+export const BALANCE_CHANNEL = 'balance_v2';
 
 export async function setupNotificationChannels() {
   if (Platform.OS === 'android') {
-    // Drop superseded channels so we don't leave stale duplicates in the system
-    // notification settings, where they look like they still control these alerts.
-    //   'orders'    -> ORDERS_CHANNEL ('orders_v2')
-    //   'alerts_v1' -> ALERTS_CHANNEL ('alerts_v2'), created without a sound key
     for (const stale of ['orders', 'alerts_v1']) {
       try {
         await Notifications.deleteNotificationChannelAsync(stale);
       } catch {}
     }
-    await Notifications.setNotificationChannelAsync(ORDERS_CHANNEL, {
+
+    // 1. Orders / Driver found -> warm rising major arpeggio (order_accepted.wav)
+    for (const ordId of [ORDERS_CHANNEL, ORDER_ACCEPTED_CHANNEL]) {
+      await Notifications.setNotificationChannelAsync(ordId, {
+        name: i18n.t('channels.orders'),
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 150, 250],
+        lightColor: '#F4C430',
+        sound: 'order_accepted.wav',
+        bypassDnd: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+    }
+
+    // 2. Driver arrived / trip started -> crystal welcome chime (driver_arrived.wav)
+    await Notifications.setNotificationChannelAsync(DRIVER_ARRIVED_CHANNEL, {
       name: i18n.t('channels.orders'),
       importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#F4C430',
-      sound: 'default',
-      bypassDnd: true,
+      vibrationPattern: [0, 220, 120, 220],
+      lightColor: '#3B82F6',
+      sound: 'driver_arrived.wav',
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
-    await Notifications.setNotificationChannelAsync('balance', {
-      name: i18n.t('channels.balance'),
+
+    // 3. Trip completed -> serene major chord chime (order_completed.wav)
+    await Notifications.setNotificationChannelAsync(ORDER_COMPLETED_CHANNEL, {
+      name: i18n.t('channels.orders'),
       importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 200, 100, 200],
+      vibrationPattern: [0, 250, 120, 250],
       lightColor: '#10B981',
+      sound: 'order_completed.wav',
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
-    // Dedicated channel for order cancellations / updates with its own distinct sound.
+
+    // 4. Balance & bonus -> sparkling wallet chime (balance_bonus.wav)
+    for (const balId of ['balance', BALANCE_CHANNEL]) {
+      await Notifications.setNotificationChannelAsync(balId, {
+        name: i18n.t('channels.balance'),
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 200, 100, 200],
+        sound: 'balance_bonus.wav',
+        lightColor: '#10B981',
+      });
+    }
+
+    // 5. Order cancellations / expired -> gentle descending marimba motif (order_cancelled.wav)
     await Notifications.setNotificationChannelAsync(ALERTS_CHANNEL, {
       name: i18n.t('channels.alerts'),
       importance: Notifications.AndroidImportance.HIGH,
@@ -95,6 +125,7 @@ export async function setupNotificationChannels() {
       lightColor: '#EF4444',
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
+
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
       importance: Notifications.AndroidImportance.DEFAULT,
@@ -188,13 +219,41 @@ export function addNotificationReceivedListener(
  * the driver picking up the passenger — so the passenger still gets a visible,
  * audible heads-up notification (the foreground handler shows alert + sound).
  */
+/**
+ * Resolve the custom sound and Android channel for a given notification type
+ * so each event has its own distinct, pleasant signal.
+ */
+function resolveSoundAndChannel(
+  type?: string,
+  explicitChannelId?: string
+): { sound: string; channelId: string } {
+  switch (type) {
+    case 'order_accepted':
+      return { sound: 'order_accepted.wav', channelId: explicitChannelId || ORDER_ACCEPTED_CHANNEL };
+    case 'order_started':
+      return { sound: 'driver_arrived.wav', channelId: explicitChannelId || DRIVER_ARRIVED_CHANNEL };
+    case 'order_completed':
+      return { sound: 'order_completed.wav', channelId: explicitChannelId || ORDER_COMPLETED_CHANNEL };
+    case 'order_cancelled':
+    case 'order_expired':
+      return { sound: 'order_cancelled.wav', channelId: explicitChannelId || ALERTS_CHANNEL };
+    case 'bonus_earned':
+    case 'referral_reward':
+    case 'balance_topup':
+      return { sound: 'balance_bonus.wav', channelId: explicitChannelId || BALANCE_CHANNEL };
+    default:
+      return { sound: 'order_accepted.wav', channelId: explicitChannelId || ORDERS_CHANNEL };
+  }
+}
+
 export async function presentLocalNotification(
   title: string,
   body: string,
   data: Record<string, any> = {},
-  channelId: string = ORDERS_CHANNEL
+  channelId?: string
 ): Promise<void> {
   try {
+    const resolved = resolveSoundAndChannel(data?.type, channelId);
     await Notifications.scheduleNotificationAsync({
       content: {
         title,
@@ -202,8 +261,8 @@ export async function presentLocalNotification(
         // Mark as app-presented so the foreground handler never treats it as a
         // duplicate remote push to suppress.
         data: { ...data, _local: true },
-        sound: 'default',
-        ...(Platform.OS === 'android' ? { channelId } : {}),
+        sound: resolved.sound,
+        ...(Platform.OS === 'android' ? { channelId: resolved.channelId } : {}),
       },
       trigger: null,
     });

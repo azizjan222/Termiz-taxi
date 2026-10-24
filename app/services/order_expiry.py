@@ -328,19 +328,207 @@ async def cancel_abandoned_and_notify() -> int:
     return len(closed)
 
 
+# Track order IDs reminded in this process (backed by NotificationLog lookup for restart safety)
+_REMINDED_ORDER_IDS: set[int] = set()
+_TASHKENT_OFFSET = timedelta(hours=5)
+
+
+def _parse_scheduled_departure_utc(
+    departure_time: str | None, created_at_utc: datetime | None, now_utc: datetime | None = None
+) -> datetime | None:
+    """Parse a scheduled departure_time ('Ertaga 07:00', 'Bugun 14:30', '08:00 - 09:00', '14:30')
+    into a naive UTC datetime, assuming Uzbekistan local time (UTC+5).
+    Returns None for immediate ('Hozir') or unparseable values.
+    """
+    import re
+
+    if _is_immediate(departure_time):
+        return None
+    raw = (departure_time or "").strip()
+    lower = raw.lower()
+    base_utc = created_at_utc or now_utc or datetime.utcnow()
+    created_local = base_utc + _TASHKENT_OFFSET
+
+    # Relative slots: "30 daqiqada", "1 soatda"
+    if "30 daqiqa" in lower or "30 мин" in lower or "30 min" in lower:
+        return base_utc + timedelta(minutes=30)
+    if "1 soat" in lower or "1 час" in lower or "1 hour" in lower:
+        return base_utc + timedelta(hours=1)
+
+    m = re.search(r"(\d{1,2}):(\d{2})", raw)
+    if not m:
+        return None
+    hour, minute = int(m.group(1)), int(m.group(2))
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+
+    target_date = created_local.date()
+    if any(w in lower for w in ("ertaga", "эртага", "завтра", "tomorrow")):
+        target_date = target_date + timedelta(days=1)
+    else:
+        candidate_local = datetime(
+            target_date.year, target_date.month, target_date.day, hour, minute
+        )
+        if candidate_local < created_local - timedelta(minutes=5):
+            target_date = target_date + timedelta(days=1)
+
+    target_local = datetime(
+        target_date.year, target_date.month, target_date.day, hour, minute
+    )
+    return target_local - _TASHKENT_OFFSET
+
+
+def find_due_scheduled_reminders(now: datetime | None = None) -> list[dict]:
+    """Return accepted scheduled orders whose departure is within the next 5..35 minutes
+    and have not yet received a 30-minute reminder.
+    """
+    from app.models import NotificationLog
+
+    now = now or datetime.utcnow()
+    window_start = now + timedelta(minutes=5)
+    window_end = now + timedelta(minutes=35)
+    due: list[dict] = []
+
+    session = get_session()
+    try:
+        candidates = (
+            session.query(Order)
+            .filter(Order.status == "accepted")
+            .all()
+        )
+        for order in candidates:
+            if order.id in _REMINDED_ORDER_IDS:
+                continue
+            dep_utc = _parse_scheduled_departure_utc(
+                order.departure_time, order.created_at, now
+            )
+            if not dep_utc or not (window_start <= dep_utc <= window_end):
+                continue
+
+            already_logged = (
+                session.query(NotificationLog)
+                .filter(NotificationLog.data.contains(f'"order_id": {order.id}'))
+                .filter(NotificationLog.data.contains('"order_reminder"'))
+                .first()
+            )
+            if already_logged:
+                _REMINDED_ORDER_IDS.add(order.id)
+                continue
+
+            _REMINDED_ORDER_IDS.add(order.id)
+            due.append({
+                "order_id": order.id,
+                "passenger_id": order.passenger_id,
+                "driver_id": order.driver_id,
+                "driver_telegram_id": order.driver_telegram_id,
+                "from_city": order.from_city or "",
+                "to_city": order.to_city or "",
+                "departure_time": order.departure_time or "",
+            })
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error("find_due_scheduled_reminders failed: %s", e)
+    finally:
+        session.close()
+
+    return due
+
+
+async def remind_scheduled_and_notify() -> int:
+    """Send 30-minute heads-up reminders (Push + WebSocket) to passengers and drivers."""
+    due = await asyncio.to_thread(find_due_scheduled_reminders)
+    if not due:
+        return 0
+
+    from app.api.websocket import ws_manager
+    from app.services import notify_i18n as nt
+    from app.services.push import _lang, send_push
+
+    session = get_session()
+    try:
+        for item in due:
+            order_id = item["order_id"]
+            from_city = item["from_city"]
+            to_city = item["to_city"]
+            dep_str = item["departure_time"]
+            payload = {
+                "type": "order_reminder",
+                "order_id": order_id,
+                "from_city": from_city,
+                "to_city": to_city,
+                "departure_time": dep_str,
+            }
+
+            if item.get("passenger_id"):
+                pid = item["passenger_id"]
+                try:
+                    await ws_manager.send_to_passenger(pid, payload)
+                except Exception:
+                    pass
+                try:
+                    p_lang = _lang(session, "user", pid)
+                    title, body = nt.scheduled_order_reminder(
+                        p_lang,
+                        from_city=from_city,
+                        to_city=to_city,
+                        departure_time=dep_str,
+                        order_id=order_id,
+                    )
+                    await send_push(
+                        session,
+                        recipient_type="user",
+                        recipient_id=pid,
+                        title=title,
+                        body=body,
+                        data=payload,
+                    )
+                except Exception as e:
+                    logger.warning("Scheduled reminder push to passenger %s failed: %s", pid, e)
+
+            if item.get("driver_telegram_id"):
+                try:
+                    await ws_manager.send_to_driver(item["driver_telegram_id"], payload)
+                except Exception:
+                    pass
+
+            if item.get("driver_id"):
+                did = item["driver_id"]
+                try:
+                    d_lang = _lang(session, "driver", did)
+                    title, body = nt.scheduled_order_reminder(
+                        d_lang,
+                        from_city=from_city,
+                        to_city=to_city,
+                        departure_time=dep_str,
+                        order_id=order_id,
+                    )
+                    await send_push(
+                        session,
+                        recipient_type="driver",
+                        recipient_id=did,
+                        title=title,
+                        body=body,
+                        data=payload,
+                    )
+                except Exception as e:
+                    logger.warning("Scheduled reminder push to driver %s failed: %s", did, e)
+    finally:
+        session.close()
+
+    return len(due)
+
+
 async def order_expiry_loop(stop_event: asyncio.Event | None = None):
-    """Run both sweeps periodically until stop_event is set (or forever).
+    """Run all three sweeps periodically until stop_event is set (or forever).
 
     Sweep 1 expires ``"new"`` orders nobody accepted; sweep 2 closes ``"accepted"`` orders
-    the driver never started. They share this one loop because both are cheap indexed
-    queries on the same table and both need the same cadence.
+    the driver never started; sweep 3 sends 30-minute reminders for scheduled orders.
     """
     logger.info(
         "Order-expiry scheduler started (expiry=%s min, abandon=%s min, poll=%ss)",
         config.ORDER_EXPIRY_MINUTES, config.ORDER_ABANDON_MINUTES, _POLL_SECONDS,
     )
     while True:
-        # The two sweeps are independent: a failure in one must not skip the other,
+        # The sweeps are independent: a failure in one must not skip the others,
         # so they get their own try/except rather than sharing one.
         try:
             n = await expire_orders_and_notify()
@@ -355,6 +543,13 @@ async def order_expiry_loop(stop_event: asyncio.Event | None = None):
                 logger.info("Closed %s abandoned order(s)", n)
         except Exception as e:  # pragma: no cover - defensive
             logger.error(f"Abandoned-order sweep error: {e}")
+
+        try:
+            r = await remind_scheduled_and_notify()
+            if r:
+                logger.info("Sent %s scheduled order reminder(s)", r)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.error(f"Scheduled-reminder sweep error: {e}")
 
         if stop_event is not None:
             try:

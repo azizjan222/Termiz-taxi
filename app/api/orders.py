@@ -67,8 +67,11 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,
-        "has_roof_rack": o.has_roof_rack,
-        "female_only": o.female_only,
+        "has_roof_rack": bool(o.has_roof_rack),
+        "female_only": bool(o.female_only),
+        "front_seat": bool(getattr(o, "front_seat", False)),
+        "pickup_type": getattr(o, "pickup_type", None) or "door",
+        "landmark": getattr(o, "landmark", None),
         "source": o.source,
         "target_driver_id": o.target_driver_id,
         "commission_charged": bool(o.commission_charged),
@@ -183,6 +186,9 @@ async def create_order(request: web.Request) -> web.Response:
         "note": "...",
         "has_roof_rack": false,
         "female_only": false,
+        "front_seat": false,
+        "pickup_type": "door" | "pitak",
+        "landmark": "...",
         "parcel_*": "..."  // only for parcel
     }
     """
@@ -191,13 +197,39 @@ async def create_order(request: web.Request) -> web.Response:
         data = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
+    if not isinstance(data, dict):
+        return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    service_type = data.get("service_type", "taxi")
+    def _s(key: str, default: str = "", max_len: int = 500) -> str:
+        val = data.get(key)
+        if val is None:
+            return default
+        return str(val).strip()[:max_len]
+
+    def _opt_float(key: str, low: float, high: float) -> float | None:
+        val = data.get(key)
+        if val is None or val == "":
+            return None
+        try:
+            f = float(val)
+        except (TypeError, ValueError):
+            return None
+        if not (low <= f <= high):
+            return None
+        return f
+
+    service_type = _s("service_type", "taxi", 20) or "taxi"
     if service_type not in ("taxi", "parcel", "full_car"):
         return web.json_response({"error": "Invalid service_type"}, status=400)
 
-    from_city = (data.get("from_city") or "").strip()
-    to_city = (data.get("to_city") or "").strip()
+    pickup_type = (_s("pickup_type", "door", 20) or "door").lower()
+    if pickup_type not in ("door", "pitak"):
+        pickup_type = "door"
+
+    landmark = _s("landmark", "", 200) or None
+
+    from_city = _s("from_city", "", 100)
+    to_city = _s("to_city", "", 100)
     if not from_city or not to_city:
         return web.json_response({"error": "from_city va to_city kerak"}, status=400)
     if from_city == to_city:
@@ -279,7 +311,7 @@ async def create_order(request: web.Request) -> web.Response:
         promo_discount = 0
         promo_code_used = None
         promo_warning = None
-        requested_promo = (data.get("promo_code") or "").strip().upper()
+        requested_promo = _s("promo_code", "", 30).upper()
         if requested_promo:
             promo_discount, promo_code_used, promo_err = promo_service.redeem_promo(
                 session, requested_promo, user.id, price, commission
@@ -294,6 +326,9 @@ async def create_order(request: web.Request) -> web.Response:
                 # A real failure: unknown code, expired, limit reached, already used.
                 return web.json_response({"error": promo_err}, status=400)
 
+        raw_payer = _s("parcel_payer", "", 20).lower()
+        parcel_payer = raw_payer if raw_payer in ("sender", "recipient") else None
+
         order = Order(
             passenger_id=user.id,
             passenger_phone=user.contact_phone or user.phone,
@@ -301,19 +336,22 @@ async def create_order(request: web.Request) -> web.Response:
             service_type=service_type,
             from_city=from_city,
             to_city=to_city,
-            from_address=data.get("from_address"),
-            to_address=data.get("to_address"),
-            from_lat=data.get("from_lat"),
-            from_lon=data.get("from_lon"),
-            to_lat=data.get("to_lat"),
-            to_lon=data.get("to_lon"),
+            from_address=_s("from_address", "", 500) or None,
+            to_address=_s("to_address", "", 500) or None,
+            from_lat=_opt_float("from_lat", -90.0, 90.0),
+            from_lon=_opt_float("from_lon", -180.0, 180.0),
+            to_lat=_opt_float("to_lat", -90.0, 90.0),
+            to_lon=_opt_float("to_lon", -180.0, 180.0),
             person_count=person_count,
             price=price,
             commission=commission,
-            departure_time=data.get("departure_time", "Hozir"),
-            note=data.get("note"),
+            departure_time=_s("departure_time", "Hozir", 50) or "Hozir",
+            note=_s("note", "", 500) or None,
             has_roof_rack=bool(data.get("has_roof_rack", False)),
             female_only=bool(data.get("female_only", False)),
+            front_seat=bool(data.get("front_seat", False)),
+            pickup_type=pickup_type,
+            landmark=landmark,
             male_count=male_count,
             female_count=female_count,
             # Passenger opted to spend bonus on this ride. Defaults False, so the feature
@@ -322,11 +360,11 @@ async def create_order(request: web.Request) -> web.Response:
             promo_code=promo_code_used,
             promo_discount=promo_discount,
             target_driver_id=target_driver_id,
-            parcel_recipient_name=data.get("parcel_recipient_name"),
-            parcel_recipient_phone=data.get("parcel_recipient_phone"),
-            parcel_payer=data.get("parcel_payer"),
-            parcel_type=data.get("parcel_type"),
-            parcel_note=data.get("parcel_note"),
+            parcel_recipient_name=_s("parcel_recipient_name", "", 100) or None,
+            parcel_recipient_phone=_s("parcel_recipient_phone", "", 20) or None,
+            parcel_payer=parcel_payer,
+            parcel_type=_s("parcel_type", "", 50) or None,
+            parcel_note=_s("parcel_note", "", 500) or None,
             source="app",
             status="new",
         )
@@ -480,10 +518,32 @@ async def get_order(request: web.Request) -> web.Response:
             return web.json_response({"error": "Buyurtma topilmadi"}, status=404)
 
         result = _serialize_order(order, include_passenger=True)
-        # If accepted, include driver info
+        # If accepted, include driver info + live cabin occupancy across the driver's active rides
         if order.driver_id:
             driver = session.query(Driver).filter_by(id=order.driver_id).first()
             if driver:
+                capacity = driver.seats or 4
+                active_driver_orders = (
+                    session.query(Order)
+                    .filter(
+                        Order.driver_id == driver.id,
+                        Order.status.in_(["accepted", "in_progress"]),
+                        Order.service_type != "parcel",
+                    )
+                    .all()
+                )
+                occupied = sum(
+                    capacity if ao.service_type == "full_car" else (ao.person_count or 1)
+                    for ao in active_driver_orders
+                )
+                occupied = min(capacity, max(0, occupied))
+                has_female = any(
+                    bool(ao.female_only) or (ao.female_count or 0) > 0
+                    for ao in active_driver_orders
+                )
+                front_taken = any(
+                    bool(getattr(ao, "front_seat", False)) for ao in active_driver_orders
+                )
                 result["driver"] = {
                     "first_name": driver.first_name,
                     "phone": driver.contact_phone or driver.phone,
@@ -491,11 +551,15 @@ async def get_order(request: web.Request) -> web.Response:
                     "car_number": driver.car_number,
                     "car_color": driver.car_color,
                     "profile_photo_url": driver.profile_photo_url,
-                    "seats": driver.seats or 4,
+                    "seats": capacity,
                     "rating": driver.rating,
                     "current_lat": driver.current_lat,
                     "current_lon": driver.current_lon,
                     "location_updated_at": iso_utc(driver.location_updated_at),
+                    "cabin_occupied": occupied,
+                    "cabin_capacity": capacity,
+                    "cabin_has_female": has_female,
+                    "cabin_front_taken": front_taken,
                 }
         return web.json_response(result)
     finally:

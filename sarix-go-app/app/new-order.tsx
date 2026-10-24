@@ -26,6 +26,7 @@ import {
 import { getReferralInfo } from '../src/api/promo';
 import { BONUS_UI_ENABLED } from '../src/config/features';
 import { Icon } from '../src/components/Icon';
+import { CabinDiagram } from '../src/components/CabinDiagram';
 import { OrderCtaButton } from '../src/components/OrderCtaButton';
 import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
@@ -36,6 +37,7 @@ import {
   DEPARTURE_CODES,
   DEPARTURE_WIRE,
   departureKey,
+  resolveDepartureWire,
 } from '../src/utils/departureTime';
 
 /** Inner padding of the passenger-count segmented control, in px. */
@@ -236,10 +238,16 @@ export default function NewOrderScreen() {
         male_count: orderStore.maleCount,
         female_count: orderStore.femaleCount,
         // Canonical wire value, not the localized label the passenger saw.
-        departure_time: DEPARTURE_WIRE[orderStore.departureTime],
+        departure_time: resolveDepartureWire(
+          orderStore.departureTime,
+          orderStore.customDepartureTime
+        ),
         note: note || undefined,
         has_roof_rack: orderStore.hasRoofRack,
         female_only: orderStore.femaleOnly,
+        front_seat: orderStore.frontSeat || undefined,
+        pickup_type: orderStore.pickupType,
+        landmark: orderStore.landmark.trim() || undefined,
         target_driver_id: targetDriverId,
         // Redeem the code the passenger entered. The store already held promoCode but it
         // was never sent, so a code could never actually be applied to an order.
@@ -416,6 +424,16 @@ export default function NewOrderScreen() {
             onValueChange={toggleFullCar}
             trackColor={{ true: colors.accent }}
             accessibilityLabel={t('tariff.fullCar')}
+          />
+        </View>
+
+        <View style={{ marginBottom: spacing.md }}>
+          <CabinDiagram
+            personCount={persons}
+            frontSeat={orderStore.frontSeat}
+            isFullCar={isFullCar}
+            onToggleFrontSeat={(val) => orderStore.setField('frontSeat', val)}
+            onChangePersonCount={(count) => selectPersons(count)}
           />
         </View>
 

@@ -310,6 +310,11 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/auth/telegram/start", auth_api.telegram_start)
     app.router.add_get("/api/auth/telegram/check", auth_api.telegram_check)
     app.router.add_post("/api/auth/telegram/verify-code", auth_api.telegram_verify_code)
+    app.router.add_post("/api/auth/google", auth_api.google_login)
+    app.router.add_post("/api/auth/google/start", auth_api.google_start)
+    app.router.add_get("/api/auth/google/authorize", auth_api.google_authorize)
+    app.router.add_get("/api/auth/google/callback", auth_api.google_callback)
+    app.router.add_post("/api/auth/google/verify-code", auth_api.google_verify_code)
     app.router.add_get("/api/auth/me", auth_api.me)
     app.router.add_patch("/api/auth/me", auth_api.update_profile)
 
@@ -317,6 +322,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/routes/cities", routes_api.list_cities)
     app.router.add_get("/api/routes", routes_api.list_routes)
     app.router.add_get("/api/routes/price", routes_api.get_route_price)
+    app.router.add_get("/api/routes/live-stats", routes_api.get_route_live_stats)
 
     # Orders
     app.router.add_post("/api/orders", orders_api.create_order)
@@ -332,6 +338,13 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/driver/telegram/check", drivers_api.driver_telegram_check)
     app.router.add_post(
         "/api/driver/telegram/verify-code", drivers_api.driver_telegram_verify_code
+    )
+    app.router.add_post("/api/driver/google", drivers_api.driver_google_login)
+    app.router.add_post("/api/driver/google/start", drivers_api.driver_google_start)
+    app.router.add_get("/api/driver/google/authorize", drivers_api.driver_google_authorize)
+    app.router.add_get("/api/driver/google/callback", drivers_api.driver_google_callback)
+    app.router.add_post(
+        "/api/driver/google/verify-code", drivers_api.driver_google_verify_code
     )
     app.router.add_get("/api/driver/me", drivers_api.driver_me)
     app.router.add_patch("/api/driver/me", drivers_api.driver_update_me)
@@ -353,10 +366,14 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/api/ai/chat", ai_api.chat)
     app.router.add_get("/api/support", ai_api.get_support_info)
 
-    # Payments (Click Uz, Payme, manual card)
+    # Payments (Atmos, Click Uz, Payme, manual card)
     app.router.add_get("/api/payments/methods", payments_api.list_methods)
-    # Automated providers are deliberately not routed until their production protocol
-    # implementations are complete. Manual card transfer remains the only active flow.
+    app.router.add_post("/api/payments/atmos/create", payments_api.create_atmos_payment)
+    app.router.add_post("/api/payments/atmos/webhook", payments_api.atmos_webhook)
+    app.router.add_post(
+        r"/api/payments/atmos/{id:\d+}/verify", payments_api.verify_atmos_payment
+    )
+    # Click/Payme remain unrouted until their merchant flows are certified.
     app.router.add_post("/api/driver/payments/topup", payments_api.topup_with_screenshot)
     app.router.add_get(r"/api/payments/{id:\d+}/status", payments_api.get_payment_status)
     app.router.add_get(r"/api/payments/{id:\d+}/receipt", payments_api.get_payment_receipt)

@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Icon } from '../../src/components/Icon';
+import { LogoutConfirmModal } from '../../src/components/LogoutConfirmModal';
 import { useDriverStore } from '../../src/store/driver';
 import { getSupportInfo, type SupportInfo } from '../../src/api/ai';
 import {
@@ -37,6 +38,8 @@ export default function ProfileScreen() {
   const [support, setSupport] = useState<SupportInfo | null>(null);
   const [uploading, setUploading] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
+  const [logoutVisible, setLogoutVisible] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [firstNameDraft, setFirstNameDraft] = useState('');
   const [lastNameDraft, setLastNameDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -137,17 +140,19 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert(t('profile.logout'), t('common.confirm') + '?', [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('profile.logout'),
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-          router.replace('/login');
-        },
-      },
-    ]);
+    setLogoutVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      setLogoutVisible(false);
+      router.replace('/login');
+    } finally {
+      if (aliveRef.current) setLoggingOut(false);
+    }
   };
 
   const openSupport = () => {
@@ -225,7 +230,11 @@ export default function ProfileScreen() {
           <Text style={styles.userName}>
             {driver?.first_name || t('more.driverFallback')}
           </Text>
-          <Text style={styles.userPhone}>{driver?.phone}</Text>
+          <Text style={styles.userPhone}>
+            {driver?.phone?.startsWith('google:')
+              ? driver?.contact_phone || 'Google'
+              : driver?.phone}
+          </Text>
         </LinearGradient>
 
         <View style={styles.body}>
@@ -324,6 +333,20 @@ export default function ProfileScreen() {
           <View style={styles.menu}>
             <TouchableOpacity
               style={styles.menuItem}
+              onPress={() => router.push('/guide')}
+              activeOpacity={0.85}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: colors.accent }]}>
+                <Icon name="book" size={20} color={TILE_FG_DARK} />
+              </View>
+              <View style={styles.menuText}>
+                <Text style={styles.menuTitle}>{t('profile.guide')}</Text>
+                <Text style={styles.menuSub}>{t('profile.guideSub')}</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
               onPress={() => router.push('/top-up')}
               activeOpacity={0.85}
             >
@@ -380,7 +403,9 @@ export default function ProfileScreen() {
 
             <TouchableOpacity
               style={styles.menuItem}
-              onPress={() => router.push('/driver-info')}
+              onPress={() =>
+                router.push(driver?.documents_submitted ? '/driver-info' : '/driver-documents')
+              }
               activeOpacity={0.85}
             >
               <View style={[styles.menuIcon, { backgroundColor: colors.primary }]}>
@@ -463,6 +488,13 @@ export default function ProfileScreen() {
           <Text style={styles.version}>{t('more.version')} 1.0.0</Text>
         </View>
       </ScrollView>
+
+      <LogoutConfirmModal
+        visible={logoutVisible}
+        loading={loggingOut}
+        onCancel={() => setLogoutVisible(false)}
+        onConfirm={confirmLogout}
+      />
 
       {/* Edit profile modal */}
       <Modal

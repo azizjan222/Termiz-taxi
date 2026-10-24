@@ -11,8 +11,14 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
+import { CabinDiagram } from '../src/components/CabinDiagram';
 import { OrderCtaButton } from '../src/components/OrderCtaButton';
-import { getPriceQuote, type PriceQuote } from '../src/api/orders';
+import {
+  getPriceQuote,
+  getRouteLiveStats,
+  type PriceQuote,
+  type RouteLiveStats,
+} from '../src/api/orders';
 import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -27,6 +33,7 @@ export default function TariffScreen() {
   const [taxiQuote, setTaxiQuote] = useState<PriceQuote | null>(null);
   const [parcelQuote, setParcelQuote] = useState<PriceQuote | null>(null);
   const [fullCarQuote, setFullCarQuote] = useState<PriceQuote | null>(null);
+  const [liveStats, setLiveStats] = useState<RouteLiveStats | null>(null);
   const [loading, setLoading] = useState(true);
   // True when the quote request failed, so the footer must not render a fallback 0.
   const [quotesFailed, setQuotesFailed] = useState(false);
@@ -71,15 +78,17 @@ export default function TariffScreen() {
       // with no parcel tariff defined (a plain 404) threw away the taxi and full-car
       // quotes that had arrived successfully — leaving the screen with no prices at all
       // and no way to order a perfectly available taxi.
-      const [taxi, parcel, full] = await Promise.allSettled([
+      const [taxi, parcel, full, statsRes] = await Promise.allSettled([
         getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'taxi', 1),
         getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'parcel'),
         getPriceQuote(orderStore.fromCity!, orderStore.toCity!, 'full_car'),
+        getRouteLiveStats(orderStore.fromCity!, orderStore.toCity!),
       ]);
       if (!active) return;
       setTaxiQuote(taxi.status === 'fulfilled' ? taxi.value : null);
       setParcelQuote(parcel.status === 'fulfilled' ? parcel.value : null);
       setFullCarQuote(full.status === 'fulfilled' ? full.value : null);
+      setLiveStats(statsRes.status === 'fulfilled' ? statsRes.value : null);
       // Only a total failure is an error state. If the tariff the passenger actually
       // selected came back, the screen is usable.
       setQuotesFailed(
@@ -230,6 +239,18 @@ export default function TariffScreen() {
           )}
         </View>
 
+        {/* Live Pitak / corridor availability indicator */}
+        {liveStats && (liveStats.online_drivers > 0 || liveStats.filling_cars > 0) && (
+          <View style={styles.liveStatsBanner}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveStatsText}>
+              {liveStats.filling_cars > 0
+                ? `${liveStats.online_drivers} online · ${liveStats.filling_cars} mashina to'lmoqda (${liveStats.free_seats_in_filling_cars} joy bo'sh)`
+                : `${liveStats.online_drivers} online haydovchi shu yo'nalishda tayyor`}
+            </Text>
+          </View>
+        )}
+
         {/* Person count selector (taxi only) */}
         {!isParcel && taxiQuote && (
           <>
@@ -326,6 +347,23 @@ export default function TariffScreen() {
                   </View>
                 </TouchableOpacity>
               )}
+            </View>
+
+            {/* Interactive 2x2 Cabin Diagram (Front seat + Rear seats) */}
+            <View style={{ marginTop: spacing.lg }}>
+              <CabinDiagram
+                personCount={orderStore.personCount}
+                frontSeat={orderStore.frontSeat}
+                isFullCar={orderStore.serviceType === 'full_car'}
+                onToggleFrontSeat={(val) => orderStore.setField('frontSeat', val)}
+                onChangePersonCount={(count) => {
+                  if (count >= 4 && fullCarQuote) {
+                    handleFullCar();
+                  } else {
+                    handlePersonCount(count);
+                  }
+                }}
+              />
             </View>
           </>
         )}
@@ -436,6 +474,30 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.primary,
   },
   retryText: { ...typography.button, color: '#FFFFFF' },
+  liveStatsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    gap: spacing.sm,
+  },
+  liveDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#16A34A',
+  },
+  liveStatsText: {
+    ...typography.small,
+    color: colors.text,
+    fontWeight: '600',
+    flex: 1,
+  },
   sectionTitle: { ...typography.h3, color: colors.primary, marginBottom: spacing.md },
   personOptions: { gap: spacing.sm },
   personOption: {

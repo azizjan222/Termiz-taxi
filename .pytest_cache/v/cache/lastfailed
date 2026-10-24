@@ -1,0 +1,5 @@
+{
+  "tests/test_driver_verification.py::test_default_balance_floor_is_one_commission": true,
+  "tests/test_auth_otp.py::test_otp_cooldown_blocks_immediate_resend": true,
+  "tests/test_auth_otp.py::test_otp_hourly_cap": true
+}

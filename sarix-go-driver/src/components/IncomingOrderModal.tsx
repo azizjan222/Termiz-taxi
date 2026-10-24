@@ -185,16 +185,39 @@ export const IncomingOrderModal: React.FC<Props> = ({
                 )}
               </View>
             </View>
+            {!!order.landmark && (
+              <Text style={[styles.routeAddr, { marginTop: 6, color: colors.primary, fontWeight: '700' }]} numberOfLines={2}>
+                📍 {t('order.landmarkLabel')}: {order.landmark}
+              </Text>
+            )}
           </View>
 
           {/* Qo'shimcha talablar — shown right under the route (high & prominent) so the
               driver clearly sees special requirements BEFORE accepting. */}
-          {(order.female_only || order.has_roof_rack) && (
+          {(order.female_only ||
+            order.has_roof_rack ||
+            order.front_seat ||
+            order.pickup_type ||
+            (isParcel && order.parcel_payer)) && (
             <View style={styles.extrasBlock}>
               <IconText name="history" size={12} color="#B45309" textStyle={styles.extrasTitle}>
                 {t('incoming.extras')}
               </IconText>
               <View style={styles.extrasRow}>
+                {order.front_seat && (
+                  <View style={styles.extraTag}>
+                    <Text style={styles.extraTagText}>💺 {t('order.frontSeatBadge')}</Text>
+                  </View>
+                )}
+                {order.pickup_type && (
+                  <View style={styles.extraTag}>
+                    <Text style={styles.extraTagText}>
+                      {order.pickup_type === 'pitak'
+                        ? `🚏 ${t('order.pickupPitakBadge')}`
+                        : `🏠 ${t('order.pickupDoorBadge')}`}
+                    </Text>
+                  </View>
+                )}
                 {order.female_only && (
                   <View style={styles.extraTag}>
                     <IconText name="female" size={12} color="#B45309" textStyle={styles.extraTagText}>
@@ -207,6 +230,18 @@ export const IncomingOrderModal: React.FC<Props> = ({
                     <IconText name="luggage" size={12} color="#B45309" textStyle={styles.extraTagText}>
                       {t('incoming.roofRack')}
                     </IconText>
+                  </View>
+                )}
+                {isParcel && order.parcel_payer && (
+                  <View style={styles.extraTag}>
+                    <Text style={styles.extraTagText}>
+                      💳{' '}
+                      {t(
+                        order.parcel_payer === 'recipient'
+                          ? 'order.parcelPayerRecipient'
+                          : 'order.parcelPayerSender'
+                      )}
+                    </Text>
                   </View>
                 )}
               </View>

@@ -255,6 +255,26 @@ def commission_soon(lang: str, *, from_city: str, to_city: str,
     return title, body
 
 
+def scheduled_order_reminder(
+    lang: str, *, from_city: str, to_city: str, departure_time: str, order_id: int
+) -> tuple[str, str]:
+    """30-minute heads-up reminder for a scheduled inter-district ride."""
+    lang = norm_lang(lang)
+    title = {
+        "uz": "⏰ Safar vaqti yaqinlashmoqda!",
+        "uz-cyrl": "⏰ Сафар вақти яқинлашмоқда!",
+        "ru": "⏰ Время поездки приближается!",
+        "en": "⏰ Your trip is coming up soon!",
+    }[lang]
+    body = {
+        "uz": f"Zakas #{order_id} ({from_city} → {to_city}): jo'nash vaqti {departure_time}. Tayyor bo'lib turing!",
+        "uz-cyrl": f"Заказ #{order_id} ({from_city} → {to_city}): жўнаш вақти {departure_time}. Тайёр бўлиб туринг!",
+        "ru": f"Заказ #{order_id} ({from_city} → {to_city}): время выезда {departure_time}. Будьте готовы!",
+        "en": f"Order #{order_id} ({from_city} → {to_city}): departure at {departure_time}. Please be ready!",
+    }[lang]
+    return title, body
+
+
 # Sarlavha sifatida ko'rsatiladigan ilova nomlari. app.json dagi `name` bilan bir xil
 # bo'lishi SHART: sarix-go-app -> "Sarix Go", sarix-go-driver -> "Sarix Driver".
 PASSENGER_APP_NAME = "Sarix Go"

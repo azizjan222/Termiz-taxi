@@ -22,6 +22,8 @@ import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import {
   listMethods,
+  createAtmosPayment,
+  verifyAtmosPayment,
   createClickPayment,
   createPaymePayment,
   submitTopupScreenshot,
@@ -45,14 +47,16 @@ const MAX_AMOUNT = 5_000_000;
 
 const METHOD_ICONS: Record<PaymentMethod['id'], IconName> = {
   card: 'card',
+  atmos: 'wallet',
   click: 'wallet',
   payme: 'wallet',
 };
 
-// Click and Payme get the same wallet shape, so the brand colour is what tells them
-// apart — exactly the job the old 💙 / 💚 glyphs were doing.
+// Atmos, Click and Payme get the same wallet shape, so the brand colour is what tells them
+// apart — exactly the job the old 🏧 / 💙 / 💚 glyphs were doing.
 const METHOD_COLORS: Record<PaymentMethod['id'], string> = {
   card: '#B88700',
+  atmos: '#6C3CE9',
   click: '#0F86FF',
   payme: '#00CFC1',
 };
@@ -98,6 +102,7 @@ export default function TopUpScreen() {
   // two taps dispatched in the same batch both got through. On the provider path that
   // meant two Payment rows and two openURL calls — two payable invoices.
   const inFlightRef = useRef(false);
+  const lastAtmosPaymentIdRef = useRef<number | null>(null);
 
   const fetchMethods = useCallback(async () => {
     setMethodsLoading(true);
@@ -120,14 +125,28 @@ export default function TopUpScreen() {
   }, []);
 
   // Runs on first focus too, so it replaces the old mount-only fetch rather than adding to
-  // it. The provider (Click/Payme) flow leaves the app entirely and a manual request only
+  // it. The provider (Atmos/Click/Payme) flow leaves the app entirely and a manual request only
   // moves the balance once an admin approves it, so refetching on focus is what makes the
   // balance the driver sees on return actually current — otherwise they saw the stale
   // number and were liable to pay a second time.
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
-      loadDriver();
+      const pendingAtmosId = lastAtmosPaymentIdRef.current;
+      if (pendingAtmosId) {
+        verifyAtmosPayment(pendingAtmosId)
+          .then((res) => {
+            if (res.status === 'approved' || res.status === 'rejected' || res.status === 'cancelled') {
+              lastAtmosPaymentIdRef.current = null;
+            }
+          })
+          .catch(() => {})
+          .finally(() => {
+            loadDriver();
+          });
+      } else {
+        loadDriver();
+      }
       fetchMethods();
       return () => {
         focusedRef.current = false;
@@ -257,7 +276,10 @@ export default function TopUpScreen() {
       setLoading(true);
       try {
         let result;
-        if (selectedMethod === 'click') {
+        if (selectedMethod === 'atmos') {
+          result = await createAtmosPayment(amt);
+          lastAtmosPaymentIdRef.current = result.payment_id;
+        } else if (selectedMethod === 'click') {
           result = await createClickPayment(amt);
         } else if (selectedMethod === 'payme') {
           result = await createPaymePayment(amt);

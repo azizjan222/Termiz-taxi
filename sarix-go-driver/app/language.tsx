@@ -28,7 +28,8 @@ export default function DriverLanguageScreen() {
     try {
       await changeLanguage(code);
       await AsyncStorage.setItem(ONBOARDED_KEY, 'true');
-      router.replace('/login');
+      const seenGuide = await AsyncStorage.getItem('@sarixgo-driver/guide_seen');
+      router.replace(seenGuide === 'true' ? '/login' : '/guide?onboarding=1');
     } catch {
       setBusy(null);
     }

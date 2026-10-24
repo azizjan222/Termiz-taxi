@@ -123,6 +123,7 @@ const GLYPHS = {
   idea: 'lightbulb-outline',
   edit: 'pencil',
   run: 'run',
+  google: 'google',
 } as const;
 
 export type IconName = keyof typeof GLYPHS;

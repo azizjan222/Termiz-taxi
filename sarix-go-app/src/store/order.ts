@@ -20,11 +20,20 @@ interface OrderDraft {
    * converted to the canonical wire value with `DEPARTURE_WIRE` only at submit time.
    */
   departureTime: DepartureCode;
+  customDepartureTime: string;
   note: string;
   paymentMethod: 'cash' | 'card' | 'balance';
   promoCode: string;
   hasRoofRack: boolean;
   femaleOnly: boolean;
+  frontSeat: boolean;
+  pickupType: 'door' | 'pitak';
+  landmark: string;
+  parcelType: 'hujjat' | 'sumka' | 'quti' | 'yukxona';
+  parcelRecipientName: string;
+  parcelRecipientPhone: string;
+  parcelPayer: 'sender' | 'recipient';
+  parcelNote: string;
 }
 
 interface OrderState extends OrderDraft {
@@ -61,11 +70,20 @@ const initialDraft: OrderDraft = {
   maleCount: 1,
   femaleCount: 0,
   departureTime: 'now',
+  customDepartureTime: '',
   note: '',
   paymentMethod: 'cash',
   promoCode: '',
   hasRoofRack: false,
   femaleOnly: false,
+  frontSeat: false,
+  pickupType: 'door',
+  landmark: '',
+  parcelType: 'hujjat',
+  parcelRecipientName: '',
+  parcelRecipientPhone: '',
+  parcelPayer: 'sender',
+  parcelNote: '',
 };
 
 export const useOrderStore = create<OrderState>((set) => ({

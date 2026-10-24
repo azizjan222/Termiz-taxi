@@ -8,8 +8,9 @@ That dual storage is gone: everything now lives in the database, accessed throug
 """
 import asyncio
 import logging
-
-from app.bot.app import run
+import os
+import sys
+from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,5 +18,21 @@ logging.basicConfig(
 )
 
 
+def _has_valid_bot_token() -> bool:
+    token = os.getenv("BOT_TOKEN", "").strip()
+    if not token or token == "your_bot_token_here":
+        return False
+    parts = token.split(":", 1)
+    return len(parts) == 2 and parts[0].isdigit() and len(parts[1]) >= 10
+
+
 if __name__ == "__main__":
+    preview_script = Path(__file__).resolve().parent / "preview-server.mjs"
+    if not _has_valid_bot_token() and preview_script.is_file():
+        os.environ.setdefault("PORT", "3000")
+        os.execvp("node", ["node", str(preview_script)])
+
+    from app.bot.app import run
+
     asyncio.run(run())
+

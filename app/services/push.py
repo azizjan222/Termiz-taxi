@@ -554,6 +554,7 @@ async def notify_passenger_order_accepted(session: Session, order, driver):
         title=title,
         body=body,
         data={"type": "order_accepted", "order_id": order.id},
+        sound="order_accepted.wav",
         channel_id="orders_v2",
     )
 
@@ -628,6 +629,7 @@ async def notify_order_completed(session: Session, order):
         title=title,
         body=body,
         data={"type": "order_completed", "order_id": order.id},
+        sound="order_completed.wav",
         channel_id="orders_v2",
     )
 
@@ -645,7 +647,8 @@ async def notify_passenger_no_driver(session: Session, order):
         title=title,
         body=body,
         data={"type": "order_expired", "order_id": order.id},
-        channel_id="orders_v2",
+        sound="order_cancelled.wav",
+        channel_id="alerts_v2",
     )
 
 
@@ -668,6 +671,7 @@ async def notify_bonus_earned(session: Session, user_id: int, amount: int, balan
         title=title,
         body=body,
         data={"type": "bonus_earned", "amount": amount, "balance": balance},
+        sound="balance_bonus.wav",
         channel_id="balance",
     )
 
@@ -692,6 +696,7 @@ async def notify_referral_reward(session: Session, user_id: int, amount: int, ba
         title=title,
         body=body,
         data={"type": "referral_reward", "amount": amount, "balance": balance},
+        sound="balance_bonus.wav",
         channel_id="balance",
     )
 
@@ -719,6 +724,7 @@ async def notify_driver_discount_reimbursed(
         title=title,
         body=body,
         data={"type": "discount_reimbursed", "order_id": order_id, "amount": amount},
+        sound="balance_bonus.wav",
         channel_id="balance",
     )
 
@@ -740,6 +746,7 @@ async def notify_driver_reimbursement_reversed(
         title=title,
         body=body,
         data={"type": "reimbursement_reversed", "order_id": order_id, "amount": amount},
+        sound="balance_bonus.wav",
         channel_id="balance",
     )
 
@@ -775,6 +782,7 @@ async def notify_driver_commission_soon(session: Session, order, minutes_left: i
             "order_id": order.id,
             "minutes_left": minutes_left,
         },
+        sound="balance_bonus.wav",
         channel_id="balance",
     )
 
@@ -794,5 +802,6 @@ async def notify_balance_topup(session: Session, driver_id: int, amount: int, bo
         title=title,
         body=body,
         data={"type": "balance_topup", "amount": amount, "bonus": bonus},
+        sound="balance_bonus.wav",
         channel_id="balance",
     )

@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { Icon, type IconName } from '../../src/components/Icon';
 import { getUnreadCount } from '../../src/services/notificationHistory';
+import { listAddresses, type SavedAddress } from '../../src/api/addresses';
 import { useAuthStore } from '../../src/store/auth';
 import { useOrderStore } from '../../src/store/order';
 import { useThemeStore } from '../../src/store/theme';
@@ -80,6 +81,7 @@ export default function HomeScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [unread, setUnread] = useState(0);
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
 
   // On focus, not on mount: a push can arrive while the app is open, and the passenger
   // returns here after reading the inbox, so a mount-only read would show a stale badge.
@@ -89,6 +91,11 @@ export default function HomeScreen() {
       getUnreadCount()
         .then((n) => {
           if (active) setUnread(n);
+        })
+        .catch(() => {});
+      listAddresses()
+        .then((items) => {
+          if (active) setSavedAddresses(items.slice(0, 5));
         })
         .catch(() => {});
       return () => {
@@ -107,6 +114,18 @@ export default function HomeScreen() {
     // location + destination). The labels inside adapt to the service type.
     router.push('/order-entry');
   };
+
+  const startWithSavedAddress = (addr: SavedAddress) => {
+    resetOrder();
+    setOrderField('serviceType', 'taxi');
+    setOrderField('toAddress', addr.address);
+    if (typeof addr.latitude === 'number' && typeof addr.longitude === 'number') {
+      setOrderField('toLat', addr.latitude);
+      setOrderField('toLon', addr.longitude);
+    }
+    router.push('/order-entry');
+  };
+
 
   /** One service card: wash, icon tile, copy, arrow and quality tags. */
   const renderServiceCard = (opts: {
@@ -231,6 +250,43 @@ export default function HomeScreen() {
           icon: 'parcel',
           tags: PARCEL_TAGS,
         })}
+
+        {savedAddresses.length > 0 && (
+          <View style={styles.savedSection}>
+            <View style={styles.savedHeader}>
+              <Text style={styles.savedTitle}>{t('home.quickSavedTitle')}</Text>
+              <TouchableOpacity onPress={() => router.push('/saved-addresses')}>
+                <Text style={styles.savedManage}>{t('home.quickSavedManage')}</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.savedRow}
+            >
+              {savedAddresses.map((addr) => (
+                <TouchableOpacity
+                  key={addr.id}
+                  style={styles.savedChip}
+                  onPress={() => startWithSavedAddress(addr)}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="pin" size={14} color={colors.primary} />
+                  <View style={{ marginLeft: 6, maxWidth: 160 }}>
+                    {addr.label ? (
+                      <Text style={styles.savedChipLabel} numberOfLines={1}>
+                        {addr.label}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.savedChipAddress} numberOfLines={1}>
+                      {addr.address}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -341,4 +397,44 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.card,
   },
   tagText: { ...typography.small, color: colors.text, fontWeight: '700' },
+  savedSection: {
+    marginTop: spacing.md,
+  },
+  savedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  savedTitle: {
+    ...typography.captionBold,
+    color: colors.textSecondary,
+  },
+  savedManage: {
+    ...typography.captionBold,
+    color: colors.primary,
+  },
+  savedRow: {
+    gap: spacing.sm,
+    paddingVertical: 4,
+  },
+  savedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  savedChipLabel: {
+    ...typography.captionBold,
+    color: colors.text,
+  },
+  savedChipAddress: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
 });
+

@@ -104,6 +104,15 @@ export interface DriverOrder {
   can_rate_passenger?: boolean;
   has_roof_rack: boolean;
   female_only: boolean;
+  front_seat?: boolean;
+  pickup_type?: 'door' | 'pitak';
+  landmark?: string | null;
+  parcel_recipient_name?: string | null;
+  parcel_recipient_phone?: string | null;
+  parcel_payer?: 'sender' | 'recipient';
+  parcel_type?: string | null;
+  parcel_note?: string | null;
+  corridor_match?: 'exact' | 'transit' | 'other';
   source: string;
   target_driver_id?: number | null;
   commission_charged?: boolean;
@@ -143,10 +152,19 @@ export interface AvailableOrdersResponse {
   is_online?: boolean;
   is_verified?: boolean;
   documents_submitted?: boolean;
+  active_corridor?: { from_city: string; to_city: string } | null;
+  cabin_occupied?: number;
+  cabin_capacity?: number;
 }
 
-export async function listAvailableOrders(): Promise<AvailableOrdersResponse> {
-  const response = await api.get<AvailableOrdersResponse>('/api/driver/orders/available');
+export async function listAvailableOrders(params?: {
+  corridor_from?: string;
+  corridor_to?: string;
+  include_transit?: boolean;
+}): Promise<AvailableOrdersResponse> {
+  const response = await api.get<AvailableOrdersResponse>('/api/driver/orders/available', {
+    params,
+  });
   return {
     orders: response.data.orders || [],
     can_receive: response.data.can_receive !== false,
@@ -157,6 +175,9 @@ export async function listAvailableOrders(): Promise<AvailableOrdersResponse> {
     is_online: response.data.is_online,
     is_verified: response.data.is_verified,
     documents_submitted: response.data.documents_submitted,
+    active_corridor: response.data.active_corridor ?? null,
+    cabin_occupied: response.data.cabin_occupied ?? 0,
+    cabin_capacity: response.data.cabin_capacity ?? 4,
   };
 }
 
@@ -266,6 +287,7 @@ export interface DriverInfoUpdate {
   pinfl?: string;
   car_number?: string;
   car_model?: string;
+  car_color?: string;
   car_year?: string;
 }
 
@@ -342,12 +364,252 @@ export interface CarModelsResponse {
   popular: string[];
 }
 
+export const DEFAULT_CAR_MODELS: string[] = [
+  // Chevrolet / UzAuto / Ravon
+  'Chevrolet Cobalt',
+  'Chevrolet Gentra / Lacetti',
+  'Chevrolet Onix',
+  'Chevrolet Tracker 2',
+  'Chevrolet Tracker 1',
+  'Chevrolet Monza',
+  'Chevrolet Malibu 2',
+  'Chevrolet Malibu 1',
+  'Chevrolet Malibu XL',
+  'Chevrolet Captiva 3-4',
+  'Chevrolet Captiva 5',
+  'Chevrolet Captiva 1-2',
+  'Chevrolet Nexia 3',
+  'Chevrolet Spark',
+  'Chevrolet Equinox',
+  'Chevrolet Traverse',
+  'Chevrolet Tahoe',
+  'Chevrolet Trailblazer',
+  'Chevrolet Orlando',
+  'Chevrolet Cruze',
+  'Chevrolet Epica',
+  'Chevrolet Aveo',
+  'Chevrolet Damas',
+  'Chevrolet Labo',
+  'Chevrolet Menlo',
+  'Chevrolet Niva',
+  'Niva Travel',
+  'Niva Urban',
+  'Ravon R2',
+  'Ravon R3 Nexia',
+  'Ravon R4',
+  'Ravon Gentra',
+  'Daewoo Gentra',
+  'Daewoo Lacetti',
+  'Daewoo Damas',
+  'Daewoo Nubira',
+  'Daewoo Leganza',
+  // BYD
+  'BYD Song Plus DM-i / Champion',
+  'BYD Song Pro',
+  'BYD Song L',
+  'BYD Chazor',
+  'BYD Yuan Up',
+  'BYD Yuan Plus',
+  'BYD e2',
+  'BYD Han',
+  'BYD Seal',
+  'BYD Seal U',
+  'BYD Seagull',
+  'BYD Dolphin',
+  'BYD Tang',
+  'BYD Qin Plus',
+  'BYD Qin L',
+  // Chery / Exeed / Omoda / Jaecoo / Jetour
+  'Chery Tiggo 7 Pro',
+  'Chery Tiggo 7 Pro Max',
+  'Chery Tiggo 8 Pro',
+  'Chery Tiggo 8 Pro Max',
+  'Chery Tiggo 4 Pro',
+  'Chery Tiggo 2 Pro',
+  'Chery Arrizo 6 Pro',
+  'Chery Arrizo 8',
+  'Chery Arrizo 5',
+  'Jetour X70 Plus',
+  'Jetour X70',
+  'Jetour X90 Plus',
+  'Jetour Dashing',
+  'Jetour T2',
+  'Exeed TXL',
+  'Exeed VX',
+  'Exeed LX',
+  'Exeed RX',
+  'Omoda C5',
+  'Jaecoo J7',
+  'Jaecoo J8',
+  // Deepal / Changan / Haval / Zeekr / Li Auto / Leapmotor / Geely
+  'Deepal S07 285 Max',
+  'Deepal S7 121 Max',
+  'Deepal SL03',
+  'Deepal L07',
+  'Changan UNI-K',
+  'Changan UNI-V',
+  'Changan UNI-T',
+  'Changan CS55 Plus',
+  'Changan CS35 Plus',
+  'Changan CS75 Plus',
+  'Changan Qiyuan A05',
+  'Changan Qiyuan A07',
+  'Haval M6',
+  'Haval Jolion',
+  'Haval H6',
+  'Haval Dargo',
+  'Tank 300',
+  'Tank 500',
+  'Leapmotor C16',
+  'Leapmotor C11',
+  'Leapmotor C10',
+  'Leapmotor C01',
+  'Li Auto L7',
+  'Li Auto L8',
+  'Li Auto L9',
+  'Li Auto L6',
+  'Zeekr 001',
+  'Zeekr 007',
+  'Zeekr X',
+  'Geely Monjaro',
+  'Geely Coolray',
+  'Geely Emgrand',
+  'Geely Atlas Pro',
+  'Geely Tugella',
+  'Xiaomi SU7',
+  'Hongqi E-QM5',
+  'Hongqi H5',
+  'Voyah Free',
+  'GAC Aion S',
+  'GAC Aion Y',
+  'Dongfeng Aeolus Shine Max',
+  'Dongfeng Aeolus Huge',
+  'Bestune T77',
+  'Bestune B70',
+  // Kia
+  'Kia K5',
+  'Kia K8',
+  'Kia Sportage',
+  'Kia Sorento',
+  'Kia Sonet',
+  'Kia Seltos',
+  'Kia Carnival',
+  'Kia Cerato',
+  'Kia Rio',
+  'Kia Optima',
+  'Kia Soul',
+  'Kia EV6',
+  'Kia Bongo',
+  // Hyundai
+  'Hyundai Sonata',
+  'Hyundai Elantra',
+  'Hyundai Accent / Solaris',
+  'Hyundai Tucson',
+  'Hyundai Santa Fe',
+  'Hyundai Palisade',
+  'Hyundai Staria',
+  'Hyundai Starex (H-1)',
+  'Hyundai Creta',
+  'Hyundai Venue',
+  'Hyundai Azera / Grandeur',
+  'Hyundai Ioniq 5',
+  // Toyota & Lexus
+  'Toyota Camry',
+  'Toyota Corolla',
+  'Toyota Avalon',
+  'Toyota RAV4',
+  'Toyota Highlander',
+  'Toyota Land Cruiser Prado',
+  'Toyota Land Cruiser 200',
+  'Toyota Land Cruiser 300',
+  'Toyota Alphard',
+  'Toyota Sienna',
+  'Toyota bZ4X',
+  'Lexus ES',
+  'Lexus RX',
+  'Lexus NX',
+  'Lexus GX',
+  'Lexus LX',
+  // Lada
+  'Lada Vesta',
+  'Lada Vesta SW Cross',
+  'Lada Largus',
+  'Lada Largus Cross',
+  'Lada Granta',
+  'Lada XRAY',
+  'Lada Priora',
+  // Volkswagen / Skoda / BMW / Mercedes / Audi / Nissan / Honda / Renault
+  'Volkswagen Polo',
+  'Volkswagen Jetta',
+  'Volkswagen Passat',
+  'Volkswagen Tiguan',
+  'Volkswagen Teramont',
+  'Volkswagen ID.4',
+  'Volkswagen ID.6',
+  'Skoda Octavia',
+  'Skoda Rapid',
+  'Skoda Superb',
+  'Skoda Kodiaq',
+  'Mercedes-Benz E-Class',
+  'Mercedes-Benz C-Class',
+  'Mercedes-Benz S-Class',
+  'Mercedes-Benz GLE',
+  'Mercedes-Benz Vito / V-Class',
+  'BMW 3 Series',
+  'BMW 5 Series',
+  'BMW 7 Series',
+  'BMW X5',
+  'BMW X7',
+  'Audi A4',
+  'Audi A6',
+  'Audi Q5',
+  'Audi Q7',
+  'Nissan Almera',
+  'Nissan Sunny',
+  'Nissan Qashqai',
+  'Nissan X-Trail',
+  'Nissan Patrol',
+  'Honda Accord',
+  'Honda Civic',
+  'Honda CR-V',
+  'Honda e:NP1 / e:NS1',
+  'Mitsubishi Lancer',
+  'Mitsubishi Outlander',
+  'Mitsubishi Pajero',
+  'Mazda 6',
+  'Mazda CX-5',
+  'Renault Duster',
+  'Renault Logan',
+  'Renault Arkana',
+  'Ford Focus',
+  'Ford Mondeo',
+  'Ford Transit',
+  'Opel Astra',
+  'Opel Zafira',
+];
+
 export async function getCarModels(): Promise<CarModelsResponse> {
-  const response = await api.get<CarModelsResponse>('/api/car-models');
-  return {
-    models: response.data.models || [],
-    popular: response.data.popular || [],
-  };
+  try {
+    const response = await api.get<CarModelsResponse>('/api/car-models');
+    const remoteModels = response.data?.models || [];
+    const seen = new Set<string>();
+    const merged: string[] = [];
+    for (const item of [...DEFAULT_CAR_MODELS, ...remoteModels]) {
+      const key = item.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+    }
+    return {
+      models: merged,
+      popular: response.data?.popular || DEFAULT_CAR_MODELS.slice(0, 20),
+    };
+  } catch {
+    return {
+      models: DEFAULT_CAR_MODELS,
+      popular: DEFAULT_CAR_MODELS.slice(0, 20),
+    };
+  }
 }
 
 
@@ -409,3 +671,48 @@ export async function telegramVerifyCode(
 // minted a full driver JWT from the session token alone, so a deep link the attacker
 // generated and got a driver to open handed over that driver's account. The endpoint is now
 // a 410 and login.tsx has used telegramVerifyCode() since 82994e5 — do not reintroduce it.
+
+// ===== Google-based login (driver) =====
+export interface GoogleStartResponse {
+  token: string;
+  auth_url: string;
+  configured: boolean;
+  expires_in: number;
+}
+
+export async function googleLogin(params: {
+  id_token?: string;
+  access_token?: string;
+}): Promise<TgCheckResponse> {
+  const response = await api.post<TgCheckResponse>('/api/driver/google', params);
+  if (
+    (response.data.status === 'verified' || response.data.status === 'documents_required') &&
+    response.data.token
+  ) {
+    await setAuthToken(response.data.token);
+  }
+  return response.data;
+}
+
+export async function googleStart(): Promise<GoogleStartResponse> {
+  const response = await api.post<GoogleStartResponse>('/api/driver/google/start', {});
+  return response.data;
+}
+
+export async function googleVerifyCode(
+  token: string,
+  code: string
+): Promise<TgCheckResponse> {
+  const response = await api.post<TgCheckResponse>(
+    '/api/driver/google/verify-code',
+    { token, code }
+  );
+  if (
+    (response.data.status === 'verified' || response.data.status === 'documents_required') &&
+    response.data.token
+  ) {
+    await setAuthToken(response.data.token);
+  }
+  return response.data;
+}
+

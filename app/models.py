@@ -264,6 +264,9 @@ class Order(Base):
     note = Column(Text)
     has_roof_rack = Column(Boolean, default=False)
     female_only = Column(Boolean, default=False)
+    front_seat = Column(Boolean, default=False)
+    pickup_type = Column(String(20), default="door")  # door (mahalla/uy oldidan), pitak (tuman markazi)
+    landmark = Column(String(200))  # mo'ljal (orientir)
     male_count = Column(Integer, default=0)
     female_count = Column(Integer, default=0)
     source = Column(String(20), default="bot")  # bot, app
@@ -281,6 +284,10 @@ class Order(Base):
         CheckConstraint(
             "service_type IN ('taxi', 'parcel', 'full_car')",
             name="ck_order_service_type",
+        ),
+        CheckConstraint(
+            "pickup_type IN ('door', 'pitak')",
+            name="ck_order_pickup_type",
         ),
         CheckConstraint(
             "status IN ('new', 'accepted', 'in_progress', 'completed', 'cancelled', 'expired')",

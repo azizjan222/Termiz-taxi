@@ -170,6 +170,64 @@ def _verify_click_signature(data: dict, action: str) -> bool:
     return hmac.compare_digest(expected.lower(), sign_string.lower())
 
 
+def _atmos_is_configured() -> bool:
+    """Return True when Atmos is enabled and has merchant credentials configured."""
+    return bool(
+        config.ATMOS_ENABLED
+        and config.ATMOS_STORE_ID
+        and (
+            (config.ATMOS_CONSUMER_KEY and config.ATMOS_CONSUMER_SECRET)
+            or config.ATMOS_SECRET_KEY
+        )
+    )
+
+
+def _verify_atmos_signature(data: dict, raw_body: bytes = b"") -> bool:
+    """Verify Atmos webhook signature (constant-time).
+
+    Supports both Atmos billing MD5 sign (`store_id + transaction_id + invoice + amount + SECRET`)
+    and HMAC-SHA256 (`store_id:transaction_id:invoice:amount` or raw body).
+    Fails closed when ATMOS_ENABLED is False or ATMOS_SECRET_KEY is unset.
+    """
+    if not (config.ATMOS_ENABLED and config.ATMOS_SECRET_KEY):
+        return False
+
+    sign = str(data.get("sign") or data.get("signature") or "").strip().lower()
+    if not sign:
+        return False
+
+    store_id = str(data.get("store_id") or config.ATMOS_STORE_ID or "")
+    transaction_id = str(data.get("transaction_id") or "")
+    invoice = str(
+        data.get("invoice")
+        or data.get("account")
+        or data.get("merchant_trans_id")
+        or ""
+    )
+    amount = str(data.get("amount") or "")
+
+    md5_concat = f"{store_id}{transaction_id}{invoice}{amount}{config.ATMOS_SECRET_KEY}"
+    expected_md5 = hashlib.md5(md5_concat.encode("utf-8")).hexdigest().lower()
+    if hmac.compare_digest(expected_md5, sign):
+        return True
+
+    canonical = f"{store_id}:{transaction_id}:{invoice}:{amount}".encode("utf-8")
+    expected_hmac = hmac.new(
+        config.ATMOS_SECRET_KEY.encode("utf-8"), canonical, hashlib.sha256
+    ).hexdigest().lower()
+    if hmac.compare_digest(expected_hmac, sign):
+        return True
+
+    if raw_body:
+        body_hmac = hmac.new(
+            config.ATMOS_SECRET_KEY.encode("utf-8"), raw_body, hashlib.sha256
+        ).hexdigest().lower()
+        if hmac.compare_digest(body_hmac, sign):
+            return True
+
+    return False
+
+
 # ============= AVAILABLE PAYMENT METHODS =============
 
 async def list_methods(request: web.Request) -> web.Response:
@@ -187,6 +245,21 @@ async def list_methods(request: web.Request) -> web.Response:
             "card_holder": config.TOPUP_CARD_HOLDER,
             "instant": False,
         })
+
+    # Atmos (Uzcard / Humo / Visa) — active when ATMOS_ENABLED=true and credentials are set.
+    atmos_ready = _atmos_is_configured()
+    methods.append({
+        "id": "atmos",
+        "name": "Atmos (Uzcard / Humo)",
+        "icon": "🏧",
+        "description": (
+            "Uzcard va Humo orqali avto-to'ldirish"
+            if atmos_ready
+            else "Tez orada qo'shiladi"
+        ),
+        "instant": True,
+        "disabled": not atmos_ready,
+    })
 
     # Automated providers are deliberately disabled until their merchant flows are
     # completed and certified. Manual card transfer is the only active method.
@@ -452,6 +525,471 @@ async def payme_webhook(request: web.Request) -> web.Response:
         {"error": {"code": -32504, "message": "Payme integration disabled"}},
         status=503,
     )
+
+
+# ============= ATMOS (Uzcard / Humo / Visa) =============
+
+async def _fetch_atmos_access_token() -> str:
+    """Request an OAuth2 client_credentials token from Atmos API."""
+    import base64
+
+    import aiohttp
+
+    creds = f"{config.ATMOS_CONSUMER_KEY}:{config.ATMOS_CONSUMER_SECRET}".encode("utf-8")
+    basic = base64.b64encode(creds).decode("ascii")
+    token_url = f"{config.ATMOS_BASE_URL}/token"
+    async with aiohttp.ClientSession() as http:
+        async with http.post(
+            token_url,
+            data={"grant_type": "client_credentials"},
+            headers={
+                "Authorization": f"Basic {basic}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=aiohttp.ClientTimeout(total=12),
+        ) as resp:
+            payload = await resp.json(content_type=None)
+            if resp.status >= 400 or not isinstance(payload, dict):
+                raise RuntimeError(f"Atmos token error: HTTP {resp.status}")
+            token = str(payload.get("access_token") or "").strip()
+            if not token:
+                raise RuntimeError("Atmos token response missing access_token")
+            return token
+
+
+async def _atmos_create_remote_transaction(payment_id: int, amount_som: int) -> str:
+    """Create a merchant transaction on Atmos (`POST /merchant/pay/create`).
+    Returns Atmos's remote `transaction_id` as a string.
+    """
+    import aiohttp
+
+    token = await _fetch_atmos_access_token()
+    url = f"{config.ATMOS_BASE_URL}/merchant/pay/create"
+    body: dict = {
+        "amount": int(amount_som) * 100,  # Atmos expects tiyin (1 so'm = 100 tiyin)
+        "account": str(payment_id),
+        "store_id": str(config.ATMOS_STORE_ID),
+        "lang": "uz",
+    }
+    if config.ATMOS_TERMINAL_ID:
+        body["terminal_id"] = str(config.ATMOS_TERMINAL_ID)
+
+    async with aiohttp.ClientSession() as http:
+        async with http.post(
+            url,
+            json=body,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as resp:
+            payload = await resp.json(content_type=None)
+            if resp.status >= 400 or not isinstance(payload, dict):
+                raise RuntimeError(f"Atmos pay/create HTTP {resp.status}")
+            result = payload.get("result") or {}
+            if isinstance(result, dict) and result.get("code") not in (None, "OK", 0, "0"):
+                raise RuntimeError(
+                    str(result.get("description") or result.get("code") or "Atmos error")
+                )
+            tx_id = payload.get("transaction_id")
+            if not tx_id:
+                raise RuntimeError("Atmos pay/create missing transaction_id")
+            return str(tx_id)
+
+
+async def _atmos_check_remote_transaction(transaction_id: str) -> dict:
+    """Fetch remote transaction status from Atmos (`POST /merchant/pay/get`)."""
+    import aiohttp
+
+    token = await _fetch_atmos_access_token()
+    url = f"{config.ATMOS_BASE_URL}/merchant/pay/get"
+    body = {
+        "store_id": int(config.ATMOS_STORE_ID)
+        if str(config.ATMOS_STORE_ID).isdigit()
+        else config.ATMOS_STORE_ID,
+        "transaction_id": int(transaction_id)
+        if str(transaction_id).isdigit()
+        else transaction_id,
+    }
+    async with aiohttp.ClientSession() as http:
+        async with http.post(
+            url,
+            json=body,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            timeout=aiohttp.ClientTimeout(total=12),
+        ) as resp:
+            payload = await resp.json(content_type=None)
+            return payload if isinstance(payload, dict) else {}
+
+
+async def _notify_driver_topup_credited(driver: Driver, amount: int, bonus: int) -> None:
+    """Best-effort Push + WebSocket notification when an automated top-up settles."""
+    try:
+        from app.api.websocket import ws_manager
+        if driver.telegram_id:
+            await ws_manager.send_to_driver(driver.telegram_id, {
+                "type": "balance_updated",
+                "balance": driver.balance or 0,
+                "amount": amount,
+                "bonus": bonus,
+            })
+    except Exception:
+        logger.debug("WS balance_updated failed", exc_info=True)
+
+
+@require_driver
+async def create_atmos_payment(request: web.Request) -> web.Response:
+    """POST /api/payments/atmos/create
+    Body: {"amount": 50000}
+    Returns: {"payment_id": 123, "url": "https://checkout.pays.uz/invoice/get?...", "amount": 50000}
+    """
+    driver: Driver = request["driver"]
+    if driver.is_blocked:
+        return web.json_response(
+            {
+                "error": "Hisobingiz bloklangan. Administrator bilan bog'laning.",
+                "code": "driver_blocked",
+            },
+            status=403,
+        )
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+    if not isinstance(data, dict):
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    try:
+        amount = int(data.get("amount", 0))
+    except (TypeError, ValueError):
+        amount = 0
+
+    if amount < config.TOPUP_MIN_AMOUNT or amount > config.TOPUP_MAX_AMOUNT:
+        return web.json_response(
+            {
+                "error": (
+                    f"Summa {config.TOPUP_MIN_AMOUNT} dan "
+                    f"{config.TOPUP_MAX_AMOUNT} so'mgacha bo'lishi kerak"
+                ),
+                "code": "amount_out_of_range",
+                "min_amount": config.TOPUP_MIN_AMOUNT,
+                "max_amount": config.TOPUP_MAX_AMOUNT,
+            },
+            status=400,
+        )
+
+    if not _atmos_is_configured():
+        return web.json_response(
+            {
+                "error": "Atmos hozircha mavjud emas. Karta orqali to'ldiring",
+                "code": "provider_disabled",
+            },
+            status=503,
+        )
+
+    session = get_session()
+    try:
+        payment = Payment(
+            driver_id=driver.id,
+            provider="atmos",
+            amount=amount,
+            status="pending",
+        )
+        session.add(payment)
+        session.commit()
+        session.refresh(payment)
+        payment_id = payment.id
+    finally:
+        session.close()
+
+    return_url = f"sarixgodriver://payment-result?id={payment_id}&provider=atmos"
+    remote_tx_id = None
+
+    # If OAuth2 merchant API credentials are provided, create a server-side Atmos
+    # transaction first so checkout receives a verified `transactionId`.
+    if config.ATMOS_CONSUMER_KEY and config.ATMOS_CONSUMER_SECRET:
+        try:
+            remote_tx_id = await _atmos_create_remote_transaction(payment_id, amount)
+            session = get_session()
+            try:
+                session.query(Payment).filter_by(id=payment_id).update(
+                    {"provider_transaction_id": remote_tx_id},
+                    synchronize_session=False,
+                )
+                session.commit()
+            finally:
+                session.close()
+        except Exception as e:
+            logger.error("Atmos merchant/pay/create failed for payment %s: %s", payment_id, e)
+            session = get_session()
+            try:
+                session.query(Payment).filter_by(id=payment_id, status="pending").update(
+                    {"status": "cancelled", "processed_at": datetime.utcnow()},
+                    synchronize_session=False,
+                )
+                session.commit()
+            finally:
+                session.close()
+            return web.json_response(
+                {
+                    "error": "Atmos to'lov tizimi bilan bog'lanishda xatolik. Qayta urinib ko'ring.",
+                },
+                status=502,
+            )
+
+    if remote_tx_id:
+        params = {
+            "storeId": config.ATMOS_STORE_ID,
+            "transactionId": remote_tx_id,
+            "redirectLink": return_url,
+        }
+    else:
+        params = {
+            "storeId": config.ATMOS_STORE_ID,
+            "account": payment_id,
+            "amount": amount * 100,
+            "redirectLink": return_url,
+        }
+
+    url = f"{config.ATMOS_CHECKOUT_URL}?{urlencode(params)}"
+    return web.json_response({
+        "payment_id": payment_id,
+        "url": url,
+        "amount": amount,
+        "transaction_id": remote_tx_id,
+    })
+
+
+async def atmos_webhook(request: web.Request) -> web.Response:
+    """POST /api/payments/atmos/webhook
+    Signed callback from Atmos billing when a transaction is confirmed or cancelled.
+    """
+    try:
+        raw_body = await request.read()
+        if request.content_type and "json" in request.content_type.lower():
+            import json as _json
+            data_dict = _json.loads(raw_body.decode("utf-8"))
+        else:
+            post_data = await request.post()
+            data_dict = dict(post_data)
+    except Exception:
+        return web.json_response(
+            {"status": 0, "error": -8, "message": "Invalid request"}, status=400
+        )
+
+    if not isinstance(data_dict, dict):
+        return web.json_response(
+            {"status": 0, "error": -8, "message": "Invalid payload"}, status=400
+        )
+
+    if not _verify_atmos_signature(data_dict, raw_body):
+        logger.warning("Atmos webhook: invalid signature")
+        return web.json_response(
+            {"status": 0, "error": -1, "message": "Invalid signature"}, status=403
+        )
+
+    store_id = str(data_dict.get("store_id") or "").strip()
+    if store_id and config.ATMOS_STORE_ID and store_id != str(config.ATMOS_STORE_ID):
+        return web.json_response(
+            {"status": 0, "error": -4, "message": "Store ID mismatch"}, status=400
+        )
+
+    invoice_raw = (
+        data_dict.get("invoice")
+        or data_dict.get("account")
+        or data_dict.get("merchant_trans_id")
+    )
+    try:
+        payment_pk = int(str(invoice_raw).strip())
+    except (TypeError, ValueError):
+        return web.json_response(
+            {"status": 0, "error": -5, "message": "Transaction not found"}, status=404
+        )
+
+    incoming_tx_id = str(data_dict.get("transaction_id") or "").strip()
+    state = str(data_dict.get("state") or data_dict.get("status") or "confirmed").strip().lower()
+
+    session = get_session()
+    try:
+        payment = session.query(Payment).filter_by(
+            id=payment_pk, provider="atmos"
+        ).first()
+        if not payment:
+            return web.json_response(
+                {"status": 0, "error": -5, "message": "Transaction not found"}, status=404
+            )
+
+        if payment.status == "approved":
+            if (
+                incoming_tx_id
+                and payment.provider_transaction_id
+                and incoming_tx_id != payment.provider_transaction_id
+            ):
+                return web.json_response(
+                    {"status": 0, "error": -3, "message": "Duplicate transaction"},
+                    status=409,
+                )
+            return web.json_response({
+                "status": 1,
+                "error": 0,
+                "message": "Already processed",
+                "transaction_id": incoming_tx_id or payment.provider_transaction_id,
+                "invoice": payment.id,
+            })
+
+        if state in {"cancelled", "canceled", "rejected", "failed", "error"}:
+            claimed = session.query(Payment).filter_by(
+                id=payment.id, provider="atmos", status="pending"
+            ).update(
+                {"status": "rejected", "processed_at": datetime.utcnow()},
+                synchronize_session=False,
+            )
+            if claimed:
+                session.commit()
+            return web.json_response({
+                "status": 0,
+                "error": -9,
+                "message": "Cancelled",
+            })
+
+        try:
+            raw_amount = int(float(data_dict.get("amount", 0)))
+        except (TypeError, ValueError):
+            raw_amount = 0
+
+        # Atmos billing sends `amount` in tiyin (1 so'm = 100 tiyin); accept exact tiyin
+        # or exact so'm (when called from a gateway normalized in UZS).
+        expected_tiyin = payment.amount * 100
+        if raw_amount not in (expected_tiyin, payment.amount):
+            return web.json_response(
+                {"status": 0, "error": -2, "message": "Wrong amount"}, status=400
+            )
+
+        if not incoming_tx_id:
+            return web.json_response(
+                {"status": 0, "error": -3, "message": "Missing transaction_id"}, status=400
+            )
+
+        duplicate = session.query(Payment).filter(
+            Payment.provider == "atmos",
+            Payment.provider_transaction_id == incoming_tx_id,
+            Payment.id != payment.id,
+        ).first()
+        if duplicate:
+            return web.json_response(
+                {"status": 0, "error": -3, "message": "Duplicate transaction"}, status=409
+            )
+
+        payment.provider_transaction_id = incoming_tx_id
+        credited = credit_driver_payment(session, payment)
+        if not credited:
+            return web.json_response(
+                {"status": 0, "error": -4, "message": "Already processing"}, status=409
+            )
+        session.commit()
+        credited_amount, credited_bonus, credited_driver = credited
+    finally:
+        session.close()
+
+    await _notify_driver_topup_credited(credited_driver, credited_amount, credited_bonus)
+    return web.json_response({
+        "status": 1,
+        "error": 0,
+        "message": "Success",
+        "transaction_id": incoming_tx_id,
+        "invoice": payment_pk,
+    })
+
+
+@require_driver
+async def verify_atmos_payment(request: web.Request) -> web.Response:
+    """POST /api/payments/atmos/{id}/verify
+    Actively check an Atmos payment's status when the driver returns from the checkout page.
+    """
+    driver: Driver = request["driver"]
+    try:
+        payment_id = int(request.match_info["id"])
+    except (KeyError, ValueError):
+        return web.json_response({"error": "Noto'g'ri payment ID"}, status=400)
+
+    session = get_session()
+    try:
+        payment = (
+            session.query(Payment)
+            .filter_by(id=payment_id, driver_id=driver.id, provider="atmos")
+            .first()
+        )
+        if not payment:
+            return web.json_response({"error": "Payment not found"}, status=404)
+        current_status = payment.status
+        remote_tx_id = payment.provider_transaction_id
+    finally:
+        session.close()
+
+    # If still pending and we have OAuth2 merchant credentials + remote tx id, query Atmos
+    if (
+        current_status == "pending"
+        and remote_tx_id
+        and config.ATMOS_ENABLED
+        and config.ATMOS_CONSUMER_KEY
+        and config.ATMOS_CONSUMER_SECRET
+    ):
+        try:
+            remote_data = await _atmos_check_remote_transaction(remote_tx_id)
+            store_tx = remote_data.get("store_transaction") or {}
+            res_code = (remote_data.get("result") or {}).get("code")
+            # Atmos marks a settled transaction via `success_trans` or `state == "CONFIRMED"`
+            is_confirmed = bool(
+                res_code == "OK"
+                and isinstance(store_tx, dict)
+                and (
+                    store_tx.get("success_trans")
+                    or str(store_tx.get("state") or "").upper() in {"CONFIRMED", "SUCCESS", "PAID"}
+                )
+            )
+            if is_confirmed:
+                session = get_session()
+                try:
+                    payment = (
+                        session.query(Payment)
+                        .filter_by(id=payment_id, driver_id=driver.id, provider="atmos")
+                        .first()
+                    )
+                    if payment and payment.status == "pending":
+                        credited = credit_driver_payment(session, payment)
+                        if credited:
+                            session.commit()
+                            amt, bon, drv = credited
+                            await _notify_driver_topup_credited(drv, amt, bon)
+                finally:
+                    session.close()
+        except Exception as e:
+            logger.warning("Atmos verify remote check failed for payment %s: %s", payment_id, e)
+
+    session = get_session()
+    try:
+        payment = (
+            session.query(Payment)
+            .filter_by(id=payment_id, driver_id=driver.id, provider="atmos")
+            .first()
+        )
+        refreshed_driver = session.query(Driver).filter_by(id=driver.id).first()
+        return web.json_response({
+            "id": payment.id,
+            "amount": payment.amount,
+            "bonus_amount": payment.bonus_amount,
+            "status": payment.status,
+            "balance": refreshed_driver.balance if refreshed_driver else driver.balance,
+            "created_at": payment.created_at.isoformat() if payment.created_at else None,
+            "processed_at": payment.processed_at.isoformat() if payment.processed_at else None,
+        })
+    finally:
+        session.close()
 
 
 # ============= PAYMENT STATUS =============
