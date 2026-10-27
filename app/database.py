@@ -85,7 +85,22 @@ def _engine_options() -> dict:
     return options
 
 
-engine = create_engine(DATABASE_URL, **_engine_options())
+def _normalize_engine_url(url: str) -> str:
+    """Ensure bare postgres:// or postgresql:// URLs use the installed psycopg2 driver.
+
+    SQLAlchemy 2.1+ changed the default driver for bare ``postgresql://`` URLs from
+    ``psycopg2`` to ``psycopg`` (v3). Because production images install ``psycopg2-binary``,
+    explicitly selecting ``+psycopg2`` avoids ``ModuleNotFoundError: No module named 'psycopg'``
+    at startup on Railway.
+    """
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg2://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg2://" + url[len("postgresql://"):]
+    return url
+
+
+engine = create_engine(_normalize_engine_url(DATABASE_URL), **_engine_options())
 
 # expire_on_commit=False is REQUIRED here. The codebase's pattern is: load an ORM
 # object, commit, close the session, then return the object and read its attributes in

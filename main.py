@@ -9,7 +9,6 @@ That dual storage is gone: everything now lives in the database, accessed throug
 import asyncio
 import logging
 import os
-import sys
 from pathlib import Path
 
 logging.basicConfig(
@@ -20,6 +19,13 @@ logging.basicConfig(
 
 def _has_valid_bot_token() -> bool:
     token = os.getenv("BOT_TOKEN", "").strip()
+    if not token:
+        try:
+            from app.config import BOT_TOKEN as cfg_token
+
+            token = (cfg_token or "").strip()
+        except Exception:
+            token = ""
     if not token or token == "your_bot_token_here":
         return False
     parts = token.split(":", 1)

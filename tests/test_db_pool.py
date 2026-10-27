@@ -62,3 +62,21 @@ def test_pool_settings_fall_back_to_defaults_on_blank_env(monkeypatch):
 
     assert config._get_int("DB_POOL_SIZE", 10) == 10
     assert config._get_int("DB_POOL_RECYCLE", 1500) == 1500
+
+
+def test_postgres_urls_resolve_to_psycopg2_driver(monkeypatch):
+    """SQLAlchemy 2.1+ defaults bare postgresql:// to psycopg v3, which is not installed.
+
+    Both postgres:// and postgresql:// must resolve to postgresql+psycopg2:// so
+    create_engine() imports psycopg2 (from psycopg2-binary) instead of crashing with
+    ModuleNotFoundError: No module named 'psycopg' on Railway.
+    """
+    for raw in (
+        "postgres://user:pass@localhost:5432/sarixgo",
+        "postgresql://user:pass@localhost:5432/sarixgo",
+    ):
+        monkeypatch.setenv("DATABASE_URL", raw)
+        resolved = config._resolve_database_url()
+        assert resolved == "postgresql+psycopg2://user:pass@localhost:5432/sarixgo"
+        assert database._normalize_engine_url(raw) == resolved
+

@@ -52,6 +52,7 @@ jobs:
       - name: Verify imports and DB init
         run: |
           python -c "from app.config import BOT_TOKEN; print('Config OK')"
+          python -c "from app.database import _normalize_engine_url, create_engine; e = create_engine(_normalize_engine_url('postgresql://u:p@localhost:5432/db')); assert e.driver == 'psycopg2', e.driver; print('Postgres driver OK')"
           python -c "from app.database import init_db; init_db(); print('DB schema OK')"
           python -c "from app.api.server import create_app; app = create_app(); print(f'API has {len(app.router.resources())} routes')"
       - name: Run backend tests

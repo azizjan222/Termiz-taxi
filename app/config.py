@@ -130,10 +130,14 @@ def _resolve_database_url() -> str:
     raw = os.getenv("DATABASE_URL", "").strip()
     volume_ok = persistent_data_dir_available()
 
-    # Railway/Heroku sometimes provide the legacy "postgres://" scheme, but SQLAlchemy 2.x
-    # requires "postgresql://". Normalise it so the connection works out of the box.
+    # Railway/Heroku sometimes provide the legacy "postgres://" scheme, and SQLAlchemy 2.1+
+    # defaults bare "postgresql://" URLs to the psycopg v3 driver whereas we ship
+    # psycopg2-binary. Normalise both schemes to "postgresql+psycopg2://" so the connection
+    # works out of the box on both SQLAlchemy 2.0 and 2.1+.
     if raw.startswith("postgres://"):
-        raw = "postgresql://" + raw[len("postgres://"):]
+        raw = "postgresql+psycopg2://" + raw[len("postgres://"):]
+    elif raw.startswith("postgresql://"):
+        raw = "postgresql+psycopg2://" + raw[len("postgresql://"):]
 
     # A real database (Postgres/MySQL/...) is always durable -> honour it as-is.
     if raw and not raw.startswith("sqlite"):
