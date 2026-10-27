@@ -17,6 +17,8 @@
  * The module is pure TS (no React), so a fake global WebSocket plus fake timers is enough.
  */
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import * as realtime from '../realtime';
+import { useRealtimeStore } from '../../store/realtime';
 
 // --- mocks must be registered before the module under test is imported -----------------
 
@@ -127,9 +129,6 @@ class FakeWebSocket {
 (global as any).WebSocket = FakeWebSocket;
 
 // --- module under test ----------------------------------------------------------------
-
-import * as realtime from '../realtime';
-import { useRealtimeStore } from '../../store/realtime';
 
 /** Let the token promise inside connect()/reconnect resolve. */
 const flush = async () => {

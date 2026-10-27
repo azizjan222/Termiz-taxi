@@ -19,26 +19,22 @@ jobs:
       run:
         working-directory: sarix-go-driver
     env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EAS_PROJECT_ID: ${{ secrets.EAS_DRIVER_PROJECT_ID }}
       EXPO_PUBLIC_YANDEX_JS_API_KEY: ${{ secrets.YANDEX_JS_API_KEY }}
       EXPO_PUBLIC_YANDEX_SDK_API_KEY: ${{ secrets.YANDEX_SDK_API_KEY }}
       GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_DRIVER_JSON_B64 }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          # Floating within Node 22 LTS on purpose: eas-cli is installed via "yarn add"
-          # and no lockfile, so its transitive deps drift. Pinning an exact minor broke
-          # CI once @oclif/plugin-autocomplete started requiring Node >=22.
+          # Floating within Node 22 LTS on purpose: eas-cli is installed without a
+          # lockfile, so its transitive deps drift. Pinning an exact minor broke CI
+          # once @oclif/plugin-autocomplete started requiring Node >=22.
           node-version: '22.x'
-          cache: npm
-          cache-dependency-path: |
-            sarix-go-driver/package.json
-            sarix-go-driver/package-lock.json
-      - uses: expo/expo-github-action@v8
-        with:
-          eas-version: 21.0.1
-          token: ${{ secrets.EXPO_TOKEN }}
+          package-manager-cache: false
+      - name: Install EAS CLI
+        run: npm install -g eas-cli@21.0.1 --no-audit --no-fund
       - name: Install dependencies
         run: |
           if [ -f package-lock.json ]; then

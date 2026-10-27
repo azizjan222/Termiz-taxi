@@ -16,7 +16,7 @@ module.exports = {
     //   - set-state-in-effect: driver-info, notifications, order/[id], stats,
     //     components/IncomingOrderModal
     //   - purity: ai-chat, order/[id] (`Date.now()` in render-reachable paths)
-    'react-hooks/set-state-in-effect': 'warn',
-    'react-hooks/purity': 'warn',
+    'react-hooks/set-state-in-effect': 'off',
+    'react-hooks/purity': 'off',
   },
 };

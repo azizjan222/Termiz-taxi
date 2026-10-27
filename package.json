@@ -8,5 +8,8 @@
     "start": "node preview-server.mjs",
     "build": "node preview-server.mjs --check",
     "lint": "node preview-server.mjs --check"
+  },
+  "dependencies": {
+    "sarix-go-preview": "file:./tools"
   }
 }

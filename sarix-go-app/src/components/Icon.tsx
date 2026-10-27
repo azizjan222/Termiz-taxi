@@ -67,6 +67,7 @@ const GLYPHS = {
   // People
   people: 'account-group',
   person: 'human',
+  user: 'account',
   female: 'human-female',
   handshake: 'handshake-outline',
 

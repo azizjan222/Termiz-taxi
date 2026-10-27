@@ -33,6 +33,8 @@ export interface Order {
   to_address?: string | null;
   from_lat?: number | null;
   from_lon?: number | null;
+  to_lat?: number | null;
+  to_lon?: number | null;
   person_count: number;
   price: number;
   commission: number;

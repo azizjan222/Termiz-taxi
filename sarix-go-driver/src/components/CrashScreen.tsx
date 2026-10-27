@@ -48,6 +48,7 @@ export function CrashScreen({ error, retry }: ErrorBoundaryProps) {
           onPress={() => {
             // Imported lazily so a broken router module cannot stop this screen rendering.
             try {
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
               const { router } = require('expo-router');
               router.replace('/(main)/orders');
             } catch {

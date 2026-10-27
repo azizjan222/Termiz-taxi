@@ -1,0 +1,6 @@
+{
+  "name": "sarix-go-preview",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local workspace package for Sarix Go preview server"
+}

@@ -35,7 +35,6 @@ import { gradients } from '../src/theme/colors';
 import type { ThemeColors } from '../src/theme/colors-themed';
 import {
   DEPARTURE_CODES,
-  DEPARTURE_WIRE,
   departureKey,
   resolveDepartureWire,
 } from '../src/utils/departureTime';

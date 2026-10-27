@@ -7,7 +7,6 @@ const ONBOARDED_KEY = '@sarixgo-driver/onboarded';
 
 export default function Index() {
   const isAuth = useDriverStore((s) => s.isAuthenticated);
-  const driver = useDriverStore((s) => s.driver);
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
   useEffect(() => {

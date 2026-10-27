@@ -51,24 +51,20 @@ jobs:
       run:
         working-directory: ${{ matrix.app }}
     env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EXPO_PUBLIC_YANDEX_JS_API_KEY: ${{ secrets.YANDEX_JS_API_KEY }}
       EXPO_PUBLIC_YANDEX_GEOCODER_KEY: ${{ secrets.YANDEX_GEOCODER_KEY }}
       EXPO_PUBLIC_YANDEX_MAPS_KEY: ${{ secrets.YANDEX_MAPS_KEY }}
       EXPO_PUBLIC_YANDEX_SUGGEST_KEY: ${{ secrets.YANDEX_SUGGEST_KEY }}
       EXPO_PUBLIC_YANDEX_SDK_API_KEY: ${{ secrets.YANDEX_SDK_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22.x'
-          cache: npm
-          cache-dependency-path: |
-            ${{ matrix.app }}/package.json
-            ${{ matrix.app }}/package-lock.json
-      - uses: expo/expo-github-action@v8
-        with:
-          eas-version: 21.0.1
-          token: ${{ secrets.EXPO_TOKEN }}
+          package-manager-cache: false
+      - name: Install EAS CLI
+        run: npm install -g eas-cli@21.0.1 --no-audit --no-fund
 
       # `eas env:create` resolves the project's app config to know which project the
       # variable belongs to, and that loads the config plugins -- so it needs node_modules.

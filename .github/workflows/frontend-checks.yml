@@ -32,17 +32,14 @@ jobs:
       run:
         working-directory: ${{ matrix.app }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          # Floating within Node 22 LTS on purpose: eas-cli is installed via "yarn add"
-          # and no lockfile, so its transitive deps drift. Pinning an exact minor broke
-          # CI once @oclif/plugin-autocomplete started requiring Node >=22.
+          # Floating within Node 22 LTS on purpose: eas-cli is installed without a
+          # lockfile, so its transitive deps drift. Pinning an exact minor broke CI
+          # once @oclif/plugin-autocomplete started requiring Node >=22.
           node-version: '22.x'
-          cache: npm
-          cache-dependency-path: |
-            ${{ matrix.app }}/package.json
-            ${{ matrix.app }}/package-lock.json
+          package-manager-cache: false
       - name: Install dependencies
         run: |
           if [ -f package-lock.json ]; then
