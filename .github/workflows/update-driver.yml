@@ -62,12 +62,20 @@ jobs:
           # CI once @oclif/plugin-autocomplete started requiring Node >=22.
           node-version: '22.x'
           cache: npm
-          cache-dependency-path: sarix-go-driver/package-lock.json
+          cache-dependency-path: |
+            sarix-go-driver/package.json
+            sarix-go-driver/package-lock.json
       - uses: expo/expo-github-action@v8
         with:
           eas-version: 21.0.1
           token: ${{ secrets.EXPO_TOKEN }}
-      - run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --legacy-peer-deps --no-audit --no-fund
+          else
+            npm install --legacy-peer-deps --no-audit --no-fund
+          fi
       - name: Restore Firebase client configuration
         # app.config.js only sets android.googleServicesFile when the file is present, so
         # restoring it keeps the resolved app config identical to the one the build saw.

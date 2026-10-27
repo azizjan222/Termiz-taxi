@@ -62,7 +62,9 @@ jobs:
         with:
           node-version: '22.x'
           cache: npm
-          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+          cache-dependency-path: |
+            ${{ matrix.app }}/package.json
+            ${{ matrix.app }}/package-lock.json
       - uses: expo/expo-github-action@v8
         with:
           eas-version: 21.0.1
@@ -73,7 +75,12 @@ jobs:
       # Without this the command fails with "Failed to resolve plugin for module
       # expo-router ... Do you have node modules installed?".
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps --no-audit --no-fund
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --legacy-peer-deps --no-audit --no-fund
+          else
+            npm install --legacy-peer-deps --no-audit --no-fund
+          fi
 
       - name: Create or update EAS environment variables
         env:

@@ -40,9 +40,16 @@ jobs:
           # CI once @oclif/plugin-autocomplete started requiring Node >=22.
           node-version: '22.x'
           cache: npm
-          cache-dependency-path: ${{ matrix.app }}/package-lock.json
-      - name: Install locked dependencies
-        run: npm ci --legacy-peer-deps --no-audit --no-fund
+          cache-dependency-path: |
+            ${{ matrix.app }}/package.json
+            ${{ matrix.app }}/package-lock.json
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --legacy-peer-deps --no-audit --no-fund
+          else
+            npm install --legacy-peer-deps --no-audit --no-fund
+          fi
       - name: Validate Expo dependency compatibility
         run: npx expo install --check
       - run: npm run typecheck
