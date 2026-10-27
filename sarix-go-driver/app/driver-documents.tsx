@@ -19,7 +19,7 @@ import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 
-import { Icon, IconText, type IconName } from '../src/components/Icon';
+import { Icon, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
 import {
   uploadLicenseImage,
@@ -912,7 +912,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: radius.full,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
@@ -1228,7 +1228,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 5,
     paddingVertical: 4,
     paddingHorizontal: 8,
-    borderRadius: radius.full,
+    borderRadius: radius.pill,
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.divider,

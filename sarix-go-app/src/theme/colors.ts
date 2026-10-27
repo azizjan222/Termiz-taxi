@@ -14,6 +14,7 @@ export const colors = {
   accent: '#FFC400',
   accentLight: '#FFD451',
   accentDark: '#E3A800',
+  accentSoft: '#FFF9E6',
 
   // Brand tonal scale (50 -> 900)
   primary50: '#EEF2FF',

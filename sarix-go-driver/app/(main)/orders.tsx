@@ -622,7 +622,9 @@ export default function OrdersScreen() {
   useEffect(() => {
     AsyncStorage.getItem(GUIDE_SEEN_KEY)
       .then((seen) => {
-        if (seen !== 'true' || (driver && (driver.total_orders || 0) === 0 && seen !== 'dismissed')) {
+        if (seen === 'dismissed') {
+          setShowGuideBanner(false);
+        } else if (seen !== 'true' || (driver && (driver.total_orders || 0) === 0)) {
           setShowGuideBanner(true);
         } else {
           setShowGuideBanner(false);

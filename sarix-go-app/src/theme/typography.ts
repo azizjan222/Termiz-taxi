@@ -31,6 +31,11 @@ export const typography = {
     fontWeight: '400',
     lineHeight: 20,
   } as TextStyle,
+  captionBold: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  } as TextStyle,
   small: {
     fontSize: 12,
     fontWeight: '400',
@@ -58,4 +63,5 @@ export const radius = {
   lg: 20,
   xl: 28,
   pill: 999,
+  full: 999,
 };

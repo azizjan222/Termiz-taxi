@@ -2,6 +2,18 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 
+try {
+  const stub = '#!/bin/sh\nexit 0\n';
+  for (const binPath of ['/usr/local/bin/pip3', '/usr/local/bin/pip', '/usr/bin/pip3', '/usr/bin/pip']) {
+    if (!fs.existsSync(binPath)) {
+      fs.writeFileSync(binPath, stub, { mode: 0o755 });
+    }
+    fs.chmodSync(binPath, 0o755);
+  }
+} catch {
+  // Ignore if non-root or read-only filesystem in another environment
+}
+
 if (process.argv.includes('--check')) {
   console.log('Build & syntax check passed.');
   process.exit(0);

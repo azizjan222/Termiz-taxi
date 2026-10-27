@@ -6,6 +6,7 @@ export const colors = {
   accent: '#FFC400',
   accentLight: '#FFD451',
   accentDark: '#E3A800',
+  accentSoft: '#FFF9E6',
 
   // Brand tonal scale (50 -> 900)
   primary50: '#EAF1FC',
@@ -66,12 +67,13 @@ export const typography = {
   body: { fontSize: 16, fontWeight: '400' as const, lineHeight: 24 },
   bodyBold: { fontSize: 16, fontWeight: '600' as const, lineHeight: 24 },
   caption: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
+  captionBold: { fontSize: 14, fontWeight: '600' as const, lineHeight: 20 },
   small: { fontSize: 12, fontWeight: '400' as const, lineHeight: 16 },
   button: { fontSize: 16, fontWeight: '600' as const, lineHeight: 22 },
 };
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48 };
-export const radius = { sm: 8, md: 12, lg: 16, xl: 24, pill: 999 };
+export const radius = { sm: 8, md: 12, lg: 16, xl: 24, pill: 999, full: 999 };
 
 export const gradients = {
   // Driver brand is royal blue (matches the recoloured SARIX GO logo — the same

@@ -27,6 +27,10 @@ const GLYPHS = {
   arrowRight: 'arrow-right',
   arrowDown: 'arrow-down',
   arrowUp: 'arrow-up',
+  chevronRight: 'chevron-right',
+  chevronLeft: 'chevron-left',
+  chevronDown: 'chevron-down',
+  chevronUp: 'chevron-up',
   bookmark: 'bookmark-outline',
   plus: 'plus',
   swap: 'swap-vertical',
@@ -124,6 +128,9 @@ const GLYPHS = {
   edit: 'pencil',
   run: 'run',
   google: 'google',
+  telegram: 'send',
+  school: 'school-outline',
+  shieldCheck: 'shield-check-outline',
 } as const;
 
 export type IconName = keyof typeof GLYPHS;

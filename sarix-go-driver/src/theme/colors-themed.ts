@@ -62,6 +62,7 @@ export const lightColors = {
   accent: '#FFC400',
   accentLight: '#FFD451',
   accentDark: '#E3A800',
+  accentSoft: '#FFF9E6',
 
   // Surfaces (legacy + semantic aliases)
   white: '#FFFFFF',
@@ -102,6 +103,7 @@ export const darkColors: typeof lightColors = {
   accent: '#FFC400',
   accentLight: '#FFD75A',
   accentDark: '#D4A920',
+  accentSoft: '#3A2E0E',
 
   // Surfaces — layered navy
   white: '#1E2D52',
