@@ -108,7 +108,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: 'transparent',
   },
   optionSelected: {
-    borderColor: colors.accent,
+    borderColor: colors.primary,
     backgroundColor: colors.white,
   },
   flag: { fontSize: 32, marginRight: spacing.md },
@@ -127,12 +127,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioSelected: { borderColor: colors.accent },
+  radioSelected: { borderColor: colors.primary },
   radioInner: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
   },
   footer: { paddingBottom: spacing.lg },
 });

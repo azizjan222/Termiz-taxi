@@ -19,12 +19,9 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../../src/components/Icon';
-import { Button } from '../../src/components/Button';
 import {
   telegramStart,
   telegramVerifyCode,
-  googleStart,
-  googleVerifyCode,
   type TelegramCheckResponse,
 } from '../../src/api/auth';
 import { useAuthStore } from '../../src/store/auth';
@@ -38,17 +35,12 @@ const BLUE_GRADIENT: [string, string, string] = ['#2E8BFF', '#1565E0', '#0B3FA8'
 // Must match LOGIN_CODE_LENGTH in app/services/telegram_auth.py.
 const CODE_LENGTH = 6;
 
-type AuthChannel = 'telegram' | 'google';
-
 export default function TelegramLoginScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const setUser = useAuthStore((s) => s.setUser);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [googleConfigured, setGoogleConfigured] = useState(false);
-  const [channel, setChannel] = useState<AuthChannel>('telegram');
   // `waiting` means "external auth opened, waiting for the user to type the 6-digit code".
   const [waiting, setWaiting] = useState(false);
   const [deepLink, setDeepLink] = useState<string | null>(null);
@@ -72,22 +64,6 @@ export default function TelegramLoginScreen() {
     ]).start();
   }, [fade, slide]);
 
-  // Only show the Google sign-in button if Google OAuth is actually configured on the server.
-  // Showing a button that alerts "Not configured" violates Google Play's Broken Functionality policy.
-  useEffect(() => {
-    let alive = true;
-    googleStart()
-      .then((res) => {
-        if (alive && res?.configured) {
-          setGoogleConfigured(true);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   const handleVerifiedResult = useCallback(
     (res: TelegramCheckResponse) => {
       if (res.status === 'verified' && res.user) {
@@ -107,42 +83,9 @@ export default function TelegramLoginScreen() {
     [setUser]
   );
 
-  // Listen for deep-link return from Google OAuth callback:
-  // sarixgo://telegram-login?google_token=<token>&code=<6digits>
-  useEffect(() => {
-    const handleUrl = async ({ url }: { url: string }) => {
-      try {
-        const qIndex = url.indexOf('?');
-        if (qIndex < 0) return;
-        const params = new URLSearchParams(url.slice(qIndex + 1));
-        const gToken = params.get('google_token');
-        const gCode = params.get('code');
-        if (!gToken || !gCode) return;
-        setChannel('google');
-        setToken(gToken);
-        setCode(gCode);
-        setWaiting(true);
-        setVerifying(true);
-        setError('');
-        const res = await googleVerifyCode(gToken, gCode);
-        if (!handleVerifiedResult(res)) {
-          setError(t('telegramLogin.expired'));
-        }
-      } catch {
-        setError(t('errors.networkError'));
-      } finally {
-        setVerifying(false);
-      }
-    };
-
-    const sub = Linking.addEventListener('url', handleUrl);
-    return () => sub.remove();
-  }, [handleVerifiedResult, t]);
-
   const startLogin = async () => {
     setError('');
     setCode('');
-    setChannel('telegram');
     setLoading(true);
     try {
       const res = await telegramStart();
@@ -161,40 +104,13 @@ export default function TelegramLoginScreen() {
     }
   };
 
-  const startGoogle = async () => {
-    setError('');
-    setCode('');
-    setChannel('google');
-    setGoogleLoading(true);
-    try {
-      const res = await googleStart();
-      if (!res.configured) {
-        setGoogleConfigured(false);
-        return;
-      }
-      setDeepLink(res.auth_url);
-      setToken(res.token);
-      setWaiting(true);
-      try {
-        await Linking.openURL(res.auth_url);
-      } catch {}
-    } catch {
-      setError(t('errors.networkError'));
-    } finally {
-      setGoogleLoading(false);
-    }
-  };
-
   const submitCode = async () => {
     const c = code.trim();
     if (c.length < CODE_LENGTH || !token || verifying) return;
     setVerifying(true);
     setError('');
     try {
-      const res =
-        channel === 'google'
-          ? await googleVerifyCode(token, c)
-          : await telegramVerifyCode(token, c);
+      const res = await telegramVerifyCode(token, c);
       if (handleVerifiedResult(res)) return;
       setError(t('telegramLogin.expired'));
     } catch (e: any) {
@@ -220,6 +136,8 @@ export default function TelegramLoginScreen() {
     }
   };
 
+  const canVerify = code.trim().length >= CODE_LENGTH && !verifying;
+
   return (
     <View style={{ flex: 1 }}>
       <LinearGradient
@@ -240,7 +158,7 @@ export default function TelegramLoginScreen() {
           >
             <Animated.View style={[styles.header, { opacity: fade, transform: [{ translateY: slide }] }]}>
               <View style={styles.logoBox}>
-                <Icon name="taxi" size={40} color={colors.primary} />
+                <Icon name="taxi" size={40} color="#FFFFFF" />
               </View>
               <Text style={styles.title}>Sarix Go</Text>
               <Text style={styles.subtitle}>{t('telegramLogin.subtitle')}</Text>
@@ -250,11 +168,7 @@ export default function TelegramLoginScreen() {
               {waiting ? (
                 <View style={styles.waitingBox}>
                   <Text style={styles.waitingText}>{t('telegramLogin.codeTitle')}</Text>
-                  <Text style={styles.waitingHint}>
-                    {channel === 'google'
-                      ? t('telegramLogin.googleCodeHint')
-                      : t('telegramLogin.codeHint')}
-                  </Text>
+                  <Text style={styles.waitingHint}>{t('telegramLogin.codeHint')}</Text>
                   <TextInput
                     style={styles.codeInput}
                     value={code}
@@ -281,11 +195,7 @@ export default function TelegramLoginScreen() {
                         });
                       }}
                     >
-                      <Text style={styles.linkText}>
-                        {channel === 'google'
-                          ? t('telegramLogin.reopenGoogle')
-                          : t('telegramLogin.openAgain')}
-                      </Text>
+                      <Text style={styles.linkText}>{t('telegramLogin.openAgain')}</Text>
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity
@@ -312,58 +222,40 @@ export default function TelegramLoginScreen() {
 
             <Animated.View style={[styles.footer, { opacity: fade }]}>
               {waiting ? (
-                <Button
-                  title={t('telegramLogin.verify')}
+                <TouchableOpacity
+                  style={[styles.telegramBtn, !canVerify && styles.btnDisabled]}
                   onPress={submitCode}
-                  loading={verifying}
-                  disabled={code.length < CODE_LENGTH}
-                  variant="accent"
-                />
-              ) : (
-                <>
-                  <Button
-                    title={t('telegramLogin.button')}
-                    onPress={startLogin}
-                    loading={loading}
-                    disabled={googleLoading}
-                    variant="accent"
-                  />
-                  <View style={styles.dividerRow}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>{t('telegramLogin.orDivider')}</Text>
-                    <View style={styles.dividerLine} />
-                  </View>
-                  <TouchableOpacity
-                    style={styles.phoneBtn}
-                    onPress={() => router.push('/(auth)/phone')}
-                    disabled={loading || googleLoading}
-                    activeOpacity={0.85}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('auth.enterPhone')}
-                  >
-                    <Icon name="phone" size={20} color="#FFFFFF" />
-                    <Text style={styles.phoneBtnText}>{t('auth.enterPhone')}</Text>
-                  </TouchableOpacity>
-                  {googleConfigured && (
-                    <TouchableOpacity
-                      style={[styles.googleBtn, { marginTop: spacing.sm }]}
-                      onPress={startGoogle}
-                      disabled={loading || googleLoading}
-                      activeOpacity={0.85}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('telegramLogin.googleButton')}
-                    >
-                      {googleLoading ? (
-                        <ActivityIndicator color="#1565E0" />
-                      ) : (
-                        <>
-                          <Icon name="google" size={20} color="#EA4335" />
-                          <Text style={styles.googleBtnText}>{t('telegramLogin.googleButton')}</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
+                  disabled={!canVerify}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('telegramLogin.verify')}
+                >
+                  {verifying ? (
+                    <ActivityIndicator color="#1565E0" />
+                  ) : (
+                    <Text style={styles.telegramBtnText}>{t('telegramLogin.verify')}</Text>
                   )}
-                </>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.telegramBtn, loading && styles.btnDisabled]}
+                  onPress={startLogin}
+                  disabled={loading}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('telegramLogin.button')}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#1565E0" />
+                  ) : (
+                    <>
+                      <Icon name="telegram" size={20} color="#1565E0" />
+                      <Text style={styles.telegramBtnText}>
+                        {t('telegramLogin.button').replace(/^📲\s*/, '')}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               )}
             </Animated.View>
           </ScrollView>
@@ -405,7 +297,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: radius.lg,
-    backgroundColor: colors.accent,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
@@ -434,13 +328,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.accent,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepNumText: {
     ...typography.bodyBold,
-    color: colors.primary,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   stepText: {
@@ -459,7 +355,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     letterSpacing: 12,
     paddingVertical: spacing.md,
     borderBottomWidth: 2,
-    borderBottomColor: colors.accent,
+    borderBottomColor: '#FFFFFF',
   },
   waitingText: {
     ...typography.h3,
@@ -468,7 +364,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   waitingHint: {
     ...typography.body,
-    color: colors.accent,
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
   },
   linkText: {
@@ -491,55 +387,30 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   footer: {
     paddingBottom: spacing.lg,
   },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginVertical: spacing.sm,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-  dividerText: {
-    ...typography.small,
-    color: 'rgba(255,255,255,0.75)',
-    fontWeight: '600',
-  },
-  googleBtn: {
+  telegramBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
     backgroundColor: '#FFFFFF',
-    paddingVertical: spacing.md,
+    paddingVertical: 18,
+    paddingHorizontal: 24,
     borderRadius: radius.md,
-    marginBottom: spacing.sm,
     shadowColor: '#000000',
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.14,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  googleBtnText: {
-    ...typography.bodyBold,
-    color: '#0E1730',
+  telegramBtnText: {
+    ...typography.button,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1565E0',
   },
-  phoneBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-  },
-  phoneBtnText: {
-    ...typography.bodyBold,
-    color: colors.textOnPrimary,
+  btnDisabled: {
+    opacity: 0.5,
   },
 });
+
 

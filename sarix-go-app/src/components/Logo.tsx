@@ -51,7 +51,7 @@ export const Logo: React.FC<LogoProps> = ({ size = 'md', variant = 'dark' }) => 
             styles.textAccent,
             {
               fontSize: text * 0.7,
-              color: colors.accent,
+              color: isLight ? colors.primary : colors.white,
             },
           ]}
         >
