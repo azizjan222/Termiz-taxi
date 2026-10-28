@@ -60,6 +60,7 @@ export function describeApiError(e: any, t: TFunction): string {
 
   // A message the backend chose is already meant for the driver; pass it through.
   if (data?.error) return data.error;
+  if (typeof data?.message === 'string' && data.message.trim()) return data.message;
   if (status === 413) return t('topUp.errTooLarge');
   if (status) return t('topUp.errServer', { status });
   // axios reports both its own timeout and a hard abort as ECONNABORTED. The clients use a

@@ -121,11 +121,16 @@ def primary_google_client_id() -> str:
     return config.GOOGLE_CLIENT_IDS[0] if config.GOOGLE_CLIENT_IDS else ""
 
 
+def is_google_oauth_configured() -> bool:
+    """Return True when both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are configured."""
+    return bool(primary_google_client_id() and (config.GOOGLE_CLIENT_SECRET or "").strip())
+
+
 def build_google_authorize_url(redirect_uri: str, state: str) -> str | None:
-    """Build the Google OAuth 2.0 authorization URL if GOOGLE_CLIENT_ID is configured."""
-    client_id = primary_google_client_id()
-    if not client_id:
+    """Build the Google OAuth 2.0 authorization URL if Google OAuth is configured."""
+    if not is_google_oauth_configured():
         return None
+    client_id = primary_google_client_id()
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,

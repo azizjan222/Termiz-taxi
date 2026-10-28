@@ -218,10 +218,35 @@ async def _send_via_telegram(
     recipient_type: str = "passenger",
 ) -> tuple[bool, str]:
     """Send OTP to the Telegram account bound to the requested role."""
+    variants = [phone, phone.lstrip("+"), "+" + phone.lstrip("+")]
     if recipient_type == "driver":
-        recipient = session.query(Driver).filter_by(phone=phone).first()
+        recipient = (
+            session.query(Driver)
+            .filter(Driver.phone.in_(variants))
+            .first()
+        )
+        if (not recipient or not recipient.telegram_id):
+            fallback_user = (
+                session.query(User)
+                .filter(or_(User.phone.in_(variants), User.contact_phone.in_(variants)))
+                .first()
+            )
+            if fallback_user and fallback_user.telegram_id:
+                recipient = fallback_user
     elif recipient_type == "passenger":
-        recipient = session.query(User).filter_by(phone=phone).first()
+        recipient = (
+            session.query(User)
+            .filter(or_(User.phone.in_(variants), User.contact_phone.in_(variants)))
+            .first()
+        )
+        if (not recipient or not recipient.telegram_id):
+            fallback_driver = (
+                session.query(Driver)
+                .filter(Driver.phone.in_(variants))
+                .first()
+            )
+            if fallback_driver and fallback_driver.telegram_id:
+                recipient = fallback_driver
     else:
         logger.error("Unknown OTP recipient type: %s", recipient_type)
         return False, "OTP qabul qiluvchi turi noto'g'ri"

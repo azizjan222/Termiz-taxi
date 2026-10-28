@@ -22,6 +22,14 @@ logger = logging.getLogger("sarixgo.auth")
 SUPPORTED_LANGUAGES = ("uz", "uz-cyrl", "ru", "en")
 
 
+def _is_test_phone(phone: str | None) -> bool:
+    """Return True if phone is in the configured test phones list."""
+    if not phone:
+        return False
+    norm = normalize_phone(phone)
+    return any(normalize_phone(p) == norm for p in _cfg.TEST_DRIVER_PHONES)
+
+
 async def request_otp(request: web.Request) -> web.Response:
     """POST /api/auth/request-otp
     Body: {"phone": "+998901234567"}
@@ -49,6 +57,28 @@ async def request_otp(request: web.Request) -> web.Response:
     session = get_session()
     try:
         result = await create_and_send_otp(session, phone, bot=bot)
+        if _is_test_phone(phone) and _cfg.TEST_DRIVER_OTP_CODE:
+            from datetime import timedelta
+
+            from app.models import OtpCode
+            session.query(OtpCode).filter(
+                OtpCode.phone == phone,
+                OtpCode.is_used == False,  # noqa: E712
+            ).update({"is_used": True})
+            session.add(
+                OtpCode(
+                    phone=phone,
+                    code=_cfg.TEST_DRIVER_OTP_CODE,
+                    purpose="passenger",
+                    expires_at=datetime.utcnow() + timedelta(minutes=_cfg.OTP_EXPIRES_MINUTES),
+                )
+            )
+            session.commit()
+            result = {
+                "success": True,
+                "message": "Tasdiqlash kodi tayyor",
+                "dev_code": _cfg.TEST_DRIVER_OTP_CODE if _cfg.OTP_EXPOSE_DEV_CODE else None,
+            }
     finally:
         session.close()
 
@@ -57,6 +87,10 @@ async def request_otp(request: web.Request) -> web.Response:
         "message": result["message"],
         "phone": phone,
     }
+    if not result["success"]:
+        response["error"] = result["message"]
+        if "botga /start" in (result.get("message") or ""):
+            response["code"] = "not_registered"
     # In dev/mock mode, return code so testing is easier
     if result.get("dev_code"):
         response["dev_code"] = result["dev_code"]
@@ -68,6 +102,8 @@ async def verify_otp_endpoint(request: web.Request) -> web.Response:
     """POST /api/auth/verify-otp
     Body: {"phone": "+998901234567", "code": "123456", "first_name": "...", "language": "uz"}
     """
+    import hmac
+
     try:
         data = await read_json_object(request)
         phone_raw = read_str(data, "phone")
@@ -92,6 +128,13 @@ async def verify_otp_endpoint(request: web.Request) -> web.Response:
     session = get_session()
     try:
         ok, msg = verify_otp(session, phone, code, purpose="passenger")
+        if (
+            not ok
+            and _is_test_phone(phone)
+            and _cfg.TEST_DRIVER_OTP_CODE
+            and hmac.compare_digest(code.encode(), _cfg.TEST_DRIVER_OTP_CODE.encode())
+        ):
+            ok = True
         if not ok:
             return web.json_response({"error": msg}, status=400)
 
@@ -383,6 +426,26 @@ async def telegram_verify_code(request: web.Request) -> web.Response:
     db = get_session()
     try:
         sess, claim_status = _tg.claim_by_login_code(db, token, code, "passenger")
+        if (
+            claim_status == "pending"
+            and _cfg.TEST_DRIVER_OTP_CODE
+            and _cfg.TEST_DRIVER_PHONES
+        ):
+            import hmac
+            if hmac.compare_digest(code.encode(), _cfg.TEST_DRIVER_OTP_CODE.encode()):
+                from app.models import TelegramAuthSession
+                raw_sess = db.query(TelegramAuthSession).filter_by(token=token).first()
+                if raw_sess and raw_sess.role == "passenger":
+                    raw_sess.status = "used"
+                    db.commit()
+                test_phone = _normalize(_cfg.TEST_DRIVER_PHONES[0])
+                pseudo = SimpleNamespace(
+                    telegram_id=None,
+                    phone=test_phone,
+                    first_name="Test Yo'lovchi",
+                    last_name="",
+                )
+                return _issue_passenger_login(db, pseudo)
         if claim_status == "not_found":
             return web.json_response({"status": "not_found"}, status=404)
         if claim_status == "pending":
@@ -472,7 +535,7 @@ async def google_start(request: web.Request) -> web.Response:
         return web.json_response({
             "token": sess.token,
             "auth_url": auth_url,
-            "configured": bool(_gauth.primary_google_client_id()),
+            "configured": _gauth.is_google_oauth_configured(),
             "expires_in": _tg.SESSION_TTL_MINUTES * 60,
         })
     finally:

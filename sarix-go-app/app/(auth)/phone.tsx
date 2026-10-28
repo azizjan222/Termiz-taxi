@@ -52,7 +52,19 @@ export default function PhoneScreen() {
         params: { phone, devCode: res.dev_code || '' },
       });
     } catch (e: any) {
-      Alert.alert(t('common.error'), describeApiError(e, t));
+      const code = e?.response?.data?.code;
+      if (code === 'not_registered') {
+        Alert.alert(
+          t('common.attention'),
+          describeApiError(e, t),
+          [
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('telegramLogin.loginViaTelegram'), onPress: () => router.back() },
+          ]
+        );
+      } else {
+        Alert.alert(t('common.error'), describeApiError(e, t));
+      }
     } finally {
       setLoading(false);
     }

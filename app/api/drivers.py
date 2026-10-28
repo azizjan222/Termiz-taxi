@@ -513,6 +513,8 @@ async def driver_request_otp(request: web.Request) -> web.Response:
         "message": result["message"],
         "phone": phone,
     }
+    if not result["success"]:
+        response["error"] = result["message"]
     if result.get("dev_code"):
         response["dev_code"] = result["dev_code"]
 
@@ -2286,7 +2288,7 @@ async def driver_google_start(request: web.Request) -> web.Response:
         return web.json_response({
             "token": sess.token,
             "auth_url": auth_url,
-            "configured": bool(_gauth.primary_google_client_id()),
+            "configured": _gauth.is_google_oauth_configured(),
             "expires_in": _tg.SESSION_TTL_MINUTES * 60,
         })
     finally:
@@ -2353,7 +2355,7 @@ async def driver_google_callback(request: web.Request) -> web.Response:
                 status=400,
             )
         deep_link = (
-            f"sarixgo-driver://login?google_token={sess.token}&code={sess.login_code}"
+            f"sarixgodriver://login?google_token={sess.token}&code={sess.login_code}"
         )
         page = _gauth.render_google_code_page(
             login_code=sess.login_code,

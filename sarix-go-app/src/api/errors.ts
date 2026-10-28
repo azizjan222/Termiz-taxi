@@ -15,6 +15,7 @@ export function describeApiError(e: any, t: TFunction): string {
 
   // A message the backend chose is already meant for the user; pass it through.
   if (data?.error) return data.error;
+  if (typeof data?.message === 'string' && data.message.trim()) return data.message;
   if (status === 413) return t('errors.fileTooLarge');
   if (status) return t('errors.serverStatus', { status });
   // axios reports its own timeout (20s in client.ts) and a hard abort both as ECONNABORTED.
