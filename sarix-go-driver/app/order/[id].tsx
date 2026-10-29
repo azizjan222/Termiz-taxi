@@ -650,7 +650,11 @@ export default function OrderDetailScreen() {
             {target === null && (
               <View style={styles.mapUnavailable} pointerEvents="none">
                 <Text style={styles.mapUnavailableText}>
-                  {enRoute ? t('more.mapUnavailableDest') : t('more.mapUnavailablePassenger')}
+                  {enRoute
+                    ? t('more.mapUnavailableDest')
+                    : order.pickup_type === 'pitak'
+                    ? `🚏 ${order.from_city} — ${t('order.pickupPitakBadge')}`
+                    : t('more.mapUnavailablePassenger')}
                 </Text>
               </View>
             )}
@@ -732,7 +736,9 @@ export default function OrderDetailScreen() {
               contentContainerStyle={styles.quickSmsRow}
             >
               {[
-                '🚕 Yetib keldim, kutyapman',
+                order.pickup_type === 'pitak'
+                  ? '🚏 Pitakda kutyapman'
+                  : '🚕 Yetib keldim, kutyapman',
                 '⏱ 5 daqiqada yetib boraman',
                 '👋 Tayyor turing, yo\'ldaman',
               ].map((msg) => (
@@ -832,7 +838,9 @@ export default function OrderDetailScreen() {
               {t('order.from')}
             </IconText>
             <Text style={[styles.value, !enRoute && { color: colors.primary }]} numberOfLines={2}>
-              {shortenAddress(order.from_address, order.from_city)}
+              {order.pickup_type === 'pitak'
+                ? `${order.from_city} (🚏 ${t('order.pickupPitakBadge')})`
+                : shortenAddress(order.from_address, order.from_city)}
             </Text>
           </View>
           <View style={styles.divider} />

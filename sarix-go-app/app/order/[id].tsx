@@ -15,7 +15,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
-import { CabinDiagram } from '../../src/components/CabinDiagram';
 import { Button } from '../../src/components/Button';
 import YandexMap, { type MapMarker, type YandexMapHandle } from '../../src/components/YandexMap';
 import { getOrder, cancelOrder, type Order } from '../../src/api/orders';
@@ -427,13 +426,18 @@ export default function OrderDetailScreen() {
         </View>
 
         {/* Live driver location map (while the trip is active) */}
-        {isActive && order.driver && (driverLoc || (order.from_lat != null && order.from_lon != null)) && (
+        {isActive &&
+          order.driver &&
+          (driverLoc ||
+            (order.pickup_type !== 'pitak' &&
+              order.from_lat != null &&
+              order.from_lon != null)) && (
           <View style={styles.mapCard}>
             <YandexMap
               ref={mapRef}
               style={styles.map}
-              initialLat={driverLoc?.lat ?? order.from_lat ?? undefined}
-              initialLon={driverLoc?.lon ?? order.from_lon ?? undefined}
+              initialLat={driverLoc?.lat ?? (order.pickup_type !== 'pitak' ? order.from_lat ?? undefined : undefined)}
+              initialLon={driverLoc?.lon ?? (order.pickup_type !== 'pitak' ? order.from_lon ?? undefined : undefined)}
               initialZoom={15}
               onMapReady={() => {
                 programmaticMoveAtRef.current = Date.now();
@@ -450,7 +454,7 @@ export default function OrderDetailScreen() {
                       color: '#0E1B3D',
                     } as MapMarker]
                   : []),
-                ...(order.from_lat != null && order.from_lon != null
+                ...(order.pickup_type !== 'pitak' && order.from_lat != null && order.from_lon != null
                   ? [{
                       id: 'pickup',
                       lat: order.from_lat,
@@ -562,7 +566,9 @@ export default function OrderDetailScreen() {
               >
                 {[
                   '👋 Tayyorman, chiqyapman',
-                  '📍 Lokatsiya bo\'yicha keling',
+                  order.pickup_type === 'pitak'
+                    ? '🚏 Pitakka yetib kelyapman'
+                    : '📍 Lokatsiya bo\'yicha keling',
                   '⏳ 2 daqiqa kuting, chiqyapman',
                 ].map((msg) => (
                   <TouchableOpacity
@@ -576,19 +582,6 @@ export default function OrderDetailScreen() {
                 ))}
               </ScrollView>
             )}
-          </View>
-        )}
-
-        {/* Feature 1: Live car occupancy & cabin diagram while waiting/riding */}
-        {order.driver && !isParcel && typeof order.driver.cabin_occupied === 'number' && (
-          <View style={{ marginBottom: spacing.md }}>
-            <CabinDiagram
-              personCount={order.person_count}
-              frontSeat={!!order.front_seat}
-              isFullCar={isFullCar}
-              liveOccupied={order.driver.cabin_occupied}
-              liveCapacity={order.driver.cabin_capacity || 4}
-            />
           </View>
         )}
 

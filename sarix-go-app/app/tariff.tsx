@@ -11,7 +11,6 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../src/components/Icon';
-import { CabinDiagram } from '../src/components/CabinDiagram';
 import { OrderCtaButton } from '../src/components/OrderCtaButton';
 import {
   getPriceQuote,
@@ -347,23 +346,6 @@ export default function TariffScreen() {
                   </View>
                 </TouchableOpacity>
               )}
-            </View>
-
-            {/* Interactive 2x2 Cabin Diagram (Front seat + Rear seats) */}
-            <View style={{ marginTop: spacing.lg }}>
-              <CabinDiagram
-                personCount={orderStore.personCount}
-                frontSeat={orderStore.frontSeat}
-                isFullCar={orderStore.serviceType === 'full_car'}
-                onToggleFrontSeat={(val) => orderStore.setField('frontSeat', val)}
-                onChangePersonCount={(count) => {
-                  if (count >= 4 && fullCarQuote) {
-                    handleFullCar();
-                  } else {
-                    handlePersonCount(count);
-                  }
-                }}
-              />
             </View>
           </>
         )}

@@ -434,10 +434,16 @@ export default function OrdersScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.routeLabel, { color: colors.success }]}>{t('order.from')}</Text>
               <Text style={styles.routeText}>{item.from_city}</Text>
-              {!!item.from_address && (
-                <Text style={styles.routeSub} numberOfLines={1}>
-                  {item.from_address}
+              {item.pickup_type === 'pitak' ? (
+                <Text style={[styles.routeSub, { color: colors.primary, fontWeight: '600' }]} numberOfLines={1}>
+                  🚏 {t('order.pickupPitakBadge')}
                 </Text>
+              ) : (
+                !!item.from_address && (
+                  <Text style={styles.routeSub} numberOfLines={1}>
+                    {item.from_address}
+                  </Text>
+                )
               )}
             </View>
           </View>

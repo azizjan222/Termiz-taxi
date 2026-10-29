@@ -118,14 +118,15 @@ export default function ConfirmOrderScreen() {
         orderStore.departureTime,
         orderStore.customDepartureTime
       );
+      const isPitak = !isParcel && orderStore.pickupType === 'pitak';
       const result = await createOrder({
         service_type: orderStore.serviceType,
         from_city: orderStore.fromCity,
         to_city: orderStore.toCity,
-        from_address: orderStore.fromAddress,
+        from_address: isPitak ? undefined : orderStore.fromAddress,
         to_address: orderStore.toAddress,
-        from_lat: orderStore.fromLat || undefined,
-        from_lon: orderStore.fromLon || undefined,
+        from_lat: isPitak ? undefined : orderStore.fromLat || undefined,
+        from_lon: isPitak ? undefined : orderStore.fromLon || undefined,
         to_lat: orderStore.toLat || undefined,
         to_lon: orderStore.toLon || undefined,
         person_count: orderStore.personCount,
