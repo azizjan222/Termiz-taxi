@@ -135,10 +135,6 @@ describe('deriveTarget', () => {
     const order = { ...base, status: 'accepted' } as any;
     expect(deriveTarget(order)).toEqual({ lat: 37.2, lon: 67.3 });
   });
-  it('does not target passenger home coords when pickup_type is pitak', () => {
-    const order = { ...base, status: 'accepted', pickup_type: 'pitak' } as any;
-    expect(deriveTarget(order)).toBeNull();
-  });
   it('targets destination once in progress', () => {
     const order = { ...base, status: 'in_progress' } as any;
     expect(deriveTarget(order)).toEqual({ lat: 38.2, lon: 67.9 });

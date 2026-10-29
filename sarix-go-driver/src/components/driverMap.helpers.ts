@@ -31,10 +31,9 @@ export function isFiniteCoord(lat: unknown, lon: unknown): boolean {
   );
 }
 
-/** Pickup coords from the order, or null when from_lat/from_lon are not both finite or pickup is from Pitak. */
+/** Pickup coords from the order, or null when from_lat/from_lon are not both finite. */
 export function derivePickup(order: DriverOrder | null): Coords | null {
   if (!order) return null;
-  if (order.pickup_type === 'pitak') return null;
   const lat = order.from_lat;
   const lon = order.from_lon;
   if (!isFiniteCoord(lat, lon)) return null;
@@ -170,9 +169,6 @@ export function navTextFor(addr?: string | null, city?: string | null): string {
 export function buildNavTextQuery(order: DriverOrder | null): string {
   if (!order) return '';
   if (isEnRouteToDestination(order)) return navTextFor(order.to_address, order.to_city);
-  if (order.pickup_type === 'pitak') {
-    return navTextFor(order.landmark || 'Avtoshohbekat', order.from_city);
-  }
   return navTextFor(order.from_address, order.from_city);
 }
 

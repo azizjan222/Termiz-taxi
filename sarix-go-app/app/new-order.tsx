@@ -202,7 +202,6 @@ export default function NewOrderScreen() {
   const tripSummary = [
     t('order.personsCount', { count: isFullCar ? 4 : persons }),
     t(departureKey(orderStore.departureTime)),
-    t(orderStore.pickupType === 'pitak' ? 'newOrder.pickupPitak' : 'newOrder.pickupDoor'),
   ].join(' · ');
 
   const submit = async (targetDriverId?: number) => {
@@ -223,15 +222,14 @@ export default function NewOrderScreen() {
         const other = `Boshqa odam: ${otherName.trim()} ${otherPhone.trim()}`.trim();
         note = note ? `${note}\n${other}` : other;
       }
-      const isPitak = orderStore.pickupType === 'pitak';
       const result = await createOrder({
         service_type: isFullCar ? 'full_car' : 'taxi',
         from_city: from,
         to_city: to,
-        from_address: isPitak ? undefined : orderStore.fromAddress,
+        from_address: orderStore.fromAddress,
         to_address: orderStore.toAddress,
-        from_lat: isPitak ? undefined : orderStore.fromLat || undefined,
-        from_lon: isPitak ? undefined : orderStore.fromLon || undefined,
+        from_lat: orderStore.fromLat || undefined,
+        from_lon: orderStore.fromLon || undefined,
         to_lat: orderStore.toLat || undefined,
         to_lon: orderStore.toLon || undefined,
         person_count: isFullCar ? 4 : persons,
@@ -246,7 +244,7 @@ export default function NewOrderScreen() {
         has_roof_rack: orderStore.hasRoofRack,
         female_only: orderStore.femaleOnly,
         front_seat: orderStore.frontSeat || undefined,
-        pickup_type: orderStore.pickupType,
+        pickup_type: 'door',
         landmark: orderStore.landmark.trim() || undefined,
         target_driver_id: targetDriverId,
         // Redeem the code the passenger entered. The store already held promoCode but it
@@ -305,16 +303,10 @@ export default function NewOrderScreen() {
                 <Text style={styles.routeValue} numberOfLines={1}>
                   {from}
                 </Text>
-                {orderStore.pickupType === 'pitak' ? (
-                  <Text style={[styles.routeAddress, { color: colors.primary, fontWeight: '600' }]} numberOfLines={1}>
-                    🚏 {t('newOrder.pickupPitak')}
+                {!!orderStore.fromAddress && orderStore.fromAddress !== from && (
+                  <Text style={styles.routeAddress} numberOfLines={1}>
+                    {orderStore.fromAddress}
                   </Text>
-                ) : (
-                  !!orderStore.fromAddress && orderStore.fromAddress !== from && (
-                    <Text style={styles.routeAddress} numberOfLines={1}>
-                      {orderStore.fromAddress}
-                    </Text>
-                  )
                 )}
               </View>
             </View>
@@ -433,61 +425,6 @@ export default function NewOrderScreen() {
               </TouchableOpacity>
             );
           })}
-        </View>
-
-        {/* Qayerdan chiqasiz: Mahalladan (Uy oldidan) vs Markazdan (Pitakdan) */}
-        <View style={styles.sectionHead}>
-          <Icon name="pin" size={16} color={colors.textMuted} />
-          <Text style={styles.sectionLabel}>{t('newOrder.pickupSection')}</Text>
-        </View>
-        <View style={styles.pickupRow}>
-          <TouchableOpacity
-            style={[
-              styles.pickupOption,
-              orderStore.pickupType === 'door' && styles.pickupOptionActive,
-            ]}
-            onPress={() => orderStore.setField('pickupType', 'door')}
-            activeOpacity={0.85}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: orderStore.pickupType === 'door' }}
-          >
-            <Text
-              style={[
-                styles.pickupOptionTitle,
-                orderStore.pickupType === 'door' && styles.pickupOptionTitleActive,
-              ]}
-              numberOfLines={1}
-            >
-              🏠 {t('newOrder.pickupDoor')}
-            </Text>
-            <Text style={styles.pickupOptionSub} numberOfLines={1}>
-              {t('newOrder.pickupDoorHint')}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.pickupOption,
-              orderStore.pickupType === 'pitak' && styles.pickupOptionActive,
-            ]}
-            onPress={() => orderStore.setField('pickupType', 'pitak')}
-            activeOpacity={0.85}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: orderStore.pickupType === 'pitak' }}
-          >
-            <Text
-              style={[
-                styles.pickupOptionTitle,
-                orderStore.pickupType === 'pitak' && styles.pickupOptionTitleActive,
-              ]}
-              numberOfLines={1}
-            >
-              🚏 {t('newOrder.pickupPitak')}
-            </Text>
-            <Text style={styles.pickupOptionSub} numberOfLines={1}>
-              {t('newOrder.pickupPitakHint')}
-            </Text>
-          </TouchableOpacity>
         </View>
 
         {/* 1-Tap Quick Preferences (Luggage + Female + Note) */}

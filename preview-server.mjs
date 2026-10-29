@@ -1119,6 +1119,30 @@ const HTML = `<!DOCTYPE html>
 
     <!-- Right: Summary of Changes -->
     <div class="info-panel">
+      <div class="panel-card" style="border-color:#C7D2FE;background:linear-gradient(180deg,#FFFFFF 0%,#F8FAFF 100%);">
+        <div class="kicker-text">YANGI QO'SHILGAN FUNKSIYALAR · M41 KORIDOR & JONLI CHAT</div>
+        <h1>Yo'l-yo'lakay Zakaslar, Qaytish Reysi va Ilova Ichidagi Chat</h1>
+        <p>Yo'lovchi va haydovchi ilovalariga hamda backend serverga quyidagi 4 ta muhim qulaylik qo'shildi:</p>
+        <ul class="check-list">
+          <li>
+            <span class="check-icon">01</span>
+            <div><b>Yo'l-yo'lakay (M41 Trassa Koridori) zakas olish:</b> Sariosiyo → Denov → Sho'rchi → Qumqo'rg'on → Jarqo'rg'on → Termiz yo'nalishida ketayotgan haydovchiga yo'l ustidagi tumanlardan tushgan zakaslar avtomatik <code>🛣 Yo'l-yo'lakay</code> belgisi bilan chiqadi.</div>
+          </li>
+          <li>
+            <span class="check-icon">02</span>
+            <div><b>1-Bosishda «Qaytish reysi» (Teskari yo'nalish):</b> Safar yakunlanganda haydovchi 1 ta tugma bilan yo'nalishni teskari tomonga (masalan, <i>Termiz → Sariosiyo</i>) aylantirib, darhol onlayn zakas qabul qilishga o'tadi.</div>
+          </li>
+          <li>
+            <span class="check-icon">03</span>
+            <div><b>Faqat Uy oldidan (Mahalladan) olib ketish:</b> «Pitakdan ketish» butunlay olib tashlandi — barcha buyurtmalar yo'lovchining aniq GPS lokatsiyasidan (uy oldidan) olib ketiladi.</div>
+          </li>
+          <li>
+            <span class="check-icon">04</span>
+            <div><b>Ilova ichida Yo'lovchi ↔ Haydovchi Chat (Avto-yopilish bilan):</b> Zakas qabul qilingach tezkor shablonlar (<i>«Chiqyapman», «Yetib keldim», «5 daqiqada boraman»</i>) bilan yozishish mumkin; zakas yopilishi bilan chat avtomatik bloklanadi.</div>
+          </li>
+        </ul>
+      </div>
+
       <div class="panel-card">
         <div class="kicker-text">ZAMONAVIY INTERFEYS · GOOGLE PLAY v1.0.2 (versionCode 10)</div>
         <h1>Sarix Go Driver — Yangilangan Zamonaviy Hujjat Ekrani</h1>

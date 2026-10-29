@@ -9,7 +9,16 @@ from app import config
 from app.api.drivers import driver_can_accept
 from app.api.websocket import ws_manager
 from app.database import get_session
-from app.models import BalanceTransaction, Driver, Order, OrderHistory, Route, Setting, User
+from app.models import (
+    BalanceTransaction,
+    Driver,
+    Order,
+    OrderHistory,
+    OrderMessage,
+    Route,
+    Setting,
+    User,
+)
 from app.services import promo as promo_service
 from app.services.dynamic_settings import get_min_driver_balance
 from app.services.rewards import passenger_payable
@@ -721,3 +730,111 @@ async def cancel_order(request: web.Request) -> web.Response:
         return web.json_response({"success": True, "refunded": refunded})
     finally:
         session.close()
+
+
+def _serialize_order_message(msg: OrderMessage) -> dict:
+    return {
+        "id": msg.id,
+        "order_id": msg.order_id,
+        "sender_role": msg.sender_role,
+        "sender_id": msg.sender_id,
+        "text": msg.text,
+        "created_at": iso_utc(msg.created_at),
+    }
+
+
+@require_auth
+async def list_order_messages(request: web.Request) -> web.Response:
+    """GET /api/orders/{id}/messages — passenger fetches order chat history."""
+    user: User = request["user"]
+    order_id = int(request.match_info["id"])
+
+    session = get_session()
+    try:
+        order = (
+            session.query(Order)
+            .filter_by(id=order_id, passenger_id=user.id)
+            .first()
+        )
+        if not order:
+            return web.json_response({"error": "Buyurtma topilmadi"}, status=404)
+
+        messages = (
+            session.query(OrderMessage)
+            .filter(OrderMessage.order_id == order.id)
+            .order_by(OrderMessage.id.asc())
+            .limit(200)
+            .all()
+        )
+        chat_open = order.status in ("accepted", "in_progress") and bool(order.driver_id)
+        return web.json_response({
+            "messages": [_serialize_order_message(m) for m in messages],
+            "chat_open": chat_open,
+            "order_status": order.status,
+        })
+    finally:
+        session.close()
+
+
+@require_auth
+async def send_order_message(request: web.Request) -> web.Response:
+    """POST /api/orders/{id}/messages — passenger sends message while order is active."""
+    user: User = request["user"]
+    order_id = int(request.match_info["id"])
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    text = str(body.get("text") or "").strip()
+    if not text:
+        return web.json_response({"error": "Xabar matni bo'sh bo'lishi mumkin emas"}, status=400)
+    if len(text) > 500:
+        text = text[:500]
+
+    session = get_session()
+    try:
+        order = (
+            session.query(Order)
+            .filter_by(id=order_id, passenger_id=user.id)
+            .first()
+        )
+        if not order:
+            return web.json_response({"error": "Buyurtma topilmadi"}, status=404)
+
+        if order.status not in ("accepted", "in_progress") or not order.driver_id:
+            return web.json_response(
+                {
+                    "error": "Zakas yopilgan — chatda yozishish to'xtatilgan",
+                    "code": "chat_closed",
+                },
+                status=409,
+            )
+
+        msg = OrderMessage(
+            order_id=order.id,
+            sender_role="passenger",
+            sender_id=user.id,
+            text=text,
+        )
+        session.add(msg)
+        session.commit()
+        session.refresh(msg)
+
+        serialized = _serialize_order_message(msg)
+
+        if order.driver_telegram_id:
+            await ws_manager.send_to_driver(
+                order.driver_telegram_id,
+                {
+                    "type": "order_message",
+                    "order_id": order.id,
+                    "message": serialized,
+                },
+            )
+
+        return web.json_response({"message": serialized, "chat_open": True}, status=201)
+    finally:
+        session.close()
+

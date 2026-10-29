@@ -190,6 +190,9 @@ function handleMessage(data: any) {
     }
     if (msg.order_id == null) return;
     useRealtimeStore.getState().pushTaken(msg.order_id);
+  } else if (msg.type === 'order_message' && msg.order_id && msg.message) {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    useRealtimeStore.getState().pushOrderMessage(msg.order_id, msg.message);
   }
 }
 

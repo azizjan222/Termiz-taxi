@@ -23,8 +23,8 @@ logger = logging.getLogger("sarixgo.migrate")
 #: migration list had moved on, so a database missing the newer columns was reported
 #: ready. Forgetting to bump it can no longer hide a missing COLUMN either -- the
 #: additive column pass below always runs (see the comment there).
-SCHEMA_VERSION = 2026102101
-SCHEMA_NAME = "tumanlararo_order_fields"
+SCHEMA_VERSION = 2026102901
+SCHEMA_NAME = "order_messages_chat"
 
 
 def _declared_constraints():

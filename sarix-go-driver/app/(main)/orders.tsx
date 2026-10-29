@@ -77,6 +77,10 @@ export default function OrdersScreen() {
   const [corridorFilter, setCorridorFilter] = useState<{ from: string; to: string } | null>(
     null
   );
+  const [activeCorridor, setActiveCorridor] = useState<{
+    from_city: string;
+    to_city: string;
+  } | null>(null);
   const [includeTransit, setIncludeTransit] = useState(true);
   const [disclosureVisible, setDisclosureVisible] = useState(false);
   const disclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
@@ -124,21 +128,18 @@ export default function OrdersScreen() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setRefreshing(true);
     try {
-      const res = await listAvailableOrders(
-        corridorFilter
-          ? {
-              corridor_from: corridorFilter.from,
-              corridor_to: corridorFilter.to,
-              include_transit: includeTransit,
-            }
-          : undefined
-      );
+      const res = await listAvailableOrders({
+        corridor_from: corridorFilter?.from,
+        corridor_to: corridorFilter?.to,
+        include_transit: includeTransit,
+      });
       setCanReceive(res.can_receive !== false);
       setReceiveMsg(res.message || '');
       setReceiveCode(res.code || '');
       setOrders(res.can_receive === false ? [] : res.orders);
       setCabinOccupied(res.cabin_occupied ?? 0);
       setCabinCapacity(res.cabin_capacity ?? 4);
+      setActiveCorridor(res.active_corridor ?? null);
       const currentDriver = useDriverStore.getState().driver;
       if (currentDriver && res.is_verified !== undefined) {
         useDriverStore.getState().setDriver({
@@ -434,16 +435,10 @@ export default function OrdersScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.routeLabel, { color: colors.success }]}>{t('order.from')}</Text>
               <Text style={styles.routeText}>{item.from_city}</Text>
-              {item.pickup_type === 'pitak' ? (
-                <Text style={[styles.routeSub, { color: colors.primary, fontWeight: '600' }]} numberOfLines={1}>
-                  🚏 {t('order.pickupPitakBadge')}
+              {!!item.from_address && (
+                <Text style={styles.routeSub} numberOfLines={1}>
+                  {item.from_address}
                 </Text>
-              ) : (
-                !!item.from_address && (
-                  <Text style={styles.routeSub} numberOfLines={1}>
-                    {item.from_address}
-                  </Text>
-                )
               )}
             </View>
           </View>
@@ -471,7 +466,7 @@ export default function OrdersScreen() {
           )}
         </View>
 
-        {/* Tumanlararo badges: Transit match, Front seat, Pickup type (Mahalla/Pitak), Parcel payer */}
+        {/* Tumanlararo badges: Transit match, Front seat, Pickup type (Mahalla), Parcel payer */}
         {(item.corridor_match === 'transit' ||
           item.front_seat ||
           item.pickup_type ||
@@ -495,9 +490,7 @@ export default function OrdersScreen() {
               {item.pickup_type && (
                 <View style={styles.extraTag}>
                   <Text style={styles.extraTagText}>
-                    {item.pickup_type === 'pitak'
-                      ? `🚏 ${t('order.pickupPitakBadge')}`
-                      : `🏠 ${t('order.pickupDoorBadge')}`}
+                    🏠 {t('order.pickupDoorBadge')}
                   </Text>
                 </View>
               )}
@@ -755,25 +748,63 @@ export default function OrdersScreen() {
             </View>
           </View>
 
-          {corridorFilter && (
-            <TouchableOpacity
-              style={[
-                styles.transitToggle,
-                includeTransit && styles.transitToggleActive,
-              ]}
-              onPress={() => setIncludeTransit((v) => !v)}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  styles.transitToggleText,
-                  includeTransit && styles.transitToggleTextActive,
-                ]}
-              >
-                🛣 {t('order.corridorIncludeTransit')}
-              </Text>
-            </TouchableOpacity>
-          )}
+          {(corridorFilter || activeCorridor) && (() => {
+            const effFrom = corridorFilter?.from || activeCorridor?.from_city || '';
+            const effTo = corridorFilter?.to || activeCorridor?.to_city || '';
+            const isReturnMode =
+              !!activeCorridor &&
+              !!corridorFilter &&
+              corridorFilter.from === activeCorridor.to_city &&
+              corridorFilter.to === activeCorridor.from_city;
+            return (
+              <View style={styles.corridorActionGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.transitToggle,
+                    includeTransit && styles.transitToggleActive,
+                  ]}
+                  onPress={() => setIncludeTransit((v) => !v)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.transitToggleText,
+                      includeTransit && styles.transitToggleTextActive,
+                    ]}
+                  >
+                    🛣 {t('order.corridorIncludeTransit')}
+                  </Text>
+                </TouchableOpacity>
+
+                {effFrom && effTo && (
+                  <TouchableOpacity
+                    style={[
+                      styles.returnTripBtn,
+                      isReturnMode && styles.returnTripBtnActive,
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      if (isReturnMode) {
+                        setCorridorFilter(null);
+                      } else {
+                        setCorridorFilter({ from: effTo, to: effFrom });
+                      }
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        styles.returnTripBtnText,
+                        isReturnMode && styles.returnTripBtnTextActive,
+                      ]}
+                    >
+                      🔄 {t('order.returnTripBtn', { from: effTo, to: effFrom })}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })()}
         </View>
 
         <FlatList
@@ -1274,6 +1305,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   seatDotFilled: {
     backgroundColor: colors.success,
   },
+  corridorActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   transitToggle: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 5,
@@ -1293,6 +1330,26 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   transitToggleTextActive: {
     color: '#1D4ED8',
+  },
+  returnTripBtn: {
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primary100,
+  },
+  returnTripBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  returnTripBtnText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  returnTripBtnTextActive: {
+    color: colors.textOnPrimary,
   },
   corridorChips: {
     gap: 6,

@@ -164,14 +164,8 @@ export const IncomingOrderModal: React.FC<Props> = ({
               <View style={{ flex: 1 }}>
                 <Text style={[styles.routeLabel, { color: colors.success }]}>{t('order.from')}</Text>
                 <Text style={styles.routeCity}>{order.from_city}</Text>
-                {order.pickup_type === 'pitak' ? (
-                  <Text style={[styles.routeAddr, { color: colors.primary, fontWeight: '600' }]} numberOfLines={1}>
-                    🚏 {t('order.pickupPitakBadge')}
-                  </Text>
-                ) : (
-                  !!order.from_address && (
-                    <Text style={styles.routeAddr} numberOfLines={1}>{order.from_address}</Text>
-                  )
+                {!!order.from_address && (
+                  <Text style={styles.routeAddr} numberOfLines={1}>{order.from_address}</Text>
                 )}
               </View>
             </View>
@@ -215,9 +209,7 @@ export const IncomingOrderModal: React.FC<Props> = ({
                 {order.pickup_type && (
                   <View style={styles.extraTag}>
                     <Text style={styles.extraTagText}>
-                      {order.pickup_type === 'pitak'
-                        ? `🚏 ${t('order.pickupPitakBadge')}`
-                        : `🏠 ${t('order.pickupDoorBadge')}`}
+                      🏠 {t('order.pickupDoorBadge')}
                     </Text>
                   </View>
                 )}

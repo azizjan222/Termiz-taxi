@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Linking, Alert, Platform, ActivityIndicator, Image, Modal,
+  TextInput, KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,7 +17,16 @@ import {
 } from '../../src/services/backgroundLocation';
 
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
-import { listMyActive, completeOrder, startTrip, updateDriverLocation, type DriverOrder } from '../../src/api/driver';
+import {
+  listMyActive,
+  completeOrder,
+  startTrip,
+  updateDriverLocation,
+  listDriverOrderMessages,
+  sendDriverOrderMessage,
+  type DriverOrder,
+  type OrderChatMessage,
+} from '../../src/api/driver';
 import { playDriverStatusChime } from '../../src/services/notifications';
 import { API_URL } from '../../src/api/client';
 import { useRealtimeStore } from '../../src/store/realtime';
@@ -98,6 +108,32 @@ export default function OrderDetailScreen() {
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const lastSentAtRef = useRef(0);
 
+  // In-app order chat state
+  const [chatVisible, setChatVisible] = useState(false);
+  const chatVisibleRef = useRef(false);
+  const [messages, setMessages] = useState<OrderChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [sendingChat, setSendingChat] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const chatScrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    chatVisibleRef.current = chatVisible;
+    if (chatVisible) {
+      setUnreadCount(0);
+      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
+    }
+  }, [chatVisible]);
+
+  const loadMessages = async () => {
+    try {
+      const res = await listDriverOrderMessages(parseInt(String(id)));
+      setMessages(res.messages || []);
+    } catch {
+      // Ignore transient poll errors
+    }
+  };
+
   // Load the order, then KEEP polling. This is the screen the driver lands on right
   // after accepting a ride, and it has no other refresh path: a single un-caught fetch
   // error used to leave `order` null forever, wedging the screen on "Yuklanmoqda..."
@@ -127,6 +163,7 @@ export default function OrderDetailScreen() {
               setOrder(o);
               setGone(false);
               setNotMine(false);
+              loadMessages();
             } else if (everLoadedRef.current) {
               // We HAD it and now we don't: the passenger cancelled, another driver took
               // it, or it completed. Worth telling the driver about.
@@ -150,6 +187,7 @@ export default function OrderDetailScreen() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   // The order stopped being active while we were looking at it. The realtime path handles
@@ -199,6 +237,19 @@ export default function OrderDetailScreen() {
         [{ text: t('common.close'), onPress: () => router.replace('/(main)/orders') }],
         { cancelable: false },
       );
+    } else if (
+      lastEvent.kind === 'order_message' &&
+      String(lastEvent.orderId) === String(id) &&
+      lastEvent.message
+    ) {
+      const incoming = lastEvent.message;
+      setMessages((prev) =>
+        prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]
+      );
+      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
+      if (!chatVisibleRef.current && incoming.sender_role === 'passenger') {
+        setUnreadCount((c) => c + 1);
+      }
     }
   }, [lastEvent, id, t]);
 
@@ -422,13 +473,39 @@ export default function OrderDetailScreen() {
     }
   };
 
-  const smsPassenger = (presetBody?: string) => {
-    if (order?.passenger_phone) {
-      const bodyParam = presetBody ? encodeURIComponent(presetBody) : '';
-      const smsUrl = Platform.OS === 'ios'
-        ? `sms:${order.passenger_phone}${bodyParam ? `&body=${bodyParam}` : ''}`
-        : `sms:${order.passenger_phone}?body=${bodyParam}`;
-      Linking.openURL(smsUrl).catch(() => {});
+  const openChat = () => {
+    setChatVisible(true);
+    loadMessages();
+  };
+
+  const handleSendChat = async (presetText?: string) => {
+    const textToSend = (presetText ?? chatInput).trim();
+    if (!textToSend || sendingChat) return;
+    if (
+      cancelled ||
+      gone ||
+      !order ||
+      !['accepted', 'in_progress'].includes(order.status)
+    ) {
+      Alert.alert(t('common.attention'), t('order.chatClosedNotice'));
+      return;
+    }
+    setSendingChat(true);
+    if (!presetText) setChatInput('');
+    try {
+      const res = await sendDriverOrderMessage(order.id, textToSend);
+      setMessages((prev) =>
+        prev.some((m) => m.id === res.message.id) ? prev : [...prev, res.message]
+      );
+      if (presetText) {
+        setChatVisible(true);
+      }
+      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
+    } catch (e: any) {
+      if (!presetText) setChatInput(textToSend);
+      Alert.alert(t('common.error'), describeApiError(e, t));
+    } finally {
+      setSendingChat(false);
     }
   };
 
@@ -652,8 +729,6 @@ export default function OrderDetailScreen() {
                 <Text style={styles.mapUnavailableText}>
                   {enRoute
                     ? t('more.mapUnavailableDest')
-                    : order.pickup_type === 'pitak'
-                    ? `🚏 ${order.from_city} — ${t('order.pickupPitakBadge')}`
                     : t('more.mapUnavailablePassenger')}
                 </Text>
               </View>
@@ -682,7 +757,7 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* Passenger card — phone revealed after accept + 1-Tap Quick Driver SMS Chips */}
+        {/* Passenger card — phone revealed after accept + In-App Chat + 1-Tap Quick Chat Chips */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{contactLabel}</Text>
           <View style={styles.passengerRow}>
@@ -710,12 +785,18 @@ export default function OrderDetailScreen() {
             </View>
             <TouchableOpacity
               style={styles.smsBtn}
-              onPress={() => smsPassenger()}
+              onPress={openChat}
               accessibilityRole="button"
-              accessibilityLabel={t('more.a11ySendSms', { subject: contactLabel })}
-              accessibilityHint={t('more.a11ySendSmsHint')}
+              accessibilityLabel={t('order.chatTitle')}
             >
               <Icon name="chat" size={20} color="#FFFFFF" />
+              {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadBadgeText}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.callBtn}
@@ -728,30 +809,32 @@ export default function OrderDetailScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* 1-Tap Quick Driver SMS Templates (fast & eyes-free while driving to pickup) */}
-          {!enRoute && order.passenger_phone && (
+          {/* 1-Tap Quick Driver Chat Templates (fast & eyes-free while driving to pickup) */}
+          {!cancelled && !gone && ['accepted', 'in_progress'].includes(order.status) ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.quickSmsRow}
             >
               {[
-                order.pickup_type === 'pitak'
-                  ? '🚏 Pitakda kutyapman'
-                  : '🚕 Yetib keldim, kutyapman',
+                '🚕 Yetib keldim, kutyapman',
                 '⏱ 5 daqiqada yetib boraman',
                 '👋 Tayyor turing, yo\'ldaman',
               ].map((msg) => (
                 <TouchableOpacity
                   key={msg}
                   style={styles.quickSmsChip}
-                  onPress={() => smsPassenger(msg)}
+                  onPress={() => handleSendChat(msg)}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.quickSmsChipText}>{msg}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
+          ) : (
+            <View style={styles.chatClosedInline}>
+              <Text style={styles.chatClosedInlineText}>{t('order.chatClosedNotice')}</Text>
+            </View>
           )}
         </View>
 
@@ -807,9 +890,7 @@ export default function OrderDetailScreen() {
               {order.pickup_type && (
                 <View style={styles.extraTag}>
                   <Text style={styles.extraTagText}>
-                    {order.pickup_type === 'pitak'
-                      ? `🚏 ${t('order.pickupPitakBadge')}`
-                      : `🏠 ${t('order.pickupDoorBadge')}`}
+                    🏠 {t('order.pickupDoorBadge')}
                   </Text>
                 </View>
               )}
@@ -838,9 +919,7 @@ export default function OrderDetailScreen() {
               {t('order.from')}
             </IconText>
             <Text style={[styles.value, !enRoute && { color: colors.primary }]} numberOfLines={2}>
-              {order.pickup_type === 'pitak'
-                ? `${order.from_city} (🚏 ${t('order.pickupPitakBadge')})`
-                : shortenAddress(order.from_address, order.from_city)}
+              {shortenAddress(order.from_address, order.from_city)}
             </Text>
           </View>
           <View style={styles.divider} />
@@ -1091,6 +1170,121 @@ export default function OrderDetailScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* In-App Order Chat Modal (Driver <-> Passenger) */}
+      <Modal
+        visible={chatVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setChatVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.chatModalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.chatSheet}>
+            <View style={styles.chatHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.chatHeaderTitle}>{t('order.chatTitle')}</Text>
+                <Text style={styles.chatHeaderSub}>
+                  {order.passenger_name || t('more.passenger')}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.chatCloseBtn}
+                onPress={() => setChatVisible(false)}
+              >
+                <Icon name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              ref={chatScrollRef}
+              style={styles.chatMessagesList}
+              contentContainerStyle={styles.chatMessagesContent}
+              onContentSizeChange={() =>
+                chatScrollRef.current?.scrollToEnd({ animated: true })
+              }
+            >
+              {messages.length === 0 ? (
+                <View style={styles.chatEmptyWrap}>
+                  <Icon name="chat" size={32} color={colors.textMuted} />
+                  <Text style={styles.chatEmptyText}>{t('order.chatEmpty')}</Text>
+                </View>
+              ) : (
+                messages.map((m) => {
+                  const isMine = m.sender_role === 'driver';
+                  const timeStr = m.created_at
+                    ? new Date(m.created_at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : '';
+                  return (
+                    <View
+                      key={m.id}
+                      style={[
+                        styles.chatBubble,
+                        isMine ? styles.chatBubbleMine : styles.chatBubbleTheirs,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chatBubbleText,
+                          isMine ? styles.chatBubbleTextMine : styles.chatBubbleTextTheirs,
+                        ]}
+                      >
+                        {m.text}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.chatBubbleTime,
+                          isMine && { color: 'rgba(255,255,255,0.75)' },
+                        ]}
+                      >
+                        {timeStr}
+                      </Text>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {!cancelled && !gone && ['accepted', 'in_progress'].includes(order.status) ? (
+              <View style={styles.chatInputBar}>
+                <TextInput
+                  style={styles.chatInput}
+                  value={chatInput}
+                  onChangeText={setChatInput}
+                  placeholder={t('order.chatPlaceholder')}
+                  placeholderTextColor={colors.textMuted}
+                  maxLength={500}
+                  returnKeyType="send"
+                  onSubmitEditing={() => handleSendChat()}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.chatSendBtn,
+                    (!chatInput.trim() || sendingChat) && { opacity: 0.5 },
+                  ]}
+                  onPress={() => handleSendChat()}
+                  disabled={!chatInput.trim() || sendingChat}
+                >
+                  {sendingChat ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Icon name="arrowRight" size={20} color="#FFFFFF" />
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.chatClosedBanner}>
+                <Text style={styles.chatClosedText}>{t('order.chatClosedNotice')}</Text>
+              </View>
+            )}
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -1377,6 +1571,34 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.sm,
   },
+  unreadBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  unreadBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  chatClosedInline: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  chatClosedInlineText: {
+    ...typography.small,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
   quickSmsRow: {
     gap: spacing.xs,
     marginTop: spacing.md,
@@ -1456,4 +1678,136 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     elevation: 4,
   },
   completeBtnText: { ...typography.button, color: '#FFFFFF', fontWeight: '700' },
+  chatModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(14, 23, 48, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  chatSheet: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    maxHeight: '82%',
+    minHeight: '55%',
+    overflow: 'hidden',
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  chatHeaderTitle: {
+    ...typography.bodyBold,
+    color: colors.text,
+  },
+  chatHeaderSub: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  chatCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatMessagesList: {
+    flex: 1,
+    backgroundColor: colors.surface,
+  },
+  chatMessagesContent: {
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  chatEmptyWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  chatEmptyText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  chatBubble: {
+    maxWidth: '80%',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.lg,
+  },
+  chatBubbleMine: {
+    alignSelf: 'flex-end',
+    backgroundColor: colors.primary,
+    borderBottomRightRadius: 4,
+  },
+  chatBubbleTheirs: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.white,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chatBubbleText: {
+    ...typography.body,
+  },
+  chatBubbleTextMine: {
+    color: '#FFFFFF',
+  },
+  chatBubbleTextTheirs: {
+    color: colors.text,
+  },
+  chatBubbleTime: {
+    fontSize: 10,
+    color: colors.textMuted,
+    alignSelf: 'flex-end',
+    marginTop: 3,
+  },
+  chatInputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.white,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    gap: spacing.sm,
+  },
+  chatInput: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    color: colors.text,
+    ...typography.body,
+  },
+  chatSendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatClosedBanner: {
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    alignItems: 'center',
+  },
+  chatClosedText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '700',
+  },
 });
+

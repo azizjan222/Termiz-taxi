@@ -31,7 +31,6 @@ import {
 } from '../src/utils/departureTime';
 
 const LANDMARK_CHIP_KEYS = [
-  'newOrder.landmarkChipPitak',
   'newOrder.landmarkChipBozor',
   'newOrder.landmarkChipMaktab',
   'newOrder.landmarkChipMasjid',
@@ -118,15 +117,14 @@ export default function ConfirmOrderScreen() {
         orderStore.departureTime,
         orderStore.customDepartureTime
       );
-      const isPitak = !isParcel && orderStore.pickupType === 'pitak';
       const result = await createOrder({
         service_type: orderStore.serviceType,
         from_city: orderStore.fromCity,
         to_city: orderStore.toCity,
-        from_address: isPitak ? undefined : orderStore.fromAddress,
+        from_address: orderStore.fromAddress,
         to_address: orderStore.toAddress,
-        from_lat: isPitak ? undefined : orderStore.fromLat || undefined,
-        from_lon: isPitak ? undefined : orderStore.fromLon || undefined,
+        from_lat: orderStore.fromLat || undefined,
+        from_lon: orderStore.fromLon || undefined,
         to_lat: orderStore.toLat || undefined,
         to_lon: orderStore.toLon || undefined,
         person_count: orderStore.personCount,
@@ -137,7 +135,7 @@ export default function ConfirmOrderScreen() {
         has_roof_rack: orderStore.hasRoofRack,
         female_only: orderStore.femaleOnly,
         front_seat: !isParcel && orderStore.frontSeat ? true : undefined,
-        pickup_type: orderStore.pickupType,
+        pickup_type: 'door',
         landmark: orderStore.landmark.trim() || undefined,
         parcel_recipient_name: isParcel
           ? orderStore.parcelRecipientName.trim() || undefined
@@ -222,42 +220,9 @@ export default function ConfirmOrderScreen() {
           </View>
         </View>
 
-        {/* Feature 3: Pickup Type (Uy oldidan / Mahalladan vs Pitakdan) & Mo'ljal */}
+        {/* Mo'ljal (Door-to-door pickup landmark) */}
         <View style={[styles.card, { marginTop: spacing.md }]}>
-          <Text style={styles.cardTitle}>{t('newOrder.pickupSection')}</Text>
-          <View style={styles.toggleRow}>
-            {(['door', 'pitak'] as const).map((pt) => {
-              const active = orderStore.pickupType === pt;
-              return (
-                <TouchableOpacity
-                  key={pt}
-                  style={[styles.toggleCard, active && styles.toggleCardActive]}
-                  onPress={() => orderStore.setField('pickupType', pt)}
-                  activeOpacity={0.85}
-                >
-                  <Icon
-                    name={pt === 'door' ? 'home' : 'pin'}
-                    size={18}
-                    color={active ? colors.primary : colors.textSecondary}
-                  />
-                  <Text
-                    style={[styles.toggleTitle, active && styles.toggleTitleActive]}
-                  >
-                    {t(pt === 'door' ? 'newOrder.pickupDoor' : 'newOrder.pickupPitak')}
-                  </Text>
-                  <Text style={styles.toggleSub} numberOfLines={2}>
-                    {t(
-                      pt === 'door'
-                        ? 'newOrder.pickupDoorHint'
-                        : 'newOrder.pickupPitakHint'
-                    )}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <View style={{ marginTop: spacing.md }}>
+          <View>
             <Input
               label={t('newOrder.landmarkLabel')}
               value={orderStore.landmark}

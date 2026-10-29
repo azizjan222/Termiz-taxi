@@ -223,3 +223,35 @@ export async function getRouteLiveStats(
   });
   return response.data;
 }
+
+export interface OrderChatMessage {
+  id: number;
+  order_id: number;
+  sender_role: 'passenger' | 'driver';
+  sender_id: number;
+  text: string;
+  created_at: string;
+}
+
+export interface OrderMessagesResponse {
+  messages: OrderChatMessage[];
+  chat_open: boolean;
+  order_status: OrderStatus;
+}
+
+export async function listOrderMessages(orderId: number): Promise<OrderMessagesResponse> {
+  const response = await api.get<OrderMessagesResponse>(`/api/orders/${orderId}/messages`);
+  return response.data;
+}
+
+export async function sendOrderMessage(
+  orderId: number,
+  text: string
+): Promise<{ message: OrderChatMessage; chat_open: boolean }> {
+  const response = await api.post<{ message: OrderChatMessage; chat_open: boolean }>(
+    `/api/orders/${orderId}/messages`,
+    { text }
+  );
+  return response.data;
+}
+

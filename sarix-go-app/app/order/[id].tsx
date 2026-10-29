@@ -9,6 +9,11 @@ import {
   Alert,
   Image,
   Share,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -17,7 +22,14 @@ import { useTranslation } from 'react-i18next';
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { Button } from '../../src/components/Button';
 import YandexMap, { type MapMarker, type YandexMapHandle } from '../../src/components/YandexMap';
-import { getOrder, cancelOrder, type Order } from '../../src/api/orders';
+import {
+  getOrder,
+  cancelOrder,
+  listOrderMessages,
+  sendOrderMessage,
+  type Order,
+  type OrderChatMessage,
+} from '../../src/api/orders';
 import { getOrderRatingStatus } from '../../src/api/ratings';
 import { presentLocalNotification } from '../../src/services/notifications';
 import { addNotification } from '../../src/services/notificationHistory';
@@ -87,6 +99,32 @@ export default function OrderDetailScreen() {
   const [following, setFollowing] = useState(true);
   const programmaticMoveAtRef = useRef(0);
 
+  // In-app order chat state
+  const [chatVisible, setChatVisible] = useState(false);
+  const chatVisibleRef = useRef(false);
+  const [messages, setMessages] = useState<OrderChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [sendingChat, setSendingChat] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const chatScrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    chatVisibleRef.current = chatVisible;
+    if (chatVisible) {
+      setUnreadCount(0);
+      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 120);
+    }
+  }, [chatVisible]);
+
+  const loadMessages = useCallback(async () => {
+    try {
+      const res = await listOrderMessages(parseInt(id));
+      setMessages(res.messages || []);
+    } catch {
+      // Ignore transient errors during polling
+    }
+  }, [id]);
+
   const load = async () => {
     try {
       const data = await getOrder(parseInt(id));
@@ -113,6 +151,9 @@ export default function OrderDetailScreen() {
       if (stamp && stamp !== lastServerStampRef.current) {
         lastServerStampRef.current = stamp;
         lastPositionAtRef.current = Date.now();
+      }
+      if (data.driver) {
+        loadMessages();
       }
     } catch {
       // Record the failure. This screen is reached with router.replace and renders no
@@ -174,6 +215,24 @@ export default function OrderDetailScreen() {
           load();
         } else if (msg.type === 'order_accepted' && msg.order_id?.toString() === id) {
           load();
+        } else if (
+          msg.type === 'order_message' &&
+          msg.order_id?.toString() === id &&
+          msg.message
+        ) {
+          const incoming: OrderChatMessage = msg.message;
+          setMessages((prev) =>
+            prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]
+          );
+          setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
+          if (!chatVisibleRef.current && incoming.sender_role === 'driver') {
+            setUnreadCount((c) => c + 1);
+            presentLocalNotification(
+              t('order.chatTitle'),
+              incoming.text,
+              { type: 'order_message', order_id: msg.order_id }
+            );
+          }
         }
       },
     });
@@ -260,15 +319,37 @@ export default function OrderDetailScreen() {
     }
   };
 
-  const sendQuickSmsToDriver = (message: string) => {
-    if (!order?.driver?.phone) return;
-    const sep = '&';
-    const url = `sms:${order.driver.phone}?body=${encodeURIComponent(message)}`;
-    Linking.openURL(url).catch(() => {
-      Linking.openURL(`sms:${order.driver!.phone}${sep}body=${encodeURIComponent(message)}`).catch(
-        () => {}
+  const openChat = () => {
+    setChatVisible(true);
+    loadMessages();
+  };
+
+  const handleSendChat = async (presetText?: string) => {
+    const textToSend = (presetText ?? chatInput).trim();
+    if (!textToSend || sendingChat) return;
+    if (!order || !['accepted', 'in_progress'].includes(order.status)) {
+      Alert.alert(t('common.attention'), t('order.chatClosedNotice'));
+      return;
+    }
+    setSendingChat(true);
+    if (!presetText) setChatInput('');
+    try {
+      const res = await sendOrderMessage(order.id, textToSend);
+      setMessages((prev) =>
+        prev.some((m) => m.id === res.message.id) ? prev : [...prev, res.message]
       );
-    });
+      if (presetText) {
+        setChatVisible(true);
+      }
+      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
+    } catch (e: any) {
+      if (!presetText) setChatInput(textToSend);
+      const errMsg =
+        e?.response?.data?.error || t('errors.networkError');
+      Alert.alert(t('common.error'), errMsg);
+    } finally {
+      setSendingChat(false);
+    }
   };
 
   const handleCancel = () => {
@@ -428,16 +509,13 @@ export default function OrderDetailScreen() {
         {/* Live driver location map (while the trip is active) */}
         {isActive &&
           order.driver &&
-          (driverLoc ||
-            (order.pickup_type !== 'pitak' &&
-              order.from_lat != null &&
-              order.from_lon != null)) && (
+          (driverLoc || (order.from_lat != null && order.from_lon != null)) && (
           <View style={styles.mapCard}>
             <YandexMap
               ref={mapRef}
               style={styles.map}
-              initialLat={driverLoc?.lat ?? (order.pickup_type !== 'pitak' ? order.from_lat ?? undefined : undefined)}
-              initialLon={driverLoc?.lon ?? (order.pickup_type !== 'pitak' ? order.from_lon ?? undefined : undefined)}
+              initialLat={driverLoc?.lat ?? order.from_lat ?? undefined}
+              initialLon={driverLoc?.lon ?? order.from_lon ?? undefined}
               initialZoom={15}
               onMapReady={() => {
                 programmaticMoveAtRef.current = Date.now();
@@ -454,7 +532,7 @@ export default function OrderDetailScreen() {
                       color: '#0E1B3D',
                     } as MapMarker]
                   : []),
-                ...(order.pickup_type !== 'pitak' && order.from_lat != null && order.from_lon != null
+                ...(order.from_lat != null && order.from_lon != null
                   ? [{
                       id: 'pickup',
                       lat: order.from_lat,
@@ -491,7 +569,7 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* Driver info + License Plate + 1-Tap Quick Passenger SMS Chips */}
+        {/* Driver info + License Plate + In-App Chat + 1-Tap Quick Chat Chips */}
         {order.driver && (
           <View style={styles.driverCard}>
             <View style={styles.driverHeaderRow}>
@@ -547,6 +625,22 @@ export default function OrderDetailScreen() {
                 ) : null}
               </View>
               <TouchableOpacity
+                style={styles.chatBtn}
+                onPress={openChat}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t('order.chatTitle')}
+              >
+                <Icon name="chat" size={20} color="#FFFFFF" />
+                {unreadCount > 0 && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={styles.callBtn}
                 onPress={callDriver}
                 accessibilityRole="button"
@@ -557,8 +651,8 @@ export default function OrderDetailScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* 1-Tap Quick Passenger SMS Chips while waiting for pickup */}
-            {isAccepted && order.driver.phone && (
+            {/* 1-Tap Quick Passenger Chat Chips while order is active */}
+            {(isAccepted || isInProgress) ? (
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -566,21 +660,23 @@ export default function OrderDetailScreen() {
               >
                 {[
                   '👋 Tayyorman, chiqyapman',
-                  order.pickup_type === 'pitak'
-                    ? '🚏 Pitakka yetib kelyapman'
-                    : '📍 Lokatsiya bo\'yicha keling',
+                  '📍 Lokatsiya bo\'yicha keling',
                   '⏳ 2 daqiqa kuting, chiqyapman',
                 ].map((msg) => (
                   <TouchableOpacity
                     key={msg}
                     style={styles.quickSmsChip}
-                    onPress={() => sendQuickSmsToDriver(msg)}
+                    onPress={() => handleSendChat(msg)}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.quickSmsChipText}>{msg}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
+            ) : (
+              <View style={styles.chatClosedInline}>
+                <Text style={styles.chatClosedInlineText}>{t('order.chatClosedNotice')}</Text>
+              </View>
             )}
           </View>
         )}
@@ -618,23 +714,13 @@ export default function OrderDetailScreen() {
               </Text>
             </View>
           )}
-          {order.pickup_type && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.row}>
-                <IconText name="pin" size={12} color={colors.textSecondary} textStyle={styles.label}>
-                  {t('order.pickupTypeLabel')}
-                </IconText>
-                <Text style={styles.value}>
-                  {t(
-                    order.pickup_type === 'pitak'
-                      ? 'order.pickupPitakBadge'
-                      : 'order.pickupDoorBadge'
-                  )}
-                </Text>
-              </View>
-            </>
-          )}
+          <View style={styles.divider} />
+          <View style={styles.row}>
+            <IconText name="pin" size={12} color={colors.textSecondary} textStyle={styles.label}>
+              {t('order.pickupTypeLabel')}
+            </IconText>
+            <Text style={styles.value}>{t('order.pickupDoorBadge')}</Text>
+          </View>
           {order.landmark ? (
             <>
               <View style={styles.divider} />
@@ -812,6 +898,122 @@ export default function OrderDetailScreen() {
           />
         </View>
       )}
+
+      {/* In-App Order Chat Modal (Passenger <-> Driver) */}
+      <Modal
+        visible={chatVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setChatVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.chatModalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.chatSheet}>
+            <View style={styles.chatHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.chatHeaderTitle}>{t('order.chatTitle')}</Text>
+                <Text style={styles.chatHeaderSub}>
+                  {order.driver?.first_name || t('common.driver')}
+                  {order.driver?.car_number ? ` · ${order.driver.car_number}` : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.chatCloseBtn}
+                onPress={() => setChatVisible(false)}
+              >
+                <Icon name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              ref={chatScrollRef}
+              style={styles.chatMessagesList}
+              contentContainerStyle={styles.chatMessagesContent}
+              onContentSizeChange={() =>
+                chatScrollRef.current?.scrollToEnd({ animated: true })
+              }
+            >
+              {messages.length === 0 ? (
+                <View style={styles.chatEmptyWrap}>
+                  <Icon name="chat" size={32} color={colors.textMuted} />
+                  <Text style={styles.chatEmptyText}>{t('order.chatEmpty')}</Text>
+                </View>
+              ) : (
+                messages.map((m) => {
+                  const isMine = m.sender_role === 'passenger';
+                  const timeStr = m.created_at
+                    ? new Date(m.created_at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : '';
+                  return (
+                    <View
+                      key={m.id}
+                      style={[
+                        styles.chatBubble,
+                        isMine ? styles.chatBubbleMine : styles.chatBubbleTheirs,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chatBubbleText,
+                          isMine ? styles.chatBubbleTextMine : styles.chatBubbleTextTheirs,
+                        ]}
+                      >
+                        {m.text}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.chatBubbleTime,
+                          isMine && { color: 'rgba(255,255,255,0.75)' },
+                        ]}
+                      >
+                        {timeStr}
+                      </Text>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {isAccepted || isInProgress ? (
+              <View style={styles.chatInputBar}>
+                <TextInput
+                  style={styles.chatInput}
+                  value={chatInput}
+                  onChangeText={setChatInput}
+                  placeholder={t('order.chatPlaceholder')}
+                  placeholderTextColor={colors.textMuted}
+                  maxLength={500}
+                  returnKeyType="send"
+                  onSubmitEditing={() => handleSendChat()}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.chatSendBtn,
+                    (!chatInput.trim() || sendingChat) && { opacity: 0.5 },
+                  ]}
+                  onPress={() => handleSendChat()}
+                  disabled={!chatInput.trim() || sendingChat}
+                >
+                  {sendingChat ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Icon name="arrowRight" size={20} color="#FFFFFF" />
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.chatClosedBanner}>
+                <Text style={styles.chatClosedText}>{t('order.chatClosedNotice')}</Text>
+              </View>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -976,6 +1178,43 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  chatBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  unreadBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  chatClosedInline: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  chatClosedInlineText: {
+    ...typography.small,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
   quickSmsRow: {
     gap: spacing.xs,
     marginTop: spacing.md,
@@ -1021,4 +1260,136 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   noteText: { ...typography.body, color: colors.text },
   footer: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.divider },
+  chatModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(14, 23, 48, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  chatSheet: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    maxHeight: '82%',
+    minHeight: '55%',
+    overflow: 'hidden',
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  chatHeaderTitle: {
+    ...typography.bodyBold,
+    color: colors.text,
+  },
+  chatHeaderSub: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  chatCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatMessagesList: {
+    flex: 1,
+    backgroundColor: colors.surface,
+  },
+  chatMessagesContent: {
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  chatEmptyWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  chatEmptyText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  chatBubble: {
+    maxWidth: '80%',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.lg,
+  },
+  chatBubbleMine: {
+    alignSelf: 'flex-end',
+    backgroundColor: colors.primary,
+    borderBottomRightRadius: 4,
+  },
+  chatBubbleTheirs: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.white,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chatBubbleText: {
+    ...typography.body,
+  },
+  chatBubbleTextMine: {
+    color: '#FFFFFF',
+  },
+  chatBubbleTextTheirs: {
+    color: colors.text,
+  },
+  chatBubbleTime: {
+    fontSize: 10,
+    color: colors.textMuted,
+    alignSelf: 'flex-end',
+    marginTop: 3,
+  },
+  chatInputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.white,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    gap: spacing.sm,
+  },
+  chatInput: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    color: colors.text,
+    ...typography.body,
+  },
+  chatSendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatClosedBanner: {
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    alignItems: 'center',
+  },
+  chatClosedText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '700',
+  },
 });
+

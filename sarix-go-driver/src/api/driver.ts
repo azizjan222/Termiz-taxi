@@ -212,6 +212,38 @@ export async function cancelOrder(id: number): Promise<{ success: boolean; balan
   return response.data;
 }
 
+export interface OrderChatMessage {
+  id: number;
+  order_id: number;
+  sender_role: 'passenger' | 'driver';
+  sender_id: number;
+  text: string;
+  created_at: string;
+}
+
+export interface OrderMessagesResponse {
+  messages: OrderChatMessage[];
+  chat_open: boolean;
+  order_status: string;
+}
+
+export async function listDriverOrderMessages(orderId: number): Promise<OrderMessagesResponse> {
+  const response = await api.get<OrderMessagesResponse>(`/api/driver/orders/${orderId}/messages`);
+  return response.data;
+}
+
+export async function sendDriverOrderMessage(
+  orderId: number,
+  text: string
+): Promise<{ message: OrderChatMessage; chat_open: boolean }> {
+  const response = await api.post<{ message: OrderChatMessage; chat_open: boolean }>(
+    `/api/driver/orders/${orderId}/messages`,
+    { text }
+  );
+  return response.data;
+}
+
+
 export async function getBalanceHistory(): Promise<{ orders: DriverOrder[]; total_earned: number; balance: number }> {
   const response = await api.get('/api/driver/balance/history');
   return response.data;

@@ -218,6 +218,11 @@ export default {
     shareMessageText:
       '📦 Sarix Go Pochta (#{{id}})\n📍 Yoʻnalish: {{from}} → {{to}}\n🚕 Mashina: {{car}}\n👨‍✈️ Haydovchi: {{driver}} ({{phone}})',
     bookReturnTrip: 'Qaytish reysini band qilish ({{from}} → {{to}})',
+    chatTitle: 'Haydovchi bilan chat',
+    chatBtn: 'Yozishish',
+    chatPlaceholder: 'Xabar yozing...',
+    chatEmpty: "Haydovchiga xabar yozishingiz mumkin (masalan: manzil yoki mo'ljal haqida)",
+    chatClosedNotice: "🔒 Zakas yopilgan — chatda yozishish to'xtatilgan",
     completed: 'Safar yakunlandi',
     rateDriver: 'Haydovchini baholash',
     cancelled: 'Buyurtma bekor qilindi',

@@ -210,6 +210,11 @@ export default {
     shareMessageText:
       '📦 Посылка Sarix Go (#{{id}})\n📍 Маршрут: {{from}} → {{to}}\n🚕 Машина: {{car}}\n👨‍✈️ Водитель: {{driver}} ({{phone}})',
     bookReturnTrip: 'Забронировать обратный рейс ({{from}} → {{to}})',
+    chatTitle: 'Чат с водителем',
+    chatBtn: 'Написать',
+    chatPlaceholder: 'Напишите сообщение...',
+    chatEmpty: 'Напишите водителю (например, уточните подъезд или ориентир)',
+    chatClosedNotice: '🔒 Заказ закрыт — отправка сообщений недоступна',
     completed: 'Поездка завершена',
     rateDriver: 'Оценить водителя',
     cancelled: 'Заказ отменён',

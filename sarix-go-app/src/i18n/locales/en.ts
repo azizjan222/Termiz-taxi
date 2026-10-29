@@ -210,6 +210,11 @@ export default {
     shareMessageText:
       '📦 Sarix Go Parcel (#{{id}})\n📍 Route: {{from}} → {{to}}\n🚕 Car: {{car}}\n👨‍✈️ Driver: {{driver}} ({{phone}})',
     bookReturnTrip: 'Book return trip ({{from}} → {{to}})',
+    chatTitle: 'Chat with driver',
+    chatBtn: 'Chat',
+    chatPlaceholder: 'Type a message...',
+    chatEmpty: 'Send a message to your driver (e.g., landmark or pickup details)',
+    chatClosedNotice: '🔒 Order closed — chat is now read-only',
     completed: 'Trip completed',
     rateDriver: 'Rate driver',
     cancelled: 'Order cancelled',

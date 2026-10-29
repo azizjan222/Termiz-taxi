@@ -210,6 +210,11 @@ export default {
     shareMessageText:
       '📦 Sarix Go Почта (#{{id}})\n📍 Йўналиш: {{from}} → {{to}}\n🚕 Машина: {{car}}\n👨‍✈️ Ҳайдовчи: {{driver}} ({{phone}})',
     bookReturnTrip: 'Қайтиш рейсини банд қилиш ({{from}} → {{to}})',
+    chatTitle: 'Ҳайдовчи билан чат',
+    chatBtn: 'Ёзишиш',
+    chatPlaceholder: 'Хабар ёзинг...',
+    chatEmpty: 'Ҳайдовчига хабар ёзишингиз мумкин (масалан: манзил ёки мўлжал ҳақида)',
+    chatClosedNotice: '🔒 Заказ ёпилган — чатда ёзишиш тўхтатилган',
     completed: 'Сафар якунланди',
     rateDriver: 'Ҳайдовчини баҳолаш',
     cancelled: 'Буюртма бекор қилинди',

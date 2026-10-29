@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { type DriverOrder } from '../api/driver';
+import { type DriverOrder, type OrderChatMessage } from '../api/driver';
 
 export type RealtimeStatus =
   | 'connecting'
@@ -10,9 +10,10 @@ export type RealtimeStatus =
   | 'unauthorized';
 
 export interface RealtimeEvent {
-  kind: 'new_order' | 'order_cancelled' | 'order_taken';
+  kind: 'new_order' | 'order_cancelled' | 'order_taken' | 'order_message';
   order?: DriverOrder;
   orderId?: number;
+  message?: OrderChatMessage;
   seq: number;
 }
 
@@ -24,6 +25,7 @@ interface RealtimeState {
   pushCancelled: (orderId: number) => void;
   /** Another driver accepted the order: drop it silently, with no alarm. */
   pushTaken: (orderId: number) => void;
+  pushOrderMessage: (orderId: number, message: OrderChatMessage) => void;
   setStatus: (status: RealtimeStatus) => void;
 }
 
@@ -44,5 +46,9 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
   pushTaken: (orderId) =>
     set({ lastEvent: { kind: 'order_taken', orderId, seq: ++seqCounter } }),
 
+  pushOrderMessage: (orderId, message) =>
+    set({ lastEvent: { kind: 'order_message', orderId, message, seq: ++seqCounter } }),
+
   setStatus: (status) => set({ status }),
 }));
+

@@ -329,6 +329,8 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/orders/my", orders_api.list_my_orders)
     app.router.add_get(r"/api/orders/{id:\d+}", orders_api.get_order)
     app.router.add_post(r"/api/orders/{id:\d+}/cancel", orders_api.cancel_order)
+    app.router.add_get(r"/api/orders/{id:\d+}/messages", orders_api.list_order_messages)
+    app.router.add_post(r"/api/orders/{id:\d+}/messages", orders_api.send_order_message)
 
     # Driver endpoints (haydovchi ilovasi)
     app.router.add_post("/api/driver/login", drivers_api.driver_login)  # always returns 410
@@ -359,6 +361,8 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post(r"/api/driver/orders/{id:\d+}/start", drivers_api.start_trip)
     app.router.add_post(r"/api/driver/orders/{id:\d+}/complete", drivers_api.complete_order)
     app.router.add_post(r"/api/driver/orders/{id:\d+}/cancel", drivers_api.cancel_by_driver)
+    app.router.add_get(r"/api/driver/orders/{id:\d+}/messages", drivers_api.driver_list_order_messages)
+    app.router.add_post(r"/api/driver/orders/{id:\d+}/messages", drivers_api.driver_send_order_message)
     app.router.add_get("/api/driver/balance/history", drivers_api.driver_balance_history)
     app.router.add_get("/api/drivers/recommendations", drivers_api.list_recommended_drivers)
 

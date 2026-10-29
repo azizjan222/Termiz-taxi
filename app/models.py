@@ -776,3 +776,30 @@ class DriverDocumentImage(Base):
             name="ck_driver_document_kind",
         ),
     )
+
+
+# ============= IN-APP ORDER CHAT MESSAGES =============
+class OrderMessage(Base):
+    """In-app chat messages exchanged between passenger and driver on an active order.
+
+    Writing is only permitted while the order is in 'accepted' or 'in_progress' status.
+    Once the order transitions to 'completed', 'cancelled', or 'expired', the chat is
+    read-only (closed).
+    """
+
+    __tablename__ = "order_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
+    sender_role = Column(String(20), nullable=False)  # 'passenger' | 'driver'
+    sender_id = Column(Integer, nullable=False)
+    text = Column(String(500), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "sender_role IN ('passenger', 'driver')",
+            name="ck_order_message_sender_role",
+        ),
+    )
+
