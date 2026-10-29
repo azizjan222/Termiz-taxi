@@ -183,13 +183,13 @@ export function AcceptButton({
           accessibilityState={{ disabled: !alive, busy: loading }}
         >
           <LinearGradient
-            colors={disabled ? ([colors.border, colors.border] as const) : gradients.gold}
+            colors={disabled ? ([colors.border, colors.border] as const) : (['#10B981', '#059669'] as const)}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.gradient}
           >
             {loading ? (
-              <ActivityIndicator size="small" color={colors.textOnAccent} />
+              <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <View style={styles.content}>
                 <Text style={[styles.text, disabled && styles.textDisabled]} numberOfLines={1}>
@@ -198,7 +198,7 @@ export function AcceptButton({
                 <Icon
                   name="arrowRight"
                   size={17}
-                  color={disabled ? colors.textMuted : colors.textOnAccent}
+                  color={disabled ? colors.textMuted : '#FFFFFF'}
                 />
               </View>
             )}
@@ -209,7 +209,7 @@ export function AcceptButton({
                 style={[styles.sheenTrack, { transform: [{ translateX: sheenX }] }]}
               >
                 <LinearGradient
-                  colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0)']}
+                  colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.35)', 'rgba(255,255,255,0)']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.sheen}
@@ -234,32 +234,28 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     bottom: 0,
     borderRadius: radius.md,
     borderWidth: 2,
-    borderColor: colors.accent,
+    borderColor: colors.success,
   },
   lift: {
     borderRadius: radius.md,
-    // Android draws `elevation` from the view's own background, so the wrapper needs one
-    // even though the gradient paints over every pixel of it.
-    backgroundColor: colors.accent,
-    shadowColor: colors.accentDark,
+    backgroundColor: colors.success,
+    shadowColor: '#059669',
     shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.28,
     shadowRadius: 10,
     elevation: 4,
   },
-  // `overflow: hidden` lives here so the gloss band is clipped to the rounded corners
-  // instead of sliding out across the card.
   pressable: { borderRadius: radius.md, overflow: 'hidden' },
   gradient: {
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md - 2,
+    paddingHorizontal: spacing.md + 4,
+    paddingVertical: spacing.md - 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 132,
+    minWidth: 140,
   },
   content: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  text: { ...typography.bodyBold, color: colors.textOnAccent, fontWeight: '800' },
+  text: { ...typography.bodyBold, color: '#FFFFFF', fontWeight: '800' },
   textDisabled: { color: colors.textMuted },
   sheenTrack: {
     position: 'absolute',

@@ -370,10 +370,29 @@ export default function NewOrderScreen() {
           })}
         </ScrollView>
 
-        {/* Yo'lovchi soni — a segmented control with a sliding indicator */}
-        <View style={styles.sectionHead}>
-          <Icon name="people" size={16} color={colors.textMuted} />
-          <Text style={styles.sectionLabel}>{t('newOrder.personsStep')}</Text>
+        {/* Yo'lovchi soni + 1-tap Bo'sh mashina (Salon) toggle */}
+        <View style={styles.sectionHeadRow}>
+          <View style={styles.sectionHeadInline}>
+            <Icon name="people" size={16} color={colors.textMuted} />
+            <Text style={styles.sectionLabel}>{t('newOrder.personsStep')}</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.fullCarPill, isFullCar && styles.fullCarPillActive]}
+            onPress={() => toggleFullCar(!isFullCar)}
+            activeOpacity={0.85}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: isFullCar }}
+            accessibilityLabel={t('tariff.fullCar')}
+          >
+            <Icon
+              name="car"
+              size={14}
+              color={isFullCar ? colors.textOnPrimary : colors.primary}
+            />
+            <Text style={[styles.fullCarPillText, isFullCar && styles.fullCarPillTextActive]}>
+              {t('tariff.fullCar')}
+            </Text>
+          </TouchableOpacity>
         </View>
         <View style={styles.segment} onLayout={handleSegLayout}>
           {cell > 0 && !isFullCar && (
@@ -409,23 +428,6 @@ export default function NewOrderScreen() {
           })}
         </View>
 
-        {/* Bo'sh mashina — a switch, so its state is never ambiguous */}
-        <View style={[styles.fullCarRow, isFullCar && styles.fullCarRowOn]}>
-          <View style={styles.fullCarIcon}>
-            <Icon name="car" size={20} color={colors.primary} />
-          </View>
-          <View style={styles.fullCarTexts}>
-            <Text style={styles.fullCarTitle}>{t('tariff.fullCar')}</Text>
-            <Text style={styles.fullCarHint}>{t('tariff.fullCarHint')}</Text>
-          </View>
-          <Switch
-            value={isFullCar}
-            onValueChange={toggleFullCar}
-            trackColor={{ true: colors.accent }}
-            accessibilityLabel={t('tariff.fullCar')}
-          />
-        </View>
-
         <View style={{ marginBottom: spacing.md }}>
           <CabinDiagram
             personCount={persons}
@@ -436,51 +438,85 @@ export default function NewOrderScreen() {
           />
         </View>
 
-        {/* To'lov + Qo'shimcha — two quiet rows in one card, not two competing buttons */}
-        <View style={styles.optionsCard}>
+        {/* 1-Tap Quick Preferences (Pickup type + Luggage + Female + Note) */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.quickTagsRow}
+        >
           <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => setPaymentSheet(true)}
-            activeOpacity={0.7}
-            accessibilityRole="button"
+            style={[
+              styles.quickTag,
+              orderStore.pickupType === 'door' && styles.quickTagActive,
+            ]}
+            onPress={() =>
+              orderStore.setField(
+                'pickupType',
+                orderStore.pickupType === 'door' ? 'pitak' : 'door'
+              )
+            }
+            activeOpacity={0.8}
           >
-            <Icon name="cash" size={20} color={colors.textSecondary} />
-            <Text style={styles.optionLabel}>{t('newOrder.payment')}</Text>
-            {/* Same arrow as the CTA below: without it these read as static summary
-                lines, and passengers were not discovering that they open a sheet. */}
-            <View style={styles.optionValueGroup}>
-              <Text style={styles.optionValue}>{t('order.cash')}</Text>
-              <Icon name="arrowRight" size={16} color={colors.textMuted} />
-            </View>
+            <Text
+              style={[
+                styles.quickTagText,
+                orderStore.pickupType === 'door' && styles.quickTagTextActive,
+              ]}
+            >
+              {orderStore.pickupType === 'pitak'
+                ? `🚏 ${t('newOrder.pickupPitak')}`
+                : `🏠 ${t('newOrder.pickupDoor')}`}
+            </Text>
           </TouchableOpacity>
 
-          <View style={styles.optionDivider} />
+          <TouchableOpacity
+            style={[styles.quickTag, orderStore.hasRoofRack && styles.quickTagActive]}
+            onPress={() => orderStore.setField('hasRoofRack', !orderStore.hasRoofRack)}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.quickTagText,
+                orderStore.hasRoofRack && styles.quickTagTextActive,
+              ]}
+            >
+              🧳 {t('newOrder.roofRack')}
+            </Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.optionRow}
+            style={[styles.quickTag, orderStore.femaleOnly && styles.quickTagActive]}
+            onPress={() => orderStore.setField('femaleOnly', !orderStore.femaleOnly)}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.quickTagText,
+                orderStore.femaleOnly && styles.quickTagTextActive,
+              ]}
+            >
+              👩 {t('newOrder.femaleInCabin')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.quickTag, extrasCount > 0 && styles.quickTagActive]}
             onPress={() => setOptionsSheet(true)}
-            activeOpacity={0.7}
-            accessibilityRole="button"
+            activeOpacity={0.8}
           >
-            <Icon name="settings" size={20} color={colors.textSecondary} />
-            <Text style={styles.optionLabel}>{t('newOrder.extras')}</Text>
-            <View style={styles.optionValueGroup}>
-              <Text style={styles.optionValue}>
-                {extrasCount > 0
-                  ? t('newOrder.extrasCount', { count: extrasCount })
-                  : t('newOrder.extrasNone')}
-              </Text>
-              <Icon name="arrowRight" size={16} color={colors.textMuted} />
-            </View>
+            <Text
+              style={[
+                styles.quickTagText,
+                extrasCount > 0 && styles.quickTagTextActive,
+              ]}
+            >
+              ✍️ {t('newOrder.extras')}
+              {extrasCount > 0 ? ` (${extrasCount})` : ''}
+            </Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
 
-        {/* Bonusdan foydalanish. Hidden at a zero balance — a row reading "0 so'm" would be
-            pure noise on a screen whose job is to get one button pressed. No parcel check is
-            needed here: this screen only ever creates taxi / full_car orders, both of which
-            carry a server-computed commission for the discount to come out of.
-
-            Hidden entirely while BONUS_UI_ENABLED is false (see src/config/features.ts). */}
+        {/* Bonusdan foydalanish. Hidden at a zero balance. */}
         {BONUS_UI_ENABLED && bonusBalance > 0 && (
           <View style={[styles.fullCarRow, useBonus && styles.fullCarRowOn]}>
             <View style={styles.fullCarIcon}>
@@ -495,7 +531,7 @@ export default function NewOrderScreen() {
             <Switch
               value={useBonus}
               onValueChange={setUseBonus}
-              trackColor={{ true: colors.accent }}
+              trackColor={{ false: colors.border, true: colors.primary }}
               accessibilityLabel={t('order.useBonus')}
             />
           </View>
@@ -639,7 +675,7 @@ export default function NewOrderScreen() {
                 <Switch
                   value={orderStore.femaleOnly}
                   onValueChange={(v) => orderStore.setField('femaleOnly', v)}
-                  trackColor={{ true: colors.accent }}
+                  trackColor={{ false: colors.border, true: colors.primary }}
                 />
               </View>
 
@@ -649,7 +685,7 @@ export default function NewOrderScreen() {
                 <Switch
                   value={orderStore.hasRoofRack}
                   onValueChange={(v) => orderStore.setField('hasRoofRack', v)}
-                  trackColor={{ true: colors.accent }}
+                  trackColor={{ false: colors.border, true: colors.primary }}
                 />
               </View>
 
@@ -688,12 +724,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radius.xl,
     padding: spacing.md,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
     shadowColor: '#0E1730',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.07,
-    shadowRadius: 16,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
   },
   routeCol: { flex: 1 },
   routeRow: { flexDirection: 'row', alignItems: 'center' },
@@ -709,7 +747,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     marginRight: spacing.md,
   },
   routeConnector: {
@@ -741,32 +779,64 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  sectionHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  sectionHeadInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
   },
   sectionLabel: {
     ...typography.small,
-    // Shrink/wrap inside the row instead of pushing past the card edge: the Russian
-    // labels are noticeably longer than the Uzbek ones.
-    flex: 1,
     color: colors.textMuted,
     fontWeight: '700',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
+  fullCarPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primary50,
+  },
+  fullCarPillActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  fullCarPillText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  fullCarPillTextActive: {
+    color: colors.textOnPrimary,
+  },
 
   // Ketish vaqti
-  timeRow: { gap: spacing.sm, paddingRight: spacing.lg, paddingBottom: spacing.lg },
+  timeRow: { gap: spacing.sm, paddingRight: spacing.lg, paddingBottom: spacing.md },
   timeChip: {
     paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: radius.pill,
     borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.card,
   },
-  timeChipSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+  timeChipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   timeChipText: { ...typography.caption, color: colors.text, fontWeight: '600' },
-  timeChipTextSelected: { color: colors.textOnAccent, fontWeight: '700' },
+  timeChipTextSelected: { color: colors.textOnPrimary, fontWeight: '700' },
 
   // Yo'lovchi soni segmented control
   segment: {
@@ -776,7 +846,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.border,
     padding: SEG_PAD,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   segIndicator: {
     position: 'absolute',
@@ -786,11 +856,38 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.pill,
     overflow: 'hidden',
   },
-  segCell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
+  segCell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 9 },
   segText: { ...typography.bodyBold, color: colors.textSecondary },
   segTextSelected: { color: colors.textOnPrimary, fontWeight: '700' },
 
-  // Bo'sh mashina
+  // Quick preference tags
+  quickTagsRow: {
+    gap: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  quickTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  quickTagActive: {
+    backgroundColor: colors.primary50,
+    borderColor: colors.primary,
+  },
+  quickTagText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  quickTagTextActive: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+
+  // Bo'sh mashina / Bonus row
   fullCarRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -799,9 +896,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.border,
     padding: spacing.md,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
-  fullCarRowOn: { borderColor: colors.accent },
+  fullCarRowOn: { borderColor: colors.primary, backgroundColor: colors.primary50 },
   fullCarIcon: {
     width: 38,
     height: 38,
@@ -814,28 +911,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   fullCarTexts: { flex: 1, marginRight: spacing.sm },
   fullCarTitle: { ...typography.bodyBold, color: colors.text },
   fullCarHint: { ...typography.small, color: colors.textSecondary, marginTop: 1 },
-
-  // To'lov / Qo'shimcha
-  optionsCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
-  },
-  optionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  optionLabel: { ...typography.caption, color: colors.textSecondary, flex: 1 },
-  // Value and arrow are one group so the row's 16px gap stays between the label and the
-  // value, and the arrow keeps hugging the value it belongs to.
-  optionValueGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  optionValue: { ...typography.bodyBold, color: colors.text, fontSize: 15 },
-  optionDivider: { height: 1, backgroundColor: colors.divider },
 
   // Route unavailable
   unavailableBar: {
@@ -943,11 +1018,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   optToggleText: { ...typography.body, color: colors.text },
   optDoneBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
     marginTop: spacing.lg,
   },
-  optDoneText: { ...typography.h3, color: colors.textOnAccent },
+  optDoneText: { ...typography.h3, color: colors.textOnPrimary },
 });

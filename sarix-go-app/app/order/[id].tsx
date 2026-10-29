@@ -261,6 +261,17 @@ export default function OrderDetailScreen() {
     }
   };
 
+  const sendQuickSmsToDriver = (message: string) => {
+    if (!order?.driver?.phone) return;
+    const sep = '&';
+    const url = `sms:${order.driver.phone}?body=${encodeURIComponent(message)}`;
+    Linking.openURL(url).catch(() => {
+      Linking.openURL(`sms:${order.driver!.phone}${sep}body=${encodeURIComponent(message)}`).catch(
+        () => {}
+      );
+    });
+  };
+
   const handleCancel = () => {
     Alert.alert(t('order.cancelOrder'), t('common.confirm') + '?', [
       { text: t('common.no'), style: 'cancel' },
@@ -268,10 +279,6 @@ export default function OrderDetailScreen() {
         text: t('common.yes'),
         style: 'destructive',
         onPress: async () => {
-          // Two taps used to stack two confirm dialogs; confirming both fired two
-          // cancelOrder() calls. The first navigated home, the second failed (already
-          // cancelled) and raised a "no internet" alert on the home screen about an
-          // operation that had actually succeeded.
           if (cancelInFlightRef.current) return;
           cancelInFlightRef.current = true;
           setCancelling(true);
@@ -325,18 +332,12 @@ export default function OrderDetailScreen() {
   }
 
   const isActive = ['new', 'accepted', 'in_progress'].includes(order.status);
-  // Cancelling is only offered before the trip starts. Once the driver has begun the ride
-  // the backend rejects it (the fare is paid in cash on arrival), so showing the button
-  // would just produce an error the passenger can do nothing about.
   const canCancel = ['new', 'accepted'].includes(order.status);
   const isParcel = order.service_type === 'parcel';
 
-  // Discounts are server-authoritative and only fixed once a driver accepts. Optional on
-  // the wire, so fall back to `price` rather than rendering a blank amount.
   const bonusUsed = order.bonus_used ?? 0;
   const promoDiscount = order.promo_discount ?? 0;
   const payable = order.payable ?? order.price;
-  // Parcel fares are negotiated with the driver, so there is no total to break down.
   const hasDiscount = !isParcel && bonusUsed + promoDiscount > 0;
   const isFullCar = order.service_type === 'full_car';
   const serviceIcon: IconName = isParcel ? 'parcel' : isFullCar ? 'car' : 'taxi';
@@ -354,6 +355,10 @@ export default function OrderDetailScreen() {
       ? serviceIcon
       : 'clock';
 
+  const isAccepted = order.status === 'accepted';
+  const isInProgress = order.status === 'in_progress';
+  const isCompleted = order.status === 'completed';
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
@@ -368,44 +373,58 @@ export default function OrderDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Status banner */}
+        {/* Unified High-Contrast Status Card (fixes white-on-mint bug & merges double banners) */}
         <View
           style={[
             styles.statusBanner,
-            isActive && order.status === 'accepted' && { backgroundColor: colors.successLight },
+            isAccepted && styles.statusBannerAccepted,
+            isInProgress && styles.statusBannerInProgress,
           ]}
         >
-          <Icon
-            name={statusIcon}
-            size={28}
-            color={colors.primary}
-            style={styles.statusEmoji}
-          />
-          <Text style={styles.statusText}>{t(`status.${order.status}`)}</Text>
-          <View style={styles.serviceChip}>
-            <IconText
-              name={serviceIcon}
-              size={12}
-              color={colors.textOnPrimary}
-              textStyle={styles.serviceChipText}
-            >
-              {serviceBadge}
-            </IconText>
+          <View style={styles.statusBannerTop}>
+            <View style={styles.statusIconCircle}>
+              <Icon
+                name={statusIcon}
+                size={22}
+                color={isAccepted ? colors.success : colors.primary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.statusText}>{t(`status.${order.status}`)}</Text>
+              {isAccepted && order.driver && (
+                <Text style={styles.statusSubText}>{t('order.driverAccepted')}</Text>
+              )}
+            </View>
+            <View style={styles.serviceChip}>
+              <IconText
+                name={serviceIcon}
+                size={12}
+                color="#FFFFFF"
+                textStyle={styles.serviceChipText}
+              >
+                {serviceBadge}
+              </IconText>
+            </View>
           </View>
-        </View>
 
-        {/* Reassurance message right after the driver accepts. */}
-        {order.status === 'accepted' && order.driver && (
-          <View style={styles.acceptedInfo}>
-            <Icon
-              name="handshake"
-              size={20}
-              color={colors.success}
-              style={styles.acceptedInfoIcon}
-            />
-            <Text style={styles.acceptedInfoText}>{t('order.driverAccepted')}</Text>
-          </View>
-        )}
+          {(isAccepted || isInProgress || isCompleted) && (
+            <View style={styles.stageStepsRow}>
+              <View style={[styles.stageStepBar, styles.stageStepBarActive]} />
+              <View
+                style={[
+                  styles.stageStepBar,
+                  (isInProgress || isCompleted) && styles.stageStepBarActive,
+                ]}
+              />
+              <View
+                style={[
+                  styles.stageStepBar,
+                  isCompleted && styles.stageStepBarActive,
+                ]}
+              />
+            </View>
+          )}
+        </View>
 
         {/* Live driver location map (while the trip is active) */}
         {isActive && order.driver && (driverLoc || (order.from_lat != null && order.from_lon != null)) && (
@@ -417,16 +436,11 @@ export default function OrderDetailScreen() {
               initialLon={driverLoc?.lon ?? order.from_lon ?? undefined}
               initialZoom={15}
               onMapReady={() => {
-                // The initial fit fires boundschange; treat it as ours so it does not
-                // immediately count as the passenger panning.
                 programmaticMoveAtRef.current = Date.now();
                 setMapReady(true);
               }}
               onCameraMove={handleMapCameraMove}
               markers={[
-                // `label` becomes Yandex's `iconCaption` — a TEXT caption drawn beside the
-                // pin. Emoji were unreadable there (the WebView falls back to whatever
-                // glyph the system font has), so name each pin instead.
                 ...(driverLoc
                   ? [{
                       id: 'driver',
@@ -442,12 +456,11 @@ export default function OrderDetailScreen() {
                       lat: order.from_lat,
                       lon: order.from_lon,
                       label: t('driverMap.pickupPin'),
-                      color: '#F4C430',
+                      color: '#10B981',
                     } as MapMarker]
                   : []),
               ]}
             />
-            {/* Shown only once the passenger has taken the camera over. */}
             {!following && driverLoc && (
               <TouchableOpacity
                 style={styles.recenterBtn}
@@ -474,10 +487,17 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* Driver info */}
+        {/* Driver info + License Plate + 1-Tap Quick Passenger SMS Chips */}
         {order.driver && (
           <View style={styles.driverCard}>
-            <Text style={styles.driverTitle}>{t('order.driverInfo')}</Text>
+            <View style={styles.driverHeaderRow}>
+              <Text style={styles.driverTitle}>{t('order.driverInfo')}</Text>
+              {order.driver.car_number ? (
+                <View style={styles.plateBadge}>
+                  <Text style={styles.plateBadgeText}>{order.driver.car_number}</Text>
+                </View>
+              ) : null}
+            </View>
 
             <View style={styles.driverRow}>
               {order.driver.profile_photo_url ? (
@@ -500,6 +520,9 @@ export default function OrderDetailScreen() {
                 <Text style={styles.driverName}>
                   {order.driver.first_name || t('common.driver')}
                 </Text>
+                {order.driver.car_model ? (
+                  <Text style={styles.carModelText}>{order.driver.car_model}</Text>
+                ) : null}
                 {order.driver.phone ? (
                   <TouchableOpacity
                     onPress={callDriver}
@@ -518,7 +541,6 @@ export default function OrderDetailScreen() {
                     </IconText>
                   </TouchableOpacity>
                 ) : null}
-                {/* Rating hidden from the passenger for now (per request). */}
               </View>
               <TouchableOpacity
                 style={styles.callBtn}
@@ -531,13 +553,28 @@ export default function OrderDetailScreen() {
               </TouchableOpacity>
             </View>
 
-            {order.driver.car_model && (
-              <View style={styles.carInfo}>
-                <Text style={styles.carText}>
-                  {order.driver.car_model}
-                  {order.driver.car_number ? ` · ${order.driver.car_number}` : ''}
-                </Text>
-              </View>
+            {/* 1-Tap Quick Passenger SMS Chips while waiting for pickup */}
+            {isAccepted && order.driver.phone && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickSmsRow}
+              >
+                {[
+                  '👋 Tayyorman, chiqyapman',
+                  '📍 Lokatsiya bo\'yicha keling',
+                  '⏳ 2 daqiqa kuting, chiqyapman',
+                ].map((msg) => (
+                  <TouchableOpacity
+                    key={msg}
+                    style={styles.quickSmsChip}
+                    onPress={() => sendQuickSmsToDriver(msg)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.quickSmsChipText}>{msg}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             )}
           </View>
         )}
@@ -624,10 +661,6 @@ export default function OrderDetailScreen() {
             </Text>
           </View>
 
-          {/* The discount the passenger is actually getting, and the cash they now owe.
-              This screen showed only the gross `price`, so a passenger whose bonus had been
-              spent still saw the full fare and handed over the full amount in cash — they
-              lost the bonus and received nothing for it. */}
           {hasDiscount && (
             <>
               {bonusUsed > 0 && (
@@ -669,7 +702,6 @@ export default function OrderDetailScreen() {
             </>
           )}
 
-          {/* Opted in, but no driver has accepted yet, so there is no amount to show. */}
           {!hasDiscount && order.use_bonus && !isParcel && (
             <Text style={styles.discountNote}>{t('order.bonusPendingHint')}</Text>
           )}
@@ -813,34 +845,60 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg },
   statusBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: colors.primary,
     padding: spacing.md,
     borderRadius: radius.lg,
     marginBottom: spacing.md,
     ...CARD_SHADOW,
   },
-  statusEmoji: { marginRight: spacing.md },
-  statusText: { ...typography.h3, color: colors.textOnPrimary, flex: 1 },
+  statusBannerAccepted: {
+    backgroundColor: colors.success,
+  },
+  statusBannerInProgress: {
+    backgroundColor: colors.primary,
+  },
+  statusBannerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  statusText: { ...typography.h3, color: '#FFFFFF' },
+  statusSubText: {
+    ...typography.small,
+    color: 'rgba(255,255,255,0.92)',
+    marginTop: 2,
+    fontWeight: '600',
+  },
   serviceChip: {
     backgroundColor: 'rgba(255,255,255,0.22)',
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 5,
+    marginLeft: spacing.sm,
   },
-  serviceChipText: { ...typography.small, color: colors.textOnPrimary, fontWeight: '700' },
-  acceptedInfo: {
+  serviceChipText: { ...typography.small, color: '#FFFFFF', fontWeight: '700' },
+  stageStepsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.successLight,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
+    gap: 6,
+    marginTop: spacing.sm + 2,
   },
-  acceptedInfoIcon: { marginRight: spacing.sm },
-  acceptedInfoText: { ...typography.bodyBold, color: colors.success, flex: 1 },
+  stageStepBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  stageStepBarActive: {
+    backgroundColor: '#FFFFFF',
+  },
   mapCard: {
     height: 240,
     borderRadius: radius.lg,
@@ -876,7 +934,27 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.md,
     ...CARD_SHADOW,
   },
-  driverTitle: { ...typography.bodyBold, color: colors.primary, marginBottom: spacing.md },
+  driverHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  driverTitle: { ...typography.bodyBold, color: colors.primary },
+  plateBadge: {
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: '#0E1B3D',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  plateBadgeText: {
+    ...typography.small,
+    color: '#0E1B3D',
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
   driverRow: { flexDirection: 'row', alignItems: 'center' },
   driverAvatar: {
     width: 56,
@@ -890,8 +968,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   driverAvatarText: { fontSize: 24, color: colors.textOnPrimary, fontWeight: '700' },
   driverInfo: { flex: 1 },
   driverName: { ...typography.bodyBold, color: colors.text },
-  driverPhone: { ...typography.caption, color: colors.primary, marginTop: 2, fontWeight: '600' },
-  driverRating: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  carModelText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  driverPhone: { ...typography.caption, color: colors.primary, marginTop: 3, fontWeight: '600' },
   callBtn: {
     width: 48,
     height: 48,
@@ -900,8 +983,26 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  carInfo: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.divider },
-  carText: { ...typography.caption, color: colors.textSecondary },
+  quickSmsRow: {
+    gap: spacing.xs,
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  quickSmsChip: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  quickSmsChipText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '600',
+  },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,

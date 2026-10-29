@@ -196,7 +196,7 @@ export default function ConfirmOrderScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Route summary */}
+        {/* Route summary (compact single-glance header) */}
         <View style={styles.card}>
           <View style={styles.row}>
             <Text style={styles.label}>{t('order.from')}</Text>
@@ -210,27 +210,14 @@ export default function ConfirmOrderScreen() {
           <View style={styles.divider} />
           <View style={styles.row}>
             <Text style={styles.label}>{t('tariff.title')}</Text>
-            <Text style={styles.value}>{getServiceLabel()}</Text>
-          </View>
-          {orderStore.serviceType !== 'parcel' &&
-            orderStore.serviceType !== 'full_car' && (
-              <>
-                <View style={styles.divider} />
-                <View style={styles.row}>
-                  <Text style={styles.label}>{t('order.persons')}</Text>
-                  <Text style={styles.value}>
-                    {t('order.personsCount', { count: orderStore.personCount })}
-                    {orderStore.frontSeat ? ` (${t('newOrder.frontSeat')})` : ''}
-                  </Text>
-                </View>
-              </>
-            )}
-          <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={styles.label}>
-              {t(isParcel ? 'order.dispatchTime' : 'order.departureTime')}
+            <Text style={styles.value}>
+              {getServiceLabel()}
+              {orderStore.serviceType !== 'parcel' && orderStore.serviceType !== 'full_car'
+                ? ` · ${t('order.personsCount', { count: orderStore.personCount })}${
+                    orderStore.frontSeat ? ` (${t('newOrder.frontSeat')})` : ''
+                  }`
+                : ''}
             </Text>
-            <Text style={styles.value}>{formatDepartureTime(wirePreview, t)}</Text>
           </View>
         </View>
 
@@ -306,9 +293,14 @@ export default function ConfirmOrderScreen() {
 
         {/* Feature 4: Scheduled Departure Time & Exact Commuter Time Slots */}
         <View style={[styles.card, { marginTop: spacing.md }]}>
-          <Text style={styles.cardTitle}>
-            {t(isParcel ? 'order.dispatchTime' : 'order.departureTime')}
-          </Text>
+          <View style={styles.cardHeaderRow}>
+            <Text style={[styles.cardTitle, { marginBottom: 0 }]}>
+              {t(isParcel ? 'order.dispatchTime' : 'order.departureTime')}
+            </Text>
+            <Text style={styles.selectedTimePill}>
+              {formatDepartureTime(wirePreview, t)}
+            </Text>
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -461,7 +453,7 @@ export default function ConfirmOrderScreen() {
             onChangeText={setNote}
             placeholder={t('order.notePlaceholder')}
             multiline
-            numberOfLines={3}
+            numberOfLines={2}
             maxLength={300}
           />
         </View>
@@ -490,25 +482,14 @@ export default function ConfirmOrderScreen() {
             </Text>
           </TouchableOpacity>
         )}
-
-        {/* Payment */}
-        <View style={[styles.card, { marginTop: spacing.md }]}>
-          <Text style={styles.cardTitle}>{t('order.paymentMethod')}</Text>
-          <View style={[styles.row, { paddingVertical: spacing.sm }]}>
-            <IconText name="cash" size={12} color={colors.textSecondary} textStyle={styles.label}>
-              {t('order.cash')}
-            </IconText>
-            <View style={styles.radio}>
-              <View style={styles.radioInner} />
-            </View>
-          </View>
-        </View>
       </ScrollView>
 
       <View style={styles.footer}>
         <View style={styles.priceRow}>
           <View style={styles.footerInfo}>
-            <Text style={styles.footerLabel}>{t('order.price')}</Text>
+            <Text style={styles.footerLabel}>
+              {t('order.price')} · {t('order.cash')}
+            </Text>
             {isParcel && (
               <Text style={styles.negotiableHint}>{t('order.parcelNegotiableHint')}</Text>
             )}
@@ -545,6 +526,21 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.md,
   },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  selectedTimePill: {
+    ...typography.small,
+    color: colors.primary,
+    backgroundColor: colors.primary50,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    fontWeight: '700',
+  },
   cardTitle: { ...typography.bodyBold, color: colors.primary, marginBottom: spacing.sm },
   subLabel: {
     ...typography.captionBold,
@@ -575,7 +571,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   toggleCardActive: {
     borderColor: colors.primary,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.primary50,
   },
   toggleTitle: {
     ...typography.captionBold,
@@ -632,7 +628,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   parcelTypeBtnActive: {
     borderColor: colors.primary,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.primary50,
   },
   parcelTypeText: {
     ...typography.small,
@@ -641,21 +637,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   parcelTypeTextActive: {
     color: colors.primary,
-  },
-  radio: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.accent,
   },
   checkbox: {
     width: 24,

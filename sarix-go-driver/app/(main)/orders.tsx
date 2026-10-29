@@ -409,7 +409,7 @@ export default function OrdersScreen() {
               <Icon
                 name={getServiceIcon(item.service_type)}
                 size={20}
-                color={isParcel ? colors.primary : colors.accentDark}
+                color={isParcel ? colors.success : colors.primary}
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -426,18 +426,6 @@ export default function OrdersScreen() {
           )}
         </View>
 
-        {/* Route. The sub-line under each city is the passenger's ACTUAL address when they
-            gave one — it used to be the literal word "Manzil" under the pickup and nothing
-            under the destination, so the driver had to accept the order before finding out
-            where in town they were going.
-
-            Each leg is now NAMED ("Qayerdan" / "Qayerga") above its city, and the bare
-            coloured dot is a pin/flag icon. A green dot above a yellow dot only encodes
-            direction if you already know the convention — two identical circles are
-            indistinguishable at a glance, and a driver scanning a stack of cards had to
-            infer which line was the pickup from its position alone. The label states it,
-            and the icon carries the same meaning without depending on colour (which is
-            what a colour-blind driver, or a phone in bright sunlight, loses first). */}
         <View style={styles.routeBlock}>
           <View style={styles.routeRow}>
             <View style={[styles.routeMarker, { backgroundColor: colors.successLight }]}>
@@ -455,11 +443,11 @@ export default function OrdersScreen() {
           </View>
           <View style={styles.routeConnector} />
           <View style={styles.routeRow}>
-            <View style={[styles.routeMarker, { backgroundColor: colors.accentLight }]}>
-              <Icon name="flag" size={13} color={colors.accentDark} />
+            <View style={[styles.routeMarker, { backgroundColor: colors.primary100 }]}>
+              <Icon name="flag" size={13} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.routeLabel, { color: colors.accentDark }]}>{t('order.to')}</Text>
+              <Text style={[styles.routeLabel, { color: colors.primary }]}>{t('order.to')}</Text>
               <Text style={styles.routeText}>{item.to_city}</Text>
               {!!item.to_address && (
                 <Text style={styles.routeSub} numberOfLines={1}>
@@ -509,14 +497,14 @@ export default function OrdersScreen() {
               )}
               {item.female_only && (
                 <View style={styles.extraTag}>
-                  <IconText name="female" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                  <IconText name="female" size={12} color={colors.primary} textStyle={styles.extraTagText}>
                     {t('more.femaleInCabin')}
                   </IconText>
                 </View>
               )}
               {item.has_roof_rack && (
                 <View style={styles.extraTag}>
-                  <IconText name="luggage" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                  <IconText name="luggage" size={12} color={colors.primary} textStyle={styles.extraTagText}>
                     {t('more.roofRack')}
                   </IconText>
                 </View>
@@ -646,9 +634,6 @@ export default function OrdersScreen() {
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{t('home.available')}</Text>
-          {/* Surface realtime health. The "Onlayn" pill reflects the driver's own toggle,
-              not the socket, so a dead connection used to look identical to a quiet night:
-              green pill, empty list, no orders arriving, nothing explaining why. */}
           {onlineEnabled && realtimeStatus !== 'open' ? (
             <Text style={[styles.headerSub, { color: colors.error }]}>
               {t('more.reconnecting')}
@@ -729,14 +714,6 @@ export default function OrdersScreen() {
         </View>
       )}
 
-      {/* Free-trial chip.
-          The balance card that used to sit here was removed: this screen is for reading
-          orders, and a standing balance figure with a top-up button competed with them for
-          attention on every single visit. The balance stays one tap away on the Profile tab
-          (which shows it prominently, with a low-balance warning), the red banner below
-          still appears the moment the balance actually blocks accepting, and the accept
-          alert itself offers "To'ldirish". The trial state survives here because it is
-          time-limited news the driver should not have to go looking for. */}
       {driver?.has_active_subscription && (
         <View style={styles.trialChip}>
           <IconText name="gift" size={14} color={colors.success} textStyle={styles.trialChipText}>
@@ -903,8 +880,6 @@ export default function OrdersScreen() {
                 name="arrowDown"
                 size={13}
                 color={colors.textMuted}
-                // flex: 0 undoes IconText's default so the pair stays centred
-                // together instead of the label filling the row.
                 textStyle={styles.pullHint}
                 style={styles.pullHintRow}
               >
@@ -923,9 +898,6 @@ export default function OrdersScreen() {
         accepting={accepting === incomingOrder?.id}
         onFreeTrial={!!driver?.has_active_subscription}
         onAccept={() => {
-          // Silence the loud alarm as soon as the driver acts on the popup. stopAlert()
-          // existed but was never called, so the siren + vibration ran to completion even
-          // after the order had been accepted or dismissed.
           stopAlert();
           if (incomingOrder) handleAccept(incomingOrder);
         }}
@@ -1008,7 +980,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: colors.accent,
+    borderColor: colors.primary,
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
     paddingVertical: spacing.sm,
@@ -1027,7 +999,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: radius.md,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary100,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1045,19 +1017,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   title: { ...typography.h1, color: colors.text },
   headerSub: { ...typography.small, color: colors.textMuted, marginTop: 2, fontWeight: '600' },
-  // Free-trial notice — a slim chip, not the full-width card the balance used to sit in.
   trialChip: {
     alignSelf: 'flex-start',
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    backgroundColor: colors.warningLight,
+    backgroundColor: colors.successLight,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.accentLight,
+    borderColor: '#A7F3D0',
   },
-  trialChipText: { ...typography.small, color: colors.accentDark, fontWeight: '700' },
+  trialChipText: { ...typography.small, color: colors.success, fontWeight: '700' },
   topupBanner: {
     backgroundColor: colors.errorLight,
     borderColor: '#F5B5B5',
@@ -1112,20 +1083,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  // flex: 1 so the service label column has a bounded width and the "Ilova" badge stays
-  // pinned to the right edge of the card.
   cardHeaderLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   serviceIconTile: {
     width: 36,
     height: 36,
     borderRadius: radius.md,
-    // Tinted per service so taxi and parcel are told apart at a glance, before the label
-    // is even read: gold for a ride, brand blue for a parcel.
-    backgroundColor: colors.warningLight,
+    backgroundColor: colors.primary100,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  serviceIconTileParcel: { backgroundColor: colors.primary100 },
+  serviceIconTileParcel: { backgroundColor: colors.successLight },
   serviceLabel: { ...typography.bodyBold, color: colors.text, fontSize: 15 },
 
   timeAgo: { ...typography.small, color: colors.textMuted },
@@ -1137,10 +1104,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   sourceBadgeText: { ...typography.small, color: colors.info, fontWeight: '700' },
   routeBlock: { paddingVertical: spacing.xs },
-  // flex-start, not center: the leg is now a three-line stack (label / city / address) and
-  // centering would float the pin against the city name instead of the top of the leg.
   routeRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 2 },
-  // Replaces the bare 12px dot — same slot, but it holds the pin/flag icon.
   routeMarker: {
     width: 22,
     height: 22,
@@ -1150,8 +1114,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginRight: spacing.sm,
     marginTop: 1,
   },
-  // "QAYERDAN" / "QAYERGA". Deliberately smaller and wider-tracked than the city below it
-  // so it reads as a field label, not as part of the address.
   routeLabel: {
     ...typography.small,
     fontSize: 10,
@@ -1168,8 +1130,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderStyle: 'dotted',
     borderLeftWidth: 2,
     borderLeftColor: colors.border,
-    // Half the marker width (11) minus half the connector width (1) keeps the dotted line
-    // centred under the pin now that the marker is 22px, not 12px.
     marginLeft: 10,
   },
   routeText: { ...typography.bodyBold, color: colors.text },
@@ -1182,31 +1142,30 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 2,
   },
   cardInfoText: { ...typography.caption, color: colors.text },
-  // The fare line — the number the accept decision actually turns on.
   fareRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   fareText: { ...typography.bodyBold, color: colors.text, flexShrink: 1 },
   farePrice: { color: colors.success, fontWeight: '800' },
   fareNegotiable: { ...typography.bodyBold, color: colors.primary, flexShrink: 1 },
   note: { ...typography.small, color: colors.textSecondary, marginTop: 4, fontStyle: 'italic' },
   extrasBlock: {
-    backgroundColor: '#FFFBEB',
-    borderColor: '#F59E0B',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radius.md,
     padding: spacing.sm,
     marginTop: spacing.sm,
   },
-  extrasTitle: { ...typography.small, color: '#B45309', fontWeight: '800', marginBottom: 6 },
+  extrasTitle: { ...typography.small, color: colors.primary, fontWeight: '800', marginBottom: 6 },
   extrasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   extraTag: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
+    backgroundColor: colors.primary100,
+    borderColor: '#BFDBFE',
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  extraTagText: { ...typography.small, color: '#B45309', fontWeight: '700' },
+  extraTagText: { ...typography.small, color: colors.primary, fontWeight: '700' },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',

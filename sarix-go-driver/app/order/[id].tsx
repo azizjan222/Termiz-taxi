@@ -422,12 +422,25 @@ export default function OrderDetailScreen() {
     }
   };
 
-  const smsPassenger = () => {
+  const smsPassenger = (presetBody?: string) => {
     if (order?.passenger_phone) {
+      const bodyParam = presetBody ? encodeURIComponent(presetBody) : '';
       const smsUrl = Platform.OS === 'ios'
-        ? `sms:${order.passenger_phone}`
-        : `sms:${order.passenger_phone}?body=`;
-      Linking.openURL(smsUrl);
+        ? `sms:${order.passenger_phone}${bodyParam ? `&body=${bodyParam}` : ''}`
+        : `sms:${order.passenger_phone}?body=${bodyParam}`;
+      Linking.openURL(smsUrl).catch(() => {});
+    }
+  };
+
+  const recenterDriverMap = () => {
+    const target = deriveTarget(order);
+    const driver = driverCoords;
+    if (deriveShouldDrawRoute(driver, target)) {
+      mapRef.current?.fitBounds(deriveMarkers(target, driver));
+    } else if (target) {
+      mapRef.current?.setCenter(target.lat, target.lon);
+    } else if (driver) {
+      mapRef.current?.setCenter(driver.lat, driver.lon);
     }
   };
 
@@ -441,10 +454,6 @@ export default function OrderDetailScreen() {
         {
           text: t('more.yesPickedUp'),
           onPress: async () => {
-            // handleComplete guards its in-flight request; this one did not. Reopening the
-            // dialog and confirming again while the first call was still running fired a
-            // second startTrip, and the server's "already in progress" rejection surfaced
-            // as a raw error on a trip that had in fact started correctly.
             if (startInFlightRef.current) return;
             startInFlightRef.current = true;
             setLoading(true);
@@ -474,25 +483,13 @@ export default function OrderDetailScreen() {
           completeInFlightRef.current = true;
           setLoading(true);
           try {
-            // Captured BEFORE the await: `order` is refreshed by the poll/socket and the
-            // completed ride can drop out of the active list, taking the name with it.
             const passengerName = order?.passenger_name || '';
             const canRate = order?.can_rate_passenger === true;
             await completeOrder(parseInt(String(id)));
             playDriverStatusChime('completed');
-            // Claim this exit BEFORE the poll can notice the order left the active list,
-            // so the `gone` handler above stays quiet.
             completedByMeRef.current = true;
-            // Trip is done: drop the foreground-service notification and stop reporting.
-            // Awaited so the notification is gone by the time the completion dialog shows —
-            // a driver looking at "Safar tugadi" while "Safar davom etmoqda" sits in their
-            // status bar would reasonably conclude the app is still tracking them.
             await stopBackgroundLocation().catch(() => {});
 
-            // Offer to rate the passenger, then leave. Only when the ride actually has a
-            // passenger account behind it: rate-passenger needs Order.passenger_id, and
-            // bot-placed orders often carry just a Telegram id, so offering a rating there
-            // would open a screen whose only possible outcome is a 400.
             const done = () =>
               canRate
                 ? router.replace({
@@ -501,10 +498,6 @@ export default function OrderDetailScreen() {
                   })
                 : router.replace('/(main)/orders');
 
-            // Navigate on dismiss too, not only from the button's onPress: on Android the
-            // hardware back button closes the alert WITHOUT invoking onPress, which left
-            // the driver on a finished order with `loading` back to false and the button
-            // re-armed -- a second tap then hit a raw backend error.
             Alert.alert(
               `✅ ${t('more.completedTitle')}`,
               t('more.completedBody'),
@@ -522,9 +515,6 @@ export default function OrderDetailScreen() {
   };
 
   if (!order) {
-    // Previously this rendered a bare "Yuklanmoqda…" with no header and no back button, so
-    // a driver who opened a stale push for an order that was already gone was stuck on an
-    // endless spinner with no in-app way out.
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
@@ -550,47 +540,35 @@ export default function OrderDetailScreen() {
     );
   }
 
-  // Live driver->target distance, derived per render so it always reflects the latest
-  // driverCoords. The target is the pickup before pickup, the destination after.
   const enRoute = isEnRouteToDestination(order);
   const isParcel = order.service_type === 'parcel';
 
-  // Passenger discounts. All optional on the wire: an OTA update can reach a driver before
-  // the backend that serves these fields, and falling back to `price` keeps an older
-  // backend behaving exactly as before rather than rendering "collect NaN".
   const bonusUsed = order.bonus_used ?? 0;
   const promoDiscount = order.promo_discount ?? 0;
   const payable = order.payable ?? order.price;
   const commissionEffective = order.commission_effective ?? null;
-  // Parcels have a negotiated fare (price 0), so a breakdown of it would be meaningless.
   const hasDiscount = !isParcel && bonusUsed + promoDiscount > 0;
   const serviceIcon: IconName = isParcel
     ? 'parcel'
     : order.service_type === 'full_car'
     ? 'car'
     : 'taxi';
-  // Service-aware wording: taxi talks about the passenger, parcel about the parcel.
   const contactLabel = isParcel ? t('more.sender') : t('more.passenger');
   const pickupBannerText = isParcel ? t('more.goPickupParcel') : t('more.goPickupPassenger');
   const destBannerText = isParcel ? t('more.deliverParcel') : t('more.deliverPassenger');
   const pickedUpBtnText = isParcel ? t('more.pickedBtnParcel') : t('more.pickedBtnPassenger');
   const target = deriveTarget(order);
-  // Map pin captions so each marker is self-explanatory ("easy to understand"):
-  //   A = the place to reach — passenger before pickup, parcel sender for a parcel,
-  //       destination once on board;
-  //   B = the driver (you).
-  // For a parcel order this naturally reads "A • Jo'natuvchi" / "B • Haydovchi" too.
   const markerLabels = {
     pickup: `A • ${enRoute ? t('more.address') : isParcel ? t('more.sender') : t('more.passenger')}`,
     driver: `B • ${t('more.driverFallback')}`,
   };
   const distanceMeters = driverCoords && target ? haversineMeters(driverCoords, target) : NaN;
-  // Live driver->target distance, shown as an overlay ON the map (not in the details
-  // card). Null when the map / target isn't available yet.
   let mapDistanceText: string | null = null;
   if (deriveMapVisible(order) && target !== null) {
     if (!driverCoords) {
       mapDistanceText = t('more.calculating');
+    } else if (Number.isFinite(distanceMeters) && distanceMeters < 50) {
+      mapDistanceText = 'Yaqin joyda (< 50 m)';
     } else {
       const etaHint =
         ETA_HINT_ENABLED && Number.isFinite(distanceMeters)
@@ -619,15 +597,19 @@ export default function OrderDetailScreen() {
         {/* Stage banner: en route to destination (passenger on board) vs heading to pickup. */}
         {enRoute ? (
           <View style={styles.destBanner}>
-            <Icon name="compass" size={28} color={colors.primary} style={styles.timerEmoji} />
+            <View style={styles.destIconCircle}>
+              <Icon name="compass" size={22} color={colors.success} />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.destBannerText}>{destBannerText}</Text>
-              <Text style={styles.timerSub}>{shortenAddress(order.to_address, order.to_city)}</Text>
+              <Text style={styles.destBannerSub}>{shortenAddress(order.to_address, order.to_city)}</Text>
             </View>
           </View>
         ) : remainingSec !== null && remainingSec > 0 ? (
           <View style={styles.timerBanner}>
-            <Text style={styles.timerEmoji}>⏱</Text>
+            <View style={styles.timerIconCircle}>
+              <Icon name="clock" size={20} color="#38BDF8" />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.timerText}>
                 {t('more.contactWithin', { subject: contactLabel, minutes: CONTACT_WINDOW_MINUTES })}
@@ -636,22 +618,24 @@ export default function OrderDetailScreen() {
                 {t('more.contactSub', { subject: contactLabel.toLowerCase() })}
               </Text>
             </View>
-            <Text style={styles.timerCountdown}>{mmss(remainingSec)}</Text>
+            <View style={styles.timerCountdownPill}>
+              <Text style={styles.timerCountdown}>{mmss(remainingSec)}</Text>
+            </View>
           </View>
         ) : (
           <View style={styles.statusBanner}>
-            <Icon
-              name={isParcel ? 'parcel' : 'taxi'}
-              size={28}
-              color={colors.primary}
-              style={styles.statusEmoji}
-            />
+            <View style={styles.statusIconCircle}>
+              <Icon
+                name={isParcel ? 'parcel' : 'taxi'}
+                size={22}
+                color={colors.primary}
+              />
+            </View>
             <Text style={styles.statusText}>{pickupBannerText}</Text>
           </View>
         )}
 
-        {/* In-app map — driver position, target pin, and driver->target route.
-            Target = passenger pickup before pickup, destination once on board. */}
+        {/* In-app map — driver position, target pin, and driver->target route. */}
         {deriveMapVisible(order) && (
           <View style={styles.mapCard}>
             <YandexMap
@@ -670,7 +654,6 @@ export default function OrderDetailScreen() {
                 </Text>
               </View>
             )}
-            {/* Distance + ETA between driver and target, written on the map itself. */}
             {mapDistanceText && (
               <View style={styles.mapDistanceBadge} pointerEvents="none">
                 <IconText
@@ -683,10 +666,19 @@ export default function OrderDetailScreen() {
                 </IconText>
               </View>
             )}
+            <TouchableOpacity
+              style={styles.mapRecenterBtn}
+              onPress={recenterDriverMap}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Xaritani markazlashtirish"
+            >
+              <Icon name="target" size={18} color={colors.primary} />
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Passenger card — phone revealed after accept */}
+        {/* Passenger card — phone revealed after accept + 1-Tap Quick Driver SMS Chips */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{contactLabel}</Text>
           <View style={styles.passengerRow}>
@@ -714,12 +706,12 @@ export default function OrderDetailScreen() {
             </View>
             <TouchableOpacity
               style={styles.smsBtn}
-              onPress={smsPassenger}
+              onPress={() => smsPassenger()}
               accessibilityRole="button"
               accessibilityLabel={t('more.a11ySendSms', { subject: contactLabel })}
               accessibilityHint={t('more.a11ySendSmsHint')}
             >
-              <Icon name="chat" size={22} color={colors.primary} />
+              <Icon name="chat" size={20} color="#FFFFFF" />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.callBtn}
@@ -728,9 +720,33 @@ export default function OrderDetailScreen() {
               accessibilityLabel={t('more.a11yCall', { subject: contactLabel })}
               accessibilityHint={t('more.a11yCallHint')}
             >
-              <Icon name="phone" size={22} color={colors.textOnPrimary} />
+              <Icon name="phone" size={20} color={colors.textOnPrimary} />
             </TouchableOpacity>
           </View>
+
+          {/* 1-Tap Quick Driver SMS Templates (fast & eyes-free while driving to pickup) */}
+          {!enRoute && order.passenger_phone && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickSmsRow}
+            >
+              {[
+                '🚕 Yetib keldim, kutyapman',
+                '⏱ 5 daqiqada yetib boraman',
+                '👋 Tayyor turing, yo\'ldaman',
+              ].map((msg) => (
+                <TouchableOpacity
+                  key={msg}
+                  style={styles.quickSmsChip}
+                  onPress={() => smsPassenger(msg)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.quickSmsChipText}>{msg}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         {/* Parcel Recipient Card (if parcel has recipient info) */}
@@ -739,7 +755,7 @@ export default function OrderDetailScreen() {
             <Text style={styles.cardTitle}>{t('order.parcelRecipient')}</Text>
             <View style={styles.passengerRow}>
               <View style={styles.avatar}>
-                <Icon name="parcel" size={20} color={colors.primary} />
+                <Icon name="parcel" size={20} color={colors.textOnPrimary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.passengerName}>
@@ -765,15 +781,14 @@ export default function OrderDetailScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={t('order.callRecipient')}
                 >
-                  <Icon name="phone" size={22} color={colors.textOnPrimary} />
+                  <Icon name="phone" size={20} color={colors.textOnPrimary} />
                 </TouchableOpacity>
               ) : null}
             </View>
           </View>
         )}
 
-        {/* Qo'shimcha talablar (extras) — placed high, right under the passenger, so the
-            driver immediately sees special requirements (female in cabin, roof rack, front seat, pickup type). */}
+        {/* Qo'shimcha talablar (extras) */}
         {(order.female_only || order.has_roof_rack || order.front_seat || order.pickup_type) && (
           <View style={[styles.card, { marginTop: spacing.md }]}>
             <Text style={styles.cardTitle}>{t('more.extras')}</Text>
@@ -794,14 +809,14 @@ export default function OrderDetailScreen() {
               )}
               {order.female_only && (
                 <View style={styles.extraTag}>
-                  <IconText name="female" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                  <IconText name="female" size={12} color={colors.primary} textStyle={styles.extraTagText}>
                     {t('more.femaleInCabin')}
                   </IconText>
                 </View>
               )}
               {order.has_roof_rack && (
                 <View style={styles.extraTag}>
-                  <IconText name="luggage" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                  <IconText name="luggage" size={12} color={colors.primary} textStyle={styles.extraTagText}>
                     {t('more.roofRack')}
                   </IconText>
                 </View>
@@ -810,30 +825,22 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* Route */}
+        {/* Route (Consistent icons & clean alignment on both Qayerdan and Qayerga rows) */}
         <View style={[styles.card, { marginTop: spacing.md }]}>
           <View style={styles.row}>
-            {!enRoute ? (
-              <IconText name="location" size={12} color={colors.textSecondary} textStyle={styles.label}>
-                {t('order.from')}
-              </IconText>
-            ) : (
-              <Text style={styles.label}>{t('order.from')}</Text>
-            )}
-            <Text style={[styles.value, !enRoute && { color: colors.info }]} numberOfLines={2}>
+            <IconText name="location" size={13} color={colors.success} textStyle={styles.label}>
+              {t('order.from')}
+            </IconText>
+            <Text style={[styles.value, !enRoute && { color: colors.primary }]} numberOfLines={2}>
               {shortenAddress(order.from_address, order.from_city)}
             </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
-            {enRoute ? (
-              <IconText name="flag" size={12} color={colors.textSecondary} textStyle={styles.label}>
-                {t('order.to')}
-              </IconText>
-            ) : (
-              <Text style={styles.label}>{t('order.to')}</Text>
-            )}
-            <Text style={[styles.value, enRoute && { color: colors.info }]} numberOfLines={2}>
+            <IconText name="flag" size={13} color={colors.primary} textStyle={styles.label}>
+              {t('order.to')}
+            </IconText>
+            <Text style={[styles.value, enRoute && { color: colors.primary }]} numberOfLines={2}>
               {shortenAddress(order.to_address, order.to_city)}
             </Text>
           </View>
@@ -841,7 +848,9 @@ export default function OrderDetailScreen() {
             <>
               <View style={styles.divider} />
               <View style={styles.row}>
-                <Text style={styles.label}>📍 {t('order.landmarkLabel')}</Text>
+                <IconText name="pin" size={13} color={colors.primary} textStyle={styles.label}>
+                  {t('order.landmarkLabel')}
+                </IconText>
                 <Text style={[styles.value, { color: colors.primary }]} numberOfLines={2}>
                   {order.landmark}
                 </Text>
@@ -850,7 +859,7 @@ export default function OrderDetailScreen() {
           ) : null}
           <View style={styles.divider} />
           <View style={styles.row}>
-            <IconText name="clock" size={12} color={colors.textSecondary} textStyle={styles.label}>
+            <IconText name="clock" size={13} color={colors.textSecondary} textStyle={styles.label}>
               {t(isParcel ? 'more.dispatchTime' : 'more.departureTime')}
             </IconText>
             <Text style={styles.value}>{formatDepartureTime(order.departure_time, t)}</Text>
@@ -858,14 +867,16 @@ export default function OrderDetailScreen() {
           <View style={styles.divider} />
           {isParcel || order.service_type === 'full_car' ? (
             <View style={styles.row}>
-              <Text style={styles.label}>{t('more.serviceType')}</Text>
+              <IconText name={serviceIcon} size={13} color={colors.textSecondary} textStyle={styles.label}>
+                {t('more.serviceType')}
+              </IconText>
               <Text style={styles.value}>
                 {isParcel ? t('more.parcelLabel') : t('more.fullCarLabel')}
               </Text>
             </View>
           ) : (
             <View style={styles.row}>
-              <IconText name="people" size={12} color={colors.textSecondary} textStyle={styles.label}>
+              <IconText name="people" size={13} color={colors.textSecondary} textStyle={styles.label}>
                 {t('order.persons')}
               </IconText>
               <Text style={styles.value}>
@@ -876,14 +887,12 @@ export default function OrderDetailScreen() {
           )}
           <View style={styles.divider} />
           <View style={styles.row}>
-            <IconText name="cash" size={12} color={colors.textSecondary} textStyle={styles.label}>
+            <IconText name="cash" size={13} color={colors.textSecondary} textStyle={styles.label}>
               {t('order.price')}
             </IconText>
             <Text
               style={[
                 styles.value,
-                // Once a discount applies this is no longer the amount to collect, so it
-                // stops being the highlighted figure — `payable` below takes over.
                 { fontSize: 18, color: isParcel ? colors.info : (hasDiscount ? colors.text : colors.success) },
               ]}
             >
@@ -891,9 +900,6 @@ export default function OrderDetailScreen() {
             </Text>
           </View>
 
-          {/* Discount breakdown. Shown ONLY when there is a discount, so an ordinary ride's
-              price card is unchanged. Without this the driver was shown the gross price and
-              would ask the passenger for cash the passenger app had already deducted. */}
           {hasDiscount && (
             <>
               {bonusUsed > 0 && (
@@ -942,15 +948,10 @@ export default function OrderDetailScreen() {
                   </View>
                 </>
               )}
-              {/* The reason the smaller number is not a loss. A driver shown only a reduced
-                  figure reasonably assumes they are being short-changed. */}
               <Text style={styles.discountNote}>{t('order.discountNote')}</Text>
             </>
           )}
 
-          {/* Opted in but not yet applied: the discount is computed at acceptance, so the
-              amount to collect will drop later. Saying so beats the figure changing by
-              itself. */}
           {!hasDiscount && order.use_bonus && !isParcel && (
             <Text style={styles.discountNote}>{t('order.mayUseBonus')}</Text>
           )}
@@ -964,30 +965,24 @@ export default function OrderDetailScreen() {
         )}
       </ScrollView>
 
-      {/* Action button — staged: accepted -> "picked up passenger", in_progress -> finish. */}
+      {/* Action footer — visually distinct Secondary Navigation button + Primary Stage CTA */}
       <View style={styles.footer}>
         <TouchableOpacity
           onPress={openNavigation}
           activeOpacity={0.85}
-          style={{ marginBottom: spacing.sm }}
+          style={styles.navBtnSecondary}
           accessibilityRole="button"
           accessibilityLabel={t(enRoute ? 'more.a11yNavDropoff' : 'more.a11yNavPickup')}
           accessibilityHint={t('more.a11yNavHint')}
         >
-          <LinearGradient
-            colors={['#2E8BFF', '#0B4FC8']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.navBtn}
-          >
-            <Icon name="compass" size={20} color="#0E1B3D" style={styles.navBtnIcon} />
-            <Text style={styles.navBtnText}>
-              {enRoute
-                ? (isParcel ? t('more.navDeliverParcel') : t('more.navigation'))
-                : (isParcel ? t('more.navPickupParcel') : t('more.navPickupPassenger'))}
-            </Text>
-          </LinearGradient>
+          <Icon name="compass" size={20} color={colors.primary} style={styles.navBtnIcon} />
+          <Text style={styles.navBtnSecondaryText}>
+            {enRoute
+              ? (isParcel ? t('more.navDeliverParcel') : t('more.navigation'))
+              : (isParcel ? t('more.navPickupParcel') : t('more.navPickupPassenger'))}
+          </Text>
         </TouchableOpacity>
+
         {enRoute ? (
           <TouchableOpacity
             onPress={handleComplete}
@@ -999,18 +994,18 @@ export default function OrderDetailScreen() {
             accessibilityState={{ disabled: loading, busy: loading }}
           >
             <LinearGradient
-              colors={gradients.gold}
+              colors={['#10B981', '#059669']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.completeBtn}
             >
               {loading ? (
-                <ActivityIndicator color="#0E1B3D" />
+                <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <IconText
                   name="check"
                   size={16}
-                  color="#0E1B3D"
+                  color="#FFFFFF"
                   textStyle={styles.completeBtnText}
                 >
                   {t('order.complete')}
@@ -1029,7 +1024,7 @@ export default function OrderDetailScreen() {
             accessibilityState={{ disabled: loading, busy: loading }}
           >
             <LinearGradient
-              colors={gradients.navy}
+              colors={['#10B981', '#059669']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.completeBtn}
@@ -1041,7 +1036,7 @@ export default function OrderDetailScreen() {
                   name="check"
                   size={16}
                   color="#FFFFFF"
-                  textStyle={[styles.completeBtnText, { color: '#FFFFFF' }]}
+                  textStyle={styles.completeBtnText}
                 >
                   {pickedUpBtnText}
                 </IconText>
@@ -1057,10 +1052,7 @@ export default function OrderDetailScreen() {
         visible={disclosureVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => {
-          // Do not dismiss on hardware back press without an explicit choice;
-          // Google Play requires affirmative user action (accept or decline).
-        }}
+        onRequestClose={() => {}}
       >
         <View style={styles.disclosureBackdrop}>
           <View style={styles.disclosureCard}>
@@ -1193,7 +1185,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.primary100,
   },
   title: { ...typography.h3, color: colors.text },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
@@ -1207,16 +1199,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   emptyActionText: { ...typography.bodyBold, color: colors.textOnPrimary },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
   mapCard: {
-    height: 280,
+    height: 260,
     borderRadius: 24,
     overflow: 'hidden',
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
     shadowColor: '#0E1730',
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 5,
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   mapUnavailable: {
     position: 'absolute',
@@ -1243,25 +1235,63 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
   },
   mapDistanceText: { ...typography.caption, color: '#FFFFFF', fontWeight: '700' },
+  mapRecenterBtn: {
+    position: 'absolute',
+    right: spacing.sm,
+    bottom: spacing.sm,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0E1730',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
   statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.warningLight,
+    backgroundColor: colors.primary100,
     padding: spacing.md,
     borderRadius: radius.lg,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
-  statusEmoji: { marginRight: spacing.md },
-  statusText: { ...typography.bodyBold, color: colors.warning },
+  statusIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  statusText: { ...typography.bodyBold, color: colors.primary, flex: 1 },
   destBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.successLight,
     padding: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  destIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
   },
   destBannerText: { ...typography.bodyBold, color: colors.success },
+  destBannerSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
   timerBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1270,10 +1300,30 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.lg,
     marginBottom: spacing.md,
   },
-  timerEmoji: { marginRight: spacing.md },
-  timerText: { ...typography.bodyBold, color: colors.textOnPrimary },
-  timerSub: { ...typography.small, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  timerCountdown: { ...typography.h2, color: colors.accent, fontVariant: ['tabular-nums'] },
+  timerIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(56, 189, 248, 0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  timerText: { ...typography.bodyBold, color: '#FFFFFF' },
+  timerSub: { ...typography.small, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+  timerCountdownPill: {
+    backgroundColor: 'rgba(56, 189, 248, 0.16)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    marginLeft: spacing.sm,
+  },
+  timerCountdown: {
+    ...typography.h3,
+    color: '#38BDF8',
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
   card: {
     backgroundColor: colors.white,
     borderRadius: radius.xl,
@@ -1303,21 +1353,41 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   passengerName: { ...typography.bodyBold, color: colors.text },
   passengerPhone: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   callBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: colors.success,
     alignItems: 'center',
     justifyContent: 'center',
   },
   smsBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.info,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm,
+  },
+  quickSmsRow: {
+    gap: spacing.xs,
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  quickSmsChip: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  quickSmsChipText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '600',
   },
   row: {
     flexDirection: 'row',
@@ -1326,7 +1396,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   label: { ...typography.caption, color: colors.textSecondary },
-  value: { ...typography.bodyBold, color: colors.text },
+  value: { ...typography.bodyBold, color: colors.text, flexShrink: 1, textAlign: 'right', marginLeft: spacing.sm },
   divider: { height: 1, backgroundColor: colors.divider },
   discountNote: {
     ...typography.small,
@@ -1337,44 +1407,45 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   noteText: { ...typography.body, color: colors.text },
   extrasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   extraTag: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
+    backgroundColor: colors.primary100,
+    borderColor: '#BFDBFE',
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  extraTagText: { ...typography.small, color: '#B45309', fontWeight: '700' },
+  extraTagText: { ...typography.small, color: colors.primary, fontWeight: '700' },
   footer: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
     backgroundColor: colors.white,
+    gap: spacing.sm,
   },
-  navBtn: {
+  navBtnSecondary: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.md,
+    paddingVertical: 13,
     borderRadius: radius.lg,
-    shadowColor: '#0B4FC8',
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    backgroundColor: colors.primary100,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
   navBtnIcon: { marginRight: spacing.sm },
-  navBtnText: { ...typography.button, color: colors.textOnPrimary },
+  navBtnSecondaryText: { ...typography.button, color: colors.primary, fontWeight: '700' },
   completeBtn: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    shadowColor: colors.accentDark,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    paddingVertical: 15,
+    borderRadius: radius.lg,
+    shadowColor: '#059669',
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    elevation: 4,
   },
-  completeBtnText: { ...typography.button, color: '#0E1B3D' },
+  completeBtnText: { ...typography.button, color: '#FFFFFF', fontWeight: '700' },
 });

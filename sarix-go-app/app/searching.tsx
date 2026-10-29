@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Icon, IconText, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
-import { getOrder, cancelOrder } from '../src/api/orders';
+import { getOrder, cancelOrder, type Order } from '../src/api/orders';
 import { describeApiError } from '../src/api/errors';
 import { useAuthStore } from '../src/store/auth';
 import { connectPassengerSocket } from '../src/services/passengerSocket';
@@ -39,19 +39,19 @@ const BANNERS: Banner[] = [
     icon: 'taxi',
     titleKey: 'searching.banner1Title',
     textKey: 'searching.banner1Text',
-    bg: '#E0E7FF',
+    bg: '#EEF2FF',
   },
   {
     icon: 'sun',
     titleKey: 'searching.banner2Title',
     textKey: 'searching.banner2Text',
-    bg: '#FFF3CC',
+    bg: '#E0F2FE',
   },
   {
     icon: 'card',
     titleKey: 'searching.banner3Title',
     textKey: 'searching.banner3Text',
-    bg: '#D1FAE5',
+    bg: '#ECFDF5',
   },
 ];
 
@@ -66,6 +66,7 @@ export default function SearchingScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const user = useAuthStore((s) => s.user);
   const [status, setStatus] = useState<'new' | 'accepted'>('new');
+  const [orderData, setOrderData] = useState<Order | null>(null);
   const [elapsed, setElapsed] = useState(0);
   // True after several consecutive failed polls, so the passenger is told the app has lost
   // contact instead of watching the timer climb forever.
@@ -77,6 +78,9 @@ export default function SearchingScreen() {
   // Fire the "driver found" notification exactly once (WS and polling can both
   // observe the acceptance — this guard prevents a duplicate alert).
   const notifiedRef = useRef(false);
+
+  const formatPrice = (p: number) =>
+    p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
   // Notify the passenger that a driver accepted: a visible+audible local
   // notification, a vibration, and an entry in the in-app notification history.
@@ -155,9 +159,6 @@ export default function SearchingScreen() {
 
   // Connect to WebSocket — on accept, show the "driver found" status and then
   // move to the live order screen after a short pause (so the message is seen).
-  //
-  // Uses the reconnecting helper: previously a dropped socket was never re-established, so
-  // the passenger silently fell back to the slower 5s poll for the whole wait.
   useEffect(() => {
     if (!user) return;
     const handle = connectPassengerSocket({
@@ -177,47 +178,28 @@ export default function SearchingScreen() {
   // Polling fallback (in case the WS event is missed).
   useEffect(() => {
     const id = parseInt(orderId);
-    // A missing/garbage param makes this NaN. The old `if (!id) return` left the
-    // passenger watching the search animation forever with no poll running and no way to
-    // tell anything was wrong. There is no order to wait for, so go home.
     if (!Number.isFinite(id) || id <= 0) {
       router.replace('/(tabs)/home');
       return;
     }
-    // `clearInterval` only runs AFTER the await, so a request slower than the 5s tick
-    // let two polls overlap and both reach the terminal branch -> two stacked Alerts,
-    // each navigating home on OK.
     let alerted = false;
-    // Consecutive poll failures. The poll used to swallow every error, so during a backend
-    // or network outage the passenger sat here with the timer climbing forever and nothing
-    // on screen suggesting anything was wrong. After a few failures we surface it.
     let failures = 0;
     const poll = async () => {
-      // Backgrounded, this 5s poll had no ceiling and no backoff: a search screen left open
-      // for ten minutes issued ~120 requests. Returning early (rather than clearing the
-      // interval) keeps the tick alive so polling resumes the moment the app is foregrounded,
-      // and deliberately does not touch `failures` — being backgrounded is not a failure.
       if (!isAppForeground()) return;
       try {
         const order = await getOrder(id);
+        setOrderData(order);
         failures = 0;
         setConnectionLost(false);
         if (order.status === 'accepted' || order.status === 'in_progress') {
           notifyDriverFound();
           setStatus('accepted');
         } else if (order.status === 'completed') {
-          // `completed` was not handled at all, so a ride finished while this screen was
-          // open (a stale screen resumed from the background, or a driver who accepted and
-          // completed between two polls) left the passenger on the search animation
-          // forever — unable to rate the trip, with an order they believed was still
-          // pending. Send them to the order screen, which shows the finished ride.
           if (alerted) return;
           alerted = true;
           clearInterval(interval);
           router.replace(`/order/${id}`);
         } else if (order.status === 'cancelled' || order.status === 'expired') {
-          // The order ended while waiting (passenger/admin cancelled, or the
-          // search timed out). Don't leave the passenger stuck on "searching".
           if (alerted) return;
           alerted = true;
           clearInterval(interval);
@@ -242,12 +224,9 @@ export default function SearchingScreen() {
         if (failures >= POLL_FAILURES_BEFORE_WARNING) setConnectionLost(true);
       }
     };
-    // Poll immediately as well as on the interval: an order that was already terminal when
-    // this screen mounted used to take a full 5s to be noticed.
     poll();
     const interval = setInterval(poll, 5000);
     return () => clearInterval(interval);
-    // Poll keyed on the order id only; notifyDriverFound is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
@@ -265,9 +244,6 @@ export default function SearchingScreen() {
         text: t('common.yes'),
         style: 'destructive',
         onPress: async () => {
-          // See the same guard on the order screen: without it two taps stacked two
-          // dialogs, the second cancel failed because the order was already cancelled, and
-          // the passenger got a bogus "no internet" alert on the home screen.
           if (cancelInFlightRef.current) return;
           cancelInFlightRef.current = true;
           setCancelling(true);
@@ -277,10 +253,6 @@ export default function SearchingScreen() {
           } catch (e: any) {
             cancelInFlightRef.current = false;
             setCancelling(false);
-            // Every failure used to be reported as "no internet", including the common
-            // real cases: the driver already accepted (cancellation now needs a reason /
-            // may be refused) or the order no longer exists. The passenger retried a
-            // cancel that could never succeed while the ride was actually on its way.
             Alert.alert(t('common.error'), describeApiError(e, t));
           }
         },
@@ -291,7 +263,7 @@ export default function SearchingScreen() {
   const found = status === 'accepted';
 
   const scale = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] });
-  const opacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] });
+  const opacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] });
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -303,22 +275,24 @@ export default function SearchingScreen() {
           )}
           <View style={[styles.statusIcon, found && styles.statusIconFound]}>
             <Icon
-              name={found ? "accepted" : "search"}
-              size={32}
-              color={found ? colors.success : colors.primary}
+              name={found ? 'accepted' : 'search'}
+              size={30}
+              color="#FFFFFF"
             />
           </View>
         </View>
 
-        <IconText
-          name="check"
-          size={13}
-          color={colors.success}
-          textStyle={styles.sentLabel}
-          style={styles.sentLabelRow}
-        >
-          {t('searching.orderSent')}
-        </IconText>
+        <View style={styles.sentPill}>
+          <IconText
+            name="check"
+            size={13}
+            color={colors.success}
+            textStyle={styles.sentLabel}
+            style={styles.sentLabelRow}
+          >
+            {t('searching.orderSent')}
+          </IconText>
+        </View>
 
         {found ? (
           <>
@@ -336,6 +310,37 @@ export default function SearchingScreen() {
             </Text>
           </>
         )}
+
+        {/* Live Order Summary Pill Card */}
+        {orderData && (
+          <View style={styles.orderSummaryCard}>
+            <View style={styles.orderSummaryRoute}>
+              <View style={styles.dotGreen} />
+              <Text style={styles.orderSummaryCity} numberOfLines={1}>
+                {orderData.from_city}
+              </Text>
+              <Icon name="arrowRight" size={14} color={colors.textMuted} />
+              <View style={styles.dotPrimary} />
+              <Text style={styles.orderSummaryCity} numberOfLines={1}>
+                {orderData.to_city}
+              </Text>
+            </View>
+            <View style={styles.orderSummaryMeta}>
+              <Text style={styles.orderSummaryMetaText}>
+                {orderData.service_type === 'parcel'
+                  ? t('order.parcel')
+                  : orderData.service_type === 'full_car'
+                  ? t('order.fullCar')
+                  : t('order.personsCount', { count: orderData.person_count })}
+              </Text>
+              <Text style={styles.orderSummaryPrice}>
+                {orderData.service_type === 'parcel'
+                  ? t('order.negotiable')
+                  : `${formatPrice(orderData.payable ?? orderData.price)} ${t('common.currency')}`}
+              </Text>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Swipeable, auto-rotating info banners */}
@@ -351,7 +356,7 @@ export default function SearchingScreen() {
           {BANNERS.map((b, i) => (
             <View key={i} style={styles.bannerPage}>
               <View style={[styles.banner, { backgroundColor: b.bg }]}>
-                <Icon name={b.icon} size={40} color={colors.primary} style={styles.bannerEmoji} />
+                <Icon name={b.icon} size={36} color={colors.primary} style={styles.bannerEmoji} />
                 <Text style={styles.bannerTitle}>{t(b.titleKey)}</Text>
                 <Text style={styles.bannerText}>{t(b.textKey)}</Text>
               </View>
@@ -388,34 +393,46 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   statusCard: {
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   statusIconWrap: {
-    width: 96,
-    height: 96,
+    width: 88,
+    height: 88,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   pulse: {
     position: 'absolute',
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: colors.primary,
   },
   statusIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   statusIconFound: { backgroundColor: colors.success },
-  sentLabelRow: { justifyContent: 'center', marginBottom: spacing.xs },
-  sentLabel: { ...typography.caption, color: colors.success, fontWeight: '700' },
+  sentPill: {
+    backgroundColor: colors.successLight,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    marginBottom: spacing.sm,
+  },
+  sentLabelRow: { justifyContent: 'center', flex: 0 },
+  sentLabel: { ...typography.small, color: colors.success, fontWeight: '700' },
   statusTitle: { ...typography.h3, color: colors.text, textAlign: 'center' },
   timer: {
     ...typography.h2,
@@ -425,11 +442,61 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   statusSub: {
-    ...typography.body,
+    ...typography.caption,
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.xs,
     paddingHorizontal: spacing.md,
+  },
+  orderSummaryCard: {
+    width: '100%',
+    marginTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  orderSummaryRoute: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dotGreen: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.success,
+  },
+  dotPrimary: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  orderSummaryCity: {
+    ...typography.bodyBold,
+    color: colors.text,
+    flexShrink: 1,
+  },
+  orderSummaryMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  orderSummaryMetaText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  orderSummaryPrice: {
+    ...typography.bodyBold,
+    color: colors.primary,
   },
   bannerArea: { flex: 1, justifyContent: 'center' },
   bannerPage: {
@@ -440,12 +507,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   banner: {
     borderRadius: radius.lg,
     padding: spacing.lg,
-    minHeight: 160,
+    minHeight: 145,
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  bannerEmoji: { marginBottom: spacing.sm },
+  bannerEmoji: { marginBottom: spacing.xs },
   bannerTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.xs },
-  bannerText: { ...typography.body, color: colors.text, opacity: 0.8 },
+  bannerText: { ...typography.caption, color: colors.textSecondary, lineHeight: 20 },
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',

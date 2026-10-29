@@ -155,10 +155,7 @@ export const IncomingOrderModal: React.FC<Props> = ({
             )}
           </View>
 
-          {/* Route — labelled "Qayerdan" / "Qayerga" with a pin/flag icon, matching the
-              order card in app/(main)/orders.tsx. This popup is the version a driver sees
-              under time pressure (it auto-dismisses), so naming the legs matters more here
-              than anywhere else. */}
+          {/* Route — labelled "Qayerdan" / "Qayerga" with a pin/flag icon */}
           <View style={styles.routeBlock}>
             <View style={styles.routeRow}>
               <View style={[styles.routeMarker, { backgroundColor: colors.successLight }]}>
@@ -174,11 +171,11 @@ export const IncomingOrderModal: React.FC<Props> = ({
             </View>
             <View style={styles.routeConnector} />
             <View style={styles.routeRow}>
-              <View style={[styles.routeMarker, { backgroundColor: colors.accentLight }]}>
-                <Icon name="flag" size={13} color={colors.accentDark} />
+              <View style={[styles.routeMarker, { backgroundColor: colors.primary100 }]}>
+                <Icon name="flag" size={13} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.routeLabel, { color: colors.accentDark }]}>{t('order.to')}</Text>
+                <Text style={[styles.routeLabel, { color: colors.primary }]}>{t('order.to')}</Text>
                 <Text style={styles.routeCity}>{order.to_city}</Text>
                 {!!order.to_address && (
                   <Text style={styles.routeAddr} numberOfLines={1}>{order.to_address}</Text>
@@ -200,7 +197,7 @@ export const IncomingOrderModal: React.FC<Props> = ({
             order.pickup_type ||
             (isParcel && order.parcel_payer)) && (
             <View style={styles.extrasBlock}>
-              <IconText name="history" size={12} color="#B45309" textStyle={styles.extrasTitle}>
+              <IconText name="history" size={12} color={colors.primary} textStyle={styles.extrasTitle}>
                 {t('incoming.extras')}
               </IconText>
               <View style={styles.extrasRow}>
@@ -220,14 +217,14 @@ export const IncomingOrderModal: React.FC<Props> = ({
                 )}
                 {order.female_only && (
                   <View style={styles.extraTag}>
-                    <IconText name="female" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                    <IconText name="female" size={12} color={colors.primary} textStyle={styles.extraTagText}>
                       {t('incoming.femaleInCar')}
                     </IconText>
                   </View>
                 )}
                 {order.has_roof_rack && (
                   <View style={styles.extraTag}>
-                    <IconText name="luggage" size={12} color="#B45309" textStyle={styles.extraTagText}>
+                    <IconText name="luggage" size={12} color={colors.primary} textStyle={styles.extraTagText}>
                       {t('incoming.roofRack')}
                     </IconText>
                   </View>
@@ -272,10 +269,6 @@ export const IncomingOrderModal: React.FC<Props> = ({
           {/* Price + commission */}
           <View style={styles.priceRow}>
             <View>
-              {/* A promo discount is applied when the order is CREATED, so it can already
-                  be in effect here and the fare shown must be what will be collected. A
-                  bonus discount is only decided at acceptance -- hence the note below
-                  rather than a number. */}
               <Text style={styles.priceLabel}>
                 {hasDiscount ? t('order.payable') : t('order.price')}
               </Text>
@@ -301,8 +294,6 @@ export const IncomingOrderModal: React.FC<Props> = ({
             </View>
           </View>
 
-          {/* Warn BEFORE accepting, because accepting is what fixes the discount. Without
-              this the fare simply appeared to shrink on its own once the ride was taken. */}
           {!isParcel && order.use_bonus && !hasDiscount && (
             <Text style={styles.discountNote}>{t('order.mayUseBonus')}</Text>
           )}
@@ -322,11 +313,6 @@ export const IncomingOrderModal: React.FC<Props> = ({
             </IconText>
           )}
 
-          {/* Actions.
-              The same AcceptButton as the orders list, rather than this sheet's own
-              hand-rolled pulse: the driver meets "Qabul qilish" in two places and they
-              should feel identical, and the shared button also brings the spinner and the
-              haptic tick that this one never had. */}
           <View style={styles.acceptWrap}>
             <AcceptButton
               title={t('order.accept')}
@@ -368,7 +354,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     overflow: 'hidden',
     marginBottom: spacing.md,
   },
-  countdownFill: { height: '100%', borderRadius: 3, backgroundColor: colors.accent },
+  countdownFill: { height: '100%', borderRadius: 3, backgroundColor: colors.success },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -380,7 +366,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.primary100,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -395,28 +381,28 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   femaleTagText: { ...typography.small, color: '#DB2777', fontWeight: '700' },
   extrasBlock: {
-    backgroundColor: '#FFFBEB',
-    borderColor: '#F59E0B',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radius.md,
     padding: spacing.sm,
     marginBottom: spacing.md,
   },
-  extrasTitle: { ...typography.small, color: '#B45309', fontWeight: '800', marginBottom: 6 },
+  extrasTitle: { ...typography.small, color: colors.primary, fontWeight: '800', marginBottom: 6 },
   extrasRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
   extraTag: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
+    backgroundColor: colors.primary100,
+    borderColor: '#BFDBFE',
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  extraTagText: { ...typography.small, color: '#B45309', fontWeight: '700' },
+  extraTagText: { ...typography.small, color: colors.primary, fontWeight: '700' },
 
   routeBlock: {
     backgroundColor: colors.surface,

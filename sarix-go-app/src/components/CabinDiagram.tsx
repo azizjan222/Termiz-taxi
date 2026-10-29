@@ -135,13 +135,20 @@ export function CabinDiagram({
           >
             <Icon
               name={frontState !== 'free' ? 'check' : 'user'}
-              size={16}
-              color={frontState !== 'free' ? colors.textOnPrimary : colors.primary}
+              size={15}
+              color={
+                frontState === 'selected'
+                  ? colors.textOnPrimary
+                  : frontState === 'occupied'
+                  ? colors.primary
+                  : colors.textSecondary
+              }
             />
             <Text
               style={[
                 styles.seatLabel,
-                frontState !== 'free' && styles.seatLabelActive,
+                frontState === 'selected' && styles.seatLabelActive,
+                frontState === 'occupied' && styles.seatLabelOccupied,
               ]}
               numberOfLines={1}
             >
@@ -170,13 +177,20 @@ export function CabinDiagram({
               >
                 <Icon
                   name={st !== 'free' ? 'check' : 'user'}
-                  size={15}
-                  color={st !== 'free' ? colors.textOnPrimary : colors.primary}
+                  size={14}
+                  color={
+                    st === 'selected'
+                      ? colors.textOnPrimary
+                      : st === 'occupied'
+                      ? colors.primary
+                      : colors.textSecondary
+                  }
                 />
                 <Text
                   style={[
                     styles.seatLabel,
-                    st !== 'free' && styles.seatLabelActive,
+                    st === 'selected' && styles.seatLabelActive,
+                    st === 'occupied' && styles.seatLabelOccupied,
                   ]}
                 >
                   {t('order.seatBack', { n: rearIdx })}
@@ -217,7 +231,7 @@ export function CabinDiagram({
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     card: {
-      backgroundColor: colors.surface,
+      backgroundColor: colors.card,
       borderRadius: radius.lg,
       padding: spacing.md,
       borderWidth: 1,
@@ -231,22 +245,26 @@ const createStyles = (colors: ThemeColors) =>
     },
     title: {
       ...typography.bodyBold,
-      color: colors.primary,
+      color: colors.text,
+      fontSize: 15,
     },
     subtitle: {
       ...typography.small,
       color: colors.textSecondary,
-      marginTop: 2,
+      marginTop: 1,
     },
     liveBadge: {
-      backgroundColor: colors.accentSoft,
-      paddingHorizontal: spacing.sm,
+      backgroundColor: colors.primary50,
+      paddingHorizontal: spacing.sm + 2,
       paddingVertical: 4,
-      borderRadius: radius.md,
+      borderRadius: radius.pill,
       marginLeft: spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.primary200,
     },
     liveBadgeFull: {
       backgroundColor: colors.success,
+      borderColor: colors.success,
     },
     liveBadgeText: {
       ...typography.captionBold,
@@ -256,24 +274,24 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.white,
     },
     carBody: {
-      backgroundColor: colors.white,
-      borderRadius: radius.lg,
-      padding: spacing.md,
-      borderWidth: 1.5,
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      padding: spacing.sm + 2,
+      borderWidth: 1,
       borderColor: colors.border,
     },
     windshield: {
-      height: 6,
+      height: 4,
       backgroundColor: colors.border,
       borderTopLeftRadius: radius.full,
       borderTopRightRadius: radius.full,
-      marginHorizontal: spacing.lg,
-      marginBottom: spacing.sm,
+      marginHorizontal: spacing.xl,
+      marginBottom: spacing.xs + 2,
     },
     frontRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      gap: spacing.md,
+      gap: spacing.sm,
     },
     seat: {
       flex: 1,
@@ -281,17 +299,17 @@ const createStyles = (colors: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
-      paddingVertical: spacing.sm,
+      paddingVertical: 8,
       paddingHorizontal: spacing.xs,
       borderRadius: radius.md,
       borderWidth: 1.5,
       borderColor: colors.border,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.card,
     },
     driverSeat: {
       backgroundColor: colors.surface,
       borderStyle: 'dashed',
-      opacity: 0.7,
+      opacity: 0.65,
     },
     driverSeatLabel: {
       ...typography.small,
@@ -303,21 +321,24 @@ const createStyles = (colors: ThemeColors) =>
       borderColor: colors.primary,
     },
     seatOccupied: {
-      backgroundColor: colors.accent,
-      borderColor: colors.accent,
+      backgroundColor: colors.primary50,
+      borderColor: colors.primary,
     },
     seatLabel: {
       ...typography.small,
       fontWeight: '700',
-      color: colors.primary,
+      color: colors.textSecondary,
     },
     seatLabelActive: {
       color: colors.textOnPrimary,
     },
+    seatLabelOccupied: {
+      color: colors.primary,
+    },
     cabinDivider: {
       height: 1,
       backgroundColor: colors.divider,
-      marginVertical: spacing.sm,
+      marginVertical: 6,
     },
     rearHeader: {
       ...typography.small,
@@ -328,7 +349,7 @@ const createStyles = (colors: ThemeColors) =>
     rearRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      gap: spacing.sm,
+      gap: spacing.xs + 2,
     },
     rearSeat: {
       flex: 1,
@@ -336,26 +357,27 @@ const createStyles = (colors: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 4,
-      paddingVertical: spacing.sm,
+      paddingVertical: 8,
       borderRadius: radius.md,
       borderWidth: 1.5,
       borderColor: colors.border,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.card,
     },
     frontToggleRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       marginTop: spacing.sm,
-      padding: spacing.sm,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: 8,
       borderRadius: radius.md,
-      backgroundColor: colors.white,
+      backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
     },
     frontToggleRowActive: {
       borderColor: colors.primary,
-      backgroundColor: colors.accentSoft,
+      backgroundColor: colors.primary50,
     },
     frontToggleLeft: {
       flexDirection: 'row',

@@ -30,14 +30,21 @@ import type { ThemeColors } from '../../src/theme/colors-themed';
  */
 const CARD_WASH = {
   taxi: {
-    light: ['#FFF8E1', '#FFE9A8'] as const,
-    dark: ['#2C2617', '#3E3419'] as const,
+    light: ['#EEF2FF', '#E0E7FF'] as const,
+    dark: ['#1E294B', '#263563'] as const,
   },
   parcel: {
-    light: ['#F1F1FF', '#DEDBFF'] as const,
-    dark: ['#1E1F3D', '#272856'] as const,
+    light: ['#ECFDF5', '#D1FAE5'] as const,
+    dark: ['#132F2B', '#183F39'] as const,
   },
 };
+
+const EXPRESS_ROUTES: { from: string; to: string; tag: string }[] = [
+  { from: 'Sariosiyo', to: 'Termiz', tag: 'Mashhur' },
+  { from: 'Termiz', to: 'Sariosiyo', tag: 'Mashhur' },
+  { from: 'Denov', to: 'Termiz', tag: 'Tezkor' },
+  { from: 'Termiz', to: 'Denov', tag: 'Tezkor' },
+];
 
 /** A quality tag on a service card: an icon plus one word. */
 interface Tag {
@@ -57,25 +64,12 @@ const PARCEL_TAGS: Tag[] = [
   { icon: 'clock', labelKey: 'home.tagQuick' },
 ];
 
-/**
- * Home.
- *
- * The one job of this screen is to get the passenger into the order flow, so it is built
- * around the two service cards and nothing else. Everything is deliberately tight: with
- * only two cards to show, generous padding just pushed them apart and left the bottom half
- * of the screen empty, which reads as an unfinished screen rather than a calm one. Previously it greeted the user, then
- * printed "Qayerga ketamiz?" as a subtitle, then printed the very same sentence again as
- * the section heading — the same question twice, which reads as a glitch — and the cards
- * themselves were flat grey rows that looked more like list items than the main action.
- */
 export default function HomeScreen() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
-  // Select only the two actions we need. `useOrderStore()` subscribed to the WHOLE store,
-  // so Home re-rendered on every draft field change made anywhere in the order flow — while
-  // a different screen was editing it.
   const resetOrder = useOrderStore((s) => s.reset);
   const setOrderField = useOrderStore((s) => s.setField);
+  const setRoute = useOrderStore((s) => s.setRoute);
   const colors = useThemeStore((s) => s.colors);
   const isDark = useThemeStore((s) => s.isDark);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -83,8 +77,6 @@ export default function HomeScreen() {
   const [unread, setUnread] = useState(0);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
 
-  // On focus, not on mount: a push can arrive while the app is open, and the passenger
-  // returns here after reading the inbox, so a mount-only read would show a stale badge.
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -105,14 +97,16 @@ export default function HomeScreen() {
   );
 
   const startOrder = (type: 'taxi' | 'parcel') => {
-    // Start from a clean draft. orderStore.reset() only ran after a SUCCESSFUL order, so
-    // an abandoned flow left the previous destination (city, address and coordinates)
-    // in the store and it leaked into the next order.
     resetOrder();
     setOrderField('serviceType', type);
-    // Both taxi and parcel use the Yandex-style map order entry (auto-detect
-    // location + destination). The labels inside adapt to the service type.
     router.push('/order-entry');
+  };
+
+  const startExpressRoute = (from: string, to: string) => {
+    resetOrder();
+    setOrderField('serviceType', 'taxi');
+    setRoute(from, to);
+    router.push('/new-order');
   };
 
   const startWithSavedAddress = (addr: SavedAddress) => {
@@ -126,7 +120,6 @@ export default function HomeScreen() {
     router.push('/order-entry');
   };
 
-
   /** One service card: wash, icon tile, copy, arrow and quality tags. */
   const renderServiceCard = (opts: {
     service: 'taxi' | 'parcel';
@@ -138,7 +131,7 @@ export default function HomeScreen() {
   }) => {
     const isTaxi = opts.service === 'taxi';
     const wash = CARD_WASH[opts.service][isDark ? 'dark' : 'light'];
-    const accentColor = isTaxi ? colors.accentDark : colors.primary;
+    const accentColor = isTaxi ? colors.primary : colors.success;
 
     return (
       <TouchableOpacity
@@ -155,24 +148,21 @@ export default function HomeScreen() {
           end={{ x: 1, y: 1 }}
           style={styles.card}
         >
-          {/* Decorative watermark: the service's own glyph, oversized and faded, bleeding
-              off the bottom-right corner so the card reads as illustrated rather than as
-              another form row. Purely visual, hence aria-hidden to screen readers. */}
           <View style={styles.watermark} pointerEvents="none" aria-hidden>
-            <Icon name={opts.icon} size={120} color={accentColor} />
+            <Icon name={opts.icon} size={110} color={accentColor} />
           </View>
 
           <View style={styles.cardTop}>
             <View
               style={[
                 styles.cardIcon,
-                { backgroundColor: isTaxi ? colors.accent : colors.primary },
+                { backgroundColor: isTaxi ? colors.primary : colors.success },
               ]}
             >
               <Icon
                 name={opts.icon}
                 size={24}
-                color={isTaxi ? colors.textOnAccent : colors.textOnPrimary}
+                color={colors.textOnPrimary}
               />
             </View>
 
@@ -182,7 +172,7 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.cardArrow}>
-              <Icon name="arrowRight" size={18} color={colors.text} />
+              <Icon name="arrowRight" size={18} color={accentColor} />
             </View>
           </View>
 
@@ -204,10 +194,6 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Greeting + inbox */}
         <View style={styles.header}>
-          {/* One sentence, two colours. A nested Text keeps "Salom," and the name on the
-              same line and lets them wrap together as one block, so a long name moves to
-              the next line instead of being clipped — which is what splitting them into
-              two separate Texts was working around. */}
           <Text style={styles.greeting} numberOfLines={2}>
             {t('home.hello')}{' '}
             <Text style={styles.greetingName}>
@@ -250,6 +236,31 @@ export default function HomeScreen() {
           icon: 'parcel',
           tags: PARCEL_TAGS,
         })}
+
+        {/* 1-Tap Express Intercity Routes (New fast-booking feature) */}
+        <View style={styles.expressSection}>
+          <View style={styles.expressHeader}>
+            <Icon name="flash" size={15} color={colors.primary} />
+            <Text style={styles.expressTitle}>Tezkor yo'nalishlar (1-bosishda)</Text>
+          </View>
+          <View style={styles.expressGrid}>
+            {EXPRESS_ROUTES.map((r) => (
+              <TouchableOpacity
+                key={`${r.from}-${r.to}`}
+                style={styles.expressCard}
+                onPress={() => startExpressRoute(r.from, r.to)}
+                activeOpacity={0.82}
+              >
+                <View style={styles.expressRouteRow}>
+                  <Text style={styles.expressCity} numberOfLines={1}>{r.from}</Text>
+                  <Icon name="arrowRight" size={13} color={colors.primary} />
+                  <Text style={styles.expressCity} numberOfLines={1}>{r.to}</Text>
+                </View>
+                <Text style={styles.expressSub}>Bosing va darhol zakas bering ›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
 
         {savedAddresses.length > 0 && (
           <View style={styles.savedSection}>
@@ -397,6 +408,51 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.card,
   },
   tagText: { ...typography.small, color: colors.text, fontWeight: '700' },
+  expressSection: {
+    marginTop: spacing.sm,
+  },
+  expressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: spacing.xs + 2,
+  },
+  expressTitle: {
+    ...typography.captionBold,
+    color: colors.textSecondary,
+  },
+  expressGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  expressCard: {
+    width: '48%',
+    flexGrow: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  expressRouteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  expressCity: {
+    ...typography.captionBold,
+    color: colors.text,
+    fontSize: 13.5,
+  },
+  expressSub: {
+    ...typography.small,
+    color: colors.primary,
+    marginTop: 2,
+    fontWeight: '600',
+    fontSize: 11,
+  },
   savedSection: {
     marginTop: spacing.md,
   },
