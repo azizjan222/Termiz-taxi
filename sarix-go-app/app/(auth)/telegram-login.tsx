@@ -19,6 +19,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../../src/components/Icon';
+import { SUPPORTED_LANGUAGES } from '../../src/i18n';
 import {
   telegramStart,
   telegramVerifyCode,
@@ -29,17 +30,19 @@ import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
-// Entry screen palette — vivid BLUE ("ko'k").
-const BLUE_GRADIENT: [string, string, string] = ['#2E8BFF', '#1565E0', '#0B3FA8'];
+// Soft, eye-friendly blue gradient.
+const BLUE_GRADIENT: [string, string, string] = ['#2563EB', '#1D4ED8', '#1E3A8A'];
 
 // Must match LOGIN_CODE_LENGTH in app/services/telegram_auth.py.
 const CODE_LENGTH = 6;
 
 export default function TelegramLoginScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const setUser = useAuthStore((s) => s.setUser);
+  const currentLang =
+    SUPPORTED_LANGUAGES.find((l) => l.code === i18n.language) || SUPPORTED_LANGUAGES[0];
   const [loading, setLoading] = useState(false);
   // `waiting` means "external auth opened, waiting for the user to type the 6-digit code".
   const [waiting, setWaiting] = useState(false);
@@ -156,6 +159,17 @@ export default function TelegramLoginScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+            <View style={styles.topLangRow}>
+              <TouchableOpacity
+                style={styles.langPill}
+                onPress={() => router.push('/(auth)/language?from=login')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.langPillFlag}>{currentLang.flag}</Text>
+                <Text style={styles.langPillText}>{currentLang.label}</Text>
+              </TouchableOpacity>
+            </View>
+
             <Animated.View style={[styles.header, { opacity: fade, transform: [{ translateY: slide }] }]}>
               <View style={styles.logoBox}>
                 <Icon name="taxi" size={40} color="#FFFFFF" />
@@ -288,9 +302,31 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'space-between',
   },
+  topLangRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingTop: spacing.sm,
+  },
+  langPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  langPillFlag: { fontSize: 15 },
+  langPillText: {
+    ...typography.caption,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
   header: {
     alignItems: 'center',
-    paddingTop: spacing.xl,
+    paddingTop: spacing.md,
     paddingBottom: spacing.lg,
   },
   logoBox: {

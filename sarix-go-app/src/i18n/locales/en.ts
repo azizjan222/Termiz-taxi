@@ -210,6 +210,9 @@ export default {
     shareMessageText:
       '📦 Sarix Go Parcel (#{{id}})\n📍 Route: {{from}} → {{to}}\n🚕 Car: {{car}}\n👨‍✈️ Driver: {{driver}} ({{phone}})',
     bookReturnTrip: 'Book return trip ({{from}} → {{to}})',
+    completed: 'Trip completed',
+    rateDriver: 'Rate driver',
+    cancelled: 'Order cancelled',
   },
   status: {
     new: 'New',
@@ -292,6 +295,7 @@ export default {
     step3: 'Share your number — the bot sends a code',
     step4: 'Enter the code here',
     button: '📲 Login via Telegram',
+    loginViaTelegram: 'Login via Telegram',
     googleButton: 'Sign in with Google',
     orDivider: 'or',
     googleCodeHint: 'Enter the 6-digit code shown on the Google confirmation page',

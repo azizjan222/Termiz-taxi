@@ -133,7 +133,7 @@ export async function setupNotificationChannels() {
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 500, 200, 500, 200, 500],
       enableVibrate: true,
-      lightColor: '#F4C430',
+      lightColor: '#2563EB',
       sound: 'new_order.wav',
       bypassDnd: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,

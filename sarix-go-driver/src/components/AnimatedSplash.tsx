@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 10,
   },
   letterAccent: {
-    color: colors.accent,
+    color: '#93C5FD',
   },
   wordGap: {
     width: FONT_SIZE * 0.3,

@@ -39,11 +39,11 @@ export const Button: React.FC<ButtonProps> = ({
     error: colors.error,
   };
   const textColorMap = {
-    primary: colors.white,
-    accent: colors.primary,
+    primary: colors.textOnPrimary,
+    accent: colors.textOnPrimary,
     outline: colors.primary,
-    success: colors.white,
-    error: colors.white,
+    success: colors.textOnPrimary,
+    error: colors.textOnPrimary,
   };
 
   return (
@@ -71,7 +71,7 @@ export const Button: React.FC<ButtonProps> = ({
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={variant === 'accent' ? colors.primary : colors.white}
+          color={variant === 'outline' ? colors.primary : colors.textOnPrimary}
         />
       ) : (
         <Text style={[styles.text, { color: textColorMap[variant] }, textStyle]}>

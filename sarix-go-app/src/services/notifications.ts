@@ -78,7 +78,7 @@ export async function setupNotificationChannels() {
         name: i18n.t('channels.orders'),
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 150, 250],
-        lightColor: '#F4C430',
+        lightColor: '#2563EB',
         sound: 'order_accepted.wav',
         bypassDnd: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,

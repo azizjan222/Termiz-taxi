@@ -10,11 +10,11 @@ export const colors = {
   primaryLight: '#6366F1',
   primaryDark: '#4338CA',
 
-  // Accent (gold)
-  accent: '#FFC400',
-  accentLight: '#FFD451',
-  accentDark: '#E3A800',
-  accentSoft: '#FFF9E6',
+  // Accent (soft sky blue)
+  accent: '#3B82F6',
+  accentLight: '#60A5FA',
+  accentDark: '#2563EB',
+  accentSoft: '#EFF6FF',
 
   // Brand tonal scale (50 -> 900)
   primary50: '#EEF2FF',
@@ -55,7 +55,7 @@ export const colors = {
   textSecondary: '#4B5563',
   textMuted: '#656B78',
   textOnPrimary: '#FFFFFF',
-  textOnAccent: '#0E1730',
+  textOnAccent: '#1E3A8A',
 
   // Semantic
   success: '#12B886',
@@ -75,15 +75,15 @@ export const colors = {
   statusCancelled: '#EF4444',
 
   // Map
-  mapMarker: '#F4C430',
+  mapMarker: '#2563EB',
   mapRoute: '#4F46E5',
 } as const;
 
 export type ColorKey = keyof typeof colors;
 
 export const gradients = {
-  // Kept the key name `purple` so existing imports don't break; values are now indigo.
+  // Kept the key names so existing imports don't break; values are soft indigo/blue.
   purple: ['#6366F1', '#4F46E5'] as const,
-  gold: ['#FFD23F', '#FFB300'] as const,
-  header: ['#FFE08A', '#FFC400'] as const,
+  gold: ['#3B82F6', '#2563EB'] as const,
+  header: ['#6366F1', '#4F46E5'] as const,
 };

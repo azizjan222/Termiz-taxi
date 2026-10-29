@@ -90,7 +90,7 @@ export default function HistoryScreen() {
         <View
           style={[
             styles.iconTile,
-            { backgroundColor: isParcel ? colors.warningLight : '#FFF3CC' },
+            { backgroundColor: isParcel ? colors.infoLight : colors.surface },
           ]}
         >
           <Icon name={isParcel ? 'parcel' : 'taxi'} size={24} color={colors.primary} />
@@ -213,15 +213,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.border,
   },
   tabActive: {
-    backgroundColor: '#FFF3CC',
-    borderColor: colors.accent,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   tabText: {
     ...typography.caption,
     color: colors.textSecondary,
     fontWeight: '600',
   },
-  tabTextActive: { color: colors.textOnAccent, fontWeight: '700' },
+  tabTextActive: { color: colors.textOnPrimary, fontWeight: '700' },
   list: { padding: spacing.lg, paddingTop: spacing.xs },
   card: {
     flexDirection: 'row',

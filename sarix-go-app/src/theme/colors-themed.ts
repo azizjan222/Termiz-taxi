@@ -45,16 +45,16 @@ const neutralScale = {
 } as const;
 
 const accentScale = {
-  accent50: '#FFF9E6',
-  accent100: '#FFF1BF',
-  accent200: '#FFE68A',
-  accent300: '#FFDA54',
-  accent400: '#FFCF2A',
-  accent500: '#FFC400', // gold base
-  accent600: '#E3A800',
-  accent700: '#B88700',
-  accent800: '#8F6900',
-  accent900: '#664B00',
+  accent50: '#EFF6FF',
+  accent100: '#DBEAFE',
+  accent200: '#BFDBFE',
+  accent300: '#93C5FD',
+  accent400: '#60A5FA',
+  accent500: '#3B82F6', // soft sky blue base
+  accent600: '#2563EB',
+  accent700: '#1D4ED8',
+  accent800: '#1E40AF',
+  accent900: '#1E3A8A',
 } as const;
 
 const scales = { ...primaryScale, ...neutralScale, ...accentScale };
@@ -62,14 +62,14 @@ const scales = { ...primaryScale, ...neutralScale, ...accentScale };
 export const lightColors = {
   ...scales,
 
-  // Brand (indigo)
+  // Brand (indigo & soft sky blue)
   primary: '#4F46E5',
   primaryLight: '#6366F1',
   primaryDark: '#4338CA',
-  accent: '#FFC400',
-  accentLight: '#FFD451',
-  accentDark: '#E3A800',
-  accentSoft: '#FFF9E6',
+  accent: '#3B82F6',
+  accentLight: '#60A5FA',
+  accentDark: '#2563EB',
+  accentSoft: '#EFF6FF',
 
   // Surfaces (legacy + semantic aliases)
   white: '#FFFFFF',
@@ -87,7 +87,7 @@ export const lightColors = {
   textSecondary: '#4B5563',
   textMuted: '#656B78',
   textOnPrimary: '#FFFFFF',
-  textOnAccent: '#0E1730',
+  textOnAccent: '#1E3A8A',
 
   // Semantic
   success: '#10B981',
@@ -107,7 +107,7 @@ export const lightColors = {
   statusCancelled: '#EF4444',
 
   // Map
-  mapMarker: '#FFC400',
+  mapMarker: '#2563EB',
   mapRoute: '#4F46E5',
 };
 
@@ -119,10 +119,10 @@ export const darkColors: typeof lightColors = {
   primary: '#5D5FEF',
   primaryLight: '#818CF8',
   primaryDark: '#4338CA',
-  accent: '#FFC400',
-  accentLight: '#FFD75A',
-  accentDark: '#D4A920',
-  accentSoft: '#3A2E0E',
+  accent: '#60A5FA',
+  accentLight: '#93C5FD',
+  accentDark: '#3B82F6',
+  accentSoft: '#1E3A8A',
 
   // Surfaces — layered navy. `white`/`card`/`elevated` all point to the raised
   // surface color so legacy `colors.white` and the new `colors.card` agree.
@@ -141,7 +141,7 @@ export const darkColors: typeof lightColors = {
   textSecondary: '#AEB9CC',
   textMuted: '#8E9BB1',
   textOnPrimary: '#FFFFFF',
-  textOnAccent: '#0E1730',
+  textOnAccent: '#EFF6FF',
 
   // Semantic
   success: '#12B886',
@@ -161,7 +161,7 @@ export const darkColors: typeof lightColors = {
   statusCancelled: '#FA5252',
 
   // Map — keep the brand indigo route visible on dark tiles
-  mapMarker: '#FFC42E',
+  mapMarker: '#60A5FA',
   mapRoute: '#818CF8',
 };
 

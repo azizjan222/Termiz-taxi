@@ -218,6 +218,9 @@ export default {
     shareMessageText:
       '📦 Sarix Go Pochta (#{{id}})\n📍 Yoʻnalish: {{from}} → {{to}}\n🚕 Mashina: {{car}}\n👨‍✈️ Haydovchi: {{driver}} ({{phone}})',
     bookReturnTrip: 'Qaytish reysini band qilish ({{from}} → {{to}})',
+    completed: 'Safar yakunlandi',
+    rateDriver: 'Haydovchini baholash',
+    cancelled: 'Buyurtma bekor qilindi',
   },
   status: {
     new: 'Yangi',
@@ -300,6 +303,7 @@ export default {
     step3: 'Raqamingizni ulashing — bot kod yuboradi',
     step4: 'Kodni shu yerga kiriting',
     button: '📲 Telegram orqali kirish',
+    loginViaTelegram: 'Telegram orqali kirish',
     googleButton: 'Google orqali kirish',
     orDivider: 'yoki',
     googleCodeHint: 'Google orqali tasdiqlangach chiqqan 6 xonali kodni kiriting',

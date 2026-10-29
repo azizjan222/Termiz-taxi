@@ -210,6 +210,9 @@ export default {
     shareMessageText:
       '📦 Посылка Sarix Go (#{{id}})\n📍 Маршрут: {{from}} → {{to}}\n🚕 Машина: {{car}}\n👨‍✈️ Водитель: {{driver}} ({{phone}})',
     bookReturnTrip: 'Забронировать обратный рейс ({{from}} → {{to}})',
+    completed: 'Поездка завершена',
+    rateDriver: 'Оценить водителя',
+    cancelled: 'Заказ отменён',
   },
   status: {
     new: 'Новый',
@@ -292,6 +295,7 @@ export default {
     step3: 'Поделитесь номером — бот пришлёт код',
     step4: 'Введите код здесь',
     button: '📲 Войти через Telegram',
+    loginViaTelegram: 'Войти через Telegram',
     googleButton: 'Войти через Google',
     orDivider: 'или',
     googleCodeHint: 'Введите 6-значный код со страницы подтверждения Google',

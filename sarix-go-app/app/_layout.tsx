@@ -97,7 +97,7 @@ export default function RootLayout() {
     setUnauthorizedHandler(() => {
       useAuthStore.getState().expireSession();
       Alert.alert(i18n.t('common.error'), i18n.t('errors.sessionExpired'));
-      router.replace('/(auth)/telegram-login');
+      router.replace('/(auth)/language');
     });
     return () => setUnauthorizedHandler(null);
   }, []);

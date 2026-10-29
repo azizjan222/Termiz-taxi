@@ -16,8 +16,8 @@ const DEFAULT_CENTER: Coords = { lat: 37.224, lon: 67.278 };
 // distinguishable (distinct ids + distinct colors).
 const PICKUP_MARKER_ID = 'pickup';
 const DRIVER_MARKER_ID = 'driver';
-const PICKUP_MARKER_COLOR = colors.accent; // #F4C430
-const DRIVER_MARKER_COLOR = colors.info;   // #3B82F6
+const PICKUP_MARKER_COLOR = colors.success; // #10B981
+const DRIVER_MARKER_COLOR = colors.primary; // #2563EB
 
 const ACTIVE_STATUSES = ['accepted', 'in_progress'];
 

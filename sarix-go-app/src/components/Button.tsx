@@ -75,7 +75,7 @@ export const Button: React.FC<ButtonProps> = ({
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={variant === 'accent' ? colors.primary : colors.white}
+          color={variant === 'outline' || variant === 'ghost' ? colors.primary : colors.textOnPrimary}
         />
       ) : (
         <>
@@ -119,7 +119,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   ghostBg: { backgroundColor: 'transparent' },
 
   primaryText: { color: colors.textOnPrimary },
-  accentText: { color: colors.primary },
+  accentText: { color: colors.textOnPrimary },
   outlineText: { color: colors.primary },
   ghostText: { color: colors.primary },
 

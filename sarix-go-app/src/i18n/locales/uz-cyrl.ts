@@ -210,6 +210,9 @@ export default {
     shareMessageText:
       '📦 Sarix Go Почта (#{{id}})\n📍 Йўналиш: {{from}} → {{to}}\n🚕 Машина: {{car}}\n👨‍✈️ Ҳайдовчи: {{driver}} ({{phone}})',
     bookReturnTrip: 'Қайтиш рейсини банд қилиш ({{from}} → {{to}})',
+    completed: 'Сафар якунланди',
+    rateDriver: 'Ҳайдовчини баҳолаш',
+    cancelled: 'Буюртма бекор қилинди',
   },
   status: {
     new: 'Янги',
@@ -292,6 +295,7 @@ export default {
     step3: 'Рақамингизни улашинг — бот код юборади',
     step4: 'Кодни шу ерга киритинг',
     button: '📲 Телеграм орқали кириш',
+    loginViaTelegram: 'Телеграм орқали кириш',
     googleButton: 'Google орқали кириш',
     orDivider: 'ёки',
     googleCodeHint: 'Google орқали тасдиқлангач чиққан 6 хонали кодни киритинг',

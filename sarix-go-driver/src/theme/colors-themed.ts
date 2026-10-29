@@ -38,16 +38,16 @@ const neutralScale = {
 } as const;
 
 const accentScale = {
-  accent50: '#FFF9E6',
-  accent100: '#FFF1BF',
-  accent200: '#FFE68A',
-  accent300: '#FFDA54',
-  accent400: '#FFCF2A',
-  accent500: '#FFC400',
-  accent600: '#E3A800',
-  accent700: '#B88700',
-  accent800: '#8F6900',
-  accent900: '#664B00',
+  accent50: '#EFF6FF',
+  accent100: '#DBEAFE',
+  accent200: '#BFDBFE',
+  accent300: '#93C5FD',
+  accent400: '#60A5FA',
+  accent500: '#3B82F6',
+  accent600: '#2563EB',
+  accent700: '#1D4ED8',
+  accent800: '#1E40AF',
+  accent900: '#1E3A8A',
 } as const;
 
 const scales = { ...primaryScale, ...neutralScale, ...accentScale };
@@ -55,32 +55,32 @@ const scales = { ...primaryScale, ...neutralScale, ...accentScale };
 export const lightColors = {
   ...scales,
 
-  // Brand (royal blue)
+  // Brand (royal blue & soft sky blue — eye-friendly, zero harsh yellow)
   primary: '#1E5BC4',
   primaryLight: '#4E86E8',
   primaryDark: '#123E8F',
-  accent: '#FFC400',
-  accentLight: '#FFD451',
-  accentDark: '#E3A800',
-  accentSoft: '#FFF9E6',
+  accent: '#2563EB',
+  accentLight: '#60A5FA',
+  accentDark: '#1D4ED8',
+  accentSoft: '#EFF6FF',
 
   // Surfaces (legacy + semantic aliases)
   white: '#FFFFFF',
   background: '#FFFFFF',
-  surface: '#F4F6FB',
+  surface: '#F4F7FB',
   card: '#FFFFFF',
   elevated: '#FFFFFF',
-  border: '#E7E9F2',
-  outline: '#E7E9F2',
-  divider: '#EEF1F8',
+  border: '#E5EAF3',
+  outline: '#E5EAF3',
+  divider: '#EDF1F7',
   backdrop: 'rgba(14,23,48,0.45)',
 
   // Text — AA compliant hierarchy
-  text: '#0E1730',
-  textSecondary: '#4B5563',
-  textMuted: '#6B7280',
+  text: '#0F172A',
+  textSecondary: '#475569',
+  textMuted: '#64748B',
   textOnPrimary: '#FFFFFF',
-  textOnAccent: '#0E1730',
+  textOnAccent: '#FFFFFF',
 
   // Semantic
   success: '#10B981',
@@ -96,41 +96,41 @@ export const lightColors = {
 export const darkColors: typeof lightColors = {
   ...scales,
 
-  // Brand — keep the royal blue identity in dark mode
+  // Brand — calm, eye-friendly blue in dark mode
   primary: '#5B8DEF',
   primaryLight: '#1E3A6E', // tinted container fill (OTP box / icon tile) — stays dark
   primaryDark: '#0F2A5C',
-  accent: '#FFC400',
-  accentLight: '#FFD75A',
-  accentDark: '#D4A920',
-  accentSoft: '#3A2E0E',
+  accent: '#3B82F6',
+  accentLight: '#60A5FA',
+  accentDark: '#2563EB',
+  accentSoft: '#1E3A6E',
 
-  // Surfaces — layered navy
-  white: '#1E2D52',
-  background: '#0F1729',
-  surface: '#1A2B4D',
-  card: '#1E2D52',
-  elevated: '#243761',
-  border: '#2E4A8F',
-  outline: '#2E4A8F',
-  divider: '#1F3360',
-  backdrop: 'rgba(0,0,0,0.6)',
+  // Surfaces — comfortable layered slate-navy
+  white: '#1B2742',
+  background: '#0F172A',
+  surface: '#162138',
+  card: '#1B2742',
+  elevated: '#233252',
+  border: '#2B3E66',
+  outline: '#2B3E66',
+  divider: '#223152',
+  backdrop: 'rgba(0,0,0,0.65)',
 
-  // Text — AA compliant on the dark navy background
-  text: '#FFFFFF',
-  textSecondary: '#AEB9CC',
-  textMuted: '#8592A6',
+  // Text — AA compliant on dark slate-navy background
+  text: '#F8FAFC',
+  textSecondary: '#CBD5E1',
+  textMuted: '#94A3B8',
   textOnPrimary: '#FFFFFF',
-  textOnAccent: '#0E1730',
+  textOnAccent: '#FFFFFF',
 
   // Semantic
-  success: '#12B886',
+  success: '#10B981',
   successLight: '#064E3B',
-  error: '#FA5252',
+  error: '#F87171',
   errorLight: '#7F1D1D',
-  warning: '#FAB005',
+  warning: '#FBBF24',
   warningLight: '#78350F',
-  info: '#4DABF7',
+  info: '#60A5FA',
   infoLight: '#1E3A8A',
 };
 

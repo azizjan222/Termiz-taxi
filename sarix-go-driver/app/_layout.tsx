@@ -136,7 +136,7 @@ export default function RootLayout() {
       realtime.disconnect();
       useDriverStore.getState().expireSession();
       Alert.alert(i18n.t('common.error'), i18n.t('more.sessionExpired'));
-      router.replace('/login');
+      router.replace('/language');
     });
     return () => setUnauthorizedHandler(null);
   }, []);

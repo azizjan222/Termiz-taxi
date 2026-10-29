@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 
 import { mapLang } from '../utils/yandexLocale';
+import { useThemeStore } from '../store/theme';
 
 export interface MapMarker {
   id: string;
@@ -57,6 +58,8 @@ const DEFAULT_ZOOM = 11;
 
 const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
   const { t } = useTranslation();
+  const isDark = useThemeStore((s) => s.isDark);
+  const colors = useThemeStore((s) => s.colors);
   const webViewRef = useRef<WebView>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -77,6 +80,7 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
       initialLon: props.initialLon ?? DEFAULT_LON,
       initialZoom: props.initialZoom ?? DEFAULT_ZOOM,
       markers: props.markers ?? [],
+      isDark,
       // Diagnostics rendered inside the WebView, localized here because the page has no
       // access to i18n.
       msgApiFailed: t('map.apiLoadFailed'),
@@ -215,14 +219,17 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
       />
 
       {status !== 'ready' && (
-        <View style={styles.overlay} pointerEvents={status === 'error' ? 'auto' : 'none'}>
+        <View
+          style={[styles.overlay, { backgroundColor: colors.surface }]}
+          pointerEvents={status === 'error' ? 'auto' : 'none'}
+        >
           {status === 'loading' ? (
-            <ActivityIndicator size="large" color="#0E1B3D" />
+            <ActivityIndicator size="large" color={colors.primary} />
           ) : (
             <View style={styles.errorBox}>
-              <Text style={styles.errorTitle}>{t('map.errorTitle')}</Text>
-              <Text style={styles.errorText}>{errorMsg}</Text>
-              <Text style={styles.errorHint}>{t('map.errorHint')}</Text>
+              <Text style={[styles.errorTitle, { color: colors.text }]}>{t('map.errorTitle')}</Text>
+              <Text style={[styles.errorText, { color: colors.error }]}>{errorMsg}</Text>
+              <Text style={[styles.errorHint, { color: colors.textSecondary }]}>{t('map.errorHint')}</Text>
             </View>
           )}
         </View>
@@ -256,6 +263,7 @@ interface MapHtmlOptions {
   initialLon: number;
   initialZoom: number;
   markers: MapMarker[];
+  isDark?: boolean;
   msgApiFailed: string;
   msgInitFailed: string;
   msgApiTimeout: string;
@@ -263,7 +271,7 @@ interface MapHtmlOptions {
 
 function generateMapHtml(opts: MapHtmlOptions): string {
   const {
-    apiKey, initialLat, initialLon, initialZoom, markers,
+    apiKey, initialLat, initialLon, initialZoom, markers, isDark,
     msgApiFailed, msgInitFailed, msgApiTimeout,
   } = opts;
   // Embedded in a JS string literal inside the page -> escape quotes.
@@ -280,10 +288,11 @@ function generateMapHtml(opts: MapHtmlOptions): string {
 <title>Sarix Go Map</title>
 <style>
   html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
-  body { background: #F5F7FA; font-family: -apple-system, sans-serif; }
+  body { background: ${isDark ? '#0F1729' : '#F5F7FA'}; font-family: -apple-system, sans-serif; }
+  ${isDark ? '[class*="ground-pane"] { filter: invert(90%) hue-rotate(185deg) brightness(92%) contrast(90%); }' : ''}
   .marker {
-    background: #F4C430;
-    border: 3px solid #0E1B3D;
+    background: #2563EB;
+    border: 3px solid #FFFFFF;
     border-radius: 50%;
     width: 24px;
     height: 24px;
@@ -356,8 +365,8 @@ function generateMapHtml(opts: MapHtmlOptions): string {
         [m.lat, m.lon],
         { iconCaption: m.label || '' },
         {
-          preset: 'islands#yellowDotIcon',
-          iconColor: m.color || '#F4C430'
+          preset: 'islands#blueDotIcon',
+          iconColor: m.color || '#2563EB'
         }
       );
       placemark.events.add('click', function() {

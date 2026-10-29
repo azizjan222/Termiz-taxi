@@ -3,10 +3,10 @@ export const colors = {
   primary: '#1E5BC4',
   primaryLight: '#4E86E8',
   primaryDark: '#123E8F',
-  accent: '#FFC400',
-  accentLight: '#FFD451',
-  accentDark: '#E3A800',
-  accentSoft: '#FFF9E6',
+  accent: '#2563EB',
+  accentLight: '#60A5FA',
+  accentDark: '#1D4ED8',
+  accentSoft: '#EFF6FF',
 
   // Brand tonal scale (50 -> 900)
   primary50: '#EAF1FC',
@@ -23,12 +23,12 @@ export const colors = {
   // Neutrals
   white: '#FFFFFF',
   background: '#FFFFFF',
-  surface: '#F4F6FB',
+  surface: '#F4F7FB',
   card: '#FFFFFF',
   elevated: '#FFFFFF',
-  border: '#E7E9F2',
-  outline: '#E7E9F2',
-  divider: '#EEF1F8',
+  border: '#E5EAF3',
+  outline: '#E5EAF3',
+  divider: '#EDF1F7',
 
   // Neutral tonal scale (50 -> 900)
   neutral50: '#F8FAFC',
@@ -43,11 +43,11 @@ export const colors = {
   neutral900: '#0E1730',
 
   // Text — AA compliant hierarchy
-  text: '#0E1730',
-  textSecondary: '#4B5563',
-  textMuted: '#6B7280',
+  text: '#0F172A',
+  textSecondary: '#475569',
+  textMuted: '#64748B',
   textOnPrimary: '#FFFFFF',
-  textOnAccent: '#0E1730',
+  textOnAccent: '#FFFFFF',
 
   // Semantic
   success: '#10B981',
@@ -76,11 +76,9 @@ export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48 };
 export const radius = { sm: 8, md: 12, lg: 16, xl: 24, pill: 999, full: 999 };
 
 export const gradients = {
-  // Driver brand is royal blue (matches the recoloured SARIX GO logo — the same
-  // bright blue as the old driver logo). The key name `purple` is kept so existing
-  // imports don't break; the values are now blue.
+  // Driver brand is royal blue.
   purple: ['#2E6BE0', '#1544A8'] as const,
-  gold: ['#FFD23F', '#FFB300'] as const,
-  // `navy` header gradient is a deep royal blue for the driver identity.
+  gold: ['#3B82F6', '#1D4ED8'] as const,
+  // `navy` header gradient is a calm royal blue for the driver identity.
   navy: ['#16478F', '#1E5BC4'] as const,
 };

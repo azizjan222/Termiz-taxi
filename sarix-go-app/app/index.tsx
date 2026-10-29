@@ -22,12 +22,8 @@ export default function Index() {
 
   if (onboarded === null) return null;
 
-  if (!onboarded) {
+  if (!onboarded || !isAuth) {
     return <Redirect href="/(auth)/language" />;
-  }
-
-  if (!isAuth) {
-    return <Redirect href="/(auth)/telegram-login" />;
   }
 
   return <Redirect href="/(tabs)/home" />;

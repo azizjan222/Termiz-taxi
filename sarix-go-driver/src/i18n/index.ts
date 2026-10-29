@@ -40,6 +40,7 @@ export const uz = {
     save: 'Saqlash',
     delete: "O'chirish",
     ok: 'OK',
+    continue: 'Davom etish',
   },
   auth: {
     title: 'Sarix Go Driver',
@@ -176,6 +177,8 @@ export const uz = {
     logoutConfirmBody:
       "Haqiqatan ham akkauntingizdan chiqmoqchimisiz? Chiqishdan so'ng yangi zakaslar haqida bildirishnomalar kelmaydi.",
     logoutConfirmYes: 'Ha, chiqish',
+    guide: "Haydovchi qo'llanmasi",
+    guideSub: "Yangi haydovchilar uchun yo'riqnoma",
   },
   stats: {
     title: 'Statistika',
@@ -214,6 +217,7 @@ export const uz = {
     themeLight: "Yorug'",
     themeDark: "Qorong'i",
     faq: 'Yordam / FAQ',
+    guide: "Haydovchi qo'llanmasi",
     terms: 'Foydalanish shartlari va maxfiylik siyosati',
   },
   notifications: {
@@ -742,7 +746,7 @@ export const uz = {
     allStepsTitle: 'Barcha bosqichlar',
     step1Title: "1. Ro'yxatdan o'tish va hujjatlar",
     step1Body:
-      "Telegram yoki Google orqali kiring. So'ng mashina rusumi, davlat raqami, ishlab chiqarilgan yili hamda haydovchilik guvohnomasi va texpasportning old-orqa rasmlarini ilova ichida yuklang.",
+      "Telegram orqali kiring. So'ng mashina rusumi, davlat raqami, ishlab chiqarilgan yili hamda haydovchilik guvohnomasi va texpasportning old-orqa rasmlarini ilova ichida yuklang.",
     step1Tip:
       "Maslahat: Hujjat rasmlari yorug' joyda, yozuvlari aniq o'qiladigan qilib olinishi kerak. Admin tekshirib tasdiqlagach zakas olishingiz mumkin.",
     step2Title: '2. Balans va bepul bonus davri',
@@ -791,6 +795,7 @@ export const ru = {
     retry: 'Повторить', close: 'Закрыть', send: 'Отправить',
     save: 'Сохранить', delete: 'Удалить',
     ok: 'ОК',
+    continue: 'Продолжить',
   },
   auth: {
     title: 'Sarix Go Driver',
@@ -902,6 +907,8 @@ export const ru = {
     logoutConfirmBody:
       'Вы действительно хотите выйти из аккаунта? После выхода уведомления о новых заказах приходить не будут.',
     logoutConfirmYes: 'Да, выйти',
+    guide: 'Руководство водителя',
+    guideSub: 'Инструкция для новых водителей',
   },
   stats: {
     title: 'Статистика', today: 'Сегодня', week: 'Неделя', month: 'Месяц',
@@ -923,6 +930,7 @@ export const ru = {
     title: 'Настройки', language: 'Язык', theme: 'Тема',
     themeAuto: 'Авто', themeLight: 'Светлая', themeDark: 'Тёмная',
     faq: 'Помощь / FAQ',
+    guide: 'Руководство водителя',
     terms: 'Условия использования и политика конфиденциальности',
   },
   notifications: {
@@ -1443,7 +1451,7 @@ export const ru = {
     allStepsTitle: 'Все этапы',
     step1Title: '1. Регистрация и документы',
     step1Body:
-      'Войдите через Telegram или Google. Затем укажите марку, госномер и год выпуска автомобиля и загрузите фото водительского удостоверения и техпаспорта с обеих сторон прямо в приложении.',
+      'Войдите через Telegram. Затем укажите марку, госномер и год выпуска автомобиля и загрузите фото водительского удостоверения и техпаспорта с обеих сторон прямо в приложении.',
     step1Tip:
       'Совет: делайте фото при хорошем освещении, чтобы все надписи легко читались. После проверки администратором вы сможете принимать заказы.',
     step2Title: '2. Баланс и бесплатный период',
@@ -1491,6 +1499,7 @@ export const en = {
     yes: 'Yes', no: 'No', loading: 'Loading...', error: 'Error',
     retry: 'Retry', close: 'Close', send: 'Send', save: 'Save', delete: 'Delete',
     ok: 'OK',
+    continue: 'Continue',
   },
   auth: {
     title: 'Sarix Go Driver',
@@ -1602,6 +1611,8 @@ export const en = {
     logoutConfirmBody:
       'Are you sure you want to log out of your account? You will stop receiving new order notifications after logging out.',
     logoutConfirmYes: 'Yes, log out',
+    guide: 'Driver Guide',
+    guideSub: 'Step-by-step guide for new drivers',
   },
   stats: {
     title: 'Statistics', today: 'Today', week: 'Week', month: 'Month',
@@ -1622,6 +1633,7 @@ export const en = {
     title: 'Settings', language: 'Language', theme: 'Theme',
     themeAuto: 'Auto', themeLight: 'Light', themeDark: 'Dark',
     faq: 'Help / FAQ',
+    guide: 'Driver Guide',
     terms: 'Terms of Use and Privacy Policy',
   },
   notifications: {
@@ -2140,7 +2152,7 @@ export const en = {
     allStepsTitle: 'All steps',
     step1Title: '1. Registration & Documents',
     step1Body:
-      'Sign in via Telegram or Google. Then fill in your car model, plate number, and year, and upload clear front and back photos of your driver licence and vehicle registration in the app.',
+      'Sign in via Telegram. Then fill in your car model, plate number, and year, and upload clear front and back photos of your driver licence and vehicle registration in the app.',
     step1Tip:
       'Tip: Take photos in good lighting so all text is readable. Once an admin approves your documents, you can start accepting rides.',
     step2Title: '2. Balance & Free Trial',
@@ -2188,6 +2200,7 @@ export const uzCyrl = {
     yes: 'Ҳа', no: 'Йўқ', loading: 'Юкланмоқда...', error: 'Хатолик',
     retry: 'Қайта уриниш', close: 'Ёпиш', send: 'Юбориш', save: 'Сақлаш', delete: 'Ўчириш',
     ok: 'OK',
+    continue: 'Давом этиш',
   },
   auth: {
     title: 'Sarix Go Driver',
@@ -2299,6 +2312,8 @@ export const uzCyrl = {
     logoutConfirmBody:
       'Ҳақиқатан ҳам аккаунтингиздан чиқмоқчимисиз? Чиқишдан сўнг янги закаслар ҳақида билдиришномалар келмайди.',
     logoutConfirmYes: 'Ҳа, чиқиш',
+    guide: 'Ҳайдовчи қўлланмаси',
+    guideSub: 'Янги ҳайдовчилар учун йўриқнома',
   },
   stats: {
     title: 'Статистика', today: 'Бугун', week: 'Ҳафта', month: 'Ой',
@@ -2319,6 +2334,7 @@ export const uzCyrl = {
     title: 'Созламалар', language: 'Тил', theme: 'Мавзу',
     themeAuto: 'Автоматик', themeLight: 'Ёруғ', themeDark: 'Қоронғи',
     faq: 'Ёрдам / FAQ',
+    guide: 'Ҳайдовчи қўлланмаси',
     terms: 'Фойдаланиш шартлари ва махфийлик сиёсати',
   },
   notifications: {
@@ -2839,7 +2855,7 @@ export const uzCyrl = {
     allStepsTitle: 'Барча босқичлар',
     step1Title: '1. Рўйхатдан ўтиш ва ҳужжатлар',
     step1Body:
-      'Telegram ёки Google орқали киринг. Сўнг машина русуми, давлат рақами, ишлаб чиқарилган йили ҳамда ҳайдовчилик гувоҳномаси ва техпаспортнинг олд-орқа расмларини илова ичида юкланг.',
+      'Telegram орқали киринг. Сўнг машина русуми, давлат рақами, ишлаб чиқарилган йили ҳамда ҳайдовчилик гувоҳномаси ва техпаспортнинг олд-орқа расмларини илова ичида юкланг.',
     step1Tip:
       'Маслаҳат: Ҳужжат расмлари ёруғ жойда, ёзувлари аниқ ўқиладиган қилиб олиниши керак. Админ текшириб тасдиқлагач закас олишингиз мумкин.',
     step2Title: '2. Баланс ва бепул бонус даври',

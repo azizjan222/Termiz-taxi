@@ -613,8 +613,8 @@ export default function OrderEntryScreen() {
           <View style={[styles.pinIcon, isDest && { backgroundColor: colors.primary }]}>
             <Icon
               name={isSaveMode ? 'bookmark' : isDest ? 'flag' : 'person'}
-              size={30}
-              color={colors.primary}
+              size={28}
+              color={colors.textOnPrimary}
             />
           </View>
           <View style={styles.pinStick} />
@@ -799,14 +799,26 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   topCard: {
     position: 'absolute',
     top: spacing.md,
-    alignSelf: 'center',
+    left: 68,
+    right: spacing.md,
     alignItems: 'center',
-    maxWidth: '80%',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
-  topLabel: { ...typography.caption, color: colors.textSecondary },
-  topAddr: { ...typography.bodyBold, color: colors.text },
+  topLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
+  topAddr: { ...typography.bodyBold, color: colors.text, textAlign: 'center', marginTop: 2 },
   topAddrMuted: { ...typography.body, color: colors.textSecondary, marginLeft: spacing.xs },
-  row: { flexDirection: 'row', alignItems: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   pinContainer: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
@@ -820,9 +832,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    borderColor: colors.white,
+    borderColor: '#FFFFFF',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
-  pinStick: { width: 3, height: 22, backgroundColor: '#222', marginTop: -2 },
+  pinStick: { width: 3, height: 22, backgroundColor: colors.primaryDark, marginTop: -2 },
   backBtn: {
     position: 'absolute',
     left: spacing.md,

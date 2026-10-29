@@ -31,7 +31,8 @@ const TILE_FG_DARK = '#2A2000';
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const isDark = useThemeStore((s) => s.isDark);
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const driver = useDriverStore((s) => s.driver);
   const setDriver = useDriverStore((s) => s.setDriver);
   const logout = useDriverStore((s) => s.logout);
@@ -149,7 +150,7 @@ export default function ProfileScreen() {
     try {
       await logout();
       setLogoutVisible(false);
-      router.replace('/login');
+      router.replace('/language');
     } finally {
       if (aliveRef.current) setLoggingOut(false);
     }
@@ -223,7 +224,7 @@ export default function ProfileScreen() {
               {uploading ? (
                 <Text style={styles.avatarEditText}>…</Text>
               ) : (
-                <Icon name="camera" size={13} color={colors.text} />
+                <Icon name="camera" size={13} color={colors.primary} />
               )}
             </View>
           </TouchableOpacity>
@@ -273,15 +274,12 @@ export default function ProfileScreen() {
               onPress={() => router.push('/order-history')}
               activeOpacity={0.85}
             >
-              <View style={[styles.statIconTile, { backgroundColor: colors.primary }]}>
-                <Icon name="taxi" size={20} color={TILE_FG} />
+              <View style={[styles.statIconTile, { backgroundColor: isDark ? 'rgba(91,141,239,0.18)' : '#EEF4FF' }]}>
+                <Icon name="taxi" size={20} color={colors.primary} />
               </View>
               <Text style={styles.statValue}>{driver?.total_orders || 0}</Text>
               <Text style={styles.statLabel}>{t('profile.totalOrders')}</Text>
             </TouchableOpacity>
-            {/* Tappable: "how is this number calculated?" is the obvious question to have
-                while looking at it. Goes to the rating page only — sending the driver to the
-                whole FAQ list made them hunt for the one entry they had just asked about. */}
             <TouchableOpacity
               style={styles.statBox}
               onPress={() => router.push('/rating-info')}
@@ -289,11 +287,11 @@ export default function ProfileScreen() {
               accessibilityRole="button"
               accessibilityHint={t('ratingInfo.title')}
             >
-              <View style={[styles.statIconTile, { backgroundColor: colors.accent }]}>
+              <View style={[styles.statIconTile, { backgroundColor: isDark ? 'rgba(56,189,248,0.18)' : '#E0F2FE' }]}>
                 <Icon
                   name={hasRatings ? 'star' : 'starOutline'}
                   size={20}
-                  color={TILE_FG_DARK}
+                  color={isDark ? '#38BDF8' : '#0284C7'}
                 />
               </View>
               {/* Was a hardcoded 4.0 for EVERY driver, behind a "ratings are not in use
@@ -336,13 +334,14 @@ export default function ProfileScreen() {
               onPress={() => router.push('/guide')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: colors.accent }]}>
-                <Icon name="book" size={20} color={TILE_FG_DARK} />
+              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(91,141,239,0.18)' : '#EEF4FF' }]}>
+                <Icon name="book" size={20} color={colors.primary} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.guide')}</Text>
                 <Text style={styles.menuSub}>{t('profile.guideSub')}</Text>
               </View>
+              <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -350,13 +349,14 @@ export default function ProfileScreen() {
               onPress={() => router.push('/top-up')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: colors.success }]}>
-                <Icon name="money" size={20} color={TILE_FG} />
+              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(16,185,129,0.18)' : '#ECFDF5' }]}>
+                <Icon name="money" size={20} color={colors.success} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.topUp')}</Text>
                 <Text style={styles.menuSub}>{t('more.topUpSub')}</Text>
               </View>
+              <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -364,13 +364,14 @@ export default function ProfileScreen() {
               onPress={() => router.push('/stats')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: colors.primary }]}>
-                <Icon name="chart" size={20} color={TILE_FG} />
+              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(99,102,241,0.18)' : '#EEF2FF' }]}>
+                <Icon name="chart" size={20} color={isDark ? '#818CF8' : '#4F46E5'} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('stats.title')}</Text>
                 <Text style={styles.menuSub}>{t('more.statsSub')}</Text>
               </View>
+              <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -378,13 +379,14 @@ export default function ProfileScreen() {
               onPress={() => router.push('/order-history')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: colors.warning }]}>
-                <Icon name="history" size={20} color={TILE_FG_DARK} />
+              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(56,189,248,0.18)' : '#E0F2FE' }]}>
+                <Icon name="history" size={20} color={isDark ? '#38BDF8' : '#0284C7'} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.orderHistory')}</Text>
                 <Text style={styles.menuSub}>{t('more.historySub')}</Text>
               </View>
+              <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -392,13 +394,14 @@ export default function ProfileScreen() {
               onPress={() => router.push('/notifications')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: colors.accent }]}>
-                <Icon name="notification" size={20} color={TILE_FG_DARK} />
+              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(139,92,246,0.18)' : '#F3E8FF' }]}>
+                <Icon name="notification" size={20} color={isDark ? '#A78BFA' : '#7C3AED'} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.notifications')}</Text>
                 <Text style={styles.menuSub}>{t('more.notificationsSub')}</Text>
               </View>
+              <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -408,13 +411,14 @@ export default function ProfileScreen() {
               }
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: colors.primary }]}>
-                <Icon name="document" size={20} color={TILE_FG} />
+              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(91,141,239,0.18)' : '#EEF4FF' }]}>
+                <Icon name="document" size={20} color={colors.primary} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('more.myInfo')}</Text>
                 <Text style={styles.menuSub}>{t('more.myInfoSub')}</Text>
               </View>
+              <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -422,13 +426,14 @@ export default function ProfileScreen() {
               onPress={() => router.push('/car-photo')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: colors.error }]}>
-                <Icon name="car" size={20} color={TILE_FG} />
+              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(20,184,166,0.18)' : '#CCFBF1' }]}>
+                <Icon name="car" size={20} color={isDark ? '#2DD4BF' : '#0D9488'} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('more.carPhoto')}</Text>
                 <Text style={styles.menuSub}>{t('more.carPhotoSub')}</Text>
               </View>
+              <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -436,13 +441,14 @@ export default function ProfileScreen() {
               onPress={() => router.push('/ai-chat')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: colors.primaryLight }]}>
-                <Icon name="robot" size={20} color={TILE_FG} />
+              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(99,102,241,0.18)' : '#EEF2FF' }]}>
+                <Icon name="robot" size={20} color={isDark ? '#818CF8' : '#4F46E5'} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.aiAssistant')}</Text>
                 <Text style={styles.menuSub}>{t('profile.aiAssistantHint')}</Text>
               </View>
+              <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -450,8 +456,8 @@ export default function ProfileScreen() {
               onPress={openSupport}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: colors.info }]}>
-                <Icon name="profile" size={20} color={TILE_FG} />
+              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(59,130,246,0.18)' : '#DBEAFE' }]}>
+                <Icon name="profile" size={20} color={colors.info} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.support')}</Text>
@@ -459,23 +465,22 @@ export default function ProfileScreen() {
                   {support ? `@${support.telegram_username}` : t('profile.supportHint')}
                 </Text>
               </View>
+              <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
-            {/* Yordam / FAQ used to sit here as its own row, right next to the support
-                row it duplicates. It now lives inside Settings: the profile list is for
-                things a driver reaches often, and reference material is not one of them. */}
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => router.push('/settings')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: colors.textMuted }]}>
-                <Icon name="settings" size={20} color={TILE_FG} />
+              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(148,163,184,0.18)' : '#F1F5F9' }]}>
+                <Icon name="settings" size={20} color={colors.textSecondary} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.settings')}</Text>
                 <Text style={styles.menuSub}>{t('more.settingsSub')}</Text>
               </View>
+              <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -585,7 +590,7 @@ export default function ProfileScreen() {
   );
 }
 
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   scroll: { paddingBottom: spacing.xxl },
   headerGradient: {
@@ -628,11 +633,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: colors.accent,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.textOnPrimary,
+    borderColor: '#DBEAFE',
   },
   avatarEditText: { fontSize: 14 },
   userName: { ...typography.h2, color: colors.textOnPrimary },
@@ -641,37 +646,37 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   balanceCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0E1B3D',
+    backgroundColor: isDark ? '#1E3A6E' : '#1E3A8A',
     padding: spacing.lg,
     borderRadius: radius.xl,
     marginBottom: spacing.md,
     gap: spacing.md,
     shadowColor: '#0E1B3D',
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   balanceCardLow: { backgroundColor: colors.error },
   balanceIconTile: {
     width: 48,
     height: 48,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  balanceLabel: { ...typography.caption, color: 'rgba(255,255,255,0.8)' },
-  balanceValue: { ...typography.h2, color: colors.accent, marginVertical: spacing.xs },
+  balanceLabel: { ...typography.caption, color: 'rgba(255,255,255,0.82)' },
+  balanceValue: { ...typography.h2, color: '#FFFFFF', marginVertical: spacing.xs },
   balanceWarningRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   balanceWarning: { ...typography.small, color: colors.textOnPrimary },
   topUpBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     borderRadius: radius.pill,
   },
-  topUpBtnText: { ...typography.bodyBold, color: '#0E1B3D', fontSize: 14 },
+  topUpBtnText: { ...typography.bodyBold, color: '#1E3A8A', fontSize: 14 },
   statsRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
   statBox: {
     flex: 1,

@@ -46,29 +46,28 @@ interface MenuItem {
 // foregrounds below are fixed dark shades, so each pair keeps its contrast in both light
 // and dark mode without needing a themed variant.
 const ICON_TINTS: Record<string, string> = {
-  'profile.inviteFriends': '#D1FAE5',    // green
-  'profile.orderHistory': '#FFF3CC',     // gold
-  'profile.savedAddresses': '#FEE2E2',   // red/pink
-  'profile.paymentMethods': '#FFF3CC',   // gold
-  'profile.notifications': '#FEF3C7',    // yellow
-  'profile.promoCodes': '#D1FAE5',       // green
+  'profile.inviteFriends': '#D1FAE5',    // soft emerald
+  'profile.orderHistory': '#EEF2FF',     // soft indigo
+  'profile.savedAddresses': '#E0F2FE',   // soft sky
+  'profile.paymentMethods': '#EEF2FF',   // soft indigo
+  'profile.notifications': '#E0F2FE',    // soft sky
+  'profile.promoCodes': '#D1FAE5',       // soft emerald
   'ai.title': '#E0E7FF',                 // indigo
-  'profile.helpSupport': '#FEE2E2',      // red
+  'profile.helpSupport': '#EEF2FF',      // soft indigo
   'profile.settings': '#EEF1F8',         // gray
 };
 
-// Foreground for the icon on each tint above. Emoji could not be coloured, so this pairing
-// did not exist before — the glyph was whatever hue the system font happened to use.
+// Foreground for the icon on each tint above.
 const ICON_COLORS: Record<string, string> = {
   'profile.inviteFriends': '#059669',
-  'profile.orderHistory': '#B88700',
-  'profile.savedAddresses': '#DC2626',
-  'profile.paymentMethods': '#B88700',
-  'profile.notifications': '#D97706',
+  'profile.orderHistory': '#4F46E5',
+  'profile.savedAddresses': '#0284C7',
+  'profile.paymentMethods': '#4F46E5',
+  'profile.notifications': '#0284C7',
   'profile.promoCodes': '#059669',
   'ai.title': '#4F46E5',
-  'profile.helpSupport': '#DC2626',
-  'profile.settings': '#656B78',
+  'profile.helpSupport': '#4F46E5',
+  'profile.settings': '#4B5563',
 };
 
 export default function ProfileScreen() {
@@ -178,7 +177,7 @@ export default function ProfileScreen() {
     try {
       await logout();
       setLogoutVisible(false);
-      router.replace('/(auth)/telegram-login');
+      router.replace('/(auth)/language');
     } finally {
       if (aliveRef.current) setLoggingOut(false);
     }
@@ -293,7 +292,7 @@ export default function ProfileScreen() {
         </View>
         */}
 
-        {/* Become driver — prominent gold banner */}
+        {/* Become driver — calm blue banner */}
         {becomeDriver && (
           <TouchableOpacity
             onPress={becomeDriver.onPress}
@@ -307,8 +306,7 @@ export default function ProfileScreen() {
               style={styles.driverBanner}
             >
               <View style={styles.driverIconTile}>
-                {/* Dark glyph: the tile sits on the gold gradient. */}
-                <Icon name={becomeDriver.icon} size={24} color="#3D2C00" />
+                <Icon name={becomeDriver.icon} size={24} color="#FFFFFF" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.driverTitle}>{t(becomeDriver.labelKey)}</Text>
@@ -458,7 +456,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#E0E7FF',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
@@ -506,7 +506,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: spacing.lg,
     borderRadius: radius.lg,
     shadowColor: colors.accentDark,
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.2,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
@@ -521,16 +521,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  driverTitle: { ...typography.bodyBold, color: colors.textOnAccent, fontWeight: '700' },
+  driverTitle: { ...typography.bodyBold, color: '#FFFFFF', fontWeight: '700' },
   driverSubtitle: {
     ...typography.small,
-    color: colors.textOnAccent,
-    opacity: 0.8,
+    color: 'rgba(255,255,255,0.9)',
     marginTop: 2,
   },
   menu: {

@@ -1,26 +1,33 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 
 import { Logo } from '../../src/components/Logo';
 import { OrderCtaButton } from '../../src/components/OrderCtaButton';
-import { changeLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from '../../src/i18n';
+import i18n, { changeLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from '../../src/i18n';
 import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
 export default function LanguageScreen() {
   const { t } = useTranslation();
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [selected, setSelected] = useState<SupportedLanguage>('uz');
+  const [selected, setSelected] = useState<SupportedLanguage>(
+    (i18n.language as SupportedLanguage) || 'uz'
+  );
 
   const handleNext = async () => {
     await changeLanguage(selected);
     await AsyncStorage.setItem('@sarixgo/onboarded', 'true');
+    if (from === 'login') {
+      router.back();
+      return;
+    }
     router.replace('/(auth)/telegram-login');
   };
 

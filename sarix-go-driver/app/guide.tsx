@@ -52,8 +52,8 @@ const GUIDE_STEPS: GuideStep[] = [
   {
     n: 3,
     icon: 'taxi',
-    tint: '#FEF3C7',
-    iconColor: '#D97706',
+    tint: '#E0F2FE',
+    iconColor: '#0284C7',
     titleKey: 'guide.step3Title',
     bodyKey: 'guide.step3Body',
     tipKey: 'guide.step3Tip',
@@ -142,7 +142,7 @@ export default function DriverGuideScreen() {
 
         <View style={styles.headerHero}>
           <View style={styles.heroIconWrap}>
-            <Icon name="book" size={32} color={colors.primary} />
+            <Icon name="book" size={32} color="#FFFFFF" />
           </View>
           <Text style={styles.headerTitle}>{t('guide.title')}</Text>
           <Text style={styles.headerSub}>{t('guide.subtitle')}</Text>
@@ -176,7 +176,7 @@ export default function DriverGuideScreen() {
           <Text style={styles.stepBody}>{t(currentStep.bodyKey)}</Text>
 
           <View style={styles.tipBox}>
-            <Icon name="idea" size={18} color="#B45309" />
+            <Icon name="idea" size={18} color={colors.primary} />
             <Text style={styles.tipText}>{t(currentStep.tipKey)}</Text>
           </View>
         </View>
@@ -285,7 +285,7 @@ const createStyles = (colors: ThemeColors) =>
     },
     skipText: {
       ...typography.small,
-      color: colors.accent,
+      color: '#DBEAFE',
       fontWeight: '700',
     },
     headerHero: {
@@ -296,7 +296,7 @@ const createStyles = (colors: ThemeColors) =>
       width: 60,
       height: 60,
       borderRadius: radius.lg,
-      backgroundColor: colors.accent,
+      backgroundColor: 'rgba(255,255,255,0.18)',
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: spacing.sm,
@@ -326,7 +326,7 @@ const createStyles = (colors: ThemeColors) =>
     },
     dotActive: {
       width: 28,
-      backgroundColor: colors.accent,
+      backgroundColor: '#FFFFFF',
     },
     dotCompleted: {
       backgroundColor: 'rgba(255,255,255,0.75)',
@@ -371,16 +371,16 @@ const createStyles = (colors: ThemeColors) =>
       flexDirection: 'row',
       alignItems: 'flex-start',
       gap: spacing.sm,
-      backgroundColor: '#FFFBEB',
+      backgroundColor: colors.surface,
       borderWidth: 1,
-      borderColor: '#FDE68A',
+      borderColor: colors.border,
       borderRadius: radius.md,
       padding: spacing.md,
       width: '100%',
     },
     tipText: {
       ...typography.small,
-      color: '#92400E',
+      color: colors.textSecondary,
       flex: 1,
       lineHeight: 19,
     },
