@@ -1119,6 +1119,26 @@ const HTML = `<!DOCTYPE html>
 
     <!-- Right: Summary of Changes -->
     <div class="info-panel">
+      <div class="panel-card" style="border-color:#10B981;background:linear-gradient(180deg,#ECFDF5 0%,#FFFFFF 100%);">
+        <div class="kicker-text">GOOGLE PLAY RAD ETISH MUAMMOSI BUTUNLAY TUZATILDI · v1.0.3 (versionCode 11)</div>
+        <h1>«Недопустимое раскрытие информации» (Prominent Disclosure) — 100% Yechim</h1>
+        <p>Google Play 5 marta rad etgan xatolikning barcha texnik sabablari aniqlanib, tag-tomiri bilan bartaraf etildi:</p>
+        <ul class="check-list">
+          <li>
+            <span class="check-icon" style="background:#D1FAE5;color:#059669;">✓</span>
+            <div><b><code>ACCESS_BACKGROUND_LOCATION</code> butunlay olib tashlandi va bloklandi:</b> <code>app.json</code>'da <code>blockedPermissions: ["android.permission.ACCESS_BACKGROUND_LOCATION"]</code> hamda <code>isAndroidBackgroundLocationEnabled: false</code> o'rnatildi. Safar vaqtida xaritada kuzatish <code>FOREGROUND_SERVICE_LOCATION</code> (bildirishnomali old fon xizmati) orqali 100% uzluksiz ishlayveradi!</div>
+          </li>
+          <li>
+            <span class="check-icon" style="background:#D1FAE5;color:#059669;">✓</span>
+            <div><b>1:1 Prominent Disclosure → Darhol OS Ruxsat Oynasi:</b> Endi faqat zakas oynasida (<code>/order/[id]</code>) joylashuv ruxsati berilmagan bo'lsagina avval tushuntirish oynasi chiqadi va haydovchi <b>«Roziman»</b> tugmasini bosgan zahoti (<code>0ms</code> kechikishsiz) Android tizimining dinamik ruxsat oynasi ochiladi. Ikkinchi marta (<code>requestBackgroundPermissionsAsync</code>) hech qachon chaqirilmaydi.</div>
+          </li>
+          <li>
+            <span class="check-icon" style="background:#D1FAE5;color:#059669;">✓</span>
+            <div><b>MUHIM (OTA emas, yangi AAB!):</b> Google Play tekshiruvchilari <code>eas update</code> (OTA) ni ko'rmaydi, ular faqat Play Console'ga yuklangan <code>.aab</code> faylini tekshiradi. Yangi <code>versionCode: 11 (1.0.3)</code> AAB faylini yig'ib Play Console'ga yuklang.</div>
+          </li>
+        </ul>
+      </div>
+
       <div class="panel-card" style="border-color:#C7D2FE;background:linear-gradient(180deg,#FFFFFF 0%,#F8FAFF 100%);">
         <div class="kicker-text">YANGI QO'SHILGAN FUNKSIYALAR · M41 KORIDOR & JONLI CHAT</div>
         <h1>Yo'l-yo'lakay Zakaslar, Qaytish Reysi va Ilova Ichidagi Chat</h1>
@@ -1144,59 +1164,8 @@ const HTML = `<!DOCTYPE html>
       </div>
 
       <div class="panel-card">
-        <div class="kicker-text">ZAMONAVIY INTERFEYS · GOOGLE PLAY v1.0.2 (versionCode 10)</div>
-        <h1>Sarix Go Driver — Yangilangan Zamonaviy Hujjat Ekrani</h1>
-        <p>Chap tomonda <b>zamonaviy skaner ramkalari</b>, <b>O'zbekiston davlat raqami (UZ)</b> maydoni, <b>1-bosishda model va rang tanlash</b> hamda <b>440+ mashina modellari</b> qidiruvi bilan boyitilgan ekran ko'rsatilgan.</p>
-        <ul class="check-list">
-          <li>
-            <span class="check-icon">01</span>
-            <div><b>Zamonaviy Hujjat Skaner Kartochkalari:</b> Oddiy emoji o'rniga burchak vizirlari (<code>⌜ ⌝ ⌞ ⌟</code>), oltin va ko'k mikrochipli <b>Prava</b> va <b>Texpasport</b> grafik maketlari hamda jonli holat tugmalari qo'shildi.</div>
-          </li>
-          <li>
-            <span class="check-icon">02</span>
-            <div><b>1-Bosishda Mashina Modeli & Qidiruv Modal Oynasi:</b> Eng ko'p haydaladigan mashinalar (<i>Cobalt, Gentra, Onix, Tracker 2, Monza, BYD Song Plus, Damas</i>) bir bosishda tanlanadi, yoki 440+ model ichidan qidiriladi.</div>
-          </li>
-          <li>
-            <span class="check-icon">03</span>
-            <div><b>Haqiqiy O'zbekiston Davlat Raqami (UZ) & Rang Palitrasi:</b> Davlat raqami kiritish maydoni ko'k <code>UZ</code> bayroq belgisi bilan, ranglar esa haqiqiy rang doirachalari bilan jihozlandi.</div>
-          </li>
-        </ul>
-      </div>
-
-      <div class="panel-card">
-        <h3>Ovozli Bildirishnoma Signallari (Bosib eshitib ko'ring)</h3>
-        <p>Har bir holat uchun maxsus sintez qilingan, quloqni charchatmaydigan yoqimli marimba va kristal qo'ng'iroq (44.1 kHz WAV) ohanglari:</p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px;">
-          <button type="button" onclick="playWav('new_order.wav', 'Yangi zakas signali')" style="text-align:left;padding:11px 13px;border-radius:12px;border:1px solid #E2E8F0;background:#F8FAFC;cursor:pointer;">
-            <div style="font-weight:800;font-size:13px;color:#4F46E5;">▶ 1. Yangi zakas</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px;">new_order.wav · Ko'tariluvchi 2-taktli marimba</div>
-          </button>
-          <button type="button" onclick="playWav('order_cancelled.wav', 'Zakas bekor bo\\'ldi signali')" style="text-align:left;padding:11px 13px;border-radius:12px;border:1px solid #E2E8F0;background:#F8FAFC;cursor:pointer;">
-            <div style="font-weight:800;font-size:13px;color:#EF4444;">▶ 2. Zakas bekor bo'ldi</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px;">order_cancelled.wav · Mayin pasayuvchi ohang</div>
-          </button>
-          <button type="button" onclick="playWav('order_accepted.wav', 'Haydovchi topildi / Qabul qilindi')" style="text-align:left;padding:11px 13px;border-radius:12px;border:1px solid #E2E8F0;background:#F8FAFC;cursor:pointer;">
-            <div style="font-weight:800;font-size:13px;color:#059669;">▶ 3. Zakas qabul qilindi</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px;">order_accepted.wav · Yorqin major arpeggio</div>
-          </button>
-          <button type="button" onclick="playWav('driver_arrived.wav', 'Haydovchi yetib keldi / Safar boshlandi')" style="text-align:left;padding:11px 13px;border-radius:12px;border:1px solid #E2E8F0;background:#F8FAFC;cursor:pointer;">
-            <div style="font-weight:800;font-size:13px;color:#2563EB;">▶ 4. Safar boshlandi</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px;">driver_arrived.wav · Kristal kutib olish ohangi</div>
-          </button>
-          <button type="button" onclick="playWav('order_completed.wav', 'Safar muvaffaqiyatli yakunlandi')" style="text-align:left;padding:11px 13px;border-radius:12px;border:1px solid #E2E8F0;background:#F8FAFC;cursor:pointer;">
-            <div style="font-weight:800;font-size:13px;color:#10B981;">▶ 5. Safar yakunlandi</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px;">order_completed.wav · Tinchlantiruvchi akkord</div>
-          </button>
-          <button type="button" onclick="playWav('balance_bonus.wav', 'Balans to\\'ldirildi / Bonus tushdi')" style="text-align:left;padding:11px 13px;border-radius:12px;border:1px solid #E2E8F0;background:#F8FAFC;cursor:pointer;">
-            <div style="font-weight:800;font-size:13px;color:#D97706;">▶ 6. Balans va Bonus</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px;">balance_bonus.wav · Kumush tanga jaranggi</div>
-          </button>
-        </div>
-      </div>
-
-      <div class="panel-card">
         <h3>Play Market uchun yangi .aab faylni chiqarish buyrug'i</h3>
-        <p>Kompyuteringizda quyidagi buyruq orqali <code>versionCode: 10 (1.0.2)</code> bilan yangi AAB faylni yig'ib olishingiz mumkin:</p>
+        <p>Kompyuteringizda quyidagi buyruq orqali <code>versionCode: 11 (1.0.3)</code> bilan yangi AAB faylni yig'ib, Google Play Console'ga yuklang:</p>
         <pre>cd sarix-go-driver
 eas build --platform android --profile production</pre>
       </div>

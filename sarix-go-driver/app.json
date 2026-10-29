@@ -2,12 +2,12 @@
   "expo": {
     "name": "Sarix Driver",
     "slug": "sarix-go-driver",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "sarixgodriver",
     "userInterfaceStyle": "light",
-    "runtimeVersion": "3",
+    "runtimeVersion": "4",
     "updates": {
       "fallbackToCacheTimeout": 0
     },
@@ -19,18 +19,14 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uz.sarixgo.driver",
-      "buildNumber": "1.0.2",
+      "buildNumber": "1.0.3",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "location"
-        ],
-        "NSLocationWhenInUseUsageDescription": "Safar davomida yo'lovchi sizni xaritada ko'rib turishi uchun joylashuv kerak.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Ilova yopiq bo'lsa ham yo'lovchi sizni xaritada kuzatib turishi uchun joylashuv kerak."
+        "NSLocationWhenInUseUsageDescription": "Safar davomida yo'lovchi sizni xaritada ko'rib turishi uchun joylashuv kerak."
       }
     },
     "android": {
       "package": "uz.sarixgo.driver",
-      "versionCode": 10,
+      "versionCode": 11,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -44,9 +40,11 @@
         "WAKE_LOCK",
         "RECEIVE_BOOT_COMPLETED",
         "POST_NOTIFICATIONS",
-        "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
       ]
     },
     "plugins": [
@@ -55,7 +53,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Ilova to'lov skrinshotini yuklash uchun galereyaga kiradi.",
+          "photosPermission": "Ilova to'lov skrinshotini va hujjat rasmlarini yuklash uchun galereyaga kiradi.",
           "microphonePermission": false
         }
       ],
@@ -75,9 +73,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Ilova yopiq bo'lsa ham yo'lovchi sizni xaritada kuzatib turishi uchun joylashuv kerak.",
           "locationWhenInUsePermission": "Safar davomida yo'lovchi sizni xaritada ko'rib turishi uchun joylashuv kerak.",
-          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": true
         }
       ],

@@ -179,6 +179,12 @@ export default function DriverDocumentsScreen() {
    * Returns true only when the picker may be opened.
    */
   const ensurePermission = async (source: 'camera' | 'gallery'): Promise<boolean> => {
+    // On Android, launchImageLibraryAsync uses the system Photo Picker which requires no
+    // runtime permission on Android 13+ (API 33+).
+    if (source === 'gallery' && Platform.OS === 'android') {
+      return true;
+    }
+
     const current =
       source === 'camera'
         ? await ImagePicker.getCameraPermissionsAsync()
@@ -195,30 +201,17 @@ export default function DriverDocumentsScreen() {
       return false;
     }
 
-    // Explain, then ask. Resolved through the dialog so the OS prompt only ever follows a
-    // deliberate "continue".
-    const proceed = await new Promise<boolean>((resolve) => {
-      Alert.alert(
-        t('docs.permTitle'),
-        source === 'camera' ? t('docs.permCameraBody') : t('docs.permGalleryBody'),
-        [
-          { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
-          { text: t('common.next'), onPress: () => resolve(true) },
-        ],
-        { onDismiss: () => resolve(false) }
-      );
-    });
-    if (!proceed) return false;
-
     const requested =
       source === 'camera'
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!requested.granted) {
-      Alert.alert(t('docs.permTitle'), t('docs.permDeniedBody'), [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('docs.openSettings'), onPress: () => Linking.openSettings() },
-      ]);
+      if (!requested.canAskAgain) {
+        Alert.alert(t('docs.permTitle'), t('docs.permDeniedBody'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('docs.openSettings'), onPress: () => Linking.openSettings() },
+        ]);
+      }
       return false;
     }
     return true;

@@ -21,14 +21,13 @@ import YandexMap, { YandexMapHandle } from '../src/components/YandexMap';
 import { reverseGeocode } from '../src/services/geocoding';
 import { resolveRouteCity } from '../src/services/cityResolver';
 import { detectLocation } from '../src/services/location';
-import { listCities, listRoutes, type Route } from '../src/api/orders';
+import { listCities } from '../src/api/orders';
 import { createAddress, listAddresses, type SavedAddress } from '../src/api/addresses';
 import { describeApiError } from '../src/api/errors';
 import { useOrderStore } from '../src/store/order';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
-import { longHaulDestinations } from '../src/utils/longHaul';
 
 // Termiz, Surxondaryo (default center)
 const DEFAULT_LAT = 37.224;
@@ -134,7 +133,8 @@ export default function OrderEntryScreen() {
   const { t } = useTranslation();
   const orderStore = useOrderStore();
   const colors = useThemeStore((s) => s.colors);
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const isDark = useThemeStore((s) => s.isDark);
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   // `pick` selects what the map center represents:
   //  - 'from' (default) -> the pickup point (Yo'lovchini olish nuqtasi)
@@ -348,46 +348,6 @@ export default function OrderEntryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Routes are static reference data: fetch them ONCE. Previously this effect depended on
-  // `fullAddress`, which changes on every successful reverse-geocode, so panning the map
-  // fired a /api/routes request per address change (the geocode is debounced at only
-  // 200ms). There was also no ordering guard, so a slow earlier response could overwrite
-  // `longHaul` derived from a newer pickup city.
-  const [allRoutes, setAllRoutes] = useState<Route[]>([]);
-  useEffect(() => {
-    let active = true;
-    listRoutes()
-      .then(({ routes }) => {
-        if (active) setAllRoutes(routes || []);
-      })
-      .catch(() => {
-        if (active) setAllRoutes([]);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  /**
-   * Suggested destinations that are genuinely at least LONG_HAUL_MIN_KM away FROM HERE.
-   *
-   * This used to fall back to every long route in the system whenever the pickup city was
-   * not derived yet (which is most of the first second, before GPS and the geocoder land).
-   * The rows were populated, but with districts that are 70 km from *some other* city —
-   * so the screen promised "70 km dan kam bo'lmagan" and showed something else. Now the
-   * list stays empty until we know where the passenger actually is, and every row carries
-   * the real distance so the claim is checkable.
-   *
-   * Sorted nearest-first among the qualifying routes: the closest long-haul option is the
-   * one a passenger is most likely to want.
-   */
-  const longHaul = useMemo(
-    // Shared with route-select.tsx's destination list, so the two pickers cannot drift apart
-    // on what "long haul" means. Only the cap differs: this is a three-row quick pick.
-    () => longHaulDestinations(allRoutes, fullAddress ? deriveCity(fullAddress) : null).slice(0, 3),
-    [allRoutes, fullAddress, deriveCity]
-  );
-
   // ---------------------------------------------------------------- saved addresses
   useEffect(() => {
     let active = true;
@@ -402,6 +362,17 @@ export default function OrderEntryScreen() {
 
   /** The address currently under the pin, or null when nothing has resolved yet. */
   const pinAddress = (address || '').trim() || null;
+
+  /**
+   * True only when the exact address at the current map pin has finished resolving
+   * (neither GPS detection nor reverse-geocoding is in flight, and a real address exists).
+   */
+  const isAddressReady =
+    !detecting &&
+    !resolving &&
+    Boolean(pinAddress) &&
+    Boolean(fullAddress && fullAddress.trim()) &&
+    pinAddress !== t('orderEntry.pointOnMap');
 
   const persistAddress = async (labelText: string) => {
     if (saveInFlightRef.current) return;
@@ -506,24 +477,15 @@ export default function OrderEntryScreen() {
 
   // Destination map mode: confirm the chosen point and continue to the next step.
   const handleConfirmDestination = useCallback(() => {
+    if (!isAddressReady) return;
     saveDestination();
     router.replace(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
-  }, [saveDestination, orderStore.serviceType]);
+  }, [isAddressReady, saveDestination, orderStore.serviceType]);
 
   const handleWhereTo = () => {
+    if (!isAddressReady) return;
     savePickup();
     router.push({ pathname: '/route-select', params: { mode: 'to' } });
-  };
-
-  const handleQuickDestination = (district: string) => {
-    savePickup();
-    orderStore.setField('toCity', district);
-    orderStore.setField('toAddress', '');
-    // Clear any pin left over from an earlier destination pick, otherwise the order
-    // carries this district's name with the previous district's coordinates.
-    orderStore.setField('toLat', null);
-    orderStore.setField('toLon', null);
-    router.push(orderStore.serviceType === 'parcel' ? '/tariff' : '/new-order');
   };
 
   const isParcel = orderStore.serviceType === 'parcel';
@@ -696,49 +658,44 @@ export default function OrderEntryScreen() {
             <View style={styles.destPreview}>
               <Icon name="flag" size={14} color={colors.textSecondary} style={styles.destPreviewIcon} />
               <Text style={styles.destPreviewText} numberOfLines={2}>
-                {address || t('orderEntry.dragToPick')}
+                {isAddressReady ? address : t('orderEntry.detecting')}
               </Text>
             </View>
             <TouchableOpacity
-              style={styles.confirmBtn}
+              style={[styles.confirmBtn, !isAddressReady && styles.confirmBtnDisabled]}
               onPress={handleConfirmDestination}
+              disabled={!isAddressReady}
               activeOpacity={0.9}
             >
-              <Text style={styles.confirmBtnText}>{t('orderEntry.confirmAddress')}</Text>
+              <Text style={[styles.confirmBtnText, !isAddressReady && styles.confirmBtnTextDisabled]}>
+                {t('orderEntry.confirmAddress')}
+              </Text>
             </TouchableOpacity>
             {renderSaveRow()}
           </>
         ) : (
           <>
-            <TouchableOpacity style={styles.whereToBtn} onPress={handleWhereTo} activeOpacity={0.85}>
-              <Text style={styles.whereToText}>
+            <TouchableOpacity
+              style={[styles.whereToBtn, !isAddressReady && styles.whereToBtnDisabled]}
+              onPress={handleWhereTo}
+              disabled={!isAddressReady}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.whereToText, !isAddressReady && styles.whereToTextDisabled]}>
                 {isParcel ? t('orderEntry.whereToParcel') : t('orderEntry.whereTo')}
               </Text>
               <View style={styles.whereToArrow}>
-                <Icon name="arrowRight" size={16} color={colors.textSecondary} />
+                {detecting || resolving ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Icon
+                    name="arrowRight"
+                    size={16}
+                    color={isAddressReady ? colors.textSecondary : colors.textMuted}
+                  />
+                )}
               </View>
             </TouchableOpacity>
-
-            {/* Suggested destinations, each genuinely >= 70 km from the pickup city. The
-                distance is shown so the claim can be checked rather than trusted. */}
-            {longHaul.map((d) => (
-              <TouchableOpacity
-                key={d.city}
-                style={styles.quickRow}
-                onPress={() => handleQuickDestination(d.city)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.quickIcon}>
-                  <Icon name="location" size={16} color={colors.textSecondary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.quickTitle}>{d.city}</Text>
-                  <Text style={styles.quickSub}>
-                    {t('orderEntry.kmAway', { km: d.km })}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
 
             {renderSaveRow()}
           </>
@@ -793,7 +750,7 @@ export default function OrderEntryScreen() {
   );
 }
 
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white },
   mapWrap: { flex: 1, overflow: 'hidden' },
   topCard: {
@@ -803,21 +760,38 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     right: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.card,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    backgroundColor: 'transparent',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
-  topLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
-  topAddr: { ...typography.bodyBold, color: colors.text, textAlign: 'center', marginTop: 2 },
-  topAddrMuted: { ...typography.body, color: colors.textSecondary, marginLeft: spacing.xs },
+  topLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '700',
+    textShadowColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  topAddr: {
+    ...typography.bodyBold,
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'center',
+    marginTop: 2,
+    textShadowColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(255, 255, 255, 0.98)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  topAddrMuted: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginLeft: spacing.xs,
+    fontWeight: '700',
+    textShadowColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   pinContainer: {
     ...StyleSheet.absoluteFill,
@@ -906,7 +880,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.md,
     marginBottom: spacing.sm,
   },
+  whereToBtnDisabled: {
+    opacity: 0.5,
+  },
   whereToText: { ...typography.bodyBold, color: colors.text, fontSize: 17 },
+  whereToTextDisabled: { color: colors.textMuted },
   whereToArrow: {
     width: 28,
     height: 28,
@@ -915,22 +893,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quickRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  quickIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  quickTitle: { ...typography.body, color: colors.text },
-  quickSub: { ...typography.caption, color: colors.textSecondary },
 
   // Destination map mode
   destPreview: {
@@ -945,13 +907,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   destPreviewIcon: { fontSize: 20, marginRight: spacing.md },
   destPreviewText: { flex: 1, ...typography.bodyBold, color: colors.text },
   confirmBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#FACC15',
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  confirmBtnText: { ...typography.h3, color: colors.textOnPrimary },
+  confirmBtnDisabled: {
+    backgroundColor: colors.border,
+    opacity: 0.6,
+  },
+  confirmBtnText: { ...typography.h3, color: '#0F172A', fontWeight: '800' },
+  confirmBtnTextDisabled: { color: colors.textMuted },
 
   // --- "save this address" ---
   saveRow: {

@@ -117,6 +117,13 @@ export default function ConfirmOrderScreen() {
         orderStore.departureTime,
         orderStore.customDepartureTime
       );
+      let finalNote = note || '';
+      if (orderStore.paymentMethod === 'card') {
+        const payTag = "To'lov: Karta orqali";
+        if (!finalNote.includes(payTag)) {
+          finalNote = finalNote ? `${finalNote}\n${payTag}` : payTag;
+        }
+      }
       const result = await createOrder({
         service_type: orderStore.serviceType,
         from_city: orderStore.fromCity,
@@ -131,7 +138,7 @@ export default function ConfirmOrderScreen() {
         male_count: orderStore.maleCount,
         female_count: orderStore.femaleCount,
         departure_time: wireDep,
-        note: note || undefined,
+        note: finalNote || undefined,
         has_roof_rack: orderStore.hasRoofRack,
         female_only: orderStore.femaleOnly,
         front_seat: !isParcel && orderStore.frontSeat ? true : undefined,
@@ -145,7 +152,7 @@ export default function ConfirmOrderScreen() {
           : undefined,
         parcel_payer: isParcel ? orderStore.parcelPayer : undefined,
         parcel_type: isParcel ? orderStore.parcelType : undefined,
-        parcel_note: isParcel ? note || undefined : undefined,
+        parcel_note: isParcel ? finalNote || undefined : undefined,
         promo_code: orderStore.promoCode.trim() || undefined,
         use_bonus: BONUS_UI_ENABLED && useBonus && bonusBalance > 0 ? true : undefined,
       });
@@ -411,6 +418,42 @@ export default function ConfirmOrderScreen() {
           </View>
         )}
 
+        {/* To'lov usuli: Naqd pul yoki Karta */}
+        <View style={[styles.card, { marginTop: spacing.md }]}>
+          <Text style={styles.cardTitle}>{t('newOrder.paymentMethod')}</Text>
+          <View style={styles.toggleRow}>
+            {(['cash', 'card'] as const).map((method) => {
+              const active = orderStore.paymentMethod === method;
+              return (
+                <TouchableOpacity
+                  key={method}
+                  style={[styles.toggleCard, active && styles.toggleCardActive]}
+                  onPress={() => orderStore.setField('paymentMethod', method)}
+                  activeOpacity={0.85}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Icon
+                      name={method === 'cash' ? 'cash' : 'card'}
+                      size={18}
+                      color={active ? colors.primary : colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.toggleTitle,
+                        { marginTop: 0, flex: 1 },
+                        active && styles.toggleTitleActive,
+                      ]}
+                    >
+                      {t(method === 'cash' ? 'order.cash' : 'order.card')}
+                    </Text>
+                    {active && <Icon name="check" size={14} color={colors.primary} />}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
         {/* Note */}
         <View style={{ marginTop: spacing.md }}>
           <Input
@@ -454,7 +497,7 @@ export default function ConfirmOrderScreen() {
         <View style={styles.priceRow}>
           <View style={styles.footerInfo}>
             <Text style={styles.footerLabel}>
-              {t('order.price')} · {t('order.cash')}
+              {t('order.price')} · {orderStore.paymentMethod === 'card' ? t('order.card') : t('order.cash')}
             </Text>
             {isParcel && (
               <Text style={styles.negotiableHint}>{t('order.parcelNegotiableHint')}</Text>

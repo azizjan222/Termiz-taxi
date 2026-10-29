@@ -199,9 +199,13 @@ export default function NewOrderScreen() {
     orderStore.promoCode.trim(),
   ].filter(Boolean).length;
 
+  const paymentLabel =
+    orderStore.paymentMethod === 'card' ? t('order.card') : t('order.cash');
+
   const tripSummary = [
     t('order.personsCount', { count: isFullCar ? 4 : persons }),
     t(departureKey(orderStore.departureTime)),
+    paymentLabel,
   ].join(' · ');
 
   const submit = async (targetDriverId?: number) => {
@@ -221,6 +225,12 @@ export default function NewOrderScreen() {
         // than in whatever language the passenger happens to be using.
         const other = `Boshqa odam: ${otherName.trim()} ${otherPhone.trim()}`.trim();
         note = note ? `${note}\n${other}` : other;
+      }
+      if (orderStore.paymentMethod === 'card') {
+        const payTag = "To'lov: Karta orqali";
+        if (!note.includes(payTag)) {
+          note = note ? `${note}\n${payTag}` : payTag;
+        }
       }
       const result = await createOrder({
         service_type: isFullCar ? 'full_car' : 'taxi',
@@ -427,6 +437,69 @@ export default function NewOrderScreen() {
           })}
         </View>
 
+        {/* To'lov usuli: Naqd pul yoki Karta */}
+        <View style={styles.sectionHead}>
+          <Icon name="cash" size={16} color={colors.textMuted} />
+          <Text style={styles.sectionLabel}>{t('newOrder.paymentMethod')}</Text>
+        </View>
+        <View style={styles.paymentRow}>
+          <TouchableOpacity
+            style={[
+              styles.paymentPill,
+              orderStore.paymentMethod === 'cash' && styles.paymentPillActive,
+            ]}
+            onPress={() => orderStore.setField('paymentMethod', 'cash')}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityState={{ selected: orderStore.paymentMethod === 'cash' }}
+          >
+            <Icon
+              name="cash"
+              size={18}
+              color={orderStore.paymentMethod === 'cash' ? colors.primary : colors.textSecondary}
+            />
+            <Text
+              style={[
+                styles.paymentPillText,
+                orderStore.paymentMethod === 'cash' && styles.paymentPillTextActive,
+              ]}
+            >
+              {t('order.cash')}
+            </Text>
+            {orderStore.paymentMethod === 'cash' && (
+              <Icon name="check" size={15} color={colors.primary} />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.paymentPill,
+              orderStore.paymentMethod === 'card' && styles.paymentPillActive,
+            ]}
+            onPress={() => orderStore.setField('paymentMethod', 'card')}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityState={{ selected: orderStore.paymentMethod === 'card' }}
+          >
+            <Icon
+              name="card"
+              size={18}
+              color={orderStore.paymentMethod === 'card' ? colors.primary : colors.textSecondary}
+            />
+            <Text
+              style={[
+                styles.paymentPillText,
+                orderStore.paymentMethod === 'card' && styles.paymentPillTextActive,
+              ]}
+            >
+              {t('order.card')}
+            </Text>
+            {orderStore.paymentMethod === 'card' && (
+              <Icon name="check" size={15} color={colors.primary} />
+            )}
+          </TouchableOpacity>
+        </View>
+
         {/* 1-Tap Quick Preferences (Luggage + Female + Note) */}
         <ScrollView
           horizontal
@@ -563,7 +636,10 @@ export default function NewOrderScreen() {
             <Text style={styles.sheetTitle}>{t('newOrder.paymentMethod')}</Text>
 
             <TouchableOpacity
-              style={[styles.payOption, styles.payOptionSelected]}
+              style={[
+                styles.payOption,
+                orderStore.paymentMethod === 'cash' && styles.payOptionSelected,
+              ]}
               onPress={() => {
                 orderStore.setField('paymentMethod', 'cash');
                 setPaymentSheet(false);
@@ -572,16 +648,28 @@ export default function NewOrderScreen() {
             >
               <Icon name="cash" size={20} color={colors.text} style={styles.payOptionIcon} />
               <Text style={styles.payOptionText}>{t('order.cash')}</Text>
-              <Icon name="check" size={16} color={colors.primary} />
+              {orderStore.paymentMethod === 'cash' && (
+                <Icon name="check" size={16} color={colors.primary} />
+              )}
             </TouchableOpacity>
 
-            <View style={styles.payOptionDisabled}>
+            <TouchableOpacity
+              style={[
+                styles.payOption,
+                orderStore.paymentMethod === 'card' && styles.payOptionSelected,
+              ]}
+              onPress={() => {
+                orderStore.setField('paymentMethod', 'card');
+                setPaymentSheet(false);
+              }}
+              activeOpacity={0.85}
+            >
               <Icon name="card" size={20} color={colors.text} style={styles.payOptionIcon} />
-              <Text style={styles.payOptionTextDisabled}>{t('order.card')}</Text>
-            </View>
-            <Text style={styles.sheetNote}>
-              {t('newOrder.cardSoon')}
-            </Text>
+              <Text style={styles.payOptionText}>{t('order.card')}</Text>
+              {orderStore.paymentMethod === 'card' && (
+                <Icon name="check" size={16} color={colors.primary} />
+              )}
+            </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -857,6 +945,38 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     fontSize: 11,
+  },
+
+  // To'lov usuli (Naqd pul / Karta)
+  paymentRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  paymentPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 11,
+  },
+  paymentPillActive: {
+    backgroundColor: colors.primary50,
+    borderColor: colors.primary,
+  },
+  paymentPillText: {
+    ...typography.caption,
+    color: colors.text,
+    fontWeight: '700',
+  },
+  paymentPillTextActive: {
+    color: colors.primary,
   },
 
   // Quick preference tags

@@ -206,26 +206,24 @@ export async function requestNotificationPermissions(forcePrompt = false): Promi
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   if (existingStatus === 'granted') return true;
 
-  // Never trigger the Android 13+ POST_NOTIFICATIONS runtime dialog before the user
-  // has completed the Google Play Location Prominent Disclosure + Location runtime dialog.
-  // Otherwise two OS permission dialogs can collide or a runtime dialog can appear
-  // before the prominent disclosure modal on first launch.
+  // Never trigger an unprompted OS runtime permission dialog in the background, as Google
+  // Play's Prominent Disclosure & Consent policy strictly requires that the ONLY runtime
+  // permission dialog shown after the Location Prominent Disclosure modal is the Location
+  // permission dialog itself.
   if (!forcePrompt) {
-    const fgLoc = await Location.getForegroundPermissionsAsync().catch(() => null);
-    if (fgLoc?.status !== 'granted') {
-      return false;
-    }
+    return false;
   }
 
   const { status } = await Notifications.requestPermissionsAsync();
   return status === 'granted';
 }
 
-export async function getExpoPushToken(): Promise<string | null> {
+export async function getExpoPushToken(forcePrompt = false): Promise<string | null> {
   if (!Device.isDevice) return null;
   try {
-    const granted = await requestNotificationPermissions();
-    if (!granted) return null;
+    if (forcePrompt) {
+      await requestNotificationPermissions(true);
+    }
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ||
       Constants.easConfig?.projectId;

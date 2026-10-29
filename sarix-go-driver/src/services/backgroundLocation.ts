@@ -317,73 +317,63 @@ export interface StartBackgroundLocationOptions {
 }
 
 /**
- * Remembers if the driver declined the prominent disclosure for a given order in this
+ * Remembers if the driver declined the prominent disclosure or OS permission in this
  * session so re-renders or status transitions (accepted -> in_progress) do not nag them
  * repeatedly on the same ride. Reset when tracking stops or a different order starts.
  */
 let declinedOrderId: string | null = null;
+let declinedInSession = false;
 
 /**
  * Google Play Prominent Disclosure & Runtime Permission helper.
  *
- * Ensures that:
- * 1. If foreground location permission (`ACCESS_FINE_LOCATION`) is already granted, we NEVER
- *    re-display the Prominent Disclosure modal (because Android will not show a runtime
- *    permission dialog again once granted, and showing a disclosure without an immediate
- *    runtime permission prompt violates Google Play's Prominent Disclosure policy).
- * 2. If foreground location permission is not granted yet (and `canAskAgain !== false`),
+ * Ensures strict 1:1 compliance with Google Play User Data & Prominent Disclosure policy:
+ * 1. Uses ONLY foreground location (`ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION`) paired
+ *    with Android's user-initiated Foreground Service (`FOREGROUND_SERVICE_LOCATION`).
+ *    `ACCESS_BACKGROUND_LOCATION` is never declared or requested, avoiding Android 11+
+ *    Settings-redirect loops where no dynamic runtime permission dialog appears.
+ * 2. If foreground location permission is already granted, we NEVER show the Prominent
+ *    Disclosure modal (because Android will not show a runtime permission dialog again).
+ * 3. If foreground location permission is not granted (and `canAskAgain !== false`),
  *    we display the in-app Prominent Disclosure modal (`confirm()`), and IMMEDIATELY after
- *    the user taps "Roziman" (`true`), we trigger `Location.requestForegroundPermissionsAsync()`
- *    so the Android OS runtime permission dialog appears right away.
+ *    the user taps "Roziman" (`true`), we call `Location.requestForegroundPermissionsAsync()`
+ *    so the Android OS dynamic runtime permission dialog appears right away.
  */
 export async function ensureLocationPermissionWithDisclosure(
   confirm: () => Promise<boolean>,
   orderKey?: string,
 ): Promise<boolean> {
   const fgCurrent = await Location.getForegroundPermissionsAsync();
-  const bgCurrent = await Location.getBackgroundPermissionsAsync();
-  if (fgCurrent.status === 'granted' && bgCurrent.status === 'granted') {
+  if (fgCurrent.status === 'granted') {
     return true;
   }
 
   // If the user permanently denied permission ("Don't ask again"), the OS will not show
-  // a runtime dialog, so we must not show the Prominent Disclosure modal either.
-  if (fgCurrent.status !== 'granted' && fgCurrent.canAskAgain === false) {
-    return false;
-  }
-  if (
-    fgCurrent.status === 'granted' &&
-    bgCurrent.status !== 'granted' &&
-    bgCurrent.canAskAgain === false
-  ) {
+  // a dynamic runtime dialog, so we must not show the Prominent Disclosure modal either.
+  if (fgCurrent.canAskAgain === false) {
     return false;
   }
 
-  if (orderKey && declinedOrderId === orderKey) {
+  if (declinedInSession || (orderKey && declinedOrderId === orderKey)) {
     return false;
   }
 
   const accepted = await confirm();
   if (!accepted) {
+    declinedInSession = true;
     if (orderKey) declinedOrderId = orderKey;
     return false;
   }
+
+  const fgRequested = await Location.requestForegroundPermissionsAsync();
+  if (fgRequested.status !== 'granted') {
+    declinedInSession = true;
+    if (orderKey) declinedOrderId = orderKey;
+    return false;
+  }
+
+  declinedInSession = false;
   declinedOrderId = null;
-
-  if (fgCurrent.status !== 'granted') {
-    const fgRequested = await Location.requestForegroundPermissionsAsync();
-    if (fgRequested.status !== 'granted') {
-      return false;
-    }
-  }
-
-  if (bgCurrent.status !== 'granted') {
-    const bgRequested = await Location.requestBackgroundPermissionsAsync();
-    if (bgRequested.status !== 'granted') {
-      return false;
-    }
-  }
-
   return true;
 }
 
@@ -464,6 +454,7 @@ export async function startBackgroundLocation(
 export async function stopBackgroundLocation(): Promise<void> {
   await serialize(async () => {
     declinedOrderId = null;
+    declinedInSession = false;
     // Cleared first: if `stopLocationUpdatesAsync` fails, the next task invocation finds no
     // state and stops itself rather than reporting forever.
     await clearState();

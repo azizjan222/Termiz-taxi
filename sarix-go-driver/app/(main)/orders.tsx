@@ -90,7 +90,7 @@ export default function OrdersScreen() {
     const resolve = disclosureResolverRef.current;
     disclosureResolverRef.current = null;
     if (resolve) {
-      setTimeout(() => resolve(accepted), 220);
+      resolve(accepted);
     }
   };
 
@@ -241,14 +241,6 @@ export default function OrdersScreen() {
             ]
       );
       return;
-    }
-
-    // When switching ONLINE, ensure location permission is checked via Google Play's
-    // required Prominent Disclosure modal -> immediate OS runtime permission prompt.
-    if (val) {
-      try {
-        await ensureLocationPermissionWithDisclosure(confirmLocationDisclosure);
-      } catch {}
     }
 
     onlineInFlightRef.current = true;
@@ -949,8 +941,8 @@ export default function OrdersScreen() {
       <Modal
         visible={disclosureVisible}
         transparent
-        animationType="fade"
-        onRequestClose={() => {}}
+        animationType="none"
+        onRequestClose={() => answerDisclosure(false)}
       >
         <View style={styles.disclosureBackdrop}>
           <View style={styles.disclosureCard}>

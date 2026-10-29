@@ -291,9 +291,7 @@ export default function OrderDetailScreen() {
     const resolve = disclosureResolverRef.current;
     disclosureResolverRef.current = null;
     if (resolve) {
-      // Allow the React Native <Modal> native DialogWindow to detach completely on Android
-      // before launching the OS runtime permission dialog right after.
-      setTimeout(() => resolve(accepted), 220);
+      resolve(accepted);
     }
   };
 
@@ -1138,8 +1136,8 @@ export default function OrderDetailScreen() {
       <Modal
         visible={disclosureVisible}
         transparent
-        animationType="fade"
-        onRequestClose={() => {}}
+        animationType="none"
+        onRequestClose={() => answerDisclosure(false)}
       >
         <View style={styles.disclosureBackdrop}>
           <View style={styles.disclosureCard}>

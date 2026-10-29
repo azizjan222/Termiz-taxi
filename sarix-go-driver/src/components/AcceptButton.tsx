@@ -183,13 +183,13 @@ export function AcceptButton({
           accessibilityState={{ disabled: !alive, busy: loading }}
         >
           <LinearGradient
-            colors={disabled ? ([colors.border, colors.border] as const) : (['#10B981', '#059669'] as const)}
+            colors={disabled ? ([colors.border, colors.border] as const) : (['#FACC15', '#F59E0B'] as const)}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.gradient}
           >
             {loading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color="#0F172A" />
             ) : (
               <View style={styles.content}>
                 <Text style={[styles.text, disabled && styles.textDisabled]} numberOfLines={1}>
@@ -198,7 +198,7 @@ export function AcceptButton({
                 <Icon
                   name="arrowRight"
                   size={17}
-                  color={disabled ? colors.textMuted : '#FFFFFF'}
+                  color={disabled ? colors.textMuted : '#0F172A'}
                 />
               </View>
             )}
@@ -209,7 +209,7 @@ export function AcceptButton({
                 style={[styles.sheenTrack, { transform: [{ translateX: sheenX }] }]}
               >
                 <LinearGradient
-                  colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.35)', 'rgba(255,255,255,0)']}
+                  colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.45)', 'rgba(255,255,255,0)']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.sheen}
@@ -234,12 +234,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     bottom: 0,
     borderRadius: radius.md,
     borderWidth: 2,
-    borderColor: colors.success,
+    borderColor: '#F59E0B',
   },
   lift: {
     borderRadius: radius.md,
-    backgroundColor: colors.success,
-    shadowColor: '#059669',
+    backgroundColor: '#FACC15',
+    shadowColor: '#D97706',
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.28,
     shadowRadius: 10,
@@ -255,7 +255,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     minWidth: 140,
   },
   content: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  text: { ...typography.bodyBold, color: '#FFFFFF', fontWeight: '800' },
+  text: { ...typography.bodyBold, color: '#0F172A', fontWeight: '800' },
   textDisabled: { color: colors.textMuted },
   sheenTrack: {
     position: 'absolute',

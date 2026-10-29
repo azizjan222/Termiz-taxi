@@ -13,7 +13,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { Icon, type IconName } from '../../src/components/Icon';
 import { getUnreadCount } from '../../src/services/notificationHistory';
-import { listAddresses, type SavedAddress } from '../../src/api/addresses';
 import { useAuthStore } from '../../src/store/auth';
 import { useOrderStore } from '../../src/store/order';
 import { useThemeStore } from '../../src/store/theme';
@@ -39,13 +38,6 @@ const CARD_WASH = {
   },
 };
 
-const EXPRESS_ROUTES: { from: string; to: string; tag: string }[] = [
-  { from: 'Sariosiyo', to: 'Termiz', tag: 'Mashhur' },
-  { from: 'Termiz', to: 'Sariosiyo', tag: 'Mashhur' },
-  { from: 'Denov', to: 'Termiz', tag: 'Tezkor' },
-  { from: 'Termiz', to: 'Denov', tag: 'Tezkor' },
-];
-
 /** A quality tag on a service card: an icon plus one word. */
 interface Tag {
   icon: IconName;
@@ -69,13 +61,11 @@ export default function HomeScreen() {
   const user = useAuthStore((s) => s.user);
   const resetOrder = useOrderStore((s) => s.reset);
   const setOrderField = useOrderStore((s) => s.setField);
-  const setRoute = useOrderStore((s) => s.setRoute);
   const colors = useThemeStore((s) => s.colors);
   const isDark = useThemeStore((s) => s.isDark);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [unread, setUnread] = useState(0);
-  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,11 +73,6 @@ export default function HomeScreen() {
       getUnreadCount()
         .then((n) => {
           if (active) setUnread(n);
-        })
-        .catch(() => {});
-      listAddresses()
-        .then((items) => {
-          if (active) setSavedAddresses(items.slice(0, 5));
         })
         .catch(() => {});
       return () => {
@@ -99,24 +84,6 @@ export default function HomeScreen() {
   const startOrder = (type: 'taxi' | 'parcel') => {
     resetOrder();
     setOrderField('serviceType', type);
-    router.push('/order-entry');
-  };
-
-  const startExpressRoute = (from: string, to: string) => {
-    resetOrder();
-    setOrderField('serviceType', 'taxi');
-    setRoute(from, to);
-    router.push('/new-order');
-  };
-
-  const startWithSavedAddress = (addr: SavedAddress) => {
-    resetOrder();
-    setOrderField('serviceType', 'taxi');
-    setOrderField('toAddress', addr.address);
-    if (typeof addr.latitude === 'number' && typeof addr.longitude === 'number') {
-      setOrderField('toLat', addr.latitude);
-      setOrderField('toLon', addr.longitude);
-    }
     router.push('/order-entry');
   };
 
@@ -236,68 +203,6 @@ export default function HomeScreen() {
           icon: 'parcel',
           tags: PARCEL_TAGS,
         })}
-
-        {/* 1-Tap Express Intercity Routes (New fast-booking feature) */}
-        <View style={styles.expressSection}>
-          <View style={styles.expressHeader}>
-            <Icon name="flash" size={15} color={colors.primary} />
-            <Text style={styles.expressTitle}>Tezkor yo'nalishlar (1-bosishda)</Text>
-          </View>
-          <View style={styles.expressGrid}>
-            {EXPRESS_ROUTES.map((r) => (
-              <TouchableOpacity
-                key={`${r.from}-${r.to}`}
-                style={styles.expressCard}
-                onPress={() => startExpressRoute(r.from, r.to)}
-                activeOpacity={0.82}
-              >
-                <View style={styles.expressRouteRow}>
-                  <Text style={styles.expressCity} numberOfLines={1}>{r.from}</Text>
-                  <Icon name="arrowRight" size={13} color={colors.primary} />
-                  <Text style={styles.expressCity} numberOfLines={1}>{r.to}</Text>
-                </View>
-                <Text style={styles.expressSub}>Bosing va darhol zakas bering ›</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {savedAddresses.length > 0 && (
-          <View style={styles.savedSection}>
-            <View style={styles.savedHeader}>
-              <Text style={styles.savedTitle}>{t('home.quickSavedTitle')}</Text>
-              <TouchableOpacity onPress={() => router.push('/saved-addresses')}>
-                <Text style={styles.savedManage}>{t('home.quickSavedManage')}</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.savedRow}
-            >
-              {savedAddresses.map((addr) => (
-                <TouchableOpacity
-                  key={addr.id}
-                  style={styles.savedChip}
-                  onPress={() => startWithSavedAddress(addr)}
-                  activeOpacity={0.85}
-                >
-                  <Icon name="pin" size={14} color={colors.primary} />
-                  <View style={{ marginLeft: 6, maxWidth: 160 }}>
-                    {addr.label ? (
-                      <Text style={styles.savedChipLabel} numberOfLines={1}>
-                        {addr.label}
-                      </Text>
-                    ) : null}
-                    <Text style={styles.savedChipAddress} numberOfLines={1}>
-                      {addr.address}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );

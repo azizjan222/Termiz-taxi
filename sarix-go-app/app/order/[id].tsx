@@ -732,6 +732,20 @@ export default function OrderDetailScreen() {
           ) : null}
           <View style={styles.divider} />
           <View style={styles.row}>
+            <IconText
+              name={(order.note || '').includes('Karta') ? 'card' : 'cash'}
+              size={12}
+              color={colors.textSecondary}
+              textStyle={styles.label}
+            >
+              {t('order.paymentMethod')}
+            </IconText>
+            <Text style={styles.value}>
+              {(order.note || '').includes('Karta') ? t('order.card') : t('order.cash')}
+            </Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.row}>
             <IconText name="cash" size={12} color={colors.textSecondary} textStyle={styles.label}>
               {t('order.price')}
             </IconText>

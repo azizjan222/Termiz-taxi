@@ -77,9 +77,9 @@ export function OrderCtaButton({
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const isGold = variant === 'gold';
-  const tint = isGold ? colors.primary : colors.primaryDark;
-  const onTint = colors.textOnPrimary;
+  const tint = '#F59E0B';
+  const onTint = '#0F172A';
+  const gradientColors = ['#FACC15', '#F59E0B'] as const;
 
   // The gloss sweep has to travel the real button width, which is only known after layout.
   const [width, setWidth] = useState(0);
@@ -231,7 +231,7 @@ export function OrderCtaButton({
           accessibilityState={{ disabled: !alive, busy: loading }}
         >
           <LinearGradient
-            colors={gradients.purple}
+            colors={gradientColors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.gradient}

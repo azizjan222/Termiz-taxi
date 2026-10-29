@@ -729,10 +729,9 @@ export const uz = {
     // Nima yig'ilishi, qachon, nima uchun va qachon to'xtashi aytilishi shart.
     disclosureTitle: "Joylashuv ma'lumotlariga ruxsat",
     disclosureBody:
-      "Sarix Driver ilovasi faol safar davomida yo'lovchiga sizning harakatingizni xaritada " +
-      "jonli ko'rsatish hamda manzilgacha bo'lgan masofani hisoblash uchun joylashuv " +
-      "ma'lumotlarini yig'adi va serverga yuboradi — ilova yopiq bo'lganda yoki " +
-      "ishlatilmayotganda ham. Safar yakunlangach kuzatuv avtomatik to'xtaydi.",
+      "Sarix Driver ilovasi faol buyurtma davomida yo'lovchiga sizning harakatingizni xaritada " +
+      "jonli ko'rsatish hamda manzilgacha masofani hisoblash uchun joylashuv " +
+      "ma'lumotlaridan foydalanadi. «Roziman» tugmasini bosganingizdan so'ng darhol joylashuvga ruxsat berish oynasi ochiladi.",
     disclosureAllow: 'Roziman',
     disclosureDeny: 'Rad etish',
   },
@@ -1440,10 +1439,9 @@ export const ru = {
     serviceBody: 'Местоположение отправляется, чтобы пассажир видел вас на карте',
     disclosureTitle: 'Доступ к данным о местоположении',
     disclosureBody:
-      'Приложение Sarix Driver собирает и передаёт данные о местоположении во время активной ' +
-      'поездки, чтобы показывать ваше движение пассажиру на карте в реальном времени и ' +
-      'рассчитывать расстояние до адреса — даже когда приложение закрыто или не используется. ' +
-      'Передача автоматически прекращается по завершении поездки.',
+      'Приложение Sarix Driver использует данные о местоположении во время активного ' +
+      'заказа, чтобы показывать ваше движение пассажиру на карте в реальном времени и ' +
+      'рассчитывать расстояние до адреса. Сразу после нажатия «Согласен» откроется системное окно запроса разрешения.',
     disclosureAllow: 'Согласен',
     disclosureDeny: 'Отклонить',
   },
@@ -2148,9 +2146,9 @@ export const en = {
     serviceBody: 'Sending your location so the passenger can see you on the map',
     disclosureTitle: 'Location Data Access',
     disclosureBody:
-      'Sarix Driver collects location data to enable live trip tracking on the passenger\u2019s ' +
-      'map and calculate live distance to the pickup and destination even when the app is ' +
-      'closed or not in use. Location sharing stops automatically when the trip ends.',
+      'Sarix Driver uses location data during an active order to show your live position ' +
+      'on the passenger\u2019s map and calculate distance to the pickup and destination. ' +
+      'Tapping "I agree" will immediately open the system location permission prompt.',
     disclosureAllow: 'I agree',
     disclosureDeny: 'Decline',
   },
@@ -2856,10 +2854,9 @@ export const uzCyrl = {
     serviceBody: 'Йўловчи сизни харитада кўриб туриши учун жойлашув юборилмоқда',
     disclosureTitle: 'Жойлашув маълумотларига рухсат',
     disclosureBody:
-      'Sarix Driver иловаси фаол сафар давомида йўловчига сизнинг ҳаракатингизни харитада ' +
-      'жонли кўрсатиш ҳамда манзилгача бўлган масофани ҳисоблаш учун жойлашув ' +
-      'маълумотларини йиғади ва серверга юборади — илова ёпиқ бўлганда ёки ' +
-      'ишлатилмаётганда ҳам. Сафар якунлангач кузатув автоматик тўхтайди.',
+      'Sarix Driver иловаси фаол буюртма давомида йўловчига сизнинг ҳаракатингизни харитада ' +
+      'жонли кўрсатиш ҳамда манзилгача масофани ҳисоблаш учун жойлашув ' +
+      'маълумотларидан фойдаланади. «Розиман» тугмасини босганингиздан сўнг дарҳол жойлашувга рухсат бериш ойнаси очилади.',
     disclosureAllow: 'Розиман',
     disclosureDeny: 'Рад этиш',
   },
