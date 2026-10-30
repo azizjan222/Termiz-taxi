@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { Icon } from './Icon';
 import { useThemeStore } from '../store/theme';
-import { gradients, radius, spacing, typography } from '../theme';
+import { radius, spacing, typography } from '../theme';
 import type { ThemeColors } from '../theme/colors-themed';
 
 /**

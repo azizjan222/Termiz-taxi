@@ -17,7 +17,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Icon } from './Icon';
 import { useThemeStore } from '../store/theme';
 import { radius, spacing, typography } from '../theme';
-import { gradients } from '../theme/colors';
 import type { ThemeColors } from '../theme/colors-themed';
 
 /**
@@ -69,7 +68,6 @@ export function OrderCtaButton({
   onPress,
   loading = false,
   disabled = false,
-  variant = 'gold',
   accessibilityLabel,
   accessibilityHint,
   style,

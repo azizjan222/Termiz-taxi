@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
-  TouchableOpacity, Alert, Switch, Modal,
+  TouchableOpacity, Alert, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,7 +23,6 @@ import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { IncomingOrderModal } from '../../src/components/IncomingOrderModal';
 import { AcceptButton } from '../../src/components/AcceptButton';
 import { stopAlert, playDriverStatusChime } from '../../src/services/notifications';
-import { ensureLocationPermissionWithDisclosure } from '../../src/services/backgroundLocation';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 import { formatDepartureTime } from '../../src/utils/departureTime';
@@ -82,33 +81,6 @@ export default function OrdersScreen() {
     to_city: string;
   } | null>(null);
   const [includeTransit, setIncludeTransit] = useState(true);
-  const [disclosureVisible, setDisclosureVisible] = useState(false);
-  const disclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
-
-  const answerDisclosure = (accepted: boolean) => {
-    setDisclosureVisible(false);
-    const resolve = disclosureResolverRef.current;
-    disclosureResolverRef.current = null;
-    if (resolve) {
-      resolve(accepted);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (disclosureResolverRef.current) {
-        const resolve = disclosureResolverRef.current;
-        disclosureResolverRef.current = null;
-        resolve(false);
-      }
-    };
-  }, []);
-
-  const confirmLocationDisclosure = () =>
-    new Promise<boolean>((resolve) => {
-      disclosureResolverRef.current = resolve;
-      setDisclosureVisible(true);
-    });
 
   useEffect(() => {
     incomingOrderRef.current = incomingOrder;
@@ -935,45 +907,6 @@ export default function OrdersScreen() {
           setIncomingOrder(null);
         }}
       />
-
-      {/* Prominent Disclosure Modal required by Google Play User Data policy before
-          requesting runtime location permissions. */}
-      <Modal
-        visible={disclosureVisible}
-        transparent
-        animationType="none"
-        onRequestClose={() => answerDisclosure(false)}
-      >
-        <View style={styles.disclosureBackdrop}>
-          <View style={styles.disclosureCard}>
-            <View style={styles.disclosureIconWrap}>
-              <Icon name="location" size={32} color={colors.primary} />
-            </View>
-            <Text style={styles.disclosureTitle}>{t('tracking.disclosureTitle')}</Text>
-            <Text style={styles.disclosureBody}>{t('tracking.disclosureBody')}</Text>
-            <View style={styles.disclosureActions}>
-              <TouchableOpacity
-                style={styles.disclosureDenyBtn}
-                onPress={() => answerDisclosure(false)}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel={t('tracking.disclosureDeny')}
-              >
-                <Text style={styles.disclosureDenyText}>{t('tracking.disclosureDeny')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.disclosureAllowBtn}
-                onPress={() => answerDisclosure(true)}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel={t('tracking.disclosureAllow')}
-              >
-                <Text style={styles.disclosureAllowText}>{t('tracking.disclosureAllow')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1365,79 +1298,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '700',
   },
   corridorChipTextActive: {
-    color: colors.textOnPrimary,
-  },
-  disclosureBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(14, 23, 48, 0.68)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
-  disclosureCard: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: colors.background,
-    borderRadius: radius.xl,
-    padding: spacing.lg,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
-  },
-  disclosureIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  disclosureTitle: {
-    ...typography.h3,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  disclosureBody: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: spacing.lg,
-  },
-  disclosureActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    width: '100%',
-  },
-  disclosureDenyBtn: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-  },
-  disclosureDenyText: {
-    ...typography.bodyBold,
-    color: colors.textSecondary,
-  },
-  disclosureAllowBtn: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  disclosureAllowText: {
-    ...typography.bodyBold,
     color: colors.textOnPrimary,
   },
 });

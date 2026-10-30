@@ -1,6 +1,5 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import * as Location from 'expo-location';
 import { Platform, AppState, Vibration } from 'react-native';
 import Constants from 'expo-constants';
 

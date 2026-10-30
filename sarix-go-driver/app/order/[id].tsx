@@ -48,7 +48,7 @@ import {
   ETA_AVG_SPEED_KMH,
   type Coords,
 } from '../../src/components/driverMap.helpers';
-import { typography, spacing, radius, gradients } from '../../src/theme';
+import { typography, spacing, radius } from '../../src/theme';
 import { useThemeStore } from '../../src/store/theme';
 import { isAppForeground } from '../../src/utils/appForeground';
 import type { ThemeColors } from '../../src/theme/colors-themed';

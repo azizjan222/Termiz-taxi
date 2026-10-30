@@ -26,7 +26,6 @@ import type { ThemeColors } from '../../src/theme/colors-themed';
 // foreground rather than a themed one: white reads on the dark tiles, near-black on the
 // gold and amber ones. Emoji had no colour at all, which is why this pairing is new.
 const TILE_FG = '#FFFFFF';
-const TILE_FG_DARK = '#2A2000';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
