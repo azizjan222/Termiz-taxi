@@ -130,7 +130,7 @@ export default function ReferralScreen() {
 
       <ScrollView contentContainerStyle={styles.body}>
         <View style={styles.heroBox}>
-          <Icon name="gift" size={56} color={colors.accent} style={styles.heroEmoji} />
+          <Icon name="gift" size={56} color="#F5B800" style={styles.heroEmoji} />
           {/* Amounts come from the server (admin settings), never hardcoded in the copy. */}
           <Text style={styles.heroTitle}>
             {t('referral.heroTitle', { referrerBonus: formatPrice(info.referrer_bonus) })}
@@ -355,7 +355,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.lg,
   },
   heroEmoji: { marginBottom: spacing.sm },
-  heroTitle: { ...typography.h1, color: colors.accent, textAlign: 'center' },
+  heroTitle: { ...typography.h1, color: colors.textOnPrimary, textAlign: 'center' },
   heroSubtitle: {
     ...typography.body,
     color: colors.textOnPrimary,
@@ -392,13 +392,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   statValue: { ...typography.h2, color: colors.primary },
   statLabel: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
   shareBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     padding: spacing.md,
     borderRadius: radius.md,
     alignItems: 'center',
     marginBottom: spacing.lg,
   },
-  shareBtnText: { ...typography.h3, color: colors.primary, fontWeight: '700' },
+  shareBtnText: { ...typography.h3, color: colors.textOnPrimary, fontWeight: '700' },
   howItWorks: {
     ...typography.body,
     color: colors.text,

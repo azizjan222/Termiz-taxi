@@ -892,7 +892,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 4,
-    backgroundColor: colors.accent,
+    backgroundColor: '#F5B800',
   },
   colorChipsRow: {
     flexDirection: 'row',

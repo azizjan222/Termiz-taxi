@@ -110,7 +110,7 @@ export default function RatePassengerScreen() {
               <Icon
                 name={n <= stars ? 'star' : 'starOutline'}
                 size={40}
-                color={n <= stars ? colors.accent : colors.textMuted}
+                color={n <= stars ? '#F5B800' : colors.textMuted}
               />
             </TouchableOpacity>
           ))}

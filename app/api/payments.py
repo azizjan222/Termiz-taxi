@@ -100,20 +100,14 @@ def credit_driver_payment(session, payment: Payment):
         session.commit()
         return None
 
-    # Atomically claim the driver's one-time first-top-up bonus. This is safe even if
-    # two different payment approvals for the same driver arrive concurrently.
-    bonus_claimed = (
-        session.query(Driver)
-        .filter(
-            Driver.id == driver.id,
-            Driver.first_payment_bonus_granted == False,  # noqa: E712
-        )
-        .update(
-            {Driver.first_payment_bonus_granted: True},
-            synchronize_session=False,
-        )
+    session.query(Driver).filter(
+        Driver.id == driver.id,
+        Driver.first_payment_bonus_granted == False,  # noqa: E712
+    ).update(
+        {Driver.first_payment_bonus_granted: True},
+        synchronize_session=False,
     )
-    bonus = int(payment.amount * 0.5) if bonus_claimed == 1 else 0
+    bonus = 0
     total = payment.amount + bonus
 
     session.query(Driver).filter(Driver.id == driver.id).update(

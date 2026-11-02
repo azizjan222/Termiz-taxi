@@ -37,11 +37,6 @@ import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
 const PRESET_AMOUNTS = [10000, 20000, 50000, 100000];
-// Mirrors config.TOPUP_MIN_AMOUNT / config.TOPUP_MAX_AMOUNT on the backend. Checking here
-// too means an out-of-range amount is caught before the driver waits out a multi-megabyte
-// screenshot upload only to get a 400. The server stays authoritative: if an operator
-// changes the env vars, its rejection (code `amount_out_of_range`, which carries the real
-// bounds) is what the driver ends up seeing.
 const MIN_AMOUNT = 1000;
 const MAX_AMOUNT = 5_000_000;
 
@@ -52,15 +47,18 @@ const METHOD_ICONS: Record<PaymentMethod['id'], IconName> = {
   payme: 'wallet',
 };
 
-// Atmos, Click and Payme get the same wallet shape, so the brand colour is what tells them
-// apart — exactly the job the old 🏧 / 💙 / 💚 glyphs were doing.
 const METHOD_COLORS: Record<PaymentMethod['id'], string> = {
-  card: '#B88700',
+  card: '#2563EB',
   atmos: '#6C3CE9',
   click: '#0F86FF',
   payme: '#00CFC1',
 };
 
+function formatCardNumberDisplay(raw?: string | null): string {
+  if (!raw) return '—';
+  const digits = raw.replace(/\s+/g, '');
+  return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
+}
 
 export default function TopUpScreen() {
   const { t } = useTranslation();
@@ -79,14 +77,6 @@ export default function TopUpScreen() {
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Two different questions, so two different refs.
-  //
-  // `aliveRef` — is the component still mounted? Guards state setters.
-  // `focusedRef` — is this screen the one the driver is actually looking at? Guards the
-  //   Alert and router.back(). Mount is not enough: expo-router keeps a stack screen
-  //   mounted when you navigate FORWARD from it, so an upload that finished after the
-  //   driver moved on would pop a native dialog over an unrelated screen, and its button
-  //   would call router.back() and drop them out of wherever they were.
   const aliveRef = useRef(true);
   const focusedRef = useRef(true);
   useEffect(() => {
@@ -97,10 +87,6 @@ export default function TopUpScreen() {
     };
   }, []);
 
-  // Synchronous double-tap guard, matching acceptInFlightRef in (main)/orders.tsx. The
-  // `submitting`/`loading` state also disables the Button, but only after a re-render, so
-  // two taps dispatched in the same batch both got through. On the provider path that
-  // meant two Payment rows and two openURL calls — two payable invoices.
   const inFlightRef = useRef(false);
   const lastAtmosPaymentIdRef = useRef<number | null>(null);
 
@@ -113,10 +99,6 @@ export default function TopUpScreen() {
       setMethodsError(false);
     } catch {
       if (!aliveRef.current) return;
-      // This used to silently setMethods([]). The card flow renders on the DEFAULT
-      // selection, so the driver was shown a top-up screen with an empty method list and
-      // "—" where the card number belongs, with the Send button still enabled. Anyone who
-      // paid from memory sent money that could not be reconciled. Surface it instead.
       setMethods([]);
       setMethodsError(true);
     } finally {
@@ -124,11 +106,6 @@ export default function TopUpScreen() {
     }
   }, []);
 
-  // Runs on first focus too, so it replaces the old mount-only fetch rather than adding to
-  // it. The provider (Atmos/Click/Payme) flow leaves the app entirely and a manual request only
-  // moves the balance once an admin approves it, so refetching on focus is what makes the
-  // balance the driver sees on return actually current — otherwise they saw the stale
-  // number and were liable to pay a second time.
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
@@ -156,7 +133,6 @@ export default function TopUpScreen() {
 
   const cardMethod = methods.find((m) => m.id === 'card');
   const cardReady = Boolean(cardMethod?.card_number);
-  // Server-configured order-accept floor, so the hint here matches the actual rule.
   const minBalance = driver?.min_balance ?? MIN_BALANCE_FALLBACK;
 
   const formatPrice = formatAmount;
@@ -171,7 +147,6 @@ export default function TopUpScreen() {
 
   const copyCard = async () => {
     if (!cardMethod?.card_number) {
-      // Silently doing nothing here let the driver believe the number was copied.
       Alert.alert(t('topUp.noCardTitle'), t('topUp.noCardBody'));
       return;
     }
@@ -181,9 +156,6 @@ export default function TopUpScreen() {
 
   const pickScreenshot = async () => {
     try {
-      // Android's system photo picker grants access to the selected image itself;
-      // requesting broad media-library permission first is unnecessary and can throw
-      // when that permission is not present in an already-installed native build.
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         quality: 0.7,
@@ -193,8 +165,6 @@ export default function TopUpScreen() {
         setScreenshot(result.assets[0].uri);
       }
     } catch (e: any) {
-      // Surface the underlying reason instead of a generic message so gallery/native
-      // failures are actually diagnosable in the field.
       const reason = e?.message || String(e);
       Alert.alert(t('topUp.errImagePick'), reason);
     }
@@ -221,24 +191,16 @@ export default function TopUpScreen() {
     setSubmitting(true);
     try {
       const res = await submitTopupScreenshot(amt, screenshot);
-      // Refresh the balance. A manual request stays `pending` until an admin approves it,
-      // so this will not move yet — which is exactly why the message below has to say so.
       await loadDriver();
       if (aliveRef.current) setScreenshot(null);
-      // The request DID succeed; if the driver has already moved on, stay silent rather
-      // than hijacking their current screen.
       if (!focusedRef.current) return;
       Alert.alert(
         t('topUp.sentTitle'),
         res.message || t('topUp.pendingNotice'),
         [{ text: t('common.close'), onPress: () => router.back() }],
-        // Android dialogs are dismissible by default, and a dismissal never fires
-        // onPress. The driver was then left on this screen with the preview cleared and
-        // no record of the request, whose natural next move is to submit it again.
         { cancelable: false }
       );
     } catch (e: any) {
-      // Keep the screenshot so a retry does not mean re-picking it from the gallery.
       if (!focusedRef.current) return;
       Alert.alert(t('common.error'), describeApiError(e, t));
     } finally {
@@ -247,7 +209,6 @@ export default function TopUpScreen() {
   };
 
   const handleTopUp = async () => {
-    // Set before any await, so a second tap in the same frame cannot get through.
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     try {
@@ -268,7 +229,6 @@ export default function TopUpScreen() {
       }
 
       if (selectedMethod === 'card') {
-        // In-app manual flow: require a screenshot, then submit for admin approval.
         await submitCardTopup();
         return;
       }
@@ -287,14 +247,9 @@ export default function TopUpScreen() {
           return;
         }
 
-        // Open payment URL in browser
         const supported = await Linking.canOpenURL(result.url);
         if (supported) {
           await Linking.openURL(result.url);
-          // Backgrounding the app for the provider page does NOT blur the screen in
-          // navigation terms, so this dialog still greets the driver when they return —
-          // which is the point of it. The guard only matters if they left this screen
-          // entirely while the request was in flight.
           if (!focusedRef.current) return;
           Alert.alert(t('topUp.providerOpened'), t('topUp.providerOpenedBody'));
         } else {
@@ -302,9 +257,6 @@ export default function TopUpScreen() {
         }
       } catch (e: any) {
         if (!focusedRef.current) return;
-        // Was `Alert.alert('❌', e?.response?.data?.error || errGeneric)`: an untitled
-        // dialog that collapsed airplane mode, a 20s timeout and a rejected amount into
-        // one indistinguishable message. describeUploadError already separates those.
         Alert.alert(t('common.error'), describeApiError(e, t));
       } finally {
         if (aliveRef.current) setLoading(false);
@@ -314,14 +266,9 @@ export default function TopUpScreen() {
     }
   };
 
-  // Chosen from `method.id`, not from the server's `icon` field.
-  //
-  // The backend sends a glyph there (💳 / 💙 / 💚), which cannot be sized or coloured
-  // from here and renders differently per device. `id` is already a typed union, so the
-  // client can pick its own icon without the backend having to know about our icon set —
-  // and older app versions keep working, because the `icon` field is left untouched.
   const renderMethod = (method: PaymentMethod) => {
     const isSelected = selectedMethod === method.id;
+    const methodColor = METHOD_COLORS[method.id] ?? colors.primary;
     return (
       <TouchableOpacity
         key={method.id}
@@ -338,11 +285,11 @@ export default function TopUpScreen() {
         accessibilityHint={method.description}
         accessibilityState={{ selected: isSelected, disabled: Boolean(method.disabled) }}
       >
-        <View style={styles.methodIcon}>
+        <View style={[styles.methodIcon, isSelected && styles.methodIconSelected]}>
           <Icon
             name={METHOD_ICONS[method.id] ?? 'card'}
             size={22}
-            color={METHOD_COLORS[method.id] ?? colors.textSecondary}
+            color={isSelected ? colors.primary : methodColor}
           />
         </View>
         <View style={styles.methodInfo}>
@@ -350,10 +297,9 @@ export default function TopUpScreen() {
             {method.name}
             {method.disabled && ` ${t('topUp.comingSoon')}`}
           </Text>
-          <Text style={styles.methodDesc}>{method.description}</Text>
-          {method.card_number && (
-            <Text style={styles.methodCard1}>{method.card_number}</Text>
-          )}
+          <Text style={styles.methodDesc} numberOfLines={2}>
+            {method.description}
+          </Text>
         </View>
         <View style={[styles.radio, isSelected && styles.radioSelected]}>
           {isSelected && <View style={styles.radioInner} />}
@@ -368,12 +314,11 @@ export default function TopUpScreen() {
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backBtn}
-          // Leaving mid-upload orphaned a 60s request whose result landed on another screen.
           disabled={submitting || loading}
         >
           <Icon
             name="back"
-            size={26}
+            size={24}
             color={submitting || loading ? colors.textMuted : colors.primary}
           />
         </TouchableOpacity>
@@ -385,119 +330,145 @@ export default function TopUpScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView contentContainerStyle={styles.scroll}>
-          {/* Current balance */}
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Current balance card */}
           <View style={styles.balanceCard}>
-            <Text style={styles.balanceLabel}>{t('topUp.currentBalance')}</Text>
-            <Text style={styles.balanceValue}>
-              {formatPrice(driver?.balance || 0)} {t('more.currency')}
-            </Text>
+            <View style={styles.balanceTopRow}>
+              <View style={styles.balanceIconWrap}>
+                <Icon name="money" size={22} color="#F5B800" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.balanceLabel}>{t('topUp.currentBalance')}</Text>
+                <Text style={styles.balanceValue}>
+                  {formatPrice(driver?.balance || 0)} {t('more.currency')}
+                </Text>
+              </View>
+            </View>
             {(driver?.balance || 0) < minBalance && (
-              <Text style={styles.balanceWarning}>
-                {t('topUp.minBalanceHint', { min: formatAmount(minBalance) })}
-              </Text>
+              <View style={styles.balanceWarningWrap}>
+                <Text style={styles.balanceWarning}>
+                  {t('topUp.minBalanceHint', { min: formatAmount(minBalance) })}
+                </Text>
+              </View>
             )}
           </View>
 
-          {/* Bonus banner */}
-          <View style={styles.bonusBanner}>
-            {/* Matches bonusText: the banner sits on accentLight, where the green
-                success colour reads as a different message than the label it labels. */}
-            <Icon name="gift" size={26} color={colors.primary} />
-            <Text style={styles.bonusText}>
-              {t('topUp.firstTopUp')} <Text style={styles.bonusBold}>{t('topUp.bonusBadge')}</Text>
-            </Text>
+          {/* Amount selection card */}
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>{t('topUp.amount')}</Text>
+            <View style={styles.amountsGrid}>
+              {PRESET_AMOUNTS.map((a) => {
+                const selected = amount === a && !customAmount;
+                return (
+                  <TouchableOpacity
+                    key={a}
+                    style={[
+                      styles.amountChip,
+                      selected && styles.amountChipSelected,
+                    ]}
+                    onPress={() => {
+                      setAmount(a);
+                      setCustomAmount('');
+                    }}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${formatPrice(a)} ${t('more.currency')}`}
+                    accessibilityHint={t('topUp.a11ySelectAmount')}
+                    accessibilityState={{ selected }}
+                  >
+                    <Text
+                      style={[
+                        styles.amountChipText,
+                        selected && styles.amountChipTextSelected,
+                      ]}
+                    >
+                      {formatPrice(a)}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.amountChipSub,
+                        selected && styles.amountChipSubSelected,
+                      ]}
+                    >
+                      {t('more.currency')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={[styles.customInputWrap, Boolean(customAmount) && styles.customInputWrapActive]}>
+              <TextInput
+                style={styles.customAmountInput}
+                placeholder={t('topUp.amountPlaceholder')}
+                placeholderTextColor={colors.textMuted}
+                keyboardType="number-pad"
+                value={customAmount}
+                maxLength={String(MAX_AMOUNT).length}
+                onChangeText={(text) => setCustomAmount(text.replace(/[^\d]/g, ''))}
+                accessibilityLabel={t('topUp.otherAmount')}
+                accessibilityHint={t('topUp.a11yEnterAmount')}
+              />
+              <Text style={styles.customInputCurrency}>{t('more.currency')}</Text>
+            </View>
           </View>
 
-          {/* Amount selection */}
-          <Text style={styles.sectionTitle}>{t('topUp.amount')}</Text>
-          <View style={styles.amounts}>
-            {PRESET_AMOUNTS.map((a) => (
-              <TouchableOpacity
-                key={a}
-                style={[
-                  styles.amountChip,
-                  amount === a && !customAmount && styles.amountChipSelected,
-                ]}
-                onPress={() => {
-                  setAmount(a);
-                  setCustomAmount('');
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`${formatPrice(a)} ${t('more.currency')}`}
-                accessibilityHint={t('topUp.a11ySelectAmount')}
-                accessibilityState={{ selected: amount === a && !customAmount }}
-              >
-                <Text
-                  style={[
-                    styles.amountChipText,
-                    amount === a && !customAmount && styles.amountChipTextSelected,
-                  ]}
+          {/* Payment methods card */}
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>{t('topUp.paymentType')}</Text>
+            {methodsLoading && methods.length === 0 ? (
+              <Text style={styles.methodsNotice}>{t('topUp.loadingMethods')}</Text>
+            ) : methodsError ? (
+              <View style={styles.methodsErrorBox}>
+                <Text style={styles.methodsErrorText}>{t('topUp.errMethodsLoad')}</Text>
+                <TouchableOpacity
+                  onPress={fetchMethods}
+                  disabled={methodsLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.retry')}
                 >
-                  {formatPrice(a)}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text style={styles.methodsRetry}>{t('common.retry')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.methods}>
+                {methods.map(renderMethod)}
+              </View>
+            )}
           </View>
-
-          <TextInput
-            style={styles.customAmountInput}
-            placeholder={t('topUp.amountPlaceholder')}
-            placeholderTextColor={colors.textMuted}
-            keyboardType="number-pad"
-            value={customAmount}
-            // `text`, not `t` — the old parameter name shadowed the translation function,
-            // so any t() added inside this callback would have been a runtime error.
-            maxLength={String(MAX_AMOUNT).length}
-            onChangeText={(text) => setCustomAmount(text.replace(/[^\d]/g, ''))}
-            accessibilityLabel={t('topUp.otherAmount')}
-            accessibilityHint={t('topUp.a11yEnterAmount')}
-          />
-
-          {/* Payment methods */}
-          <Text style={styles.sectionTitle}>{t('topUp.paymentType')}</Text>
-          {methodsLoading && methods.length === 0 ? (
-            <Text style={styles.methodsNotice}>{t('topUp.loadingMethods')}</Text>
-          ) : methodsError ? (
-            <View style={styles.methodsErrorBox}>
-              <Text style={styles.methodsErrorText}>{t('topUp.errMethodsLoad')}</Text>
-              <TouchableOpacity
-                onPress={fetchMethods}
-                disabled={methodsLoading}
-                accessibilityRole="button"
-                accessibilityLabel={t('common.retry')}
-              >
-                <Text style={styles.methodsRetry}>{t('common.retry')}</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.methods}>
-              {methods.map(renderMethod)}
-            </View>
-          )}
 
           {/* Card manual flow: show card number + screenshot upload */}
           {selectedMethod === 'card' && (
-            <View style={styles.cardFlow}>
+            <View style={styles.sectionCard}>
               <Text style={styles.sectionTitle}>{t('topUp.step1')}</Text>
-              <TouchableOpacity style={styles.cardNumberBox} onPress={copyCard} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.cardNumberBox}
+                onPress={copyCard}
+                activeOpacity={0.85}
+              >
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardNumberLabel}>{t('topUp.cardNumber')}</Text>
                   <Text style={styles.cardNumberValue}>
-                    {cardMethod?.card_number || '—'}
+                    {formatCardNumberDisplay(cardMethod?.card_number)}
                   </Text>
                   {!!cardMethod?.card_holder && (
                     <Text style={styles.cardHolder}>{cardMethod.card_holder}</Text>
                   )}
                 </View>
-                <IconText
-                  name="document"
-                  size={13}
-                  color={colors.primary}
-                  textStyle={styles.copyBtn}
-                >
-                  {t('topUp.copy')}
-                </IconText>
+                <View style={styles.copyBadge}>
+                  <IconText
+                    name="document"
+                    size={14}
+                    color={colors.primary}
+                    textStyle={styles.copyBtn}
+                  >
+                    {t('topUp.copy')}
+                  </IconText>
+                </View>
               </TouchableOpacity>
 
               {!cardReady && !methodsLoading && (
@@ -514,10 +485,10 @@ export default function TopUpScreen() {
                 </View>
               )}
 
+              <View style={styles.stepDivider} />
+
               <Text style={styles.sectionTitle}>{t('topUp.step2')}</Text>
-              <Text style={styles.cardHint}>
-                {t('topUp.cardHint')}
-              </Text>
+              <Text style={styles.cardHint}>{t('topUp.cardHint')}</Text>
 
               {screenshot ? (
                 <View style={styles.screenshotPreviewWrap}>
@@ -526,7 +497,9 @@ export default function TopUpScreen() {
                     style={styles.changeShotBtn}
                     onPress={pickScreenshot}
                     disabled={submitting}
+                    activeOpacity={0.85}
                   >
+                    <Icon name="camera" size={16} color={colors.primary} />
                     <Text style={styles.changeShotText}>{t('topUp.pickAnotherImage')}</Text>
                   </TouchableOpacity>
                 </View>
@@ -537,7 +510,9 @@ export default function TopUpScreen() {
                   disabled={submitting}
                   activeOpacity={0.85}
                 >
-                  <Icon name="camera" size={28} color={colors.primary} style={styles.uploadIcon} />
+                  <View style={styles.uploadIconCircle}>
+                    <Icon name="camera" size={24} color={colors.primary} />
+                  </View>
                   <Text style={styles.uploadText}>{t('topUp.uploadScreenshot')}</Text>
                 </TouchableOpacity>
               )}
@@ -569,10 +544,9 @@ export default function TopUpScreen() {
               getActualAmount() < MIN_AMOUNT ||
               getActualAmount() > MAX_AMOUNT ||
               submitting ||
-              // Never invite a transfer when we cannot show the destination card.
               (selectedMethod === 'card' && (!screenshot || !cardReady))
             }
-            variant="accent"
+            variant="primary"
             fullWidth={false}
             style={{ flex: 1, marginLeft: spacing.md }}
             accessibilityLabel={t(selectedMethod === 'card' ? 'topUp.a11yConfirmSend' : 'topUp.a11yStartPayment')}
@@ -600,70 +574,145 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
   },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.h3, color: colors.primary },
-  scroll: { padding: spacing.lg },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { ...typography.h3, color: colors.text, fontWeight: '800' },
+  scroll: {
+    padding: spacing.md,
+    paddingBottom: spacing.xl,
+    gap: spacing.md,
+  },
   balanceCard: {
     backgroundColor: '#0E172A',
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     padding: spacing.lg,
-    marginBottom: spacing.md,
-    alignItems: 'center',
+    shadowColor: '#0E172A',
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
-  balanceLabel: { ...typography.caption, color: 'rgba(255,255,255,0.75)' },
-  balanceValue: { ...typography.h1, color: '#F5B800', marginVertical: spacing.xs },
+  balanceTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  balanceIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(245, 184, 0, 0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  balanceLabel: {
+    ...typography.caption,
+    color: 'rgba(255,255,255,0.72)',
+    fontWeight: '600',
+  },
+  balanceValue: {
+    ...typography.h1,
+    fontSize: 28,
+    lineHeight: 34,
+    color: '#F5B800',
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  balanceWarningWrap: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
   balanceWarning: {
     ...typography.small,
     color: '#F5B800',
-    textAlign: 'center',
-    marginTop: spacing.xs,
+    fontWeight: '600',
   },
-  bonusBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.accentLight,
+  sectionCard: {
+    backgroundColor: colors.white,
+    borderRadius: radius.xl,
     padding: spacing.md,
-    borderRadius: radius.md,
-    marginBottom: spacing.lg,
-    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
-
-  bonusText: { flex: 1, ...typography.body, color: colors.primary },
-  bonusBold: { fontWeight: '800' },
   sectionTitle: {
     ...typography.bodyBold,
-    color: colors.primary,
+    color: colors.text,
+    fontWeight: '800',
     marginBottom: spacing.sm,
-    marginTop: spacing.md,
   },
-  amounts: {
+  amountsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
+    justifyContent: 'space-between',
+    rowGap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   amountChip: {
-    backgroundColor: colors.white,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: 2,
+    width: '48.5%',
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: colors.surface,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
     borderColor: colors.border,
   },
   amountChipSelected: {
-    borderColor: colors.accent,
+    borderColor: colors.primary,
+    backgroundColor: colors.primary100,
+  },
+  amountChipText: {
+    ...typography.h3,
+    fontSize: 17,
+    color: colors.text,
+    fontWeight: '800',
+  },
+  amountChipTextSelected: {
+    color: colors.primary,
+  },
+  amountChipSub: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  amountChipSubSelected: {
+    color: colors.primary,
+  },
+  customInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  customInputWrapActive: {
+    borderColor: colors.primary,
     backgroundColor: colors.white,
   },
-  amountChipText: { ...typography.bodyBold, color: colors.text },
-  amountChipTextSelected: { color: colors.primary },
   customAmountInput: {
-    backgroundColor: colors.white,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    ...typography.body,
+    flex: 1,
+    paddingVertical: 12,
+    ...typography.bodyBold,
     color: colors.text,
-    borderWidth: 1,
-    borderColor: colors.border,
+  },
+  customInputCurrency: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '700',
+    marginLeft: spacing.xs,
   },
   methods: { gap: spacing.sm },
   methodsNotice: {
@@ -673,10 +722,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: 'center',
   },
   methodsErrorBox: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     padding: spacing.md,
     borderRadius: radius.md,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.error,
     gap: spacing.xs,
   },
@@ -691,12 +740,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   noCardBox: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     padding: spacing.md,
     borderRadius: radius.md,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.error,
-    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
     gap: spacing.xs,
   },
   noCardTitle: {
@@ -711,103 +760,133 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   methodCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 2,
-    borderColor: colors.divider,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
   },
-  methodCardSelected: { borderColor: colors.accent },
+  methodCardSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary100,
+  },
   methodCardDisabled: { opacity: 0.5 },
   methodIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.surface,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  methodInfo: { flex: 1 },
-  methodName: { ...typography.bodyBold, color: colors.text },
-  methodDesc: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
-  methodCard1: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: '600',
-    marginTop: 4,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  methodIconSelected: {
+    backgroundColor: colors.white,
   },
+  methodInfo: { flex: 1, marginRight: spacing.sm },
+  methodName: { ...typography.bodyBold, color: colors.text, fontWeight: '800' },
+  methodDesc: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
   radio: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  radioSelected: { borderColor: colors.accent },
-  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.accent },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
     backgroundColor: colors.white,
   },
-  footerInfo: { flex: 0 },
-  footerLabel: { ...typography.caption, color: colors.textSecondary },
-  footerAmount: { ...typography.h3, color: colors.primary },
-  cardFlow: { marginTop: spacing.sm },
+  radioSelected: { borderColor: colors.primary },
+  radioInner: { width: 11, height: 11, borderRadius: 6, backgroundColor: colors.primary },
+  stepDivider: {
+    height: 1,
+    backgroundColor: colors.divider,
+    marginVertical: spacing.md,
+  },
   cardNumberBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 2,
-    borderColor: colors.accent,
-    marginBottom: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    gap: spacing.sm,
   },
-  cardNumberLabel: { ...typography.caption, color: colors.textSecondary },
+  cardNumberLabel: { ...typography.small, color: colors.textSecondary, fontWeight: '600' },
   cardNumberValue: {
     ...typography.h3,
-    color: colors.primary,
-    letterSpacing: 1,
+    fontSize: 18,
+    color: colors.text,
+    fontWeight: '800',
+    letterSpacing: 0.8,
     marginTop: 2,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  cardHolder: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
-  copyBtn: { ...typography.bodyBold, color: colors.accent, marginLeft: spacing.sm },
+  cardHolder: { ...typography.small, color: colors.textSecondary, marginTop: 2, fontWeight: '600' },
+  copyBadge: {
+    backgroundColor: colors.primary100,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+  },
+  copyBtn: { ...typography.small, color: colors.primary, fontWeight: '800' },
   cardHint: {
     ...typography.small,
     color: colors.textSecondary,
     marginBottom: spacing.sm,
+    lineHeight: 18,
   },
   uploadBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surface,
-    paddingVertical: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: 2,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.border,
+    borderColor: colors.primary,
     gap: spacing.sm,
   },
-  uploadIcon: { fontSize: 24 },
-  uploadText: { ...typography.bodyBold, color: colors.primary },
+  uploadIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadText: { ...typography.bodyBold, color: colors.primary, fontWeight: '800' },
   screenshotPreviewWrap: { alignItems: 'center', gap: spacing.sm },
   screenshotPreview: {
     width: '100%',
-    height: 220,
-    borderRadius: radius.md,
+    height: 200,
+    borderRadius: radius.lg,
     resizeMode: 'contain',
     backgroundColor: colors.surface,
   },
-  changeShotBtn: { paddingVertical: spacing.xs },
-  changeShotText: { ...typography.body, color: colors.accent },
+  changeShotBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary100,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+  },
+  changeShotText: { ...typography.small, color: colors.primary, fontWeight: '800' },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    backgroundColor: colors.white,
+  },
+  footerInfo: { flex: 0 },
+  footerLabel: { ...typography.small, color: colors.textSecondary, fontWeight: '600' },
+  footerAmount: { ...typography.h3, color: colors.primary, fontWeight: '900' },
 });

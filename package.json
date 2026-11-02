@@ -4,13 +4,10 @@
   "private": true,
   "description": "Sarix Go Driver & Backend Workspace",
   "scripts": {
-    "postinstall": "node preview-server.mjs --check",
     "dev": "node preview-server.mjs",
     "start": "node preview-server.mjs",
     "build": "node preview-server.mjs --check",
     "lint": "node preview-server.mjs --check"
   },
-  "dependencies": {
-    "sarix-go-preview": "file:./tools"
-  }
+  "dependencies": {}
 }

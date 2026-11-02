@@ -225,6 +225,14 @@ export const uz = {
     faq: 'Yordam / FAQ',
     guide: "Haydovchi qo'llanmasi",
     terms: 'Foydalanish shartlari va maxfiylik siyosati',
+    videoTutorialsSection: "Video qo'llanma",
+    videoTutorialTitle: "Ilovadan foydalanish bo'yicha video darsliklar",
+    videoTutorialSubtitle: "Yangi haydovchilar va yo'lovchilar uchun qadam-baqadam video yo'riqnoma",
+    passengerVideoTutorial: "Yo'lovchilar uchun video qo'llanma",
+    passengerVideoTutorialSub: "Taksi va pochta buyurtma berish tartibi",
+    driverVideoTutorial: "Haydovchilar uchun video qo'llanma",
+    driverVideoTutorialSub: "Ro'yxatdan o'tish, balans va zakas olish",
+    watchVideo: "Ko'rish",
   },
   notifications: {
     newOrder: '🚕 Yangi zakas keldi!',
@@ -758,7 +766,7 @@ export const uz = {
     step2Body:
       "Yangi haydovchilarga dastlabki sinov davrida komissiyasiz ishlash imkoniyati beriladi. Bepul davr tugagach, zakas qabul qilish uchun hisobingizda minimal balans bo'lishi kerak.",
     step2Tip:
-      "Maslahat: «Profil → Balansni to'ldirish» bo'limida karta raqamiga pul o'tkazib, to'lov chekini ilova orqali yuboring — birinchi to'lovga +50% bonus beriladi!",
+      "Maslahat: «Profil → Balansni to'ldirish» bo'limida karta raqamiga pul o'tkazib, to'lov chekini ilova orqali yuboring — admin tasdiqlashi bilan balansingiz to'ldiriladi.",
     step3Title: '3. Onlayn rejim va zakas qabul qilish',
     step3Body:
       "Asosiy oynaning yuqori qismidagi «Onlayn» tugmasini yoqing. Yangi zakas tushganda ovozli signal chalinadi va zakas kartasi (yo'nalish, odam soni, narx va komissiya) chiqadi.",
@@ -943,6 +951,14 @@ export const ru = {
     faq: 'Помощь / FAQ',
     guide: 'Руководство водителя',
     terms: 'Условия использования и политика конфиденциальности',
+    videoTutorialsSection: 'Видеоинструкция',
+    videoTutorialTitle: 'Видеоуроки по использованию приложения',
+    videoTutorialSubtitle: 'Пошаговое видеоруководство для водителей и пассажиров',
+    passengerVideoTutorial: 'Видеоинструкция для пассажиров',
+    passengerVideoTutorialSub: 'Как быстро заказать такси или отправить посылку',
+    driverVideoTutorial: 'Видеоинструкция для водителей',
+    driverVideoTutorialSub: 'Регистрация, пополнение баланса и приём заказов',
+    watchVideo: 'Смотреть',
   },
   notifications: {
     newOrder: '🚕 Новый заказ!',
@@ -1468,7 +1484,7 @@ export const ru = {
     step2Body:
       'Новым водителям предоставляется бесплатный пробный период без комиссии. После его окончания для приёма заказов на балансе должна быть минимальная сумма.',
     step2Tip:
-      'Совет: пополните баланс через раздел «Профиль → Пополнить баланс» переводом на карту и отправьте чек — на первое пополнение начисляется бонус +50%!',
+      'Совет: пополните баланс через раздел «Профиль → Пополнить баланс» переводом на карту и отправьте чек — после подтверждения администратором баланс пополнится.',
     step3Title: '3. Режим «Онлайн» и приём заказов',
     step3Body:
       'Включите переключатель «Онлайн» в верхней части главного экрана. При поступлении нового заказа прозвучит сигнал и откроется карточка с маршрутом, числом мест, ценой и комиссией.',
@@ -1651,6 +1667,14 @@ export const en = {
     faq: 'Help / FAQ',
     guide: 'Driver Guide',
     terms: 'Terms of Use and Privacy Policy',
+    videoTutorialsSection: 'Video Tutorials',
+    videoTutorialTitle: 'How to use Sarix Go — Video Guides',
+    videoTutorialSubtitle: 'Step-by-step onboarding videos for drivers and passengers',
+    passengerVideoTutorial: 'Video tutorial for passengers',
+    passengerVideoTutorialSub: 'How to book a taxi or send a parcel',
+    driverVideoTutorial: 'Video tutorial for drivers',
+    driverVideoTutorialSub: 'Registration, balance top-up, and accepting orders',
+    watchVideo: 'Watch',
   },
   notifications: {
     newOrder: '🚕 New order!',
@@ -2175,7 +2199,7 @@ export const en = {
     step2Body:
       'New drivers get a commission-free trial period. After the free trial ends, you need at least the minimum required balance in your account to accept orders.',
     step2Tip:
-      'Tip: Top up via "Profile → Top up balance" by transferring to the card and uploading the receipt — your first top-up gets a +50% bonus!',
+      'Tip: Top up via "Profile → Top up balance" by transferring to the card and uploading the receipt — your balance is credited once an admin approves it.',
     step3Title: '3. Going Online & Accepting Orders',
     step3Body:
       'Turn on the "Online" switch at the top of the main screen. When a new order arrives, an alert sounds and a card shows the route, passenger count, fare, and commission.',
@@ -2358,6 +2382,14 @@ export const uzCyrl = {
     faq: 'Ёрдам / FAQ',
     guide: 'Ҳайдовчи қўлланмаси',
     terms: 'Фойдаланиш шартлари ва махфийлик сиёсати',
+    videoTutorialsSection: 'Видео қўлланма',
+    videoTutorialTitle: 'Иловадан фойдаланиш бўйича видео дарсликлар',
+    videoTutorialSubtitle: 'Янги ҳайдовчилар ва йўловчилар учун қадам-бақадам видео йўриқнома',
+    passengerVideoTutorial: 'Йўловчилар учун видео қўлланма',
+    passengerVideoTutorialSub: 'Такси ва почта буюртма бериш тартиби',
+    driverVideoTutorial: 'Ҳайдовчилар учун видео қўлланма',
+    driverVideoTutorialSub: 'Рўйхатдан ўтиш, баланс ва заказ олиш',
+    watchVideo: 'Кўриш',
   },
   notifications: {
     newOrder: '🚕 Янги заказ келди!',
@@ -2883,7 +2915,7 @@ export const uzCyrl = {
     step2Body:
       'Янги ҳайдовчиларга дастлабки синов даврида комиссиясиз ишлаш имконияти берилади. Бепул давр тугагач, закас қабул қилиш учун ҳисобингизда минимал баланс бўлиши керак.',
     step2Tip:
-      'Маслаҳат: «Профил → Балансни тўлдириш» бўлимида карта рақамига пул ўтказиб, тўлов чекини илова орқали юборинг — биринчи тўловга +50% бонус берилади!',
+      'Маслаҳат: «Профил → Балансни тўлдириш» бўлимида карта рақамига пул ўтказиб, тўлов чекини илова орқали юборинг — админ тасдиқлаши билан балансингиз тўлдирилади.',
     step3Title: '3. Онлайн режим ва закас қабул қилиш',
     step3Body:
       'Асосий ойнанинг юқори қисмидаги «Онлайн» тугмасини ёқинг. Янги закас тушганда овозли сигнал чалинади ва закас картаси (йўналиш, одам сони, нарх ва комиссия) чиқади.',

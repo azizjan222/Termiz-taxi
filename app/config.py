@@ -102,6 +102,15 @@ DRIVER_APP_URL = _https_url(_get(
     "DRIVER_APP_URL",
     "https://play.google.com/store/apps/details?id=uz.sarixgo.driver",
 ))
+# Onboarding video tutorials for passengers and drivers (YouTube / Telegram video post links).
+PASSENGER_TUTORIAL_VIDEO_URL = _https_url(_get(
+    "PASSENGER_TUTORIAL_VIDEO_URL",
+    "https://t.me/SarixGo_support_bot",
+))
+DRIVER_TUTORIAL_VIDEO_URL = _https_url(_get(
+    "DRIVER_TUTORIAL_VIDEO_URL",
+    "https://t.me/SarixGo_support_bot",
+))
 
 # Database
 # IMPORTANT (Railway / container hosting):

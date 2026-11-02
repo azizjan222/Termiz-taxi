@@ -74,12 +74,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.lg,
   },
   button: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
     borderRadius: radius.md,
     width: '100%',
     alignItems: 'center',
   },
-  buttonText: { ...typography.h3, color: colors.primary, fontWeight: '700' },
+  buttonText: { ...typography.h3, color: colors.textOnPrimary, fontWeight: '700' },
 });

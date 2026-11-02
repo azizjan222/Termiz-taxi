@@ -103,6 +103,8 @@ const GLYPHS = {
   image: 'image-outline',
   upload: 'upload',
   book: 'book-open-variant',
+  video: 'play-circle-outline',
+  play: 'play-circle',
   pin: 'pin',
   delete: 'trash-can-outline',
   camera: 'camera',

@@ -705,15 +705,25 @@ export default function OrderDetailScreen() {
   const payable = order.payable ?? order.price;
   const commissionEffective = order.commission_effective ?? null;
   const hasDiscount = !isParcel && bonusUsed + promoDiscount > 0;
+  const isCardPayment =
+    order.payment_method === 'card' || (order.note || '').toLowerCase().includes('karta');
   const serviceIcon: IconName = isParcel
     ? 'parcel'
     : order.service_type === 'full_car'
     ? 'car'
     : 'taxi';
+  const serviceBadgeLabel = isParcel
+    ? t('more.parcelLabel')
+    : order.service_type === 'full_car'
+    ? t('more.fullCarLabel')
+    : t('more.taxi');
   const contactLabel = isParcel ? t('more.sender') : t('more.passenger');
   const pickupBannerText = isParcel ? t('more.goPickupParcel') : t('more.goPickupPassenger');
   const destBannerText = isParcel ? t('more.deliverParcel') : t('more.deliverPassenger');
   const pickedUpBtnText = isParcel ? t('more.pickedBtnParcel') : t('more.pickedBtnPassenger');
+  const lastPassengerMessage = [...messages]
+    .reverse()
+    .find((m) => m.sender_role === 'passenger');
   const target = deriveTarget(order);
   const markerLabels = {
     pickup: `A • ${enRoute ? t('more.address') : isParcel ? t('more.sender') : t('more.passenger')}`,
@@ -740,57 +750,88 @@ export default function OrderDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Clean Modern Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Icon name="back" size={26} color={colors.primary} />
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.75}>
+          <Icon name="back" size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>#{order.id}</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Buyurtma #{order.id}</Text>
+        </View>
         <View style={styles.serviceChip}>
-          <Icon name={serviceIcon} size={20} color={colors.primary} />
+          <IconText
+            name={serviceIcon}
+            size={13}
+            color={colors.primary}
+            textStyle={styles.serviceChipText}
+          >
+            {serviceBadgeLabel}
+          </IconText>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Stage banner: en route to destination (passenger on board) vs heading to pickup. */}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Compact Stage & Countdown Banner */}
         {enRoute ? (
           <View style={styles.destBanner}>
-            <View style={styles.destIconCircle}>
-              <Icon name="compass" size={22} color={colors.success} />
+            <View style={styles.bannerTopRow}>
+              <View style={styles.destIconCircle}>
+                <Icon name="compass" size={20} color={colors.success} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.destBannerText}>{destBannerText}</Text>
+                <Text style={styles.destBannerSub} numberOfLines={1}>
+                  {formatOrderRouteAddress(order.to_address, order.to_city)}
+                </Text>
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.destBannerText}>{destBannerText}</Text>
-              <Text style={styles.destBannerSub}>
-                {formatOrderRouteAddress(order.to_address, order.to_city)}
-              </Text>
+            <View style={styles.stageStepsRow}>
+              <View style={[styles.stageStepBar, styles.stageStepBarSuccess]} />
+              <View style={[styles.stageStepBar, styles.stageStepBarSuccess]} />
             </View>
           </View>
         ) : remainingSec !== null && remainingSec > 0 ? (
           <View style={styles.timerBanner}>
-            <View style={styles.timerIconCircle}>
-              <Icon name="clock" size={20} color="#38BDF8" />
+            <View style={styles.bannerTopRow}>
+              <View style={styles.timerIconCircle}>
+                <Icon name="clock" size={18} color="#38BDF8" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.timerText} numberOfLines={1}>
+                  {contactLabel} bilan bog&apos;laning
+                </Text>
+                <Text style={styles.timerSub} numberOfLines={1}>
+                  Qo&apos;ng&apos;iroq qilib yoki xabar yozib kelishib oling
+                </Text>
+              </View>
+              <View style={styles.timerCountdownPill}>
+                <Text style={styles.timerCountdown}>{mmss(remainingSec)}</Text>
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.timerText}>
-                {t('more.contactWithin', { subject: contactLabel, minutes: CONTACT_WINDOW_MINUTES })}
-              </Text>
-              <Text style={styles.timerSub}>
-                {t('more.contactSub', { subject: contactLabel.toLowerCase() })}
-              </Text>
-            </View>
-            <View style={styles.timerCountdownPill}>
-              <Text style={styles.timerCountdown}>{mmss(remainingSec)}</Text>
+            <View style={styles.stageStepsRow}>
+              <View style={[styles.stageStepBar, styles.stageStepBarCyan]} />
+              <View style={styles.stageStepBarDark} />
             </View>
           </View>
         ) : (
           <View style={styles.statusBanner}>
-            <View style={styles.statusIconCircle}>
-              <Icon
-                name={isParcel ? 'parcel' : 'taxi'}
-                size={22}
-                color={colors.primary}
-              />
+            <View style={styles.bannerTopRow}>
+              <View style={styles.statusIconCircle}>
+                <Icon
+                  name={isParcel ? 'parcel' : 'taxi'}
+                  size={20}
+                  color={colors.primary}
+                />
+              </View>
+              <Text style={styles.statusText}>{pickupBannerText}</Text>
             </View>
-            <Text style={styles.statusText}>{pickupBannerText}</Text>
+            <View style={styles.stageStepsRow}>
+              <View style={[styles.stageStepBar, styles.stageStepBarPrimary]} />
+              <View style={styles.stageStepBar} />
+            </View>
           </View>
         )}
 
@@ -839,10 +880,9 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* Passenger card — phone revealed after accept + In-App Chat + 1-Tap Quick Chat Chips */}
+        {/* Modern Passenger / Sender Card */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>{contactLabel}</Text>
-          <View style={styles.passengerRow}>
+          <View style={styles.passengerTopRow}>
             {order.passenger_photo_url ? (
               <Image
                 source={{
@@ -860,18 +900,39 @@ export default function OrderDetailScreen() {
               </View>
             )}
             <View style={{ flex: 1 }}>
-              <Text style={styles.passengerName}>
+              <Text style={styles.roleSmallLabel}>{contactLabel}</Text>
+              <Text style={styles.passengerName} numberOfLines={1}>
                 {order.passenger_name || t('more.passenger')}
               </Text>
-              <Text style={styles.passengerPhone}>{order.passenger_phone || '—'}</Text>
+              <TouchableOpacity onPress={callPassenger} activeOpacity={0.7}>
+                <Text style={styles.passengerPhone}>{order.passenger_phone || '—'}</Text>
+              </TouchableOpacity>
             </View>
+
+            {/* Quick Fare & Payment Badge right on the passenger card */}
+            <View style={styles.fareSummaryBadge}>
+              <Text style={styles.fareSummaryPrice} numberOfLines={1}>
+                {isParcel
+                  ? t('more.negotiable')
+                  : `${formatPrice(hasDiscount ? payable : order.price)} ${t('more.currency')}`}
+              </Text>
+              <Text style={styles.fareSummaryMethod}>
+                {isCardPayment ? '💳 Karta' : '💵 Naqd pul'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Side-by-Side Labeled Action Buttons (Xabar yozish + Qo'ng'iroq) */}
+          <View style={styles.contactActionsRow}>
             <TouchableOpacity
-              style={styles.smsBtn}
+              style={styles.chatActionBtn}
               onPress={openChat}
+              activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel={t('order.chatTitle')}
             >
-              <Icon name="chat" size={20} color="#FFFFFF" />
+              <Icon name="chat" size={18} color="#FFFFFF" />
+              <Text style={styles.chatActionBtnText}>Xabar yozish</Text>
               {unreadCount > 0 && (
                 <View style={styles.unreadBadge}>
                   <Text style={styles.unreadBadgeText}>
@@ -880,18 +941,44 @@ export default function OrderDetailScreen() {
                 </View>
               )}
             </TouchableOpacity>
+
             <TouchableOpacity
-              style={styles.callBtn}
+              style={styles.callActionBtn}
               onPress={callPassenger}
+              activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel={t('more.a11yCall', { subject: contactLabel })}
               accessibilityHint={t('more.a11yCallHint')}
             >
-              <Icon name="phone" size={20} color={colors.textOnPrimary} />
+              <Icon name="phone" size={18} color="#FFFFFF" />
+              <Text style={styles.callActionBtnText}>Qo&apos;ng&apos;iroq</Text>
             </TouchableOpacity>
           </View>
 
-          {/* 1-Tap Quick Driver Chat Templates (fast & eyes-free while driving to pickup) */}
+          {/* Inline Preview Banner when Passenger sends a message */}
+          {lastPassengerMessage && (
+            <TouchableOpacity
+              style={[
+                styles.latestMsgBanner,
+                unreadCount > 0 && styles.latestMsgBannerUnread,
+              ]}
+              onPress={openChat}
+              activeOpacity={0.85}
+            >
+              <View style={styles.latestMsgDot} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.latestMsgTitle}>
+                  💬 {order.passenger_name || contactLabel} yozdi:
+                </Text>
+                <Text style={styles.latestMsgText} numberOfLines={2}>
+                  {lastPassengerMessage.text}
+                </Text>
+              </View>
+              <Text style={styles.latestMsgReply}>Javob →</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* 1-Tap Quick Driver Chat Templates */}
           {!cancelled && !gone && ['accepted', 'in_progress'].includes(order.status) ? (
             <ScrollView
               horizontal
@@ -901,7 +988,7 @@ export default function OrderDetailScreen() {
               {[
                 '🚕 Yetib keldim, kutyapman',
                 '⏱ 5 daqiqada yetib boraman',
-                '👋 Tayyor turing, yo\'ldaman',
+                "👋 Tayyor turing, yo'ldaman",
               ].map((msg) => (
                 <TouchableOpacity
                   key={msg}
@@ -924,7 +1011,7 @@ export default function OrderDetailScreen() {
         {isParcel && (order.parcel_recipient_name || order.parcel_recipient_phone || order.parcel_payer) && (
           <View style={[styles.card, { marginTop: spacing.md }]}>
             <Text style={styles.cardTitle}>{t('order.parcelRecipient')}</Text>
-            <View style={styles.passengerRow}>
+            <View style={styles.passengerTopRow}>
               <View style={styles.avatar}>
                 <Icon name="parcel" size={20} color={colors.textOnPrimary} />
               </View>
@@ -947,7 +1034,7 @@ export default function OrderDetailScreen() {
               </View>
               {order.parcel_recipient_phone ? (
                 <TouchableOpacity
-                  style={styles.callBtn}
+                  style={styles.callCircleBtn}
                   onPress={() => Linking.openURL(`tel:${order.parcel_recipient_phone}`)}
                   accessibilityRole="button"
                   accessibilityLabel={t('order.callRecipient')}
@@ -959,67 +1046,77 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* Qo'shimcha talablar (extras — home pickup excluded as it is default) */}
-        {(order.female_only || order.has_roof_rack || order.front_seat) && (
-          <View style={[styles.card, { marginTop: spacing.md }]}>
-            <Text style={styles.cardTitle}>{t('more.extras')}</Text>
-            <View style={styles.extrasRow}>
-              {order.front_seat && (
-                <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>💺 {t('order.frontSeatBadge')}</Text>
-                </View>
-              )}
-              {order.female_only && (
-                <View style={styles.extraTag}>
-                  <IconText name="female" size={12} color={colors.primary} textStyle={styles.extraTagText}>
-                    {t('more.femaleInCabin')}
-                  </IconText>
-                </View>
-              )}
-              {order.has_roof_rack && (
-                <View style={styles.extraTag}>
-                  <IconText name="luggage" size={12} color={colors.primary} textStyle={styles.extraTagText}>
-                    {t('more.roofRack')}
-                  </IconText>
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* Driver-tailored Route & Payment details card */}
+        {/* Modern Route Timeline & Payment Details Card */}
         <View style={[styles.card, { marginTop: spacing.md }]}>
-          <View style={styles.row}>
-            <IconText name="location" size={13} color={colors.success} textStyle={styles.label}>
-              Qayerdan (Olib ketish)
-            </IconText>
-            <Text style={[styles.value, !enRoute && { color: colors.primary }]} numberOfLines={2}>
-              {formatOrderRouteAddress(order.from_address, order.from_city)}
-            </Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.row}>
-            <IconText name="flag" size={13} color={colors.primary} textStyle={styles.label}>
-              Qayerga (Borish manzili)
-            </IconText>
-            <Text style={[styles.value, enRoute && { color: colors.primary }]} numberOfLines={2}>
-              {formatOrderRouteAddress(order.to_address, order.to_city)}
-            </Text>
-          </View>
-          {order.landmark ? (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.row}>
-                <IconText name="pin" size={13} color={colors.primary} textStyle={styles.label}>
-                  {t('order.landmarkLabel')}
-                </IconText>
-                <Text style={[styles.value, { color: colors.primary }]} numberOfLines={2}>
-                  {order.landmark}
+          <Text style={styles.cardTitle}>Yo&apos;nalish va to&apos;lov</Text>
+
+          {/* Visual Route Timeline Box */}
+          <View style={styles.routeTimelineBox}>
+            <View style={styles.routeStopRow}>
+              <View style={[styles.routeDot, { backgroundColor: '#10B981' }]} />
+              <View style={styles.routeStopTextWrap}>
+                <Text style={[styles.routeStopLabel, { color: '#059669' }]}>
+                  QAYERDAN (OLIB KETISH)
+                </Text>
+                <Text style={styles.routeStopCity} numberOfLines={2}>
+                  {formatOrderRouteAddress(order.from_address, order.from_city)}
                 </Text>
               </View>
-            </>
-          ) : null}
-          <View style={styles.divider} />
+            </View>
+
+            <View style={styles.routeConnectorLine} />
+
+            <View style={styles.routeStopRow}>
+              <View style={[styles.routeDot, { backgroundColor: colors.primary }]} />
+              <View style={styles.routeStopTextWrap}>
+                <Text style={[styles.routeStopLabel, { color: colors.primary }]}>
+                  QAYERGA (BORISH MANZILI)
+                </Text>
+                <Text style={styles.routeStopCity} numberOfLines={2}>
+                  {formatOrderRouteAddress(order.to_address, order.to_city)}
+                </Text>
+              </View>
+            </View>
+
+            {order.landmark ? (
+              <View style={styles.landmarkInlineBox}>
+                <Icon name="pin" size={14} color={colors.primary} />
+                <Text style={styles.landmarkInlineText} numberOfLines={2}>
+                  {t('order.landmarkLabel')}: {order.landmark}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Qo'shimcha talablar (extras — home pickup excluded as it is default) */}
+          {(order.female_only || order.has_roof_rack || order.front_seat) && (
+            <View style={styles.extrasSection}>
+              <Text style={styles.extrasLabel}>{t('more.extras')}</Text>
+              <View style={styles.extrasRow}>
+                {order.front_seat && (
+                  <View style={styles.extraTag}>
+                    <Text style={styles.extraTagText}>💺 {t('order.frontSeatBadge')}</Text>
+                  </View>
+                )}
+                {order.female_only && (
+                  <View style={styles.extraTag}>
+                    <IconText name="female" size={12} color={colors.primary} textStyle={styles.extraTagText}>
+                      {t('more.femaleInCabin')}
+                    </IconText>
+                  </View>
+                )}
+                {order.has_roof_rack && (
+                  <View style={styles.extraTag}>
+                    <IconText name="luggage" size={12} color={colors.primary} textStyle={styles.extraTagText}>
+                      {t('more.roofRack')}
+                    </IconText>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Compact Details Rows */}
           <View style={styles.row}>
             <IconText name="clock" size={13} color={colors.textSecondary} textStyle={styles.label}>
               {t(isParcel ? 'more.dispatchTime' : 'more.departureTime')}
@@ -1032,14 +1129,12 @@ export default function OrderDetailScreen() {
               <IconText name={serviceIcon} size={13} color={colors.textSecondary} textStyle={styles.label}>
                 {t('more.serviceType')}
               </IconText>
-              <Text style={styles.value}>
-                {isParcel ? t('more.parcelLabel') : t('more.fullCarLabel')}
-              </Text>
+              <Text style={styles.value}>{serviceBadgeLabel}</Text>
             </View>
           ) : (
             <View style={styles.row}>
               <IconText name="people" size={13} color={colors.textSecondary} textStyle={styles.label}>
-                Yo'lovchi soni
+                Yo&apos;lovchi soni
               </IconText>
               <Text style={styles.value}>
                 {t('more.peopleCount', { n: order.person_count })}
@@ -1050,18 +1145,28 @@ export default function OrderDetailScreen() {
           <View style={styles.divider} />
           <View style={styles.row}>
             <IconText name="card" size={13} color={colors.textSecondary} textStyle={styles.label}>
-              To'lov usuli
+              To&apos;lov usuli
             </IconText>
-            <Text style={[styles.value, { color: colors.primary }]}>
-              {order.payment_method === 'card' || (order.note || '').toLowerCase().includes('karta')
-                ? '💳 Karta orqali'
-                : '💵 Naqd pul'}
-            </Text>
+            <View
+              style={[
+                styles.paymentBadge,
+                isCardPayment ? styles.paymentBadgeCard : styles.paymentBadgeCash,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.paymentBadgeText,
+                  isCardPayment ? styles.paymentBadgeTextCard : styles.paymentBadgeTextCash,
+                ]}
+              >
+                {isCardPayment ? '💳 Karta orqali' : '💵 Naqd pul'}
+              </Text>
+            </View>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
             <IconText name="cash" size={13} color={colors.textSecondary} textStyle={styles.label}>
-              {isParcel ? "Pochta haqi" : "Yo'l haqi (Olinadigan summa)"}
+              {isParcel ? 'Pochta haqi' : "Yo'l haqi (Olinadigan summa)"}
             </IconText>
             <Text
               style={[
@@ -1138,7 +1243,7 @@ export default function OrderDetailScreen() {
         )}
       </ScrollView>
 
-      {/* Action footer — visually distinct Secondary Navigation button + Primary Stage CTA */}
+      {/* Compact Side-by-Side Action Footer */}
       <View style={styles.footer}>
         <TouchableOpacity
           onPress={openNavigation}
@@ -1148,8 +1253,8 @@ export default function OrderDetailScreen() {
           accessibilityLabel={t(enRoute ? 'more.a11yNavDropoff' : 'more.a11yNavPickup')}
           accessibilityHint={t('more.a11yNavHint')}
         >
-          <Icon name="compass" size={20} color={colors.primary} style={styles.navBtnIcon} />
-          <Text style={styles.navBtnSecondaryText}>
+          <Icon name="compass" size={18} color={colors.primary} style={styles.navBtnIcon} />
+          <Text style={styles.navBtnSecondaryText} numberOfLines={1}>
             {enRoute
               ? (isParcel ? t('more.navDeliverParcel') : t('more.navigation'))
               : (isParcel ? t('more.navPickupParcel') : t('more.navPickupPassenger'))}
@@ -1158,6 +1263,7 @@ export default function OrderDetailScreen() {
 
         {enRoute ? (
           <TouchableOpacity
+            style={styles.primaryActionWrap}
             onPress={handleComplete}
             disabled={loading}
             activeOpacity={0.85}
@@ -1188,6 +1294,7 @@ export default function OrderDetailScreen() {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
+            style={styles.primaryActionWrap}
             onPress={handleStartTrip}
             disabled={loading}
             activeOpacity={0.85}
@@ -1456,26 +1563,41 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: 10,
     backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surface,
   },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
   serviceChip: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary100,
   },
-  title: { ...typography.h3, color: colors.text },
+  serviceChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   emptyAction: {
     marginTop: spacing.lg,
@@ -1485,18 +1607,20 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.primary,
   },
   emptyActionText: { ...typography.bodyBold, color: colors.textOnPrimary },
-  scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  scroll: { padding: spacing.md, paddingBottom: spacing.xl },
   mapCard: {
-    height: 260,
-    borderRadius: 24,
+    height: 205,
+    borderRadius: 20,
     overflow: 'hidden',
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.divider,
     shadowColor: '#0E1730',
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    elevation: 3,
   },
   mapUnavailable: {
     position: 'absolute',
@@ -1513,23 +1637,23 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   mapUnavailableText: { ...typography.caption, color: colors.textSecondary },
   mapDistanceBadge: {
     position: 'absolute',
-    top: spacing.sm,
-    left: spacing.sm,
+    top: 10,
+    left: 10,
     backgroundColor: 'rgba(14,27,61,0.88)',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: radius.pill,
     flexDirection: 'row',
     alignItems: 'center',
   },
-  mapDistanceText: { ...typography.caption, color: '#FFFFFF', fontWeight: '700' },
+  mapDistanceText: { fontSize: 12, color: '#FFFFFF', fontWeight: '700' },
   mapRecenterBtn: {
     position: 'absolute',
-    right: spacing.sm,
-    bottom: spacing.sm,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    right: 10,
+    bottom: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1539,144 +1663,267 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
-  statusBanner: {
+  bannerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  stageStepsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+  },
+  stageStepBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(148, 163, 184, 0.3)',
+  },
+  stageStepBarDark: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  stageStepBarPrimary: {
+    backgroundColor: colors.primary,
+  },
+  stageStepBarCyan: {
+    backgroundColor: '#38BDF8',
+  },
+  stageStepBarSuccess: {
+    backgroundColor: colors.success,
+  },
+  statusBanner: {
     backgroundColor: colors.primary100,
-    padding: spacing.md,
-    borderRadius: radius.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
     marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: '#BFDBFE',
   },
   statusIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    marginRight: 10,
   },
-  statusText: { ...typography.bodyBold, color: colors.primary, flex: 1 },
+  statusText: { ...typography.bodyBold, color: colors.primary, flex: 1, fontSize: 15 },
   destBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: colors.successLight,
-    padding: spacing.md,
-    borderRadius: radius.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
     marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: '#A7F3D0',
   },
   destIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    marginRight: 10,
   },
-  destBannerText: { ...typography.bodyBold, color: colors.success },
-  destBannerSub: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
+  destBannerText: { ...typography.bodyBold, color: colors.success, fontSize: 15 },
+  destBannerSub: { ...typography.small, color: colors.textSecondary, marginTop: 1 },
   timerBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#0E1B3D',
-    padding: spacing.md,
-    borderRadius: radius.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
     marginBottom: spacing.md,
   },
   timerIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(56, 189, 248, 0.16)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    marginRight: 10,
   },
-  timerText: { ...typography.bodyBold, color: '#FFFFFF' },
-  timerSub: { ...typography.small, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+  timerText: { fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
+  timerSub: { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 1 },
   timerCountdownPill: {
-    backgroundColor: 'rgba(56, 189, 248, 0.16)',
+    backgroundColor: 'rgba(56, 189, 248, 0.18)',
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radius.md,
-    marginLeft: spacing.sm,
+    paddingVertical: 5,
+    borderRadius: 10,
+    marginLeft: 8,
   },
   timerCountdown: {
-    ...typography.h3,
+    fontSize: 16,
     color: '#38BDF8',
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },
   card: {
     backgroundColor: colors.white,
-    borderRadius: radius.xl,
-    padding: spacing.md,
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.divider,
     shadowColor: '#0E1730',
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
   cardTitle: {
-    ...typography.bodyBold,
+    fontSize: 15,
+    fontWeight: '800',
     color: colors.primary,
-    marginBottom: spacing.sm,
+    marginBottom: 10,
   },
-  passengerRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primary,
+  passengerTopRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
   },
-  avatarText: { fontSize: 22, color: colors.textOnPrimary, fontWeight: '700' },
-  passengerName: { ...typography.bodyBold, color: colors.text },
-  passengerPhone: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  callBtn: {
+  roleSmallLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  avatar: {
     width: 46,
     height: 46,
     borderRadius: 23,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  avatarText: { fontSize: 20, color: colors.textOnPrimary, fontWeight: '800' },
+  passengerName: { fontSize: 16, fontWeight: '800', color: colors.text, marginTop: 1 },
+  passengerPhone: { fontSize: 13, fontWeight: '600', color: colors.primary, marginTop: 2 },
+  fareSummaryBadge: {
+    alignItems: 'flex-end',
+    backgroundColor: colors.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginLeft: 8,
+  },
+  fareSummaryPrice: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.success,
+  },
+  fareSummaryMethod: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  contactActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  chatActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 11,
+    borderRadius: 12,
+    gap: 7,
+  },
+  chatActionBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  callActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.success,
+    paddingVertical: 11,
+    borderRadius: 12,
+    gap: 7,
+  },
+  callActionBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  callCircleBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.success,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  smsBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
   unreadBadge: {
-    position: 'absolute',
-    top: -3,
-    right: -3,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
     backgroundColor: colors.error,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
+    marginLeft: 2,
   },
   unreadBadgeText: {
     fontSize: 10,
     fontWeight: '800',
     color: '#FFFFFF',
   },
+  latestMsgBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginTop: 10,
+    gap: 8,
+  },
+  latestMsgBannerUnread: {
+    backgroundColor: colors.primary50,
+    borderColor: colors.primary,
+  },
+  latestMsgDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  latestMsgTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  latestMsgText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 1,
+  },
+  latestMsgReply: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+  },
   chatClosedInline: {
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
+    marginTop: 10,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
   },
@@ -1686,9 +1933,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: 'center',
   },
   quickSmsRow: {
-    gap: spacing.xs,
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
   },
@@ -1701,19 +1948,111 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 7,
   },
   quickSmsChipText: {
-    ...typography.small,
+    fontSize: 12,
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  routeTimelineBox: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  routeStopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  routeDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 5,
+    marginRight: 10,
+  },
+  routeStopTextWrap: {
+    flex: 1,
+  },
+  routeStopLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  routeStopCity: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 1,
+  },
+  routeConnectorLine: {
+    width: 2,
+    height: 14,
+    backgroundColor: colors.border,
+    marginLeft: 4,
+    marginVertical: 3,
+  },
+  landmarkInlineBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  landmarkInlineText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  extrasSection: {
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  extrasLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginBottom: 6,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    paddingVertical: 8,
   },
   label: { ...typography.caption, color: colors.textSecondary },
   value: { ...typography.bodyBold, color: colors.text, flexShrink: 1, textAlign: 'right', marginLeft: spacing.sm },
   divider: { height: 1, backgroundColor: colors.divider },
+  paymentBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  paymentBadgeCash: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  paymentBadgeCard: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+  },
+  paymentBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  paymentBadgeTextCash: {
+    color: '#059669',
+  },
+  paymentBadgeTextCard: {
+    color: '#1D4ED8',
+  },
   discountNote: {
     ...typography.small,
     color: colors.textMuted,
@@ -1721,49 +2060,56 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     lineHeight: 18,
   },
   noteText: { ...typography.body, color: colors.text },
-  extrasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  extrasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   extraTag: {
     backgroundColor: colors.primary100,
     borderColor: '#BFDBFE',
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   extraTagText: { ...typography.small, color: colors.primary, fontWeight: '700' },
   footer: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
     backgroundColor: colors.white,
-    gap: spacing.sm,
+    gap: 10,
   },
   navBtnSecondary: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 13,
-    borderRadius: radius.lg,
+    paddingHorizontal: 10,
+    borderRadius: 14,
     backgroundColor: colors.primary100,
     borderWidth: 1.5,
     borderColor: colors.primary,
   },
-  navBtnIcon: { marginRight: spacing.sm },
-  navBtnSecondaryText: { ...typography.button, color: colors.primary, fontWeight: '700' },
+  navBtnIcon: { marginRight: 6 },
+  navBtnSecondaryText: { fontSize: 14, color: colors.primary, fontWeight: '800', flexShrink: 1 },
+  primaryActionWrap: {
+    flex: 1.25,
+  },
   completeBtn: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 15,
-    borderRadius: radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
     shadowColor: '#059669',
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
-  completeBtnText: { ...typography.button, color: '#FFFFFF', fontWeight: '700' },
+  completeBtnText: { fontSize: 15, color: '#FFFFFF', fontWeight: '800' },
   chatModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(14, 23, 48, 0.55)',

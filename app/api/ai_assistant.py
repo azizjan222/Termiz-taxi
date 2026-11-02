@@ -111,8 +111,7 @@ KOMISSIYA TIZIMI (haydovchi balansidan yechiladi):
 
 BALANS QOIDALARI:
 - Zakas qabul qilish uchun MINIMAL 20,000 so'm balans bo'lishi kerak
-- Birinchi to'lovda 50% bonus
-- Balansni to'ldirish: bot orqali chek yuborib, admin tasdiqlaydi
+- Balansni to'ldirish: ilova yoki bot orqali chek yuborib, admin tasdiqlaydi
 - Karta: ilovada ko'rsatilgan karta
 
 ZAKAS BAJARILISHI:
@@ -528,11 +527,18 @@ async def chat(request: web.Request) -> web.Response:
 
 
 async def get_support_info(request: web.Request) -> web.Response:
-    """GET /api/support - returns Telegram support contact (public, no auth)."""
+    """GET /api/support - returns Telegram support contact and onboarding tutorial links (public, no auth)."""
+    from app.services.dynamic_settings import (
+        get_driver_tutorial_url,
+        get_passenger_tutorial_url,
+    )
+
     return web.json_response({
         "telegram_username": config.SUPPORT_TELEGRAM,
         "telegram_url": f"https://t.me/{config.SUPPORT_TELEGRAM}",
         "bot_username": "termizsariosiyotaxi_bot",
         "bot_url": "https://t.me/termizsariosiyotaxi_bot",
         "email": config.SUPPORT_EMAIL,
+        "passenger_tutorial_url": get_passenger_tutorial_url(),
+        "driver_tutorial_url": get_driver_tutorial_url(),
     })

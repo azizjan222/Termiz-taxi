@@ -7,7 +7,11 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon, IconText, type IconName } from '../src/components/Icon';
-import { getSupportInfo } from '../src/api/ai';
+import {
+  getSupportInfo,
+  FALLBACK_PASSENGER_TUTORIAL_URL,
+  FALLBACK_DRIVER_TUTORIAL_URL,
+} from '../src/api/ai';
 import { changeLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from '../src/i18n';
 import { useThemeStore, type ThemeMode } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -29,10 +33,24 @@ export default function SettingsScreen() {
     (i18n.language as SupportedLanguage) || 'uz'
   );
   const [supportUrl, setSupportUrl] = useState('https://t.me/SarixGo_support_bot');
+  const [passengerTutorialUrl, setPassengerTutorialUrl] = useState(
+    FALLBACK_PASSENGER_TUTORIAL_URL
+  );
+  const [driverTutorialUrl, setDriverTutorialUrl] = useState(
+    FALLBACK_DRIVER_TUTORIAL_URL
+  );
 
   useEffect(() => {
     getSupportInfo()
-      .then((info) => setSupportUrl(info.telegram_url))
+      .then((info) => {
+        if (info.telegram_url) setSupportUrl(info.telegram_url);
+        if (info.passenger_tutorial_url) {
+          setPassengerTutorialUrl(info.passenger_tutorial_url);
+        }
+        if (info.driver_tutorial_url) {
+          setDriverTutorialUrl(info.driver_tutorial_url);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -42,6 +60,8 @@ export default function SettingsScreen() {
   };
 
   const openSupport = () => Linking.openURL(supportUrl);
+  const openPassengerTutorial = () => Linking.openURL(passengerTutorialUrl);
+  const openDriverTutorial = () => Linking.openURL(driverTutorialUrl);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -102,6 +122,51 @@ export default function SettingsScreen() {
           })}
         </View>
 
+        {/* Video Tutorials (Onboarding for passengers & drivers) */}
+        <IconText name="video" size={15} color={colors.text} textStyle={styles.sectionTitle}>
+          {t('settings.videoTutorialsSection')}
+        </IconText>
+        <Text style={styles.sectionSubtitle}>{t('settings.videoTutorialSubtitle')}</Text>
+        <View style={styles.card}>
+          <TouchableOpacity
+            style={styles.tutorialOption}
+            onPress={openPassengerTutorial}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={t('settings.passengerVideoTutorial')}
+          >
+            <View style={[styles.tutorialIconTile, { backgroundColor: '#EEF2FF' }]}>
+              <Icon name="play" size={22} color="#4F46E5" />
+            </View>
+            <View style={styles.tutorialTextWrap}>
+              <Text style={styles.tutorialTitle}>{t('settings.passengerVideoTutorial')}</Text>
+              <Text style={styles.tutorialSub}>{t('settings.passengerVideoTutorialSub')}</Text>
+            </View>
+            <View style={styles.watchBadge}>
+              <Text style={styles.watchBadgeText}>{t('settings.watchVideo')}</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tutorialOption, { borderBottomWidth: 0 }]}
+            onPress={openDriverTutorial}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={t('settings.driverVideoTutorial')}
+          >
+            <View style={[styles.tutorialIconTile, { backgroundColor: '#FEF3C7' }]}>
+              <Icon name="play" size={22} color="#D97706" />
+            </View>
+            <View style={styles.tutorialTextWrap}>
+              <Text style={styles.tutorialTitle}>{t('settings.driverVideoTutorial')}</Text>
+              <Text style={styles.tutorialSub}>{t('settings.driverVideoTutorialSub')}</Text>
+            </View>
+            <View style={styles.watchBadge}>
+              <Text style={styles.watchBadgeText}>{t('settings.watchVideo')}</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
         {/* Nimani yaxshilash kerak (Feedback) */}
         <View style={[styles.card, { marginTop: spacing.lg }]}>
           <TouchableOpacity
@@ -160,8 +225,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   sectionTitle: {
     ...typography.bodyBold,
     color: colors.primary,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
     marginTop: spacing.md,
+  },
+  sectionSubtitle: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
   card: {
     backgroundColor: colors.background,
@@ -181,4 +251,43 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   optionLabel: { flex: 1, ...typography.body, color: colors.text },
   optionLabelSelected: { fontWeight: '600' },
   optionCheck: { ...typography.h3, color: colors.success, fontWeight: '700' },
+  tutorialOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+    gap: spacing.sm,
+  },
+  tutorialIconTile: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tutorialTextWrap: {
+    flex: 1,
+  },
+  tutorialTitle: {
+    ...typography.bodyBold,
+    color: colors.text,
+  },
+  tutorialSub: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  watchBadge: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+  },
+  watchBadgeText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '700',
+  },
 });

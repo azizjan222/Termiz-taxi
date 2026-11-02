@@ -206,7 +206,7 @@ export default function StatsScreen() {
                 <Icon
                   name={stats.rating_count > 0 ? 'star' : 'starOutline'}
                   size={20}
-                  color={colors.accent}
+                  color="#F5B800"
                 />
               </View>
               {/* Was a hardcoded 4.0 behind a "ratings not in use yet" comment that had gone
@@ -408,18 +408,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     lineHeight: 46,
     paddingVertical: 2,
     flexShrink: 1,
-    color: colors.accent,
+    color: '#F5B800',
     fontWeight: '900',
-    textShadowColor: 'rgba(14,23,48,0.25)',
+    textShadowColor: 'rgba(14,23,48,0.28)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
   heroCurrency: {
     ...typography.h3,
-    color: colors.accent,
+    color: '#F5B800',
     fontWeight: '800',
     marginBottom: 5,
-    textShadowColor: 'rgba(14,23,48,0.25)',
+    textShadowColor: 'rgba(14,23,48,0.28)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
@@ -502,12 +502,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: colors.warningLight,
+    backgroundColor: colors.primary100,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm,
   },
-  routeRankText: { ...typography.small, color: colors.accentDark, fontWeight: '800' },
+  routeRankText: { ...typography.small, color: colors.primary, fontWeight: '800' },
   routeName: { flex: 1, ...typography.body, color: colors.text },
   routeCount: { ...typography.bodyBold, color: colors.primary },
 

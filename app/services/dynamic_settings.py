@@ -162,3 +162,45 @@ def is_bot_maintenance(session=None) -> bool:
         return get_bool_setting(s, "maintenance_mode", False)
     finally:
         s.close()
+
+
+def get_str_setting(session, key: str, default: str = "") -> str:
+    """Read a non-empty string ``Setting`` by key, falling back to ``default``."""
+    try:
+        row = session.query(Setting).filter_by(key=key).first()
+        if row and row.value is not None:
+            val = str(row.value).strip()
+            if val:
+                return val
+    except Exception:
+        pass
+    return default
+
+
+def get_passenger_tutorial_url(session=None) -> str:
+    """URL to the passenger onboarding video tutorial (admin key ``passenger_tutorial_url``)."""
+    default = config.PASSENGER_TUTORIAL_VIDEO_URL or f"https://t.me/{config.SUPPORT_TELEGRAM}"
+    if session is not None:
+        val = get_str_setting(session, "passenger_tutorial_url", default)
+        return val if val.startswith("https://") else default
+    s = get_session()
+    try:
+        val = get_str_setting(s, "passenger_tutorial_url", default)
+        return val if val.startswith("https://") else default
+    finally:
+        s.close()
+
+
+def get_driver_tutorial_url(session=None) -> str:
+    """URL to the driver onboarding video tutorial (admin key ``driver_tutorial_url``)."""
+    default = config.DRIVER_TUTORIAL_VIDEO_URL or f"https://t.me/{config.SUPPORT_TELEGRAM}"
+    if session is not None:
+        val = get_str_setting(session, "driver_tutorial_url", default)
+        return val if val.startswith("https://") else default
+    s = get_session()
+    try:
+        val = get_str_setting(s, "driver_tutorial_url", default)
+        return val if val.startswith("https://") else default
+    finally:
+        s.close()
+

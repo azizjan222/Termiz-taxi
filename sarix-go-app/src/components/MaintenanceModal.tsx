@@ -64,7 +64,7 @@ export const MaintenanceModal: React.FC<Props> = ({ visible, onRetry }) => {
             activeOpacity={0.85}
           >
             {checking ? (
-              <ActivityIndicator color={colors.primary} />
+              <ActivityIndicator color={colors.textOnPrimary} />
             ) : (
               <Text style={styles.buttonText}>{t('maintenance.retry')}</Text>
             )}
@@ -106,7 +106,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.md,
   },
   button: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
     borderRadius: radius.md,
@@ -116,5 +116,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { ...typography.h3, color: colors.primary, fontWeight: '700' },
+  buttonText: { ...typography.h3, color: colors.textOnPrimary, fontWeight: '700' },
 });

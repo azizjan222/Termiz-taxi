@@ -71,8 +71,6 @@ export default function OrdersScreen() {
   // Synchronous guard for the online switch, plus a state copy to disable the control.
   const onlineInFlightRef = useRef(false);
   const [togglingOnline, setTogglingOnline] = useState(false);
-  const [cabinOccupied, setCabinOccupied] = useState(0);
-  const [cabinCapacity, setCabinCapacity] = useState(4);
   const [corridorFilter, setCorridorFilter] = useState<{ from: string; to: string } | null>(
     null
   );
@@ -109,8 +107,6 @@ export default function OrdersScreen() {
       setReceiveMsg(res.message || '');
       setReceiveCode(res.code || '');
       setOrders(res.can_receive === false ? [] : res.orders);
-      setCabinOccupied(res.cabin_occupied ?? 0);
-      setCabinCapacity(res.cabin_capacity ?? 4);
       setActiveCorridor(res.active_corridor ?? null);
       const currentDriver = useDriverStore.getState().driver;
       if (currentDriver && res.is_verified !== undefined) {
@@ -696,34 +692,10 @@ export default function OrdersScreen() {
         </View>
       )}
 
-      {/* Feature 1 & 2: Cabin Occupancy & Tumanlararo Corridor / Transit Filter Bar */}
+      {/* Tumanlararo Corridor / Transit Filter Bar */}
       <View style={styles.corridorBar}>
-        <View style={styles.corridorTopRow}>
-          <View style={styles.cabinRow}>
-            <Icon name="car" size={15} color={colors.primary} />
-            <Text style={styles.cabinText}>
-              {t('order.cabinStatusTitle')}:{' '}
-              <Text style={{ fontWeight: '800', color: colors.primary }}>
-                {t('order.cabinSeatsFilled', {
-                  occupied: cabinOccupied,
-                  capacity: cabinCapacity,
-                })}
-              </Text>
-            </Text>
-            <View style={styles.seatDots}>
-              {[0, 1, 2, 3].map((i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.seatDot,
-                    i < cabinOccupied && styles.seatDotFilled,
-                  ]}
-                />
-              ))}
-            </View>
-          </View>
-
-          {(corridorFilter || activeCorridor) && (
+        {(corridorFilter || activeCorridor) && (
+          <View style={styles.corridorTopRow}>
             <View style={styles.corridorActionGroup}>
               <TouchableOpacity
                 style={[
@@ -770,8 +742,8 @@ export default function OrdersScreen() {
                 </TouchableOpacity>
               ) : null}
             </View>
-          )}
-        </View>
+          </View>
+        )}
 
         <FlatList
           horizontal

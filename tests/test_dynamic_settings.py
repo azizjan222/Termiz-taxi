@@ -2,10 +2,12 @@
 from app import config
 from app.models import Setting
 from app.services.dynamic_settings import (
+    get_driver_tutorial_url,
     get_free_trial_days,
     get_free_trial_limit,
     get_int_setting,
     get_min_driver_balance,
+    get_passenger_tutorial_url,
 )
 
 
@@ -70,3 +72,13 @@ def test_free_trial_days_wrapper_default(db):
 
 def test_free_trial_limit_wrapper_default(db):
     assert get_free_trial_limit(db) == config.FREE_TRIAL_DRIVER_LIMIT
+
+
+def test_tutorial_url_wrappers_read_settings_and_validate_https(db):
+    assert get_passenger_tutorial_url(db).startswith("https://")
+    assert get_driver_tutorial_url(db).startswith("https://")
+    _set(db, "passenger_tutorial_url", "https://youtu.be/passenger-demo")
+    _set(db, "driver_tutorial_url", "https://youtu.be/driver-demo")
+    assert get_passenger_tutorial_url(db) == "https://youtu.be/passenger-demo"
+    assert get_driver_tutorial_url(db) == "https://youtu.be/driver-demo"
+

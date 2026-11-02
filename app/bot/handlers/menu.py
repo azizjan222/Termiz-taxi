@@ -157,7 +157,6 @@ async def cabinet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📚 <b>YO'RIQNOMA</b>\n\n"
-        "🎁 Birinchi to'lovda <b>50% BONUS</b>!\n\n"
         "1️⃣ Zakas narxi: 1 odam = 10 000 so'm\n\n"
         "2️⃣ Hisobni to'ldirish:\n"
         "🔸 Kabinet → Hisobni to'ldirish\n"

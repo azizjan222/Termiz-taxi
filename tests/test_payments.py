@@ -49,25 +49,25 @@ def test_manual_payment_credit_is_idempotent_and_audited(db):
     db.commit()
 
     assert amount == 10_000
-    assert bonus == 5_000
-    assert credited_driver.balance == 15_000
+    assert bonus == 0
+    assert credited_driver.balance == 10_000
     assert payment.status == "approved"
     ledger = db.query(BalanceTransaction).one()
-    assert ledger.amount == 15_000
-    assert ledger.balance_after == 15_000
+    assert ledger.amount == 10_000
+    assert ledger.balance_after == 10_000
     assert ledger.idempotency_key == f"payment:{payment.id}:approved"
 
     # Replaying the same callback cannot credit money or create another ledger row.
     assert credit_driver_payment(db, payment) is None
     db.expire_all()
-    assert db.query(Driver).filter_by(id=driver.id).one().balance == 15_000
+    assert db.query(Driver).filter_by(id=driver.id).one().balance == 10_000
     assert db.query(BalanceTransaction).count() == 1
 
 
 def test_first_payment_bonus_is_granted_only_once_across_payments(db):
     driver = _driver(db)
     first = _payment(db, driver, amount=10_000, receipt="a" * 64)
-    credit_driver_payment(db, first)
+    _, first_bonus, _ = credit_driver_payment(db, first)
     db.commit()
 
     second = _payment(db, driver, amount=20_000, receipt="b" * 64)
@@ -76,9 +76,10 @@ def test_first_payment_bonus_is_granted_only_once_across_payments(db):
 
     db.expire_all()
     saved = db.query(Driver).filter_by(id=driver.id).one()
+    assert first_bonus == 0
     assert second_bonus == 0
     assert saved.first_payment_bonus_granted is True
-    assert saved.balance == 35_000
+    assert saved.balance == 30_000
     assert db.query(BalanceTransaction).count() == 2
 
 
