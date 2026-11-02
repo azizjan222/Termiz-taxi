@@ -195,8 +195,14 @@ export default function RootLayout() {
 
       const data = (response?.notification?.request?.content?.data || {}) as any;
       // Don't navigate for terminal events: the backend sends order_id on
-      // order_cancelled / order_expired too, and opening a dead order is just confusing.
-      if (data.type === 'order_cancelled' || data.type === 'order_expired') return;
+      // order_cancelled / order_expired / order_completed too, and opening a dead order is just confusing.
+      if (
+        data.type === 'order_cancelled' ||
+        data.type === 'order_expired' ||
+        data.type === 'order_completed'
+      ) {
+        return;
+      }
 
       // Only navigate once the driver is actually logged in, otherwise expo-router
       // would push an authenticated screen over the login flow.

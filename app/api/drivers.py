@@ -771,6 +771,11 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,
+        "payment_method": (
+            "card"
+            if "karta" in f"{o.note or ''} {o.parcel_note or ''}".lower()
+            else "cash"
+        ),
         "passenger_name": o.passenger_name,
         "passenger_photo_url": (o.passenger.profile_photo_url if o.passenger else None),
         # Whether this ride's passenger can be rated at all. rate-passenger requires
@@ -2474,6 +2479,26 @@ async def driver_send_order_message(request: web.Request) -> web.Response:
                     "message": serialized,
                 },
             )
+            try:
+                from app.services.push import ORDERS_CHANNEL, send_push
+                pax = session.query(User).filter_by(id=order.passenger_id).first()
+                if pax and pax.push_token:
+                    sender_label = driver.first_name or "Haydovchi"
+                    await send_push(
+                        pax.push_token,
+                        f"💬 {sender_label} (#{order.id})",
+                        text,
+                        {
+                            "type": "order_message",
+                            "order_id": order.id,
+                            "sender_name": sender_label,
+                        },
+                        channel_id=ORDERS_CHANNEL,
+                        recipient_type="passenger",
+                        recipient_id=pax.id,
+                    )
+            except Exception as e:
+                logger.debug("Chat push to passenger failed: %s", e)
 
         return web.json_response({"message": serialized, "chat_open": True}, status=201)
     finally:

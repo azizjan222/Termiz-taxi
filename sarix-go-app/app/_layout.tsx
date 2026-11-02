@@ -13,8 +13,11 @@ import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
 import { MaintenanceModal } from '../src/components/MaintenanceModal';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 import { getAppConfig, compareVersions } from '../src/api/app-config';
-import { registerPushToken } from '../src/services/notifications';
-import { addNotificationReceivedListener } from '../src/services/notifications';
+import {
+  registerPushToken,
+  addNotificationReceivedListener,
+  addNotificationResponseListener,
+} from '../src/services/notifications';
 import { addNotification, syncAnnouncements } from '../src/services/notificationHistory';
 import Constants from 'expo-constants';
 import { CrashScreen } from '../src/components/CrashScreen';
@@ -126,12 +129,27 @@ export default function RootLayout() {
     const sub = addNotificationReceivedListener((notification) => {
       const content = notification?.request?.content;
       if (!content) return;
+      if ((content.data as any)?._local === true) return;
       addNotification({
         title: content.title || i18n.t('notifHistory.fallbackTitle'),
         body: content.body || '',
         type: (content.data as any)?.type,
         data: (content.data as any) || {},
       });
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    const sub = addNotificationResponseListener((response) => {
+      const data = (response?.notification?.request?.content?.data || {}) as any;
+      if (!useAuthStore.getState().isAuthenticated) return;
+      if (data.type === 'order_cancelled' || data.type === 'order_expired') return;
+      const orderId = data.order_id ?? data.orderId;
+      if (orderId == null) return;
+      const numericId = Number(orderId);
+      if (!Number.isFinite(numericId)) return;
+      router.push(`/order/${numericId}`);
     });
     return () => sub.remove();
   }, []);

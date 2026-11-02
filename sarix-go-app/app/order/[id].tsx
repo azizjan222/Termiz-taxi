@@ -56,6 +56,115 @@ const WS_LOCATION_STALE_MS = 20000;
  */
 const DRIVER_STALE_MS = 60000;
 
+function formatUzPlate(raw?: string | null): string {
+  const s = (raw || '').trim().toUpperCase().replace(/\s+/g, '');
+  const m1 = s.match(/^(\d{2})([A-Z])(\d{3})([A-Z]{2})$/);
+  if (m1) return `${m1[1]} ${m1[2]} ${m1[3]} ${m1[4]}`;
+  const m2 = s.match(/^(\d{2})(\d{3})([A-Z]{3})$/);
+  if (m2) return `${m2[1]} ${m2[2]} ${m2[3]}`;
+  return (raw || '').trim().toUpperCase();
+}
+
+function resolveCarColorInfo(rawColor?: string | null): {
+  label: string;
+  swatchHex: string;
+  swatchBorder: string;
+} {
+  const label = (rawColor || '').trim() || 'Oq';
+  const low = label.toLowerCase();
+  if (low.includes('qora') || low.includes('black') || low.includes('черн')) {
+    return { label, swatchHex: '#1E293B', swatchBorder: '#0F172A' };
+  }
+  if (
+    low.includes('kumush') ||
+    low.includes('kulrang') ||
+    low.includes('mokriy') ||
+    low.includes('seriy') ||
+    low.includes('silver') ||
+    low.includes('grey')
+  ) {
+    return { label, swatchHex: '#94A3B8', swatchBorder: '#475569' };
+  }
+  if (low.includes("ko'k") || low.includes('kok') || low.includes('blue') || low.includes('син')) {
+    return { label, swatchHex: '#2563EB', swatchBorder: '#1D4ED8' };
+  }
+  if (low.includes('qizil') || low.includes('red') || low.includes('крас')) {
+    return { label, swatchHex: '#DC2626', swatchBorder: '#991B1B' };
+  }
+  if (low.includes('sariq') || low.includes('oltin') || low.includes('yellow')) {
+    return { label, swatchHex: '#FACC15', swatchBorder: '#CA8A04' };
+  }
+  if (low.includes('yashil') || low.includes('green')) {
+    return { label, swatchHex: '#16A34A', swatchBorder: '#15803D' };
+  }
+  if (low.includes('qaymoq') || low.includes('jemchug') || low.includes('beige')) {
+    return { label, swatchHex: '#FEF3C7', swatchBorder: '#D97706' };
+  }
+  return { label, swatchHex: '#FFFFFF', swatchBorder: '#94A3B8' };
+}
+
+function resolveCarModelGlyph(model?: string | null): {
+  glyph: IconName;
+  accentBg: string;
+  accentColor: string;
+  tag: string;
+} {
+  const m = (model || '').trim().toLowerCase();
+  if (m.includes('cobalt')) {
+    return {
+      glyph: 'carSide',
+      accentBg: '#DBEAFE',
+      accentColor: '#1D4ED8',
+      tag: 'Cobalt',
+    };
+  }
+  if (m.includes('damas') || m.includes('labo')) {
+    return {
+      glyph: 'vanPassenger',
+      accentBg: '#FEF3C7',
+      accentColor: '#B45309',
+      tag: 'Minivan',
+    };
+  }
+  if (m.includes('spark') || m.includes('matiz')) {
+    return {
+      glyph: 'carHatchback',
+      accentBg: '#DCFCE7',
+      accentColor: '#15803D',
+      tag: 'Xetchbek',
+    };
+  }
+  if (
+    m.includes('tracker') ||
+    m.includes('captiva') ||
+    m.includes('equinox') ||
+    m.includes('byd') ||
+    m.includes('chery') ||
+    m.includes('kia')
+  ) {
+    return {
+      glyph: 'carEstate',
+      accentBg: '#EDE9FE',
+      accentColor: '#6D28D9',
+      tag: 'Krossover',
+    };
+  }
+  if (m.includes('malibu') || m.includes('monza') || m.includes('onix')) {
+    return {
+      glyph: 'carSports',
+      accentBg: '#E0E7FF',
+      accentColor: '#3730A3',
+      tag: 'Komfort',
+    };
+  }
+  return {
+    glyph: 'carSide',
+    accentBg: '#E0F2FE',
+    accentColor: '#0369A1',
+    tag: 'Sedan',
+  };
+}
+
 /**
  * How long after our own setCenter() a camera move is still assumed to be ours.
  *
@@ -570,60 +679,96 @@ export default function OrderDetailScreen() {
         )}
 
         {/* Driver info + License Plate + In-App Chat + 1-Tap Quick Chat Chips */}
-        {order.driver && (
-          <View style={styles.driverCard}>
-            <View style={styles.driverHeaderRow}>
-              <Text style={styles.driverTitle}>{t('order.driverInfo')}</Text>
-              {order.driver.car_number ? (
-                <View style={styles.plateBadge}>
-                  <Text style={styles.plateBadgeText}>{order.driver.car_number}</Text>
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.driverRow}>
-              {order.driver.profile_photo_url ? (
-                <Image
-                  source={{
-                    uri: order.driver.profile_photo_url.startsWith('http')
-                      ? order.driver.profile_photo_url
-                      : `${API_URL}${order.driver.profile_photo_url}`,
-                  }}
-                  style={styles.driverAvatar}
-                />
-              ) : (
-                <View style={styles.driverAvatar}>
-                  <Text style={styles.driverAvatarText}>
-                    {order.driver.first_name?.[0]?.toUpperCase() || '?'}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.driverInfo}>
-                <Text style={styles.driverName}>
-                  {order.driver.first_name || t('common.driver')}
-                </Text>
-                {order.driver.car_model ? (
-                  <Text style={styles.carModelText}>{order.driver.car_model}</Text>
-                ) : null}
-                {order.driver.phone ? (
-                  <TouchableOpacity
-                    onPress={callDriver}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('order.callDriver')}
-                    accessibilityHint={t('order.a11yCallDriverHint')}
-                  >
-                    <IconText
-                      name="mobile"
-                      size={12}
-                      color={colors.primary}
-                      textStyle={styles.driverPhone}
-                    >
-                      {order.driver.phone}
-                    </IconText>
-                  </TouchableOpacity>
+        {order.driver && (() => {
+          const carVisual = resolveCarModelGlyph(order.driver.car_model);
+          const colorInfo = resolveCarColorInfo(order.driver.car_color);
+          return (
+            <View style={styles.driverCard}>
+              <View style={styles.driverHeaderRow}>
+                <Text style={styles.driverTitle}>{t('order.driverInfo')}</Text>
+                {order.driver.car_number ? (
+                  <View style={styles.plateBadge}>
+                    <View style={styles.plateFlagSection}>
+                      <View style={styles.uzFlagBox}>
+                        <View style={styles.uzFlagBlue} />
+                        <View style={styles.uzFlagRed} />
+                        <View style={styles.uzFlagWhite} />
+                        <View style={styles.uzFlagRed} />
+                        <View style={styles.uzFlagGreen} />
+                      </View>
+                      <Text style={styles.plateUzCode}>UZ</Text>
+                    </View>
+                    <Text style={styles.plateBadgeText}>
+                      {formatUzPlate(order.driver.car_number)}
+                    </Text>
+                  </View>
                 ) : null}
               </View>
+
+              <View style={styles.driverRow}>
+                {order.driver.profile_photo_url ? (
+                  <Image
+                    source={{
+                      uri: order.driver.profile_photo_url.startsWith('http')
+                        ? order.driver.profile_photo_url
+                        : `${API_URL}${order.driver.profile_photo_url}`,
+                    }}
+                    style={styles.driverAvatar}
+                  />
+                ) : (
+                  <View style={styles.driverAvatar}>
+                    <Text style={styles.driverAvatarText}>
+                      {order.driver.first_name?.[0]?.toUpperCase() || '?'}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.driverInfo}>
+                  <Text style={styles.driverName}>
+                    {order.driver.first_name || t('common.driver')}
+                  </Text>
+                  {order.driver.car_model ? (
+                    <View style={styles.carDetailsRow}>
+                      <View style={[styles.carModelBadge, { backgroundColor: carVisual.accentBg }]}>
+                        <Icon
+                          name={carVisual.glyph}
+                          size={20}
+                          color={carVisual.accentColor}
+                        />
+                      </View>
+                      <Text style={styles.carModelText}>{order.driver.car_model}</Text>
+                      <View style={styles.carColorChip}>
+                        <View
+                          style={[
+                            styles.carColorDot,
+                            {
+                              backgroundColor: colorInfo.swatchHex,
+                              borderColor: colorInfo.swatchBorder,
+                            },
+                          ]}
+                        />
+                        <Text style={styles.carColorText}>{colorInfo.label} rang</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  {order.driver.phone ? (
+                    <TouchableOpacity
+                      onPress={callDriver}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('order.callDriver')}
+                      accessibilityHint={t('order.a11yCallDriverHint')}
+                    >
+                      <IconText
+                        name="mobile"
+                        size={12}
+                        color={colors.primary}
+                        textStyle={styles.driverPhone}
+                      >
+                        {order.driver.phone}
+                      </IconText>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               <TouchableOpacity
                 style={styles.chatBtn}
                 onPress={openChat}
@@ -678,8 +823,9 @@ export default function OrderDetailScreen() {
                 <Text style={styles.chatClosedInlineText}>{t('order.chatClosedNotice')}</Text>
               </View>
             )}
-          </View>
-        )}
+            </View>
+          );
+        })()}
 
         {/* Route */}
         <View style={styles.card}>
@@ -1151,18 +1297,52 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   driverTitle: { ...typography.bodyBold, color: colors.primary },
   plateBadge: {
-    backgroundColor: colors.card,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#0F172A',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 8,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  plateFlagSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingRight: 7,
+    borderRightWidth: 1.5,
+    borderRightColor: '#CBD5E1',
+  },
+  uzFlagBox: {
+    width: 20,
+    height: 12,
+    borderRadius: 2,
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: '#94A3B8',
+  },
+  uzFlagBlue: { flex: 4, backgroundColor: '#0099B5' },
+  uzFlagRed: { height: 1, backgroundColor: '#CE1126' },
+  uzFlagWhite: { flex: 4, backgroundColor: '#FFFFFF' },
+  uzFlagGreen: { flex: 4, backgroundColor: '#1EB53A' },
+  plateUzCode: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#0284C7',
+    marginTop: 1,
+    letterSpacing: 0.5,
   },
   plateBadgeText: {
-    ...typography.small,
-    color: colors.text,
-    fontWeight: '800',
-    letterSpacing: 0.8,
+    fontSize: 16,
+    color: '#0F172A',
+    fontWeight: '900',
+    letterSpacing: 1.1,
   },
   driverRow: { flexDirection: 'row', alignItems: 'center' },
   driverAvatar: {
@@ -1176,12 +1356,49 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   driverAvatarText: { fontSize: 24, color: colors.textOnPrimary, fontWeight: '700' },
   driverInfo: { flex: 1 },
-  driverName: { ...typography.bodyBold, color: colors.text },
+  driverName: { ...typography.bodyBold, color: colors.text, fontSize: 17 },
+  carDetailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  carModelBadge: {
+    width: 32,
+    height: 24,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   carModelText: {
     ...typography.small,
+    color: colors.text,
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  carColorChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  carColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+  },
+  carColorText: {
+    fontSize: 12,
     color: colors.textSecondary,
-    fontWeight: '600',
-    marginTop: 1,
+    fontWeight: '700',
   },
   driverPhone: { ...typography.caption, color: colors.primary, marginTop: 3, fontWeight: '600' },
   callBtn: {

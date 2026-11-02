@@ -11,7 +11,7 @@ import i18n from '../i18n';
 // app is in the FOREGROUND we drop the duplicate REMOTE push so the passenger
 // gets exactly one notification. Background pushes are unaffected (this handler
 // only runs while foregrounded), so a closed app still gets the push.
-const FOREGROUND_HANDLED_TYPES = new Set(['order_accepted', 'order_started']);
+const FOREGROUND_HANDLED_TYPES = new Set(['order_accepted', 'order_started', 'order_message']);
 
 // Configure notification handler (foreground behavior)
 Notifications.setNotificationHandler({

@@ -6,7 +6,12 @@ import { WS_URL, getAuthToken, notifyUnauthorized } from '../api/client';
 import { type DriverOrder } from '../api/driver';
 import { useRealtimeStore } from '../store/realtime';
 import { useDriverStore } from '../store/driver';
-import { playNewOrderAlert, playOrderCancelledAlert, newOrderBody } from './notifications';
+import {
+  playNewOrderAlert,
+  playOrderCancelledAlert,
+  playChatMessageAlert,
+  newOrderBody,
+} from './notifications';
 import { addNotification } from './notificationHistory';
 
 // ---------------------------------------------------------------------------
@@ -192,6 +197,18 @@ function handleMessage(data: any) {
     useRealtimeStore.getState().pushTaken(msg.order_id);
   } else if (msg.type === 'order_message' && msg.order_id && msg.message) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    if (msg.message.sender_role !== 'driver') {
+      playChatMessageAlert({
+        orderId: Number(msg.order_id),
+        text: String(msg.message.text || ''),
+      });
+      addNotification({
+        title: `💬 ${i18n.t('order.passengerLabel', "Yo'lovchi")} (#${msg.order_id})`,
+        body: String(msg.message.text || ''),
+        type: 'order_message',
+        data: { order_id: msg.order_id },
+      });
+    }
     useRealtimeStore.getState().pushOrderMessage(msg.order_id, msg.message);
   }
 }

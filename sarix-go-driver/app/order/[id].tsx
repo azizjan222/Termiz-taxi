@@ -44,7 +44,7 @@ import {
   haversineMeters,
   formatDistance,
   formatEta,
-  shortenAddress,
+  formatOrderRouteAddress,
   ETA_AVG_SPEED_KMH,
   type Coords,
 } from '../../src/components/driverMap.helpers';
@@ -147,17 +147,14 @@ export default function OrderDetailScreen() {
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let initialMissRetried = false;
 
-    const load = async () => {
-      // Skip the FETCH while backgrounded, but keep re-arming the timer below: an early
-      // return here would kill the poll permanently for the life of the screen. The driver
-      // typically backgrounds this screen to use navigation, so it used to keep fetching
-      // the whole way to the pickup.
-      if (isAppForeground()) {
+    const load = async (forceFetch = false) => {
+      if (forceFetch || isAppForeground()) {
         try {
           const orders = await listMyActive();
           if (!cancelled) {
-            const o = orders.find((x) => x.id.toString() === id);
+            const o = orders.find((x) => x.id.toString() === String(id));
             if (o) {
               everLoadedRef.current = true;
               setOrder(o);
@@ -165,13 +162,12 @@ export default function OrderDetailScreen() {
               setNotMine(false);
               loadMessages();
             } else if (everLoadedRef.current) {
-              // We HAD it and now we don't: the passenger cancelled, another driver took
-              // it, or it completed. Worth telling the driver about.
               setGone(true);
+            } else if (!initialMissRetried) {
+              initialMissRetried = true;
+              timer = setTimeout(() => load(true), 600);
+              return;
             } else {
-              // We never had it. Either the id belongs to somebody else's ride or it is
-              // still an unaccepted `new` order — neither is a cancellation, so show the
-              // neutral empty state instead of warning that it is "no longer active".
               setNotMine(true);
             }
           }
@@ -179,10 +175,10 @@ export default function OrderDetailScreen() {
           // Network/API failure: keep whatever we already have and retry.
         }
       }
-      if (!cancelled) timer = setTimeout(load, ORDER_POLL_MS);
+      if (!cancelled) timer = setTimeout(() => load(false), ORDER_POLL_MS);
     };
 
-    load();
+    load(true);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
@@ -590,26 +586,38 @@ export default function OrderDetailScreen() {
   };
 
   if (!order) {
+    const isMissing = gone || notMine;
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Icon name="back" size={26} color={colors.primary} />
           </TouchableOpacity>
-          <Text style={styles.title}>{t('order.new')}</Text>
+          <Text style={styles.title}>{id ? `#${id}` : ''}</Text>
           <View style={{ width: 40 }} />
         </View>
         <View style={styles.center}>
-          <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>
-            {gone || notMine ? t('order.notFound') : t('common.loading')}
-          </Text>
-          <TouchableOpacity
-            style={styles.emptyAction}
-            onPress={() => router.replace('/(main)/orders')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.emptyActionText}>{t('more.nextOrder')}</Text>
-          </TouchableOpacity>
+          {!isMissing ? (
+            <>
+              <ActivityIndicator size="large" color={colors.primary} style={{ marginBottom: 12 }} />
+              <Text style={{ color: colors.textSecondary, textAlign: 'center', fontWeight: '600' }}>
+                {t('common.loading')}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={{ color: colors.textSecondary, textAlign: 'center', fontSize: 15 }}>
+                {t('order.notFound')}
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyAction}
+                onPress={() => router.replace('/(main)/orders')}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.emptyActionText}>{t('more.nextOrder')}</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -677,7 +685,9 @@ export default function OrderDetailScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.destBannerText}>{destBannerText}</Text>
-              <Text style={styles.destBannerSub}>{shortenAddress(order.to_address, order.to_city)}</Text>
+              <Text style={styles.destBannerSub}>
+                {formatOrderRouteAddress(order.to_address, order.to_city)}
+              </Text>
             </View>
           </View>
         ) : remainingSec !== null && remainingSec > 0 ? (
@@ -875,21 +885,14 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* Qo'shimcha talablar (extras) */}
-        {(order.female_only || order.has_roof_rack || order.front_seat || order.pickup_type) && (
+        {/* Qo'shimcha talablar (extras — home pickup excluded as it is default) */}
+        {(order.female_only || order.has_roof_rack || order.front_seat) && (
           <View style={[styles.card, { marginTop: spacing.md }]}>
             <Text style={styles.cardTitle}>{t('more.extras')}</Text>
             <View style={styles.extrasRow}>
               {order.front_seat && (
                 <View style={styles.extraTag}>
                   <Text style={styles.extraTagText}>💺 {t('order.frontSeatBadge')}</Text>
-                </View>
-              )}
-              {order.pickup_type && (
-                <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>
-                    🏠 {t('order.pickupDoorBadge')}
-                  </Text>
                 </View>
               )}
               {order.female_only && (
@@ -910,23 +913,23 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* Route (Consistent icons & clean alignment on both Qayerdan and Qayerga rows) */}
+        {/* Driver-tailored Route & Payment details card */}
         <View style={[styles.card, { marginTop: spacing.md }]}>
           <View style={styles.row}>
             <IconText name="location" size={13} color={colors.success} textStyle={styles.label}>
-              {t('order.from')}
+              Qayerdan (Olib ketish)
             </IconText>
             <Text style={[styles.value, !enRoute && { color: colors.primary }]} numberOfLines={2}>
-              {shortenAddress(order.from_address, order.from_city)}
+              {formatOrderRouteAddress(order.from_address, order.from_city)}
             </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
             <IconText name="flag" size={13} color={colors.primary} textStyle={styles.label}>
-              {t('order.to')}
+              Qayerga (Borish manzili)
             </IconText>
             <Text style={[styles.value, enRoute && { color: colors.primary }]} numberOfLines={2}>
-              {shortenAddress(order.to_address, order.to_city)}
+              {formatOrderRouteAddress(order.to_address, order.to_city)}
             </Text>
           </View>
           {order.landmark ? (
@@ -962,18 +965,29 @@ export default function OrderDetailScreen() {
           ) : (
             <View style={styles.row}>
               <IconText name="people" size={13} color={colors.textSecondary} textStyle={styles.label}>
-                {t('order.persons')}
+                Yo'lovchi soni
               </IconText>
               <Text style={styles.value}>
-                {order.person_count}
+                {t('more.peopleCount', { n: order.person_count })}
                 {order.front_seat ? ` (${t('order.frontSeatBadge')})` : ''}
               </Text>
             </View>
           )}
           <View style={styles.divider} />
           <View style={styles.row}>
+            <IconText name="card" size={13} color={colors.textSecondary} textStyle={styles.label}>
+              To'lov usuli
+            </IconText>
+            <Text style={[styles.value, { color: colors.primary }]}>
+              {order.payment_method === 'card' || (order.note || '').toLowerCase().includes('karta')
+                ? '💳 Karta orqali'
+                : '💵 Naqd pul'}
+            </Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.row}>
             <IconText name="cash" size={13} color={colors.textSecondary} textStyle={styles.label}>
-              {t('order.price')}
+              {isParcel ? "Pochta haqi" : "Yo'l haqi (Olinadigan summa)"}
             </IconText>
             <Text
               style={[

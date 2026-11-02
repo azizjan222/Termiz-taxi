@@ -76,6 +76,11 @@ def _serialize_order(o: Order, include_passenger: bool = False) -> dict:
         "departure_time": o.departure_time,
         "status": o.status,
         "note": o.note,
+        "payment_method": (
+            "card"
+            if "karta" in f"{o.note or ''} {o.parcel_note or ''}".lower()
+            else "cash"
+        ),
         "has_roof_rack": bool(o.has_roof_rack),
         "female_only": bool(o.female_only),
         "front_seat": bool(getattr(o, "front_seat", False)),
@@ -558,7 +563,7 @@ async def get_order(request: web.Request) -> web.Response:
                     "phone": driver.contact_phone or driver.phone,
                     "car_model": driver.car_model,
                     "car_number": driver.car_number,
-                    "car_color": driver.car_color,
+                    "car_color": driver.car_color or "Oq",
                     "profile_photo_url": driver.profile_photo_url,
                     "seats": capacity,
                     "rating": driver.rating,
@@ -833,6 +838,28 @@ async def send_order_message(request: web.Request) -> web.Response:
                     "message": serialized,
                 },
             )
+
+        if order.driver_id:
+            try:
+                from app.services.push import ORDERS_CHANNEL, send_push
+                drv = session.query(Driver).filter_by(id=order.driver_id).first()
+                if drv and drv.push_token:
+                    sender_label = user.first_name or order.passenger_name or "Yo'lovchi"
+                    await send_push(
+                        drv.push_token,
+                        f"💬 {sender_label} (#{order.id})",
+                        text,
+                        {
+                            "type": "order_message",
+                            "order_id": order.id,
+                            "sender_name": sender_label,
+                        },
+                        channel_id=ORDERS_CHANNEL,
+                        recipient_type="driver",
+                        recipient_id=drv.id,
+                    )
+            except Exception as e:
+                logger.debug("Chat push to driver failed: %s", e)
 
         return web.json_response({"message": serialized, "chat_open": True}, status=201)
     finally:

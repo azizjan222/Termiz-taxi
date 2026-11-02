@@ -56,6 +56,7 @@ export interface Order {
   departure_time: string;
   status: OrderStatus;
   note?: string | null;
+  payment_method?: 'cash' | 'card' | string;
   has_roof_rack: boolean;
   female_only: boolean;
   front_seat?: boolean;

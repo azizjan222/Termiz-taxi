@@ -184,28 +184,18 @@ export default function ProfileScreen() {
   };
 
   const openDriverApp = async () => {
-    Alert.alert(
-      t('profile.becomeDriver'),
-      t('becomeDriver.message'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('becomeDriver.openPlayMarket'),
-          onPress: async () => {
-            // Try market:// scheme first (opens Play Store app directly on Android)
-            if (Platform.OS === 'android') {
-              const supported = await Linking.canOpenURL(DRIVER_APP_INTENT);
-              if (supported) {
-                await Linking.openURL(DRIVER_APP_INTENT);
-                return;
-              }
-            }
-            // Fallback to web URL
-            await Linking.openURL(DRIVER_APP_PLAY_URL);
-          },
-        },
-      ]
-    );
+    try {
+      if (Platform.OS === 'android') {
+        const supported = await Linking.canOpenURL(DRIVER_APP_INTENT);
+        if (supported) {
+          await Linking.openURL(DRIVER_APP_INTENT);
+          return;
+        }
+      }
+      await Linking.openURL(DRIVER_APP_PLAY_URL);
+    } catch {
+      await Linking.openURL(DRIVER_APP_PLAY_URL).catch(() => {});
+    }
   };
 
   const menu: MenuItem[] = [

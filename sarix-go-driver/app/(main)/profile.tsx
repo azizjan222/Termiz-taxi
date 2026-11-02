@@ -22,10 +22,7 @@ import { useThemeStore } from '../../src/store/theme';
 import { typography, spacing, radius, gradients } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
-// Menu/stat tiles are filled with a solid theme colour, so the glyph on top needs a fixed
-// foreground rather than a themed one: white reads on the dark tiles, near-black on the
-// gold and amber ones. Emoji had no colour at all, which is why this pairing is new.
-const TILE_FG = '#FFFFFF';
+const TILE_FG = '#0F172A';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
@@ -238,9 +235,9 @@ export default function ProfileScreen() {
         </LinearGradient>
 
         <View style={styles.body}>
-          {/* Balance card (dark) */}
+          {/* Balance card (yellow) */}
           <TouchableOpacity
-            style={[styles.balanceCard, lowBalance && styles.balanceCardLow]}
+            style={styles.balanceCard}
             onPress={() => router.push('/top-up')}
             activeOpacity={0.9}
           >
@@ -254,7 +251,7 @@ export default function ProfileScreen() {
               </Text>
               {lowBalance && (
                 <View style={styles.balanceWarningRow}>
-                  <Icon name="warning" size={13} color={colors.textOnPrimary} />
+                  <Icon name="warning" size={13} color="#B91C1C" />
                   <Text style={styles.balanceWarning}>
                     {t('more.minBalanceShort', { min: formatAmount(minBalance) })}
                   </Text>
@@ -328,20 +325,6 @@ export default function ProfileScreen() {
 
           {/* Action menu */}
           <View style={styles.menu}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push('/guide')}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(91,141,239,0.18)' : '#EEF4FF' }]}>
-                <Icon name="book" size={20} color={colors.primary} />
-              </View>
-              <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>{t('profile.guide')}</Text>
-                <Text style={styles.menuSub}>{t('profile.guideSub')}</Text>
-              </View>
-              <Icon name="chevronRight" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.menuItem}
@@ -416,21 +399,6 @@ export default function ProfileScreen() {
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('more.myInfo')}</Text>
                 <Text style={styles.menuSub}>{t('more.myInfoSub')}</Text>
-              </View>
-              <Icon name="chevronRight" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push('/car-photo')}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(20,184,166,0.18)' : '#CCFBF1' }]}>
-                <Icon name="car" size={20} color={isDark ? '#2DD4BF' : '#0D9488'} />
-              </View>
-              <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>{t('more.carPhoto')}</Text>
-                <Text style={styles.menuSub}>{t('more.carPhotoSub')}</Text>
               </View>
               <Icon name="chevronRight" size={18} color={colors.textMuted} />
             </TouchableOpacity>
@@ -645,37 +613,36 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
   balanceCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: isDark ? '#1E3A6E' : '#1E3A8A',
+    backgroundColor: '#FACC15',
     padding: spacing.lg,
     borderRadius: radius.xl,
     marginBottom: spacing.md,
     gap: spacing.md,
-    shadowColor: '#0E1B3D',
-    shadowOpacity: 0.18,
+    shadowColor: '#F59E0B',
+    shadowOpacity: 0.28,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    elevation: 5,
   },
-  balanceCardLow: { backgroundColor: colors.error },
   balanceIconTile: {
     width: 48,
     height: 48,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(15,23,42,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  balanceLabel: { ...typography.caption, color: 'rgba(255,255,255,0.82)' },
-  balanceValue: { ...typography.h2, color: '#FFFFFF', marginVertical: spacing.xs },
+  balanceLabel: { ...typography.caption, color: '#1E293B', fontWeight: '700' },
+  balanceValue: { ...typography.h2, color: '#0F172A', marginVertical: spacing.xs },
   balanceWarningRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  balanceWarning: { ...typography.small, color: colors.textOnPrimary },
+  balanceWarning: { ...typography.small, color: '#B91C1C', fontWeight: '700' },
   topUpBtn: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#0F172A',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     borderRadius: radius.pill,
   },
-  topUpBtnText: { ...typography.bodyBold, color: '#1E3A8A', fontSize: 14 },
+  topUpBtnText: { ...typography.bodyBold, color: '#FFFFFF', fontSize: 14 },
   statsRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
   statBox: {
     flex: 1,

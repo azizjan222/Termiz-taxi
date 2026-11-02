@@ -91,6 +91,7 @@ export interface DriverOrder {
   departure_time: string;
   status: string;
   note?: string | null;
+  payment_method?: 'cash' | 'card' | string;
   passenger_phone?: string | null;
   passenger_name?: string | null;
   passenger_photo_url?: string | null;

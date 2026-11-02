@@ -42,6 +42,11 @@ const GLYPHS = {
   // Rides
   taxi: 'taxi',
   car: 'car',
+  carSide: 'car-side',
+  carEstate: 'car-estate',
+  carHatchback: 'car-hatchback',
+  vanPassenger: 'van-passenger',
+  carSports: 'car-sports',
   bus: 'bus',
   active: 'car-clock',
   location: 'map-marker',

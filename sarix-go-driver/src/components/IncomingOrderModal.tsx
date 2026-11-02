@@ -194,7 +194,6 @@ export const IncomingOrderModal: React.FC<Props> = ({
           {(order.female_only ||
             order.has_roof_rack ||
             order.front_seat ||
-            order.pickup_type ||
             (isParcel && order.parcel_payer)) && (
             <View style={styles.extrasBlock}>
               <IconText name="history" size={12} color={colors.primary} textStyle={styles.extrasTitle}>
@@ -204,13 +203,6 @@ export const IncomingOrderModal: React.FC<Props> = ({
                 {order.front_seat && (
                   <View style={styles.extraTag}>
                     <Text style={styles.extraTagText}>💺 {t('order.frontSeatBadge')}</Text>
-                  </View>
-                )}
-                {order.pickup_type && (
-                  <View style={styles.extraTag}>
-                    <Text style={styles.extraTagText}>
-                      🏠 {t('order.pickupDoorBadge')}
-                    </Text>
                   </View>
                 )}
                 {order.female_only && (
@@ -262,6 +254,13 @@ export const IncomingOrderModal: React.FC<Props> = ({
                 </IconText>
               </View>
             )}
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>
+                {order.payment_method === 'card' || (order.note || '').toLowerCase().includes('karta')
+                  ? '💳 Karta'
+                  : '💵 Naqd pul'}
+              </Text>
+            </View>
           </View>
 
           {/* Price + commission */}

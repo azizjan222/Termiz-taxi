@@ -430,10 +430,9 @@ export default function OrdersScreen() {
           )}
         </View>
 
-        {/* Tumanlararo badges: Transit match, Front seat, Pickup type (Mahalla), Parcel payer */}
+        {/* Tumanlararo badges: Transit match, Front seat, Parcel payer */}
         {(item.corridor_match === 'transit' ||
           item.front_seat ||
-          item.pickup_type ||
           item.female_only ||
           item.has_roof_rack ||
           (isParcel && item.parcel_payer)) && (
@@ -449,13 +448,6 @@ export default function OrdersScreen() {
               {item.front_seat && (
                 <View style={styles.extraTag}>
                   <Text style={styles.extraTagText}>💺 {t('order.frontSeatBadge')}</Text>
-                </View>
-              )}
-              {item.pickup_type && (
-                <View style={styles.extraTag}>
-                  <Text style={styles.extraTagText}>
-                    🏠 {t('order.pickupDoorBadge')}
-                  </Text>
                 </View>
               )}
               {item.female_only && (
@@ -508,13 +500,24 @@ export default function OrdersScreen() {
               color={colors.textSecondary}
             />
             {isParcel ? (
-              <Text style={styles.fareNegotiable}>{t('more.negotiable')}</Text>
+              <Text style={styles.fareNegotiable}>
+                {t('more.negotiable')} ·{' '}
+                {item.payment_method === 'card' || (item.note || '').toLowerCase().includes('karta')
+                  ? '💳 Karta'
+                  : '💵 Naqd'}
+              </Text>
             ) : (
               <Text style={styles.fareText}>
                 {t('more.peopleCount', { n: item.person_count })}
                 {' · '}
                 <Text style={styles.farePrice}>
                   {formatPrice(item.price)} {t('more.currency')}
+                </Text>
+                {' · '}
+                <Text style={{ fontWeight: '700', color: colors.text }}>
+                  {item.payment_method === 'card' || (item.note || '').toLowerCase().includes('karta')
+                    ? '💳 Karta'
+                    : '💵 Naqd'}
                 </Text>
               </Text>
             )}

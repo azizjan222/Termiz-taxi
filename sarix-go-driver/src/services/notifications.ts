@@ -80,8 +80,8 @@ Notifications.setNotificationHandler({
         }
         // Push won the race -> show it and record so the WS won't double-alert.
         markOrderAlerted(orderId);
-      } else if (data.type === 'order_cancelled') {
-        // The in-app realtime layer already fires the cancel alert in foreground.
+      } else if (data.type === 'order_cancelled' || data.type === 'order_message') {
+        // The in-app realtime layer already fires the cancel/chat alert in foreground.
         return SUPPRESS_NOTIFICATION;
       }
     }
@@ -456,3 +456,29 @@ export async function playDriverStatusChime(
     }, 2000);
   } catch {}
 }
+
+/**
+ * Present a local heads-up notification + sound when a passenger sends a chat message.
+ */
+export async function playChatMessageAlert(opts: {
+  orderId: number;
+  text: string;
+  senderName?: string;
+}): Promise<void> {
+  const title = `💬 ${opts.senderName || i18n.t('order.passengerLabel', "Yo'lovchi")} (#${opts.orderId})`;
+  const body = opts.text;
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        sound: 'driver_arrived.wav',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        data: { alert: true, type: 'order_message', order_id: opts.orderId },
+        ...(Platform.OS === 'android' ? { channelId: STATUS_ARRIVED_CHANNEL } : {}),
+      },
+      trigger: null,
+    });
+  } catch {}
+}
+

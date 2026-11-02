@@ -216,6 +216,62 @@ export function shortenAddress(full?: string | null, fallbackCity?: string | nul
   return result || city || raw;
 }
 
+/**
+ * Format an order route address so that the district or city ("tuman" / "shahar")
+ * always comes FIRST, followed by the village ("qishloq"), mahalla, or street name.
+ *
+ * Examples:
+ *  - full: "O'zbekiston, Surxondaryo viloyati, Sariosiyo tumani, Telpakchinor qishlog'i", city: "Sariosiyo"
+ *    -> "Sariosiyo tumani, Telpakchinor qishlog'i"
+ *  - full: "Telpakchinor qishlog'i", city: "Sariosiyo"
+ *    -> "Sariosiyo, Telpakchinor qishlog'i"
+ *  - full: "", city: "Termiz"
+ *    -> "Termiz"
+ */
+export function formatOrderRouteAddress(full?: string | null, fallbackCity?: string | null): string {
+  const raw = (full || '').trim();
+  const city = (fallbackCity || '').trim();
+  if (!raw) return city;
+
+  const COUNTRY_OR_REGION =
+    /(o'?zbekiston|oʻzbekiston|узбекистан|uzbekistan|viloyat|вилоят|область|обл\.?|surxondaryo|qashqadaryo)/i;
+  const rawParts = raw
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && !COUNTRY_OR_REGION.test(p));
+
+  if (rawParts.length === 0) return city || raw;
+
+  // Deduplicate redundant city/district adjacency (e.g. ["Denov tumani", "Denov", "Bog'ishamol MFY"])
+  const deduped: string[] = [];
+  for (const part of rawParts) {
+    const prev = deduped[deduped.length - 1];
+    if (prev) {
+      const prevBase = prev.replace(/\s+(tumani|tuman|shahri|shahar|rayon)$/i, '').trim().toLowerCase();
+      const curBase = part.replace(/\s+(tumani|tuman|shahri|shahar|rayon)$/i, '').trim().toLowerCase();
+      if (prevBase && prevBase === curBase) {
+        continue;
+      }
+    }
+    deduped.push(part);
+  }
+
+  const joined = deduped.join(', ').trim();
+  if (!city) return joined || raw;
+
+  const cityBase = city.replace(/\s+(tumani|tuman|shahri|shahar)$/i, '').trim().toLowerCase();
+  const firstLower = (deduped[0] || '').toLowerCase();
+  const hasDistrictOrCityFirst =
+    (cityBase && firstLower.includes(cityBase)) ||
+    /(tuman|tumani|shahar|shahri|район|город)/i.test(deduped[0] || '');
+
+  if (hasDistrictOrCityFirst) {
+    return joined;
+  }
+
+  return `${city}, ${joined}`;
+}
+
 
 // ---------------------------------------------------------------------------
 // Live distance helpers (driver-live-distance feature)
