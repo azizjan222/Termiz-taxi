@@ -255,28 +255,6 @@ async def list_methods(request: web.Request) -> web.Response:
         "disabled": not atmos_ready,
     })
 
-    # Automated providers are deliberately disabled until their merchant flows are
-    # completed and certified. Manual card transfer is the only active method.
-    methods.append({
-        "id": "click",
-        "name": "Click Uz",
-        "icon": "💙",
-        "description": "Tez orada qo'shiladi",
-        "instant": True,
-        "disabled": True,
-    })
-
-    # Payme is intentionally unavailable until its full merchant state machine is
-    # implemented and certified. Never advertise a partial money flow.
-    methods.append({
-        "id": "payme",
-        "name": "Payme",
-        "icon": "💚",
-        "description": "Tez orada qo'shiladi",
-        "instant": True,
-        "disabled": True,
-    })
-
     return web.json_response({"methods": methods})
 
 

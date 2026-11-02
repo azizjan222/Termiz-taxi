@@ -24,8 +24,6 @@ import {
   listMethods,
   createAtmosPayment,
   verifyAtmosPayment,
-  createClickPayment,
-  createPaymePayment,
   submitTopupScreenshot,
   type PaymentMethod,
 } from '../src/api/payments';
@@ -43,15 +41,11 @@ const MAX_AMOUNT = 5_000_000;
 const METHOD_ICONS: Record<PaymentMethod['id'], IconName> = {
   card: 'card',
   atmos: 'wallet',
-  click: 'wallet',
-  payme: 'wallet',
 };
 
 const METHOD_COLORS: Record<PaymentMethod['id'], string> = {
   card: '#2563EB',
   atmos: '#6C3CE9',
-  click: '#0F86FF',
-  payme: '#00CFC1',
 };
 
 function formatCardNumberDisplay(raw?: string | null): string {
@@ -93,8 +87,9 @@ export default function TopUpScreen() {
   const fetchMethods = useCallback(async () => {
     setMethodsLoading(true);
     try {
-      const list = await listMethods();
+      const rawList = await listMethods();
       if (!aliveRef.current) return;
+      const list = rawList.filter((m) => (m.id as string) !== 'click' && (m.id as string) !== 'payme');
       setMethods(list);
       setMethodsError(false);
     } catch {
@@ -235,17 +230,11 @@ export default function TopUpScreen() {
 
       setLoading(true);
       try {
-        let result;
-        if (selectedMethod === 'atmos') {
-          result = await createAtmosPayment(amt);
-          lastAtmosPaymentIdRef.current = result.payment_id;
-        } else if (selectedMethod === 'click') {
-          result = await createClickPayment(amt);
-        } else if (selectedMethod === 'payme') {
-          result = await createPaymePayment(amt);
-        } else {
+        if (selectedMethod !== 'atmos') {
           return;
         }
+        const result = await createAtmosPayment(amt);
+        lastAtmosPaymentIdRef.current = result.payment_id;
 
         const supported = await Linking.canOpenURL(result.url);
         if (supported) {

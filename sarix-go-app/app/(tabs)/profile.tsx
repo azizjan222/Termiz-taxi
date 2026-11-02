@@ -23,11 +23,6 @@ import { Icon, type IconName } from '../../src/components/Icon';
 import { LogoutConfirmModal } from '../../src/components/LogoutConfirmModal';
 import { useAuthStore } from '../../src/store/auth';
 import { uploadProfilePhoto, updateProfile } from '../../src/api/auth';
-import {
-  getSupportInfo,
-  FALLBACK_PASSENGER_TUTORIAL_URL,
-  FALLBACK_DRIVER_TUTORIAL_URL,
-} from '../../src/api/ai';
 import { API_URL } from '../../src/api/client';
 import { describeApiError } from '../../src/api/errors';
 import { useThemeStore } from '../../src/store/theme';
@@ -87,28 +82,9 @@ export default function ProfileScreen() {
     ? [colors.surface, colors.background]
     : ['#F2EEFF', '#FFFFFF']) as [string, string];
   const [uploading, setUploading] = useState(false);
-  const [passengerTutorialUrl, setPassengerTutorialUrl] = useState(
-    FALLBACK_PASSENGER_TUTORIAL_URL
-  );
-  const [driverTutorialUrl, setDriverTutorialUrl] = useState(
-    FALLBACK_DRIVER_TUTORIAL_URL
-  );
 
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
-  useEffect(() => {
-    getSupportInfo()
-      .then((info) => {
-        if (!aliveRef.current) return;
-        if (info.passenger_tutorial_url) {
-          setPassengerTutorialUrl(info.passenger_tutorial_url);
-        }
-        if (info.driver_tutorial_url) {
-          setDriverTutorialUrl(info.driver_tutorial_url);
-        }
-      })
-      .catch(() => {});
-  }, []);
   // Synchronous double-tap guards; see the comments in the handlers below.
   const photoInFlightRef = useRef(false);
   const saveInFlightRef = useRef(false);
@@ -330,54 +306,6 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Dedicated Video Tutorials Section (Passengers & Drivers) */}
-        <View style={styles.tutorialsSection}>
-          <View style={styles.tutorialsHeaderRow}>
-            <Icon name="video" size={18} color={colors.primary} />
-            <Text style={styles.tutorialsHeaderTitle}>{t('settings.videoTutorialsSection')}</Text>
-          </View>
-          <Text style={styles.tutorialsHeaderSub}>{t('settings.videoTutorialSubtitle')}</Text>
-          <View style={styles.tutorialsCard}>
-            <TouchableOpacity
-              style={styles.tutorialRow}
-              onPress={() => Linking.openURL(passengerTutorialUrl)}
-              activeOpacity={0.75}
-              accessibilityRole="button"
-              accessibilityLabel={t('settings.passengerVideoTutorial')}
-            >
-              <View style={[styles.menuIconTile, { backgroundColor: '#EEF2FF' }]}>
-                <Icon name="play" size={20} color="#4F46E5" />
-              </View>
-              <View style={styles.tutorialTextCol}>
-                <Text style={styles.tutorialRowTitle}>{t('settings.passengerVideoTutorial')}</Text>
-                <Text style={styles.tutorialRowSub}>{t('settings.passengerVideoTutorialSub')}</Text>
-              </View>
-              <View style={styles.tutorialWatchPill}>
-                <Text style={styles.tutorialWatchText}>{t('settings.watchVideo')}</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tutorialRow, { borderBottomWidth: 0 }]}
-              onPress={() => Linking.openURL(driverTutorialUrl)}
-              activeOpacity={0.75}
-              accessibilityRole="button"
-              accessibilityLabel={t('settings.driverVideoTutorial')}
-            >
-              <View style={[styles.menuIconTile, { backgroundColor: '#FEF3C7' }]}>
-                <Icon name="play" size={20} color="#D97706" />
-              </View>
-              <View style={styles.tutorialTextCol}>
-                <Text style={styles.tutorialRowTitle}>{t('settings.driverVideoTutorial')}</Text>
-                <Text style={styles.tutorialRowSub}>{t('settings.driverVideoTutorialSub')}</Text>
-              </View>
-              <View style={styles.tutorialWatchPill}>
-                <Text style={styles.tutorialWatchText}>{t('settings.watchVideo')}</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* Menu */}
         <View style={styles.menu}>
           {regularItems.map((item, i) => (
@@ -593,67 +521,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     ...typography.small,
     color: 'rgba(255,255,255,0.9)',
     marginTop: 2,
-  },
-  tutorialsSection: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-  },
-  tutorialsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  tutorialsHeaderTitle: {
-    ...typography.bodyBold,
-    color: colors.primary,
-  },
-  tutorialsHeaderSub: {
-    ...typography.small,
-    color: colors.textSecondary,
-    marginTop: 2,
-    marginBottom: spacing.sm,
-  },
-  tutorialsCard: {
-    backgroundColor: colors.background,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    shadowColor: '#0E1730',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  tutorialRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm + 4,
-    paddingHorizontal: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
-  },
-  tutorialTextCol: {
-    flex: 1,
-    paddingRight: spacing.xs,
-  },
-  tutorialRowTitle: {
-    ...typography.bodyBold,
-    color: colors.text,
-  },
-  tutorialRowSub: {
-    ...typography.small,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  tutorialWatchPill: {
-    backgroundColor: colors.primaryLight,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-  },
-  tutorialWatchText: {
-    ...typography.small,
-    color: colors.primary,
-    fontWeight: '700',
   },
   menu: {
     marginHorizontal: spacing.lg,

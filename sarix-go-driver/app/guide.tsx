@@ -1,11 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,11 +14,6 @@ import { useTranslation } from 'react-i18next';
 
 import { Icon, type IconName } from '../src/components/Icon';
 import { Button } from '../src/components/Button';
-import {
-  getSupportInfo,
-  FALLBACK_PASSENGER_TUTORIAL_URL,
-  FALLBACK_DRIVER_TUTORIAL_URL,
-} from '../src/api/ai';
 import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius, gradients } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
@@ -92,19 +86,8 @@ export default function DriverGuideScreen() {
   const isOnboarding = onboarding === '1';
 
   const [activeIndex, setActiveIndex] = useState(0);
-  const [driverTutorialUrl, setDriverTutorialUrl] = useState(FALLBACK_DRIVER_TUTORIAL_URL);
-  const [passengerTutorialUrl, setPassengerTutorialUrl] = useState(FALLBACK_PASSENGER_TUTORIAL_URL);
   const currentStep = GUIDE_STEPS[activeIndex];
   const isLast = activeIndex === GUIDE_STEPS.length - 1;
-
-  useEffect(() => {
-    getSupportInfo()
-      .then((info) => {
-        if (info.driver_tutorial_url) setDriverTutorialUrl(info.driver_tutorial_url);
-        if (info.passenger_tutorial_url) setPassengerTutorialUrl(info.passenger_tutorial_url);
-      })
-      .catch(() => {});
-  }, []);
 
   const finishGuide = async () => {
     try {
@@ -255,42 +238,6 @@ export default function DriverGuideScreen() {
               </TouchableOpacity>
             );
           })}
-        </View>
-
-        {/* Video tutorials section */}
-        <Text style={[styles.allStepsHeader, { marginTop: spacing.xl }]}>
-          {t('settings.videoTutorialsSection')}
-        </Text>
-        <View style={styles.stepList}>
-          <TouchableOpacity
-            style={styles.stepRow}
-            onPress={() => Linking.openURL(driverTutorialUrl)}
-            activeOpacity={0.85}
-          >
-            <View style={[styles.smallIconTile, { backgroundColor: '#F5B800' }]}>
-              <Icon name="play" size={20} color="#0F172A" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stepRowTitle}>{t('settings.driverVideoTutorial')}</Text>
-              <Text style={styles.stepRowSub}>{t('settings.driverVideoTutorialSub')}</Text>
-            </View>
-            <Icon name="chevronRight" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.stepRow}
-            onPress={() => Linking.openURL(passengerTutorialUrl)}
-            activeOpacity={0.85}
-          >
-            <View style={[styles.smallIconTile, { backgroundColor: colors.primary }]}>
-              <Icon name="play" size={20} color="#FFFFFF" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stepRowTitle}>{t('settings.passengerVideoTutorial')}</Text>
-              <Text style={styles.stepRowSub}>{t('settings.passengerVideoTutorialSub')}</Text>
-            </View>
-            <Icon name="chevronRight" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>

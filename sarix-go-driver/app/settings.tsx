@@ -1,17 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon, IconText, type IconName } from '../src/components/Icon';
-import {
-  getSupportInfo,
-  FALLBACK_PASSENGER_TUTORIAL_URL,
-  FALLBACK_DRIVER_TUTORIAL_URL,
-} from '../src/api/ai';
 import { changeLanguage, SUPPORTED_LANGUAGES, SupportedLanguage } from '../src/i18n';
 import { useThemeStore, type ThemeMode } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
@@ -24,25 +19,6 @@ export default function SettingsScreen() {
   const [currentLang, setCurrentLang] = useState<SupportedLanguage>(
     (i18n.language as SupportedLanguage) || 'uz'
   );
-  const [passengerTutorialUrl, setPassengerTutorialUrl] = useState(
-    FALLBACK_PASSENGER_TUTORIAL_URL
-  );
-  const [driverTutorialUrl, setDriverTutorialUrl] = useState(
-    FALLBACK_DRIVER_TUTORIAL_URL
-  );
-
-  useEffect(() => {
-    getSupportInfo()
-      .then((info) => {
-        if (info.passenger_tutorial_url) {
-          setPassengerTutorialUrl(info.passenger_tutorial_url);
-        }
-        if (info.driver_tutorial_url) {
-          setDriverTutorialUrl(info.driver_tutorial_url);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   const THEMES: { mode: ThemeMode; label: string; icon: IconName }[] = [
     { mode: 'auto', label: t('settings.themeAuto'), icon: 'themeAuto' },
@@ -54,9 +30,6 @@ export default function SettingsScreen() {
     await changeLanguage(code);
     setCurrentLang(code);
   };
-
-  const openDriverTutorial = () => Linking.openURL(driverTutorialUrl);
-  const openPassengerTutorial = () => Linking.openURL(passengerTutorialUrl);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.surface }]} edges={['top']}>
@@ -125,70 +98,6 @@ export default function SettingsScreen() {
           })}
         </View>
 
-        {/* Dedicated Video Tutorials Section (Drivers & Passengers) */}
-        <IconText
-          name="video"
-          size={14}
-          color={colors.textSecondary}
-          textStyle={[styles.sectionTitle, { color: colors.textSecondary, marginBottom: 4 }]}
-        >
-          {t('settings.videoTutorialsSection')}
-        </IconText>
-        <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
-          {t('settings.videoTutorialSubtitle')}
-        </Text>
-        <View style={[styles.card, { backgroundColor: colors.background }]}>
-          <TouchableOpacity
-            style={[styles.tutorialOption, { borderBottomColor: colors.divider }]}
-            onPress={openDriverTutorial}
-            activeOpacity={0.75}
-            accessibilityRole="button"
-            accessibilityLabel={t('settings.driverVideoTutorial')}
-          >
-            <View style={[styles.tutorialIconTile, { backgroundColor: '#F5B800' }]}>
-              <Icon name="play" size={22} color="#0F172A" />
-            </View>
-            <View style={styles.tutorialTextWrap}>
-              <Text style={[styles.tutorialTitle, { color: colors.text }]}>
-                {t('settings.driverVideoTutorial')}
-              </Text>
-              <Text style={[styles.tutorialSub, { color: colors.textSecondary }]}>
-                {t('settings.driverVideoTutorialSub')}
-              </Text>
-            </View>
-            <View style={[styles.watchBadge, { backgroundColor: '#FEF3C7' }]}>
-              <Text style={[styles.watchBadgeText, { color: '#B45309' }]}>
-                {t('settings.watchVideo')}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tutorialOption, { borderBottomWidth: 0 }]}
-            onPress={openPassengerTutorial}
-            activeOpacity={0.75}
-            accessibilityRole="button"
-            accessibilityLabel={t('settings.passengerVideoTutorial')}
-          >
-            <View style={[styles.tutorialIconTile, { backgroundColor: colors.primary }]}>
-              <Icon name="play" size={22} color="#FFFFFF" />
-            </View>
-            <View style={styles.tutorialTextWrap}>
-              <Text style={[styles.tutorialTitle, { color: colors.text }]}>
-                {t('settings.passengerVideoTutorial')}
-              </Text>
-              <Text style={[styles.tutorialSub, { color: colors.textSecondary }]}>
-                {t('settings.passengerVideoTutorialSub')}
-              </Text>
-            </View>
-            <View style={[styles.watchBadge, { backgroundColor: '#DBEAFE' }]}>
-              <Text style={[styles.watchBadgeText, { color: '#1D4ED8' }]}>
-                {t('settings.watchVideo')}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
         {/* Qo'llanma + Yordam / FAQ + Foydalanish shartlari — reference screens, grouped
             together at the bottom. */}
         <View style={[styles.card, { backgroundColor: colors.background, marginTop: spacing.lg }]}>
@@ -238,7 +147,6 @@ const styles = StyleSheet.create({
   title: { ...typography.h3 },
   scroll: { padding: spacing.lg },
   sectionTitle: { ...typography.bodyBold, marginBottom: spacing.sm, marginTop: spacing.md },
-  sectionSubtitle: { ...typography.small, marginBottom: spacing.sm },
   card: { borderRadius: radius.md, overflow: 'hidden' },
   option: {
     flexDirection: 'row',
@@ -251,38 +159,4 @@ const styles = StyleSheet.create({
   optionLabel: { flex: 1, ...typography.body },
   bold: { fontWeight: '700' },
   check: { ...typography.h3, fontWeight: '700' },
-  tutorialOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderBottomWidth: 1,
-    gap: spacing.sm,
-  },
-  tutorialIconTile: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tutorialTextWrap: {
-    flex: 1,
-  },
-  tutorialTitle: {
-    ...typography.bodyBold,
-  },
-  tutorialSub: {
-    ...typography.small,
-    marginTop: 2,
-  },
-  watchBadge: {
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-  },
-  watchBadgeText: {
-    ...typography.small,
-    fontWeight: '700',
-  },
 });

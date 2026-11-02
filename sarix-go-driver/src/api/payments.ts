@@ -1,7 +1,7 @@
 import { api } from './client';
 
 export interface PaymentMethod {
-  id: 'card' | 'atmos' | 'click' | 'payme';
+  id: 'card' | 'atmos';
   name: string;
   icon: string;
   description: string;
@@ -40,16 +40,6 @@ export async function createAtmosPayment(amount: number): Promise<PaymentCreateR
 
 export async function verifyAtmosPayment(id: number): Promise<PaymentStatus> {
   const response = await api.post<PaymentStatus>(`/api/payments/atmos/${id}/verify`);
-  return response.data;
-}
-
-export async function createClickPayment(amount: number): Promise<PaymentCreateResponse> {
-  const response = await api.post('/api/payments/click/create', { amount });
-  return response.data;
-}
-
-export async function createPaymePayment(amount: number): Promise<PaymentCreateResponse> {
-  const response = await api.post('/api/payments/payme/create', { amount });
   return response.data;
 }
 
