@@ -17,8 +17,11 @@ import {
   registerPushToken,
   addNotificationReceivedListener,
   addNotificationResponseListener,
+  presentLocalNotification,
+  wasChatMessageAlerted,
 } from '../src/services/notifications';
 import { addNotification, syncAnnouncements } from '../src/services/notificationHistory';
+import { connectPassengerSocket } from '../src/services/passengerSocket';
 import Constants from 'expo-constants';
 import { CrashScreen } from '../src/components/CrashScreen';
 
@@ -41,6 +44,7 @@ export default function RootLayout() {
   const [maintenance, setMaintenance] = useState(false);
   const loadUser = useAuthStore((s) => s.loadUser);
   const isAuth = useAuthStore((s) => s.isAuthenticated);
+  const userId = useAuthStore((s) => s.user?.id);
   const themeInit = useThemeStore((s) => s.init);
   const themeColors = useThemeStore((s) => s.colors);
   const isDark = useThemeStore((s) => s.isDark);
@@ -123,6 +127,40 @@ export default function RootLayout() {
     });
     return () => sub.remove();
   }, [isAuth, ready]);
+
+  // Global passenger WebSocket so chat messages from the driver alert the passenger
+  // even when they are on the Home, History, or Profile tab (not only on /order/[id]).
+  useEffect(() => {
+    if (!isAuth || !ready || !userId) return;
+    const handle = connectPassengerSocket({
+      userId,
+      onMessage: (msg) => {
+        if (
+          msg.type === 'order_message' &&
+          msg.order_id &&
+          msg.message &&
+          msg.message.sender_role === 'driver'
+        ) {
+          const msgId = Number(msg.message.id);
+          if (msgId && wasChatMessageAlerted(msgId)) return;
+          const title = `💬 ${i18n.t('common.driver', 'Haydovchi')} (#${msg.order_id})`;
+          const body = String(msg.message.text || '');
+          presentLocalNotification(title, body, {
+            type: 'order_message',
+            order_id: msg.order_id,
+            message_id: msgId,
+          });
+          addNotification({
+            title,
+            body,
+            type: 'order_message',
+            data: { order_id: msg.order_id, message_id: msgId },
+          });
+        }
+      },
+    });
+    return () => handle.close();
+  }, [isAuth, ready, userId]);
 
   // Persist every received push notification into the in-app history.
   useEffect(() => {

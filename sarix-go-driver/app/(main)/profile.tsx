@@ -220,7 +220,7 @@ export default function ProfileScreen() {
               {uploading ? (
                 <Text style={styles.avatarEditText}>…</Text>
               ) : (
-                <Icon name="camera" size={13} color={colors.primary} />
+                <Icon name="camera" size={13} color={TILE_FG} />
               )}
             </View>
           </TouchableOpacity>
@@ -235,14 +235,14 @@ export default function ProfileScreen() {
         </LinearGradient>
 
         <View style={styles.body}>
-          {/* Balance card (yellow) */}
+          {/* Balance card (dark navy with golden yellow amount & button) */}
           <TouchableOpacity
             style={styles.balanceCard}
             onPress={() => router.push('/top-up')}
             activeOpacity={0.9}
           >
             <View style={styles.balanceIconTile}>
-              <Icon name="money" size={22} color={TILE_FG} />
+              <Icon name="money" size={22} color="#FFFFFF" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.balanceLabel}>{t('profile.balance')}</Text>
@@ -251,7 +251,7 @@ export default function ProfileScreen() {
               </Text>
               {lowBalance && (
                 <View style={styles.balanceWarningRow}>
-                  <Icon name="warning" size={13} color="#B91C1C" />
+                  <Icon name="warning" size={13} color="#FCA5A5" />
                   <Text style={styles.balanceWarning}>
                     {t('more.minBalanceShort', { min: formatAmount(minBalance) })}
                   </Text>
@@ -270,8 +270,8 @@ export default function ProfileScreen() {
               onPress={() => router.push('/order-history')}
               activeOpacity={0.85}
             >
-              <View style={[styles.statIconTile, { backgroundColor: isDark ? 'rgba(91,141,239,0.18)' : '#EEF4FF' }]}>
-                <Icon name="taxi" size={20} color={colors.primary} />
+              <View style={[styles.statIconTile, { backgroundColor: colors.primary }]}>
+                <Icon name="taxi" size={20} color="#FFFFFF" />
               </View>
               <Text style={styles.statValue}>{driver?.total_orders || 0}</Text>
               <Text style={styles.statLabel}>{t('profile.totalOrders')}</Text>
@@ -283,25 +283,19 @@ export default function ProfileScreen() {
               accessibilityRole="button"
               accessibilityHint={t('ratingInfo.title')}
             >
-              <View style={[styles.statIconTile, { backgroundColor: isDark ? 'rgba(56,189,248,0.18)' : '#E0F2FE' }]}>
+              <View style={[styles.statIconTile, { backgroundColor: '#F5B800' }]}>
                 <Icon
                   name={hasRatings ? 'star' : 'starOutline'}
                   size={20}
-                  color={isDark ? '#38BDF8' : '#0284C7'}
+                  color={TILE_FG}
                 />
               </View>
-              {/* Was a hardcoded 4.0 for EVERY driver, behind a "ratings are not in use
-                  yet" comment that had gone stale: passenger_rate_driver recomputes
-                  Driver.rating and rating_count on every rating, and /api/driver/me
-                  returns them. So the app was showing a made-up number while the real one
-                  sat unused one field away. */}
               <Text style={styles.statValue}>
                 {hasRatings ? ratingValue.toFixed(1) : '—'}
               </Text>
               <Text style={styles.statLabel}>
                 {hasRatings
-                  ? // "Reyting · 12 baho" — the count is what makes the number meaningful.
-                    ratingCount != null
+                  ? ratingCount != null
                     ? `${t('profile.rating')} · ${ratingCount} ${t('more.ratingsCount')}`
                     : t('profile.rating')
                   : t('more.noRatingsYet')}
@@ -331,8 +325,8 @@ export default function ProfileScreen() {
               onPress={() => router.push('/top-up')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(16,185,129,0.18)' : '#ECFDF5' }]}>
-                <Icon name="money" size={20} color={colors.success} />
+              <View style={[styles.menuIcon, { backgroundColor: colors.success }]}>
+                <Icon name="money" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.topUp')}</Text>
@@ -346,8 +340,8 @@ export default function ProfileScreen() {
               onPress={() => router.push('/stats')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(99,102,241,0.18)' : '#EEF2FF' }]}>
-                <Icon name="chart" size={20} color={isDark ? '#818CF8' : '#4F46E5'} />
+              <View style={[styles.menuIcon, { backgroundColor: '#6366F1' }]}>
+                <Icon name="chart" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('stats.title')}</Text>
@@ -361,8 +355,8 @@ export default function ProfileScreen() {
               onPress={() => router.push('/order-history')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(56,189,248,0.18)' : '#E0F2FE' }]}>
-                <Icon name="history" size={20} color={isDark ? '#38BDF8' : '#0284C7'} />
+              <View style={[styles.menuIcon, { backgroundColor: '#0EA5E9' }]}>
+                <Icon name="history" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.orderHistory')}</Text>
@@ -376,8 +370,8 @@ export default function ProfileScreen() {
               onPress={() => router.push('/notifications')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(139,92,246,0.18)' : '#F3E8FF' }]}>
-                <Icon name="notification" size={20} color={isDark ? '#A78BFA' : '#7C3AED'} />
+              <View style={[styles.menuIcon, { backgroundColor: '#8B5CF6' }]}>
+                <Icon name="notification" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.notifications')}</Text>
@@ -393,8 +387,8 @@ export default function ProfileScreen() {
               }
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(91,141,239,0.18)' : '#EEF4FF' }]}>
-                <Icon name="document" size={20} color={colors.primary} />
+              <View style={[styles.menuIcon, { backgroundColor: colors.primary }]}>
+                <Icon name="document" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('more.myInfo')}</Text>
@@ -408,8 +402,8 @@ export default function ProfileScreen() {
               onPress={() => router.push('/ai-chat')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(99,102,241,0.18)' : '#EEF2FF' }]}>
-                <Icon name="robot" size={20} color={isDark ? '#818CF8' : '#4F46E5'} />
+              <View style={[styles.menuIcon, { backgroundColor: '#F5B800' }]}>
+                <Icon name="robot" size={20} color={TILE_FG} />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.aiAssistant')}</Text>
@@ -423,8 +417,8 @@ export default function ProfileScreen() {
               onPress={openSupport}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(59,130,246,0.18)' : '#DBEAFE' }]}>
-                <Icon name="profile" size={20} color={colors.info} />
+              <View style={[styles.menuIcon, { backgroundColor: colors.info }]}>
+                <Icon name="profile" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.support')}</Text>
@@ -440,8 +434,8 @@ export default function ProfileScreen() {
               onPress={() => router.push('/settings')}
               activeOpacity={0.85}
             >
-              <View style={[styles.menuIcon, { backgroundColor: isDark ? 'rgba(148,163,184,0.18)' : '#F1F5F9' }]}>
-                <Icon name="settings" size={20} color={colors.textSecondary} />
+              <View style={[styles.menuIcon, { backgroundColor: '#64748B' }]}>
+                <Icon name="settings" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.menuText}>
                 <Text style={styles.menuTitle}>{t('profile.settings')}</Text>
@@ -600,11 +594,11 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F5B800',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#DBEAFE',
+    borderColor: '#FFFFFF',
   },
   avatarEditText: { fontSize: 14 },
   userName: { ...typography.h2, color: colors.textOnPrimary },
@@ -613,13 +607,13 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
   balanceCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FACC15',
+    backgroundColor: '#0E172A',
     padding: spacing.lg,
     borderRadius: radius.xl,
     marginBottom: spacing.md,
     gap: spacing.md,
-    shadowColor: '#F59E0B',
-    shadowOpacity: 0.28,
+    shadowColor: '#0E172A',
+    shadowOpacity: 0.25,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 5,
@@ -628,21 +622,21 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
     width: 48,
     height: 48,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(15,23,42,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  balanceLabel: { ...typography.caption, color: '#1E293B', fontWeight: '700' },
-  balanceValue: { ...typography.h2, color: '#0F172A', marginVertical: spacing.xs },
+  balanceLabel: { ...typography.caption, color: 'rgba(255,255,255,0.75)' },
+  balanceValue: { ...typography.h2, color: '#F5B800', marginVertical: spacing.xs },
   balanceWarningRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  balanceWarning: { ...typography.small, color: '#B91C1C', fontWeight: '700' },
+  balanceWarning: { ...typography.small, color: '#FCA5A5', fontWeight: '700' },
   topUpBtn: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F5B800',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     borderRadius: radius.pill,
   },
-  topUpBtnText: { ...typography.bodyBold, color: '#FFFFFF', fontSize: 14 },
+  topUpBtnText: { ...typography.bodyBold, color: TILE_FG, fontSize: 14 },
   statsRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
   statBox: {
     flex: 1,

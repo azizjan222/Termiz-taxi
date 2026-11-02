@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, Vibration } from 'react-native';
 import Constants from 'expo-constants';
 
 import { api } from '../api/client';
@@ -11,7 +11,25 @@ import i18n from '../i18n';
 // app is in the FOREGROUND we drop the duplicate REMOTE push so the passenger
 // gets exactly one notification. Background pushes are unaffected (this handler
 // only runs while foregrounded), so a closed app still gets the push.
-const FOREGROUND_HANDLED_TYPES = new Set(['order_accepted', 'order_started', 'order_message']);
+const FOREGROUND_HANDLED_TYPES = new Set(['order_accepted', 'order_started']);
+
+const CHAT_DEDUP_TTL_MS = 120000;
+const alertedChatMessages = new Map<number, number>();
+
+export function wasChatMessageAlerted(messageId?: number): boolean {
+  if (!messageId) return false;
+  const ts = alertedChatMessages.get(messageId);
+  return !!ts && Date.now() - ts < CHAT_DEDUP_TTL_MS;
+}
+
+export function markChatMessageAlerted(messageId?: number): void {
+  if (!messageId) return;
+  const now = Date.now();
+  alertedChatMessages.set(messageId, now);
+  for (const [id, ts] of alertedChatMessages) {
+    if (now - ts >= CHAT_DEDUP_TTL_MS) alertedChatMessages.delete(id);
+  }
+}
 
 // Configure notification handler (foreground behavior)
 Notifications.setNotificationHandler({
@@ -20,16 +38,30 @@ Notifications.setNotificationHandler({
     const isLocal = data._local === true; // presented by the app itself
     const appActive = AppState.currentState === 'active';
 
-    if (appActive && !isLocal && FOREGROUND_HANDLED_TYPES.has(data.type)) {
-      // The in-app local notification already alerted the passenger -> suppress
-      // the duplicate remote push.
-      return {
-        shouldShowAlert: false,
-        shouldPlaySound: false,
-        shouldSetBadge: false,
-        shouldShowBanner: false,
-        shouldShowList: false,
-      };
+    if (appActive && !isLocal) {
+      if (data.type === 'order_message') {
+        const msgId = typeof data.message_id === 'number' ? data.message_id : Number(data.message_id);
+        if (msgId && wasChatMessageAlerted(msgId)) {
+          return {
+            shouldShowAlert: false,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+            shouldShowBanner: false,
+            shouldShowList: false,
+          };
+        }
+        if (msgId) markChatMessageAlerted(msgId);
+      } else if (FOREGROUND_HANDLED_TYPES.has(data.type)) {
+        // The in-app local notification already alerted the passenger -> suppress
+        // the duplicate remote push.
+        return {
+          shouldShowAlert: false,
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+          shouldShowBanner: false,
+          shouldShowList: false,
+        };
+      }
     }
 
     return {
@@ -253,6 +285,13 @@ export async function presentLocalNotification(
   channelId?: string
 ): Promise<void> {
   try {
+    if (data?.type === 'order_message') {
+      const msgId = typeof data.message_id === 'number' ? data.message_id : Number(data.message_id);
+      if (msgId) markChatMessageAlerted(msgId);
+      try {
+        Vibration.vibrate([0, 220, 100, 220], false);
+      } catch {}
+    }
     const resolved = resolveSoundAndChannel(data?.type, channelId);
     await Notifications.scheduleNotificationAsync({
       content: {

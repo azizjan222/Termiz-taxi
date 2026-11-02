@@ -63,6 +63,24 @@ const SUPPRESS_NOTIFICATION = {
   shouldSetBadge: false,
 } as any;
 
+const CHAT_DEDUP_TTL_MS = 120000;
+const alertedChatMessages = new Map<number, number>();
+
+export function wasChatMessageAlerted(messageId?: number): boolean {
+  if (!messageId) return false;
+  const ts = alertedChatMessages.get(messageId);
+  return !!ts && Date.now() - ts < CHAT_DEDUP_TTL_MS;
+}
+
+export function markChatMessageAlerted(messageId?: number): void {
+  if (!messageId) return;
+  const now = Date.now();
+  alertedChatMessages.set(messageId, now);
+  for (const [id, ts] of alertedChatMessages) {
+    if (now - ts >= CHAT_DEDUP_TTL_MS) alertedChatMessages.delete(id);
+  }
+}
+
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
     const data = (notification.request.content?.data || {}) as any;
@@ -80,8 +98,14 @@ Notifications.setNotificationHandler({
         }
         // Push won the race -> show it and record so the WS won't double-alert.
         markOrderAlerted(orderId);
-      } else if (data.type === 'order_cancelled' || data.type === 'order_message') {
-        // The in-app realtime layer already fires the cancel/chat alert in foreground.
+      } else if (data.type === 'order_message') {
+        const msgId = typeof data.message_id === 'number' ? data.message_id : Number(data.message_id);
+        if (msgId && wasChatMessageAlerted(msgId)) {
+          return SUPPRESS_NOTIFICATION;
+        }
+        if (msgId) markChatMessageAlerted(msgId);
+      } else if (data.type === 'order_cancelled') {
+        // The in-app realtime layer already fires the cancel alert in foreground.
         return SUPPRESS_NOTIFICATION;
       }
     }
@@ -464,7 +488,12 @@ export async function playChatMessageAlert(opts: {
   orderId: number;
   text: string;
   senderName?: string;
+  messageId?: number;
 }): Promise<void> {
+  if (opts.messageId) {
+    if (wasChatMessageAlerted(opts.messageId)) return;
+    markChatMessageAlerted(opts.messageId);
+  }
   const title = `💬 ${opts.senderName || i18n.t('order.passengerLabel', "Yo'lovchi")} (#${opts.orderId})`;
   const body = opts.text;
   try {
@@ -474,11 +503,21 @@ export async function playChatMessageAlert(opts: {
         body,
         sound: 'driver_arrived.wav',
         priority: Notifications.AndroidNotificationPriority.HIGH,
-        data: { alert: true, type: 'order_message', order_id: opts.orderId },
+        vibrate: [0, 220, 100, 220],
+        data: {
+          alert: true,
+          type: 'order_message',
+          order_id: opts.orderId,
+          message_id: opts.messageId,
+        },
         ...(Platform.OS === 'android' ? { channelId: STATUS_ARRIVED_CHANNEL } : {}),
       },
       trigger: null,
     });
   } catch {}
+  try {
+    Vibration.vibrate([0, 220, 100, 220], false);
+  } catch {}
 }
+
 

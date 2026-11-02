@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Linking, Alert, Platform, ActivityIndicator, Image, Modal,
-  TextInput, KeyboardAvoidingView,
+  TextInput, KeyboardAvoidingView, AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,7 +27,11 @@ import {
   type DriverOrder,
   type OrderChatMessage,
 } from '../../src/api/driver';
-import { playDriverStatusChime } from '../../src/services/notifications';
+import {
+  playDriverStatusChime,
+  playChatMessageAlert,
+  wasChatMessageAlerted,
+} from '../../src/services/notifications';
 import { API_URL } from '../../src/api/client';
 import { useRealtimeStore } from '../../src/store/realtime';
 import YandexMap, { type YandexMapHandle } from '../../src/components/YandexMap';
@@ -116,6 +120,7 @@ export default function OrderDetailScreen() {
   const [sendingChat, setSendingChat] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const chatScrollRef = useRef<ScrollView>(null);
+  const lastSeenMsgIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     chatVisibleRef.current = chatVisible;
@@ -128,11 +133,79 @@ export default function OrderDetailScreen() {
   const loadMessages = async () => {
     try {
       const res = await listDriverOrderMessages(parseInt(String(id)));
-      setMessages(res.messages || []);
+      const list = res.messages || [];
+      setMessages(list);
+      const maxId = list.reduce((acc, m) => (m.id > acc ? m.id : acc), 0);
+      if (lastSeenMsgIdRef.current === null) {
+        lastSeenMsgIdRef.current = maxId;
+        let trailingPassenger = 0;
+        for (let i = list.length - 1; i >= 0; i -= 1) {
+          if (list[i].sender_role === 'passenger') trailingPassenger += 1;
+          else break;
+        }
+        if (!chatVisibleRef.current && trailingPassenger > 0) {
+          setUnreadCount((c) => Math.max(c, trailingPassenger));
+          const lastMsg = list[list.length - 1];
+          const ageMs = lastMsg?.created_at
+            ? Date.now() - new Date(lastMsg.created_at).getTime()
+            : 0;
+          if (
+            lastMsg &&
+            lastMsg.sender_role === 'passenger' &&
+            ageMs >= 0 &&
+            ageMs < 90000 &&
+            !wasChatMessageAlerted(lastMsg.id)
+          ) {
+            playChatMessageAlert({
+              orderId: parseInt(String(id)),
+              text: lastMsg.text,
+              messageId: lastMsg.id,
+            });
+          }
+        }
+      } else if (maxId > lastSeenMsgIdRef.current) {
+        const prevMax = lastSeenMsgIdRef.current;
+        lastSeenMsgIdRef.current = maxId;
+        const freshFromPassenger = list.filter(
+          (m) => m.id > prevMax && m.sender_role === 'passenger'
+        );
+        if (freshFromPassenger.length > 0) {
+          setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
+          if (!chatVisibleRef.current) {
+            setUnreadCount((c) => c + freshFromPassenger.length);
+          }
+          const latest = freshFromPassenger[freshFromPassenger.length - 1];
+          if (latest && !wasChatMessageAlerted(latest.id)) {
+            playChatMessageAlert({
+              orderId: parseInt(String(id)),
+              text: latest.text,
+              messageId: latest.id,
+            });
+          }
+        }
+      }
     } catch {
       // Ignore transient poll errors
     }
   };
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        loadMessages();
+      }
+    });
+    const chatPoll = setInterval(() => {
+      if (isAppForeground()) {
+        loadMessages();
+      }
+    }, 3500);
+    return () => {
+      sub.remove();
+      clearInterval(chatPoll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // Load the order, then KEEP polling. This is the screen the driver lands on right
   // after accepting a ride, and it has no other refresh path: a single un-caught fetch
@@ -239,6 +312,7 @@ export default function OrderDetailScreen() {
       lastEvent.message
     ) {
       const incoming = lastEvent.message;
+      lastSeenMsgIdRef.current = Math.max(lastSeenMsgIdRef.current ?? 0, incoming.id);
       setMessages((prev) =>
         prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]
       );

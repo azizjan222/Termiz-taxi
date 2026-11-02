@@ -2480,25 +2480,19 @@ async def driver_send_order_message(request: web.Request) -> web.Response:
                 },
             )
             try:
-                from app.services.push import ORDERS_CHANNEL, send_push
-                pax = session.query(User).filter_by(id=order.passenger_id).first()
-                if pax and pax.push_token:
-                    sender_label = driver.first_name or "Haydovchi"
-                    await send_push(
-                        pax.push_token,
-                        f"💬 {sender_label} (#{order.id})",
-                        text,
-                        {
-                            "type": "order_message",
-                            "order_id": order.id,
-                            "sender_name": sender_label,
-                        },
-                        channel_id=ORDERS_CHANNEL,
-                        recipient_type="passenger",
-                        recipient_id=pax.id,
-                    )
+                from app.services.push import notify_order_message
+                sender_label = driver.first_name or "Haydovchi"
+                await notify_order_message(
+                    session,
+                    order,
+                    recipient_type="user",
+                    recipient_id=order.passenger_id,
+                    sender_name=sender_label,
+                    text=text,
+                    message_id=msg.id,
+                )
             except Exception as e:
-                logger.debug("Chat push to passenger failed: %s", e)
+                logger.error("Chat push to passenger failed: %s", e)
 
         return web.json_response({"message": serialized, "chat_open": True}, status=201)
     finally:

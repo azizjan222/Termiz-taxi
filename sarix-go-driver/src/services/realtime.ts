@@ -198,15 +198,17 @@ function handleMessage(data: any) {
   } else if (msg.type === 'order_message' && msg.order_id && msg.message) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     if (msg.message.sender_role !== 'driver') {
+      const msgId = Number(msg.message.id) || undefined;
       playChatMessageAlert({
         orderId: Number(msg.order_id),
         text: String(msg.message.text || ''),
+        messageId: msgId,
       });
       addNotification({
         title: `💬 ${i18n.t('order.passengerLabel', "Yo'lovchi")} (#${msg.order_id})`,
         body: String(msg.message.text || ''),
         type: 'order_message',
-        data: { order_id: msg.order_id },
+        data: { order_id: msg.order_id, message_id: msgId },
       });
     }
     useRealtimeStore.getState().pushOrderMessage(msg.order_id, msg.message);

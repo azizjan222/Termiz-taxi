@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -31,7 +32,10 @@ import {
   type OrderChatMessage,
 } from '../../src/api/orders';
 import { getOrderRatingStatus } from '../../src/api/ratings';
-import { presentLocalNotification } from '../../src/services/notifications';
+import {
+  presentLocalNotification,
+  wasChatMessageAlerted,
+} from '../../src/services/notifications';
 import { addNotification } from '../../src/services/notificationHistory';
 import { useAuthStore } from '../../src/store/auth';
 import { useOrderStore } from '../../src/store/order';
@@ -216,6 +220,8 @@ export default function OrderDetailScreen() {
   const [sendingChat, setSendingChat] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const chatScrollRef = useRef<ScrollView>(null);
+  const lastSeenMsgIdRef = useRef<number | null>(null);
+  const driverNameRef = useRef<string>('');
 
   useEffect(() => {
     chatVisibleRef.current = chatVisible;
@@ -228,24 +234,84 @@ export default function OrderDetailScreen() {
   const loadMessages = useCallback(async () => {
     try {
       const res = await listOrderMessages(parseInt(id));
-      setMessages(res.messages || []);
+      const list = res.messages || [];
+      setMessages(list);
+      const maxId = list.reduce((acc, m) => (m.id > acc ? m.id : acc), 0);
+      if (lastSeenMsgIdRef.current === null) {
+        lastSeenMsgIdRef.current = maxId;
+        let trailingDriver = 0;
+        for (let i = list.length - 1; i >= 0; i -= 1) {
+          if (list[i].sender_role === 'driver') trailingDriver += 1;
+          else break;
+        }
+        if (!chatVisibleRef.current && trailingDriver > 0) {
+          setUnreadCount((c) => Math.max(c, trailingDriver));
+          const lastMsg = list[list.length - 1];
+          const ageMs = lastMsg?.created_at
+            ? Date.now() - new Date(lastMsg.created_at).getTime()
+            : 0;
+          if (
+            lastMsg &&
+            lastMsg.sender_role === 'driver' &&
+            ageMs >= 0 &&
+            ageMs < 90000 &&
+            !wasChatMessageAlerted(lastMsg.id)
+          ) {
+            const title = `💬 ${driverNameRef.current || t('common.driver')} (#${id})`;
+            presentLocalNotification(title, lastMsg.text, {
+              type: 'order_message',
+              order_id: parseInt(id),
+              message_id: lastMsg.id,
+            });
+            addNotification({
+              title,
+              body: lastMsg.text,
+              type: 'order_message',
+              data: { order_id: parseInt(id), message_id: lastMsg.id },
+            });
+          }
+        }
+      } else if (maxId > lastSeenMsgIdRef.current) {
+        const prevMax = lastSeenMsgIdRef.current;
+        lastSeenMsgIdRef.current = maxId;
+        const freshFromDriver = list.filter(
+          (m) => m.id > prevMax && m.sender_role === 'driver'
+        );
+        if (freshFromDriver.length > 0) {
+          setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
+          if (!chatVisibleRef.current) {
+            setUnreadCount((c) => c + freshFromDriver.length);
+          }
+          const latest = freshFromDriver[freshFromDriver.length - 1];
+          if (latest && !wasChatMessageAlerted(latest.id)) {
+            const title = `💬 ${driverNameRef.current || t('common.driver')} (#${id})`;
+            presentLocalNotification(title, latest.text, {
+              type: 'order_message',
+              order_id: parseInt(id),
+              message_id: latest.id,
+            });
+            addNotification({
+              title,
+              body: latest.text,
+              type: 'order_message',
+              data: { order_id: parseInt(id), message_id: latest.id },
+            });
+          }
+        }
+      }
     } catch {
       // Ignore transient errors during polling
     }
-  }, [id]);
+  }, [id, t]);
 
   const load = async () => {
     try {
       const data = await getOrder(parseInt(id));
       setOrder(data);
       setLoadError(false);
-      // Driver marker from the last-known location returned by the API.
-      //
-      // This used to be `prev || {...}`, i.e. write-once: after the first non-null value
-      // every later polled coordinate was thrown away, so if the WebSocket died the car
-      // froze on the map for the rest of the trip while the hint still claimed it was
-      // tracking. Now the poll also refreshes the marker — but only when the socket has
-      // gone quiet, so a 10s-old polled position can never overwrite a fresher live one.
+      if (data.driver?.first_name) {
+        driverNameRef.current = data.driver.first_name;
+      }
       if (data.driver?.current_lat != null && data.driver?.current_lon != null) {
         const wsIsStale = Date.now() - lastWsLocationAtRef.current > WS_LOCATION_STALE_MS;
         setDriverLoc((prev) =>
@@ -254,8 +320,6 @@ export default function OrderDetailScreen() {
             : { lat: data.driver!.current_lat!, lon: data.driver!.current_lon! }
         );
       }
-      // Freshness: a CHANGED server stamp means the driver really did report again.
-      // Comparing stamps rather than clocks keeps this correct on a phone whose time is off.
       const stamp = data.driver?.location_updated_at ?? null;
       if (stamp && stamp !== lastServerStampRef.current) {
         lastServerStampRef.current = stamp;
@@ -265,9 +329,6 @@ export default function OrderDetailScreen() {
         loadMessages();
       }
     } catch {
-      // Record the failure. This screen is reached with router.replace and renders no
-      // header while `order` is null, so swallowing the error left the passenger stuck
-      // on "Yuklanmoqda..." with no retry and no way back.
       setLoadError(true);
     } finally {
       setLoading(false);
@@ -276,12 +337,23 @@ export default function OrderDetailScreen() {
 
   useEffect(() => {
     load();
-    // Refresh every 10 seconds while the app is in the FOREGROUND. Backgrounded, this kept
-    // polling indefinitely; the live driver position arrives over the WebSocket anyway.
     const i = setInterval(() => {
       if (isAppForeground()) load();
     }, 10000);
-    return () => clearInterval(i);
+    const chatInterval = setInterval(() => {
+      if (isAppForeground()) loadMessages();
+    }, 3500);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        load();
+        loadMessages();
+      }
+    });
+    return () => {
+      clearInterval(i);
+      clearInterval(chatInterval);
+      sub.remove();
+    };
     // Re-arm polling only when the order id changes; load() reads latest state via refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -330,17 +402,29 @@ export default function OrderDetailScreen() {
           msg.message
         ) {
           const incoming: OrderChatMessage = msg.message;
+          lastSeenMsgIdRef.current = Math.max(lastSeenMsgIdRef.current ?? 0, incoming.id);
           setMessages((prev) =>
             prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]
           );
           setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
-          if (!chatVisibleRef.current && incoming.sender_role === 'driver') {
-            setUnreadCount((c) => c + 1);
-            presentLocalNotification(
-              t('order.chatTitle'),
-              incoming.text,
-              { type: 'order_message', order_id: msg.order_id }
-            );
+          if (incoming.sender_role === 'driver') {
+            if (!chatVisibleRef.current) {
+              setUnreadCount((c) => c + 1);
+            }
+            if (!wasChatMessageAlerted(incoming.id)) {
+              const title = `💬 ${driverNameRef.current || t('common.driver')} (#${msg.order_id})`;
+              presentLocalNotification(title, incoming.text, {
+                type: 'order_message',
+                order_id: msg.order_id,
+                message_id: incoming.id,
+              });
+              addNotification({
+                title,
+                body: incoming.text,
+                type: 'order_message',
+                data: { order_id: msg.order_id, message_id: incoming.id },
+              });
+            }
           }
         }
       },
@@ -549,22 +633,43 @@ export default function OrderDetailScreen() {
   const isCompleted = order.status === 'completed';
   const carVisual = resolveCarModelGlyph(order.driver?.car_model);
   const colorInfo = resolveCarColorInfo(order.driver?.car_color);
+  const isCardPayment =
+    order.payment_method === 'card' || (order.note || '').includes('Karta');
+  const lastDriverMessage = [...messages]
+    .reverse()
+    .find((m) => m.sender_role === 'driver');
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Clean Modern Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.replace('/(tabs)/home')}
           style={styles.backBtn}
+          activeOpacity={0.8}
         >
-          <Icon name="back" size={26} color={colors.primary} />
+          <Icon name="back" size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>#{order.id}</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Buyurtma #{order.id}</Text>
+        </View>
+        <View style={styles.headerServicePill}>
+          <IconText
+            name={serviceIcon}
+            size={12}
+            color={colors.primary}
+            textStyle={styles.headerServicePillText}
+          >
+            {serviceBadge}
+          </IconText>
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Unified High-Contrast Status Card (fixes white-on-mint bug & merges double banners) */}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Compact Status Banner */}
         <View
           style={[
             styles.statusBanner,
@@ -576,7 +681,7 @@ export default function OrderDetailScreen() {
             <View style={styles.statusIconCircle}>
               <Icon
                 name={statusIcon}
-                size={22}
+                size={20}
                 color={isAccepted ? colors.success : colors.primary}
               />
             </View>
@@ -585,16 +690,6 @@ export default function OrderDetailScreen() {
               {isAccepted && order.driver && (
                 <Text style={styles.statusSubText}>{t('order.driverAccepted')}</Text>
               )}
-            </View>
-            <View style={styles.serviceChip}>
-              <IconText
-                name={serviceIcon}
-                size={12}
-                color="#FFFFFF"
-                textStyle={styles.serviceChipText}
-              >
-                {serviceBadge}
-              </IconText>
             </View>
           </View>
 
@@ -654,6 +749,27 @@ export default function OrderDetailScreen() {
                   : []),
               ]}
             />
+            <View style={styles.mapFloatingPill}>
+              <View
+                style={[
+                  styles.mapLiveDot,
+                  {
+                    backgroundColor: !driverLoc
+                      ? '#F59E0B'
+                      : locationStale
+                      ? '#F59E0B'
+                      : '#10B981',
+                  },
+                ]}
+              />
+              <Text style={styles.mapFloatingPillText} numberOfLines={1}>
+                {!driverLoc
+                  ? t('driverMap.waiting')
+                  : locationStale
+                  ? t('driverMap.stale')
+                  : t('driverMap.title')}
+              </Text>
+            </View>
             {!following && driverLoc && (
               <TouchableOpacity
                 style={styles.recenterBtn}
@@ -665,117 +781,117 @@ export default function OrderDetailScreen() {
                 <Icon name="target" size={18} color={colors.primary} />
               </TouchableOpacity>
             )}
-            <Text
-              style={[
-                styles.mapHint,
-                locationStale && { color: colors.warning, fontWeight: '700' },
-              ]}
-            >
-              {!driverLoc
-                ? t('driverMap.waiting')
-                : locationStale
-                ? t('driverMap.stale')
-                : t('driverMap.title')}
-            </Text>
           </View>
         )}
 
-        {/* Driver info + License Plate + In-App Chat + 1-Tap Quick Chat Chips */}
+        {/* Modern Driver & Vehicle Card */}
         {order.driver && (
           <View style={styles.driverCard}>
-              <View style={styles.driverHeaderRow}>
-                <Text style={styles.driverTitle}>{t('order.driverInfo')}</Text>
-                {order.driver.car_number ? (
-                  <View style={styles.plateBadge}>
-                    <View style={styles.plateFlagSection}>
-                      <View style={styles.uzFlagBox}>
-                        <View style={styles.uzFlagBlue} />
-                        <View style={styles.uzFlagRed} />
-                        <View style={styles.uzFlagWhite} />
-                        <View style={styles.uzFlagRed} />
-                        <View style={styles.uzFlagGreen} />
-                      </View>
-                      <Text style={styles.plateUzCode}>UZ</Text>
-                    </View>
-                    <Text style={styles.plateBadgeText}>
-                      {formatUzPlate(order.driver.car_number)}
+            {/* 1. Vehicle Showcase Box (Car Model + Color on left, License Plate on right) */}
+            <View style={styles.vehicleHeroBox}>
+              <View style={styles.vehicleLeft}>
+                <View
+                  style={[
+                    styles.carModelBadge,
+                    { backgroundColor: carVisual.accentBg },
+                  ]}
+                >
+                  <Icon
+                    name={carVisual.glyph}
+                    size={22}
+                    color={carVisual.accentColor}
+                  />
+                </View>
+                <View style={styles.vehicleTextCol}>
+                  <Text style={styles.carModelText} numberOfLines={1}>
+                    {order.driver.car_model || t('common.car', 'Avtomobil')}
+                  </Text>
+                  <View style={styles.carColorRow}>
+                    <View
+                      style={[
+                        styles.carColorDot,
+                        {
+                          backgroundColor: colorInfo.swatchHex,
+                          borderColor: colorInfo.swatchBorder,
+                        },
+                      ]}
+                    />
+                    <Text style={styles.carColorText} numberOfLines={1}>
+                      {colorInfo.label} rang
                     </Text>
                   </View>
-                ) : null}
+                </View>
               </View>
 
-              <View style={styles.driverRow}>
-                {order.driver.profile_photo_url ? (
-                  <Image
-                    source={{
-                      uri: order.driver.profile_photo_url.startsWith('http')
-                        ? order.driver.profile_photo_url
-                        : `${API_URL}${order.driver.profile_photo_url}`,
-                    }}
-                    style={styles.driverAvatar}
-                  />
-                ) : (
-                  <View style={styles.driverAvatar}>
-                    <Text style={styles.driverAvatarText}>
-                      {order.driver.first_name?.[0]?.toUpperCase() || '?'}
-                    </Text>
-                  </View>
-                )}
-                <View style={styles.driverInfo}>
-                  <Text style={styles.driverName}>
-                    {order.driver.first_name || t('common.driver')}
-                  </Text>
-                  {order.driver.car_model ? (
-                    <View style={styles.carDetailsRow}>
-                      <View style={[styles.carModelBadge, { backgroundColor: carVisual.accentBg }]}>
-                        <Icon
-                          name={carVisual.glyph}
-                          size={20}
-                          color={carVisual.accentColor}
-                        />
-                      </View>
-                      <Text style={styles.carModelText}>{order.driver.car_model}</Text>
-                      <View style={styles.carColorChip}>
-                        <View
-                          style={[
-                            styles.carColorDot,
-                            {
-                              backgroundColor: colorInfo.swatchHex,
-                              borderColor: colorInfo.swatchBorder,
-                            },
-                          ]}
-                        />
-                        <Text style={styles.carColorText}>{colorInfo.label} rang</Text>
-                      </View>
+              {order.driver.car_number ? (
+                <View style={styles.plateBadge}>
+                  <View style={styles.plateFlagSection}>
+                    <View style={styles.uzFlagBox}>
+                      <View style={styles.uzFlagBlue} />
+                      <View style={styles.uzFlagRed} />
+                      <View style={styles.uzFlagWhite} />
+                      <View style={styles.uzFlagRed} />
+                      <View style={styles.uzFlagGreen} />
                     </View>
-                  ) : null}
-                  {order.driver.phone ? (
-                    <TouchableOpacity
-                      onPress={callDriver}
-                      activeOpacity={0.7}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('order.callDriver')}
-                      accessibilityHint={t('order.a11yCallDriverHint')}
-                    >
-                      <IconText
-                        name="mobile"
-                        size={12}
-                        color={colors.primary}
-                        textStyle={styles.driverPhone}
-                      >
-                        {order.driver.phone}
-                      </IconText>
-                    </TouchableOpacity>
-                  ) : null}
+                    <Text style={styles.plateUzCode}>UZ</Text>
+                  </View>
+                  <Text style={styles.plateBadgeText}>
+                    {formatUzPlate(order.driver.car_number)}
+                  </Text>
                 </View>
+              ) : null}
+            </View>
+
+            {/* 2. Driver Profile Row */}
+            <View style={styles.driverRow}>
+              {order.driver.profile_photo_url ? (
+                <Image
+                  source={{
+                    uri: order.driver.profile_photo_url.startsWith('http')
+                      ? order.driver.profile_photo_url
+                      : `${API_URL}${order.driver.profile_photo_url}`,
+                  }}
+                  style={styles.driverAvatar}
+                />
+              ) : (
+                <View style={styles.driverAvatar}>
+                  <Text style={styles.driverAvatarText}>
+                    {order.driver.first_name?.[0]?.toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.driverInfo}>
+                <Text style={styles.driverRoleLabel}>
+                  {t('order.driverInfo')}
+                </Text>
+                <Text style={styles.driverName} numberOfLines={1}>
+                  {order.driver.first_name || t('common.driver')}
+                </Text>
+                {order.driver.phone ? (
+                  <TouchableOpacity
+                    onPress={callDriver}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('order.callDriver')}
+                    accessibilityHint={t('order.a11yCallDriverHint')}
+                  >
+                    <Text style={styles.driverPhone}>{order.driver.phone}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+
+            {/* 3. Side-by-Side Action Buttons (Chat + Call) */}
+            <View style={styles.driverActionsRow}>
               <TouchableOpacity
-                style={styles.chatBtn}
+                style={styles.chatActionBtn}
                 onPress={openChat}
                 activeOpacity={0.85}
                 accessibilityRole="button"
                 accessibilityLabel={t('order.chatTitle')}
               >
-                <Icon name="chat" size={20} color="#FFFFFF" />
+                <Icon name="chat" size={18} color="#FFFFFF" />
+                <Text style={styles.chatActionBtnText}>Xabar yozish</Text>
                 {unreadCount > 0 && (
                   <View style={styles.unreadBadge}>
                     <Text style={styles.unreadBadgeText}>
@@ -784,19 +900,45 @@ export default function OrderDetailScreen() {
                   </View>
                 )}
               </TouchableOpacity>
+
               <TouchableOpacity
-                style={styles.callBtn}
+                style={styles.callActionBtn}
                 onPress={callDriver}
+                activeOpacity={0.85}
                 accessibilityRole="button"
                 accessibilityLabel={t('order.callDriver')}
                 accessibilityHint={t('order.a11yCallDriverHint')}
               >
-                <Icon name="phone" size={22} color={colors.textOnPrimary} />
+                <Icon name="phone" size={18} color="#FFFFFF" />
+                <Text style={styles.callActionBtnText}>Qo&apos;ng&apos;iroq</Text>
               </TouchableOpacity>
             </View>
 
+            {/* Latest driver message inline preview banner */}
+            {lastDriverMessage && (
+              <TouchableOpacity
+                style={[
+                  styles.latestMsgBanner,
+                  unreadCount > 0 && styles.latestMsgBannerUnread,
+                ]}
+                onPress={openChat}
+                activeOpacity={0.85}
+              >
+                <View style={styles.latestMsgDot} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.latestMsgTitle}>
+                    💬 {order.driver.first_name || t('common.driver')} yozdi:
+                  </Text>
+                  <Text style={styles.latestMsgText} numberOfLines={2}>
+                    {lastDriverMessage.text}
+                  </Text>
+                </View>
+                <Text style={styles.latestMsgReply}>Javob →</Text>
+              </TouchableOpacity>
+            )}
+
             {/* 1-Tap Quick Passenger Chat Chips while order is active */}
-            {(isAccepted || isInProgress) ? (
+            {isAccepted || isInProgress ? (
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -804,7 +946,7 @@ export default function OrderDetailScreen() {
               >
                 {[
                   '👋 Tayyorman, chiqyapman',
-                  '📍 Lokatsiya bo\'yicha keling',
+                  "📍 Lokatsiya bo'yicha keling",
                   '⏳ 2 daqiqa kuting, chiqyapman',
                 ].map((msg) => (
                   <TouchableOpacity
@@ -819,29 +961,52 @@ export default function OrderDetailScreen() {
               </ScrollView>
             ) : (
               <View style={styles.chatClosedInline}>
-                <Text style={styles.chatClosedInlineText}>{t('order.chatClosedNotice')}</Text>
+                <Text style={styles.chatClosedInlineText}>
+                  {t('order.chatClosedNotice')}
+                </Text>
               </View>
             )}
           </View>
         )}
 
-        {/* Route */}
+        {/* Modern Route & Order Summary Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t('order.summary')}</Text>
-          <View style={styles.row}>
-            <IconText name="location" size={12} color={colors.textSecondary} textStyle={styles.label}>
-              {t('order.from')}
-            </IconText>
-            <Text style={styles.value}>{order.from_city}</Text>
+
+          {/* Visual Route Timeline */}
+          <View style={styles.routeTimelineBox}>
+            <View style={styles.routeStopRow}>
+              <View style={[styles.routeDot, { backgroundColor: '#10B981' }]} />
+              <View style={styles.routeStopTextWrap}>
+                <Text style={styles.routeStopLabel}>{t('order.from')}</Text>
+                <Text style={styles.routeStopCity}>{order.from_city}</Text>
+                {order.from_address ? (
+                  <Text style={styles.routeStopAddress} numberOfLines={2}>
+                    {order.from_address}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={styles.routeConnectorLine} />
+
+            <View style={styles.routeStopRow}>
+              <View
+                style={[styles.routeDot, { backgroundColor: colors.primary }]}
+              />
+              <View style={styles.routeStopTextWrap}>
+                <Text style={styles.routeStopLabel}>{t('order.to')}</Text>
+                <Text style={styles.routeStopCity}>{order.to_city}</Text>
+                {order.to_address ? (
+                  <Text style={styles.routeStopAddress} numberOfLines={2}>
+                    {order.to_address}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
           </View>
-          <View style={styles.divider} />
-          <View style={styles.row}>
-            <IconText name="flag" size={12} color={colors.textSecondary} textStyle={styles.label}>
-              {t('order.to')}
-            </IconText>
-            <Text style={styles.value}>{order.to_city}</Text>
-          </View>
-          <View style={styles.divider} />
+
+          {/* Compact Details Rows */}
           {isParcel || isFullCar ? (
             <View style={styles.row}>
               <Text style={styles.label}>{t('order.serviceType')}</Text>
@@ -849,21 +1014,47 @@ export default function OrderDetailScreen() {
             </View>
           ) : (
             <View style={styles.row}>
-              <IconText name="people" size={12} color={colors.textSecondary} textStyle={styles.label}>
+              <IconText
+                name="people"
+                size={13}
+                color={colors.textSecondary}
+                textStyle={styles.label}
+              >
                 {t('order.persons')}
               </IconText>
               <Text style={styles.value}>
-                {order.person_count}
+                {order.person_count} kishi
                 {order.front_seat ? ` (${t('newOrder.frontSeat')})` : ''}
               </Text>
             </View>
           )}
           <View style={styles.divider} />
           <View style={styles.row}>
-            <IconText name="pin" size={12} color={colors.textSecondary} textStyle={styles.label}>
-              {t('order.pickupTypeLabel')}
+            <IconText
+              name={isCardPayment ? 'card' : 'cash'}
+              size={13}
+              color={colors.textSecondary}
+              textStyle={styles.label}
+            >
+              {t('order.paymentMethod')}
             </IconText>
-            <Text style={styles.value}>{t('order.pickupDoorBadge')}</Text>
+            <View
+              style={[
+                styles.paymentBadge,
+                isCardPayment ? styles.paymentBadgeCard : styles.paymentBadgeCash,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.paymentBadgeText,
+                  isCardPayment
+                    ? styles.paymentBadgeTextCard
+                    : styles.paymentBadgeTextCash,
+                ]}
+              >
+                {isCardPayment ? `💳 ${t('order.card')}` : `💵 ${t('order.cash')}`}
+              </Text>
+            </View>
           </View>
           {order.landmark ? (
             <>
@@ -877,24 +1068,17 @@ export default function OrderDetailScreen() {
           <View style={styles.divider} />
           <View style={styles.row}>
             <IconText
-              name={(order.note || '').includes('Karta') ? 'card' : 'cash'}
-              size={12}
+              name="cash"
+              size={13}
               color={colors.textSecondary}
               textStyle={styles.label}
             >
-              {t('order.paymentMethod')}
-            </IconText>
-            <Text style={styles.value}>
-              {(order.note || '').includes('Karta') ? t('order.card') : t('order.cash')}
-            </Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.row}>
-            <IconText name="cash" size={12} color={colors.textSecondary} textStyle={styles.label}>
               {t('order.price')}
             </IconText>
             <Text style={[styles.value, hasDiscount ? undefined : styles.price]}>
-              {isParcel ? t('order.negotiable') : `${formatPrice(order.price)} ${t('common.currency')}`}
+              {isParcel
+                ? t('order.negotiable')
+                : `${formatPrice(order.price)} ${t('common.currency')}`}
             </Text>
           </View>
 
@@ -1185,27 +1369,57 @@ const CARD_SHADOW = {
 };
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.white },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: 10,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
   },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  title: { ...typography.h3, color: colors.primary },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  headerServicePill: {
+    backgroundColor: '#EEF2FF',
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  headerServicePillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scroll: { padding: spacing.lg },
+  scroll: { padding: spacing.md, paddingBottom: spacing.xl },
   statusBanner: {
     backgroundColor: colors.primary,
-    padding: spacing.md,
-    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+    borderRadius: 18,
     marginBottom: spacing.md,
     ...CARD_SHADOW,
   },
   statusBannerAccepted: {
-    backgroundColor: colors.success,
+    backgroundColor: '#059669',
   },
   statusBannerInProgress: {
     backgroundColor: colors.primary,
@@ -1215,111 +1429,166 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
   },
   statusIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    marginRight: 12,
   },
-  statusText: { ...typography.h3, color: '#FFFFFF' },
+  statusText: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
   statusSubText: {
-    ...typography.small,
+    fontSize: 13,
     color: 'rgba(255,255,255,0.92)',
     marginTop: 2,
     fontWeight: '600',
   },
-  serviceChip: {
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: 5,
-    marginLeft: spacing.sm,
-  },
-  serviceChipText: { ...typography.small, color: '#FFFFFF', fontWeight: '700' },
   stageStepsRow: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: spacing.sm + 2,
+    marginTop: 12,
   },
   stageStepBar: {
     flex: 1,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.32)',
   },
   stageStepBarActive: {
     backgroundColor: '#FFFFFF',
   },
   mapCard: {
-    height: 240,
-    borderRadius: radius.lg,
+    height: 205,
+    borderRadius: 18,
     overflow: 'hidden',
     marginBottom: spacing.md,
     backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     ...CARD_SHADOW,
   },
   map: { flex: 1 },
+  mapFloatingPill: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    ...CARD_SHADOW,
+  },
+  mapLiveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  mapFloatingPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+  },
   recenterBtn: {
     position: 'absolute',
-    right: spacing.sm,
-    bottom: 36,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    right: 10,
+    top: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     ...CARD_SHADOW,
   },
-  mapHint: {
-    ...typography.small,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.white,
-  },
   driverCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: 20,
+    padding: 14,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
     ...CARD_SHADOW,
   },
-  driverHeaderRow: {
+  vehicleHeroBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 12,
+    gap: 8,
   },
-  driverTitle: { ...typography.bodyBold, color: colors.primary },
+  vehicleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 10,
+  },
+  carModelBadge: {
+    width: 40,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleTextCol: {
+    flex: 1,
+  },
+  carModelText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  carColorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
+  carColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+  },
+  carColorText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '700',
+  },
   plateBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderWidth: 2,
+    borderWidth: 1.8,
     borderColor: '#0F172A',
     borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    gap: 8,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 6,
   },
   plateFlagSection: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingRight: 7,
-    borderRightWidth: 1.5,
+    paddingRight: 5,
+    borderRightWidth: 1,
     borderRightColor: '#CBD5E1',
   },
   uzFlagBox: {
-    width: 20,
-    height: 12,
+    width: 18,
+    height: 11,
     borderRadius: 2,
     overflow: 'hidden',
     borderWidth: 0.5,
@@ -1330,112 +1599,149 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   uzFlagWhite: { flex: 4, backgroundColor: '#FFFFFF' },
   uzFlagGreen: { flex: 4, backgroundColor: '#1EB53A' },
   plateUzCode: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '900',
     color: '#0284C7',
     marginTop: 1,
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   plateBadgeText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#0F172A',
     fontWeight: '900',
-    letterSpacing: 1.1,
+    letterSpacing: 0.8,
   },
-  driverRow: { flexDirection: 'row', alignItems: 'center' },
+  driverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   driverAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    marginRight: 12,
   },
-  driverAvatarText: { fontSize: 24, color: colors.textOnPrimary, fontWeight: '700' },
-  driverInfo: { flex: 1 },
-  driverName: { ...typography.bodyBold, color: colors.text, fontSize: 17 },
-  carDetailsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 4,
-    marginBottom: 2,
-  },
-  carModelBadge: {
-    width: 32,
-    height: 24,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  carModelText: {
-    ...typography.small,
-    color: colors.text,
+  driverAvatarText: {
+    fontSize: 20,
+    color: colors.textOnPrimary,
     fontWeight: '800',
-    fontSize: 14,
   },
-  carColorChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  carColorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 1,
-  },
-  carColorText: {
-    fontSize: 12,
+  driverInfo: { flex: 1 },
+  driverRoleLabel: {
+    fontSize: 11,
+    fontWeight: '700',
     color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  driverName: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+    marginTop: 1,
+  },
+  driverPhone: {
+    fontSize: 13,
+    color: colors.primary,
+    marginTop: 2,
     fontWeight: '700',
   },
-  driverPhone: { ...typography.caption, color: colors.primary, marginTop: 3, fontWeight: '600' },
-  callBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.success,
-    alignItems: 'center',
-    justifyContent: 'center',
+  driverActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
-  chatBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  chatActionBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
     backgroundColor: colors.primary,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm,
+    gap: 8,
+    position: 'relative',
   },
-  unreadBadge: {
-    position: 'absolute',
-    top: -3,
-    right: -3,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.error,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  unreadBadgeText: {
-    fontSize: 10,
+  chatActionBtnText: {
+    fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',
   },
+  callActionBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: colors.success,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  callActionBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  unreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  unreadBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  latestMsgBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  latestMsgBannerUnread: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#93C5FD',
+  },
+  latestMsgDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  latestMsgTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  latestMsgText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginTop: 1,
+  },
+  latestMsgReply: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+  },
   chatClosedInline: {
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
+    marginTop: 12,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
   },
@@ -1445,41 +1751,114 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: 'center',
   },
   quickSmsRow: {
-    gap: spacing.xs,
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
   },
   quickSmsChip: {
-    backgroundColor: colors.white,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#CBD5E1',
     borderRadius: radius.pill,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
   },
   quickSmsChipText: {
-    ...typography.small,
+    fontSize: 12.5,
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
     ...CARD_SHADOW,
   },
-  cardTitle: { ...typography.bodyBold, color: colors.primary, marginBottom: spacing.sm },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  routeTimelineBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 10,
+  },
+  routeStopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  routeDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 5,
+  },
+  routeConnectorLine: {
+    width: 2,
+    height: 14,
+    backgroundColor: '#CBD5E1',
+    marginLeft: 4,
+    marginVertical: 2,
+  },
+  routeStopTextWrap: {
+    flex: 1,
+  },
+  routeStopLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  routeStopCity: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+    marginTop: 1,
+  },
+  routeStopAddress: {
+    fontSize: 12.5,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    paddingVertical: 10,
   },
-  label: { ...typography.caption, color: colors.textSecondary },
+  label: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
   value: { ...typography.bodyBold, color: colors.text },
-  price: { color: colors.primary, fontSize: 18 },
+  paymentBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  paymentBadgeCash: {
+    backgroundColor: '#ECFDF5',
+  },
+  paymentBadgeCard: {
+    backgroundColor: '#EFF6FF',
+  },
+  paymentBadgeText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+  paymentBadgeTextCash: {
+    color: '#059669',
+  },
+  paymentBadgeTextCard: {
+    color: '#2563EB',
+  },
+  price: { color: '#059669', fontSize: 18, fontWeight: '900' },
   divider: { height: 1, backgroundColor: colors.divider },
   discountNote: {
     ...typography.small,
@@ -1488,7 +1867,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     lineHeight: 18,
   },
   noteText: { ...typography.body, color: colors.text },
-  footer: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.divider },
+  footer: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    backgroundColor: colors.white,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
   chatModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(14, 23, 48, 0.55)',
@@ -1621,4 +2006,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '700',
   },
 });
+
 

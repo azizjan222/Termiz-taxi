@@ -805,3 +805,37 @@ async def notify_balance_topup(session: Session, driver_id: int, amount: int, bo
         sound="balance_bonus.wav",
         channel_id="balance",
     )
+
+
+ORDERS_CHANNEL = "orders_v2"
+
+
+async def notify_order_message(
+    session: Session,
+    order,
+    *,
+    recipient_type: str,  # 'user' or 'driver'
+    recipient_id: int,
+    sender_name: str,
+    text: str,
+    message_id: int = 0,
+):
+    """Send push notification when a chat message is sent between driver and passenger."""
+    if not recipient_id:
+        return
+    await send_push(
+        session,
+        recipient_type=recipient_type,
+        recipient_id=recipient_id,
+        title=f"💬 {sender_name} (#{order.id})",
+        body=text,
+        data={
+            "type": "order_message",
+            "order_id": order.id,
+            "message_id": message_id,
+            "sender_name": sender_name,
+        },
+        sound="order_accepted.wav",
+        channel_id=ORDERS_CHANNEL,
+    )
+
