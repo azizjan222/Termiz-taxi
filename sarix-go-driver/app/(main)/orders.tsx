@@ -594,6 +594,14 @@ export default function OrdersScreen() {
     } catch {}
   };
 
+  const effFrom = corridorFilter?.from || activeCorridor?.from_city || '';
+  const effTo = corridorFilter?.to || activeCorridor?.to_city || '';
+  const isReturnMode =
+    !!activeCorridor &&
+    !!corridorFilter &&
+    corridorFilter.from === activeCorridor.to_city &&
+    corridorFilter.to === activeCorridor.from_city;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header — title + sleek online/offline pill */}
@@ -715,63 +723,54 @@ export default function OrdersScreen() {
             </View>
           </View>
 
-          {(corridorFilter || activeCorridor) && (() => {
-            const effFrom = corridorFilter?.from || activeCorridor?.from_city || '';
-            const effTo = corridorFilter?.to || activeCorridor?.to_city || '';
-            const isReturnMode =
-              !!activeCorridor &&
-              !!corridorFilter &&
-              corridorFilter.from === activeCorridor.to_city &&
-              corridorFilter.to === activeCorridor.from_city;
-            return (
-              <View style={styles.corridorActionGroup}>
+          {(corridorFilter || activeCorridor) && (
+            <View style={styles.corridorActionGroup}>
+              <TouchableOpacity
+                style={[
+                  styles.transitToggle,
+                  includeTransit && styles.transitToggleActive,
+                ]}
+                onPress={() => setIncludeTransit((v) => !v)}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.transitToggleText,
+                    includeTransit && styles.transitToggleTextActive,
+                  ]}
+                >
+                  🛣 {t('order.corridorIncludeTransit')}
+                </Text>
+              </TouchableOpacity>
+
+              {effFrom && effTo ? (
                 <TouchableOpacity
                   style={[
-                    styles.transitToggle,
-                    includeTransit && styles.transitToggleActive,
+                    styles.returnTripBtn,
+                    isReturnMode && styles.returnTripBtnActive,
                   ]}
-                  onPress={() => setIncludeTransit((v) => !v)}
-                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.selectionAsync().catch(() => {});
+                    if (isReturnMode) {
+                      setCorridorFilter(null);
+                    } else {
+                      setCorridorFilter({ from: effTo, to: effFrom });
+                    }
+                  }}
+                  activeOpacity={0.85}
                 >
                   <Text
                     style={[
-                      styles.transitToggleText,
-                      includeTransit && styles.transitToggleTextActive,
+                      styles.returnTripBtnText,
+                      isReturnMode && styles.returnTripBtnTextActive,
                     ]}
                   >
-                    🛣 {t('order.corridorIncludeTransit')}
+                    🔄 {t('order.returnTripBtn', { from: effTo, to: effFrom })}
                   </Text>
                 </TouchableOpacity>
-
-                {effFrom && effTo && (
-                  <TouchableOpacity
-                    style={[
-                      styles.returnTripBtn,
-                      isReturnMode && styles.returnTripBtnActive,
-                    ]}
-                    onPress={() => {
-                      Haptics.selectionAsync().catch(() => {});
-                      if (isReturnMode) {
-                        setCorridorFilter(null);
-                      } else {
-                        setCorridorFilter({ from: effTo, to: effFrom });
-                      }
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Text
-                      style={[
-                        styles.returnTripBtnText,
-                        isReturnMode && styles.returnTripBtnTextActive,
-                      ]}
-                    >
-                      🔄 {t('order.returnTripBtn', { from: effTo, to: effFrom })}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            );
-          })()}
+              ) : null}
+            </View>
+          )}
         </View>
 
         <FlatList

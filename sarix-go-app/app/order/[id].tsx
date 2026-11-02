@@ -547,6 +547,8 @@ export default function OrderDetailScreen() {
   const isAccepted = order.status === 'accepted';
   const isInProgress = order.status === 'in_progress';
   const isCompleted = order.status === 'completed';
+  const carVisual = resolveCarModelGlyph(order.driver?.car_model);
+  const colorInfo = resolveCarColorInfo(order.driver?.car_color);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -679,11 +681,8 @@ export default function OrderDetailScreen() {
         )}
 
         {/* Driver info + License Plate + In-App Chat + 1-Tap Quick Chat Chips */}
-        {order.driver && (() => {
-          const carVisual = resolveCarModelGlyph(order.driver.car_model);
-          const colorInfo = resolveCarColorInfo(order.driver.car_color);
-          return (
-            <View style={styles.driverCard}>
+        {order.driver && (
+          <View style={styles.driverCard}>
               <View style={styles.driverHeaderRow}>
                 <Text style={styles.driverTitle}>{t('order.driverInfo')}</Text>
                 {order.driver.car_number ? (
@@ -823,9 +822,8 @@ export default function OrderDetailScreen() {
                 <Text style={styles.chatClosedInlineText}>{t('order.chatClosedNotice')}</Text>
               </View>
             )}
-            </View>
-          );
-        })()}
+          </View>
+        )}
 
         {/* Route */}
         <View style={styles.card}>
