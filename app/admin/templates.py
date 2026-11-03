@@ -741,7 +741,7 @@ function showDriver(id){
     const statusBanner=d.is_verified
       ? '<div class="alert alert-success py-2 mb-3">✅ <b>Haydovchi tasdiqlangan</b> — zakaslar qabul qila oladi.</div>'
       : (d.documents_submitted
-          ? '<div class="alert alert-warning py-2 mb-3">⏳ <b>Hujjatlar yuborilgan — tasdiqlash kutilmoqda!</b> Quyidagi rasmlarni ko\'rib chiqib «Tasdiqlash» tugmasini bosing.</div>'
+          ? '<div class="alert alert-warning py-2 mb-3">⏳ <b>Hujjatlar yuborilgan — tasdiqlash kutilmoqda!</b> Quyidagi rasmlarni ko\\'rib chiqib «Tasdiqlash» tugmasini bosing.</div>'
           : '<div class="alert alert-secondary py-2 mb-3">📝 Haydovchi hali ilovada barcha hujjatlarni yubormagan.</div>');
 
     const actionBar=`<div class="d-flex flex-wrap gap-2 mb-3">
