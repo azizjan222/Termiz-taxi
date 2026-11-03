@@ -230,3 +230,122 @@ async def broadcast_telegram(chat_ids, text: str, *, rate: int = 25) -> dict:
         result["sent"], result["failed"], len(ids),
     )
     return result
+
+
+def mask_phone_for_group(phone: str | None) -> str:
+    """Mask a phone number for public group display (e.g. '+998 90 *** ** **')."""
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if len(digits) >= 9:
+        tail9 = digits[-9:]
+        prefix2 = tail9[:2]
+        return f"+998 {prefix2} *** ** **"
+    return "+998 9* *** ** **"
+
+
+def format_group_order_vitrina(order) -> tuple[str, InlineKeyboardMarkup]:
+    """Build the HTML text and inline buttons for posting a new order into the Telegram group."""
+    from app.services import notify_i18n as nt
+
+    service_type = getattr(order, "service_type", "taxi") or "taxi"
+    if service_type == "parcel":
+        header_icon = "📦"
+        service_label = "Pochta (posilka)"
+    elif service_type == "full_car":
+        header_icon = "🚗"
+        service_label = "Bo'sh mashina (salon to'liq)"
+    else:
+        header_icon = "🚕"
+        person_count = int(getattr(order, "person_count", 1) or 1)
+        service_label = f"{person_count} kishi"
+
+    from_city = escape(str(getattr(order, "from_city", "") or "—"))
+    to_city = escape(str(getattr(order, "to_city", "") or "—"))
+    dep_time = escape(str(getattr(order, "departure_time", "") or "Hozir"))
+    price_str = nt.price_text("uz", getattr(order, "price", 0))
+    masked_phone = mask_phone_for_group(getattr(order, "passenger_phone", None))
+
+    badges: list[str] = []
+    if getattr(order, "female_only", False) or int(getattr(order, "female_count", 0) or 0) > 0:
+        badges.append("👩 Ayol yo'lovchi bor")
+    if getattr(order, "front_seat", False) and service_type != "parcel":
+        badges.append("💺 Old o'rindiq")
+    if getattr(order, "has_roof_rack", False):
+        badges.append("🧳 Yukxona (bagaj) kerak")
+    pickup_type = getattr(order, "pickup_type", None)
+    if pickup_type == "pitak":
+        badges.append("🅿️ Pitakdan chiqadi")
+    elif pickup_type == "door":
+        badges.append("🏠 Uy oldidan olish")
+
+    lines = [
+        f"{header_icon} <b>YANGI ZAKAS #{order.id}</b>",
+        "",
+        f"📍 <b>Yo'nalish:</b> {from_city} ➔ {to_city}",
+        f"👥 <b>Buyurtma:</b> {service_label}",
+        f"⏰ <b>Vaqt:</b> {dep_time}",
+        f"💰 <b>Narxi:</b> {price_str}",
+    ]
+    if badges:
+        lines.append("✨ <b>Qo'shimcha:</b> " + " · ".join(badges))
+    landmark = getattr(order, "landmark", None)
+    if landmark:
+        lines.append(f"🧭 <b>Mo'ljal:</b> {escape(str(landmark))}")
+    lines.extend([
+        f"📞 <b>Telefon:</b> <code>{masked_phone}</code> <i>(yopiq)</i>",
+        "",
+        "👇 <i>Zakasni qabul qilish va mijoz raqamini ochish uchun tugmani bosing "
+        "(Yangi haydovchilarga <b>30 kun komissiya 0%</b>!):</i>",
+    ])
+
+    bot_username = (config.BOT_USERNAME or "termizsariosiyotaxi_bot").lstrip("@")
+    source = getattr(order, "source", "app") or "app"
+    start_param = f"olish_{order.id}" if source == "bot" else f"apporder_{order.id}"
+    accept_url = f"https://t.me/{bot_username}?start={start_param}"
+
+    rows = [
+        [InlineKeyboardButton(f"🚖 Zakasni qabul qilish (#{order.id})", url=accept_url)],
+    ]
+    app_row = []
+    if config.DRIVER_APP_URL:
+        app_row.append(InlineKeyboardButton("📲 Sarix Driver ilovasi", url=config.DRIVER_APP_URL))
+    if config.PASSENGER_APP_URL:
+        app_row.append(InlineKeyboardButton("📱 Sarix Go ilovasi", url=config.PASSENGER_APP_URL))
+    if app_row:
+        rows.append(app_row)
+
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+async def notify_group_new_order(bot, order) -> None:
+    """Post a masked order card ('vitrina') to DRIVERS_GROUP_ID when configured."""
+    group_id = config.DRIVERS_GROUP_ID
+    if not group_id:
+        return
+
+    text, markup = format_group_order_vitrina(order)
+    own_bot = False
+    if bot is None:
+        if not BOT_TOKEN:
+            return
+        bot = Bot(token=BOT_TOKEN)
+        own_bot = True
+
+    try:
+        if own_bot:
+            await bot.initialize()
+        await bot.send_message(
+            chat_id=group_id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=markup,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        logger.warning("Failed to post new order #%s to group %s: %s", getattr(order, "id", "?"), group_id, e)
+    finally:
+        if own_bot:
+            try:
+                await bot.shutdown()
+            except Exception:
+                pass
+

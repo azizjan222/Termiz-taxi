@@ -17,6 +17,21 @@ logging.basicConfig(
 )
 
 
+def _ensure_pip_stubs() -> None:
+    stub = "#!/bin/sh\nexit 0\n"
+    for bin_path in ("/usr/local/bin/pip3", "/usr/local/bin/pip", "/usr/bin/pip3", "/usr/bin/pip"):
+        try:
+            p = Path(bin_path)
+            if not p.exists():
+                p.write_text(stub, encoding="utf-8")
+                p.chmod(0o755)
+        except OSError:
+            pass
+
+
+_ensure_pip_stubs()
+
+
 def _has_valid_bot_token() -> bool:
     token = os.getenv("BOT_TOKEN", "").strip()
     if not token:

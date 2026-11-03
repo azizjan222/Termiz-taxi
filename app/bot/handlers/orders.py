@@ -245,10 +245,19 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
             .first()
         )
         if not driver:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            buttons = []
+            if config.DRIVER_APP_URL:
+                buttons.append([InlineKeyboardButton("📲 Sarix Driver ilovasini yuklash", url=config.DRIVER_APP_URL)])
             await context.bot.send_message(
                 driver_telegram_id,
-                "❌ Siz ilovada ro'yxatdan o'tmagansiz. Avval ilovada hujjatlaringizni "
-                "yuboring.")
+                "❌ <b>Siz hali haydovchi sifatida ro'yxatdan o'tmagansiz.</b>\n\n"
+                "🚖 Zakaslarni qabul qilish va mijoz raqamini ko'rish uchun "
+                "<b>Sarix Driver</b> ilovasini yuklab olib, hujjatlaringizni yuboring.\n"
+                "🎁 Yangi haydovchilarga <b>30 kun komissiya 0% (bepul)</b>!",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+            )
             return
         # A blocked driver must not be able to claim work. Every other entry point checks
         # this (the driver API's request/verify OTP and _get_driver_from_request), but this
@@ -260,13 +269,21 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
                 "❌ Hisobingiz bloklangan. Administrator bilan bog'laning.")
             return
         if not driver.is_verified:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            buttons = []
+            if config.DRIVER_APP_URL:
+                buttons.append([InlineKeyboardButton("📲 Sarix Driver ilovasini ochish", url=config.DRIVER_APP_URL)])
             message = (
                 "❌ Hujjatlaringiz administrator tomonidan hali tasdiqlanmagan. "
                 "Tasdiqlanishini kuting."
                 if driver.documents_submitted
-                else "❌ Avval ilovada barcha haydovchi hujjatlarini yuboring."
+                else "❌ Avval Sarix Driver ilovasida barcha haydovchi hujjatlarini yuboring."
             )
-            await context.bot.send_message(driver_telegram_id, message)
+            await context.bot.send_message(
+                driver_telegram_id,
+                message,
+                reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+            )
             return
 
         # Active-order limit, same rule as the app's accept endpoint: a driver may hold up

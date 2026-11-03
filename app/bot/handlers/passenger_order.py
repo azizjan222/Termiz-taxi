@@ -157,6 +157,11 @@ async def finish_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "✅ Buyurtmangiz qabul qilindi!\nHaydovchi topilishi bilan xabar beramiz. 🚕",
         reply_markup=kb.passenger_cancel(order.id))
+    try:
+        from app.bot.notifications import notify_group_new_order
+        await notify_group_new_order(context.bot, order)
+    except Exception:
+        pass
     for key in list(data):
         if key.startswith("order_"):
             data.pop(key, None)

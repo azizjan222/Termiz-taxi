@@ -472,10 +472,14 @@ async def create_order(request: web.Request) -> web.Response:
             except Exception as e:
                 logger.error(f"Direct recommend notify failed: {e}")
 
-        # Do not post actionable app orders into a shared Telegram group: group
-        # membership cannot enforce the database approval gate and would expose order
-        # details to unverified accounts. Eligible approved drivers already receive the
-        # filtered WebSocket and push notifications above.
+        # Post a masked vitrina card (phone hidden as +998 9* *** ** **) to DRIVERS_GROUP_ID
+        # if configured, funneling group drivers into the Sarix Driver app / verified bot claim flow.
+        if config.DRIVERS_GROUP_ID:
+            try:
+                from app.bot.notifications import notify_group_new_order
+                await notify_group_new_order(request.app.get("bot"), order)
+            except Exception as e:
+                logger.warning("Group order vitrina notify failed: %s", e)
 
         response = {
             "success": True,

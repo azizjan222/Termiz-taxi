@@ -404,12 +404,12 @@ MAX_ACTIVE_NONPARCEL_ORDERS = _get_int("MAX_ACTIVE_NONPARCEL_ORDERS", 4)
 # The first N drivers who sign in to the driver app get FREE_TRIAL_DAYS of free service:
 # during the trial they do NOT need the minimum balance and pay NO commission per order.
 #
-# Launch terms: the first 50 drivers get 14 days. The defaults are the launch terms so a
+# Launch terms: the first 50 drivers get 30 days. The defaults are the launch terms so a
 # fresh deploy behaves correctly without env vars; both remain overridable at runtime from
 # the admin panel (`free_trial_limit` / `free_trial_days`, see dynamic_settings.py), which
 # takes precedence over these values.
 FREE_TRIAL_DRIVER_LIMIT = _get_int("FREE_TRIAL_DRIVER_LIMIT", 50)
-FREE_TRIAL_DAYS = _get_int("FREE_TRIAL_DAYS", 14)
+FREE_TRIAL_DAYS = _get_int("FREE_TRIAL_DAYS", 30)
 
 # Require drivers to submit registration documents (via the bot) before they can use
 # the driver app. They can enter immediately after submitting; admin reviews via PDF.

@@ -300,41 +300,277 @@ async def add_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         pass
 
 
-async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.chat.type not in ("group", "supergroup"):
-        return
-    if store.is_driver(update.effective_user.id):
-        return
-    try:
-        await update.message.delete()
-    except Exception:
-        pass
-    buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚕 Zakas berish", url=f"https://t.me/{context.bot.username}")],
-        [InlineKeyboardButton("👨‍✈️ Haydovchi bo'lish",
-                              url=f"https://t.me/{context.bot.username}")],
+# ---------------- Smart Telegram Group Parser & Auto-Funnel ---------------- #
+
+import re
+import time as _time
+from html import escape as _escape
+
+# Per-user cooldown in group chats so rapid consecutive messages don't spam replies.
+_GROUP_REPLY_COOLDOWN_SEC = 45.0
+_last_group_reply_at: dict[tuple[int, int], float] = {}
+
+# Canonical Surxondaryo districts & common group spellings (Latin + Cyrillic + typos).
+_CITY_ALIASES: list[tuple[str, tuple[str, ...]]] = [
+    ("Termiz", ("termiz", "termez", "термиз", "термез", "trmiz")),
+    ("Sariosiyo", ("sariosiyo", "sariosio", "saryosiyo", "сариосиё", "сариосийо", "saryosio")),
+    ("Denov", ("denov", "денов", "dnov", "dinov")),
+    ("Uzun", ("uzun", "узун")),
+    ("Sharg'un", ("sharg'un", "shargun", "sharg‘un", "warg'un", "wargun", "warg‘un", "шарғун", "шаргун")),
+    ("Sho'rchi", ("sho'rchi", "shorchi", "sho‘rchi", "шўрчи", "шурчи")),
+    ("Qumqo'rg'on", ("qumqo'rg'on", "qumqorgon", "қумқўрғон", "кумкургон")),
+    ("Jarqo'rg'on", ("jarqo'rg'on", "jarqorgon", "жарқўрғон", "жаркургон")),
+    ("Boysun", ("boysun", "бойсун")),
+    ("Sherobod", ("sherobod", "шеробод")),
+    ("Angor", ("angor", "ангор")),
+    ("Oltinsoy", ("oltinsoy", "олтинсой")),
+    ("Muzrabot", ("muzrabot", "музработ")),
+    ("Qiziriq", ("qiziriq", "қизириқ", "кизирик")),
+    ("Bandixon", ("bandixon", "бандихон")),
+]
+
+_DRIVER_KEYWORDS = (
+    "cobalt", "kobalt", "кобальт", "кобалт",
+    "gentra", "jentra", "жентра", "lacetti", "ласетти",
+    "nexia", "neksiya", "нексия", "spark", "спарк",
+    "damas", "дамас", "malibu", "малибу", "tracker", "трекер",
+    "onix", "оникс", "monza", "монза", "captiva", "каптива",
+    "mowina", "mashina bor", "auto ", "avto ",
+    "kishi kerak", "kiwi kerak", "k.k", "киши керак", "одам керак", "odam kerak",
+    "olib ketamiz", "олиб кетамиз", "pochta olamiz", "pochtaham olamiz",
+    "powta olamiz", "почта оламиз",
+)
+
+_PASSENGER_KEYWORDS = (
+    "mashina kerak", "taksi kerak", "машина керак", "такси керак",
+    "ketaman", "кетамиз машина керак", "pochta bor", "почта бор",
+    "odam bor", "одам бор", "kishi bor", "киши бор", "olib ketadigan",
+)
+
+_PHONE_RE = re.compile(r"(?:\+?998[\s\-]?)?(\d{2}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2})\b")
+_SEAT_COUNT_RE = re.compile(r"\b([1-4])\s*(?:ta\s*)?(?:kishi|kiwi|k\.k|odam|киши|одам)\b", re.IGNORECASE)
+
+
+def parse_group_taxi_message(raw_text: str) -> dict:
+    """Analyze a raw Telegram group message and classify role, route, phone, and extras."""
+    low = (raw_text or "").lower()
+
+    # Find mentioned cities in order of appearance in the text
+    found_cities: list[tuple[int, str]] = []
+    for canonical, aliases in _CITY_ALIASES:
+        earliest_pos = None
+        for alias in aliases:
+            idx = low.find(alias)
+            if idx != -1 and (earliest_pos is None or idx < earliest_pos):
+                earliest_pos = idx
+        if earliest_pos is not None:
+            found_cities.append((earliest_pos, canonical))
+    found_cities.sort(key=lambda item: item[0])
+    ordered_cities = [c for _, c in found_cities]
+
+    # Check if any city explicitly has "-dan" / "-дан" suffix to mark origin
+    from_city = ordered_cities[0] if len(ordered_cities) >= 1 else None
+    to_city = ordered_cities[1] if len(ordered_cities) >= 2 else None
+    for canonical, aliases in _CITY_ALIASES:
+        for alias in aliases:
+            if re.search(rf"{re.escape(alias)}\s*(?:dan|дан)\b", low):
+                from_city = canonical
+                others = [c for c in ordered_cities if c != canonical]
+                if others:
+                    to_city = others[0]
+                break
+
+    has_driver_kw = any(kw in low for kw in _DRIVER_KEYWORDS)
+    has_passenger_kw = any(kw in low for kw in _PASSENGER_KEYWORDS)
+    has_parcel = any(w in low for w in ("pochta", "powta", "почта", "posilka", "посилка"))
+    has_female = any(w in low for w in ("ayol", "аёл", "qiz", "қиз"))
+
+    phone_match = _PHONE_RE.search(raw_text or "")
+    phone = None
+    if phone_match:
+        digits = "".join(ch for ch in phone_match.group(1) if ch.isdigit())
+        if len(digits) == 9:
+            phone = f"+998{digits}"
+
+    seat_match = _SEAT_COUNT_RE.search(low)
+    person_count = int(seat_match.group(1)) if seat_match else 1
+
+    if has_driver_kw:
+        role = "driver"
+    elif has_passenger_kw or (from_city and to_city and not has_driver_kw):
+        role = "passenger"
+    else:
+        role = "general"
+
+    return {
+        "role": role,
+        "from_city": from_city,
+        "to_city": to_city,
+        "cities": ordered_cities,
+        "phone": phone,
+        "person_count": person_count,
+        "has_parcel": has_parcel,
+        "has_female": has_female,
+    }
+
+
+def _build_group_funnel_buttons(bot_username: str) -> InlineKeyboardMarkup:
+    bot_username = (bot_username or config.BOT_USERNAME or "termizsariosiyotaxi_bot").lstrip("@")
+    rows = []
+    if config.PASSENGER_APP_URL:
+        rows.append([InlineKeyboardButton("📱 Yo'lovchi ilovasi (Sarix Go)", url=config.PASSENGER_APP_URL)])
+    if config.DRIVER_APP_URL:
+        rows.append([InlineKeyboardButton("🚖 Haydovchi ilovasi (Sarix Driver · 30 kun 0%)", url=config.DRIVER_APP_URL)])
+    rows.append([
+        InlineKeyboardButton("🚕 Botda zakas berish", url=f"https://t.me/{bot_username}?start=order"),
+        InlineKeyboardButton("👨‍✈️ Haydovchi bo'lish", url=f"https://t.me/{bot_username}?start=driver"),
     ])
-    msg = await context.bot.send_message(
-        update.message.chat_id,
-        f"Hurmatli <b>{update.effective_user.first_name}</b>, botdan foydalaning 👇",
-        reply_markup=buttons, parse_mode="HTML")
+    return InlineKeyboardMarkup(rows)
+
+
+async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Smart group listener: parses driver & passenger ads in the group and funnels them to Sarix Go / Sarix Driver."""
+    message = update.effective_message
+    user = update.effective_user
+    if not message or not user or user.is_bot:
+        return
+    if message.chat.type not in ("group", "supergroup"):
+        return
+    if is_admin(user.id):
+        return
+
+    raw_text = (message.text or message.caption or "").strip()
+    if not raw_text:
+        return
+
+    # Cooldown per user in the same group so 3 forwarded messages don't trigger 3 bot replies
+    now_mono = _time.monotonic()
+    cooldown_key = (message.chat_id, user.id)
+    last_ts = _last_group_reply_at.get(cooldown_key, 0.0)
+    if now_mono - last_ts < _GROUP_REPLY_COOLDOWN_SEC:
+        return
+    _last_group_reply_at[cooldown_key] = now_mono
+
+    parsed = parse_group_taxi_message(raw_text)
+    role = parsed["role"]
+    from_city = parsed["from_city"]
+    to_city = parsed["to_city"]
+    route_str = f"<b>{_escape(from_city)} ➔ {_escape(to_city)}</b>" if (from_city and to_city) else "<b>Termiz — Denov — Sariosiyo — Uzun</b>"
+    user_name = _escape(user.first_name or "Foydalanuvchi")
+    bot_username = getattr(context.bot, "username", None) or config.BOT_USERNAME
+    buttons = _build_group_funnel_buttons(bot_username)
+
+    if role == "driver":
+        reply_html = (
+            f"🚖 Hurmatli haydovchi <b>{user_name}</b>!\n"
+            f"📍 {route_str} yo'nalishida yo'lovchi yoki pochta qidiryapsizmi?\n\n"
+            "Guruhga har daqiqa xabar yozib vaqt yo'qotmang! <b>Sarix Driver</b> ilovasida:\n"
+            "🔔 Yo'l-yo'lakay tumanlar bo'yicha tayyor zakaslar ovozli signal bilan tushadi\n"
+            "👩 «Salonda ayol bor» va «Pochta olamiz» funksiyalari bor\n"
+            "🎁 <b>Yangi haydovchilarga 30 KUN KOMISSIYA 0% (mutlaqo bepul)!</b>\n\n"
+            "👇 Hoziroq yuklab oling:"
+        )
+    elif role == "passenger":
+        reply_html = (
+            f"🚕 Hurmatli <b>{user_name}</b>!\n"
+            f"📍 {route_str} yo'nalishida mashina yoki pochta xizmati kerakmi?\n\n"
+            "Guruhda xabar qidirib kutib o'tirmang! <b>Sarix Go</b> ilovasida:\n"
+            "✅ «Salonda ayol bor», «Old o'rindiq» va «Pochta»ni 1 bosishda tanlaysiz\n"
+            "✅ Mashina qayerda kelayotganini xaritada jonli ko'rasiz\n"
+            "🎁 Har safardan bonus yig'iladi!\n\n"
+            "👇 Ilovani yuklab oling yoki bot orqali zakas bering:"
+        )
+    else:
+        reply_html = (
+            f"👋 Hurmatli <b>{user_name}</b>, <b>Termiz — Denov — Sariosiyo — Uzun</b> "
+            "yo'nalishidagi barcha taksilar va yo'lovchilar endi rasmiy ilovada!\n\n"
+            "📱 <b>Sarix Go</b> — yo'lovchilar va pochta yuborish uchun\n"
+            "🚖 <b>Sarix Driver</b> — haydovchilar uchun (<b>30 kun komissiya 0%!</b>) 👇"
+        )
+
+    try:
+        sent = await context.bot.send_message(
+            chat_id=message.chat_id,
+            text=reply_html,
+            reply_markup=buttons,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        logger.debug("Group auto reply send failed: %s", e)
+        return
 
     async def _cleanup():
-        await asyncio.sleep(30)
+        await asyncio.sleep(90)
         try:
-            await context.bot.delete_message(chat_id=msg.chat_id, message_id=msg.message_id)
+            await context.bot.delete_message(chat_id=sent.chat_id, message_id=sent.message_id)
         except Exception:
             pass
 
     asyncio.create_task(_cleanup())
 
 
+def build_group_promo_post(bot_username: str | None = None) -> tuple[str, InlineKeyboardMarkup]:
+    """Build the promotional group post (for periodic reminders and /guruh_post)."""
+    text = (
+        "🔥 <b>Guruhda xabar qidirib vaqt yo'qotmang!</b>\n\n"
+        "Endi <b>Termiz — Denov — Sariosiyo — Uzun — Sharg'un</b> yo'nalishidagi "
+        "barcha taksilar, yo'lovchilar va pochta xizmati rasmiy <b>Sarix Go</b> tizimida!\n\n"
+        "🙋‍♂️ <b>Yo'lovchilar uchun (Sarix Go):</b>\n"
+        "• «Salonda ayol kishi bor», «Old o'rindiq», «Yukxona bor» mashinalarni 1 bosishda tanlash\n"
+        "• Ishonchli pochta berib yuborish va haydovchini xaritada kuzatish\n"
+        "• Har safardan bonuslar yig'ish\n\n"
+        "🚖 <b>Haydovchilar uchun (Sarix Driver):</b>\n"
+        "• Guruhga tinimsiz e'lon tashlash shart emas — tayyor mijozlar telefoningizga ovozli signal bilan tushadi\n"
+        "• 🎁 <b>Yangi haydovchilarga 30 KUN KOMISSIYA 0% (mutlaqo bepul)!</b>\n\n"
+        "👇 <b>Kerakli ilovani hoziroq yuklab oling:</b>"
+    )
+    return text, _build_group_funnel_buttons(bot_username or config.BOT_USERNAME)
+
+
 async def group_reminder(context: ContextTypes.DEFAULT_TYPE):
     from app.bot.state import DRIVERS_GROUP_ID
+    if not DRIVERS_GROUP_ID:
+        return
+    bot_username = getattr(context.bot, "username", None) or config.BOT_USERNAME
+    text, markup = build_group_promo_post(bot_username)
     try:
         await context.bot.send_message(
             chat_id=DRIVERS_GROUP_ID,
-            text="🚕 Termiz-Sariosiyo taksi xizmati!\n"
-                 "📲 Zakas berish uchun @termizsariosiyotaxi_bot")
-    except Exception:
-        pass
+            text=text,
+            parse_mode="HTML",
+            reply_markup=markup,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        logger.debug("Group reminder failed: %s", e)
+
+
+async def cmd_group_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/guruh_post — admin command to immediately post (and try to pin) the promo banner in DRIVERS_GROUP_ID."""
+    if not update.effective_user or not is_admin(update.effective_user.id):
+        return
+    target_chat_id = config.DRIVERS_GROUP_ID or update.effective_chat.id
+    bot_username = getattr(context.bot, "username", None) or config.BOT_USERNAME
+    text, markup = build_group_promo_post(bot_username)
+    try:
+        sent = await context.bot.send_message(
+            chat_id=target_chat_id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=markup,
+            disable_web_page_preview=True,
+        )
+        try:
+            await context.bot.pin_chat_message(
+                chat_id=target_chat_id,
+                message_id=sent.message_id,
+                disable_notification=False,
+            )
+        except Exception:
+            pass
+        if target_chat_id != update.effective_chat.id:
+            await update.message.reply_text("✅ Guruhga reklama posti yuborildi va qadaldi (pin qilindi)!")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Guruhga yuborishda xatolik: {e}")
+

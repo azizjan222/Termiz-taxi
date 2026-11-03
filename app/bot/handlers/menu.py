@@ -129,6 +129,37 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=kb.share_phone())
             return
 
+        if param == "driver":
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            buttons = []
+            if config.DRIVER_APP_URL:
+                buttons.append([InlineKeyboardButton("📲 Sarix Driver ilovasini yuklash", url=config.DRIVER_APP_URL)])
+            await update.message.reply_text(
+                "🚖 <b>Sarix Driver — Haydovchilar uchun rasmiy ilova!</b>\n\n"
+                "✅ Termiz — Denov — Sariosiyo — Uzun yo'nalishlarida tayyor yo'lovchi va pochta zakaslari\n"
+                "✅ «Salonda ayol bor» va yo'l-yo'lakay tumanlar filtri\n"
+                "🎁 <b>Yangi haydovchilarga 30 kun komissiya 0% (mutlaqo bepul)!</b>\n\n"
+                "Ilovani yuklab oling yoki pastdagi «👨‍✈️ Haydovchi bo'lish» tugmasini bosing 👇",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(buttons) if buttons else kb.main_menu(),
+            )
+            return
+        if param == "order":
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            buttons = []
+            if config.PASSENGER_APP_URL:
+                buttons.append([InlineKeyboardButton("📱 Sarix Go ilovasini yuklash", url=config.PASSENGER_APP_URL)])
+            await update.message.reply_text(
+                "🚕 <b>Sarix Go — Yo'lovchilar uchun qulay ilova!</b>\n\n"
+                "✅ «Salonda ayol bor», «Old o'rindiq», «Konditsioner» yoki «Pochta»ni 1 bosishda tanlang\n"
+                "✅ Haydovchi qayerda kelayotganini xaritada jonli kuzating\n"
+                "🎁 Har safardan bonus yig'ing!\n\n"
+                "Ilovani yuklab oling yoki pastdagi «🚕 Taksi buyurtma qilish» tugmasini bosing 👇",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(buttons) if buttons else kb.main_menu(),
+            )
+            return
+
     await update.message.reply_text(
         "Assalomu alaykum! Termiz-Sariosiyo taksi xizmatiga xush kelibsiz.\n\n"
         "Iltimos, kerakli bo'limni tanlang:",

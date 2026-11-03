@@ -247,7 +247,7 @@ def _ensure_test_driver(session, phone: str, telegram_id: int | None = None,
 def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
     """Give the first `FREE_TRIAL_DRIVER_LIMIT` drivers `FREE_TRIAL_DAYS` of free service.
 
-    Launch terms are the first 50 drivers for 14 days; both numbers are admin-editable, so
+    Launch terms are the first 50 drivers for 30 days; both numbers are admin-editable, so
     this deliberately reads them at call time rather than baking a duration into the name.
 
     Called at login. Idempotent per driver (only acts when subscription_until is None).

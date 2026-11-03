@@ -504,6 +504,33 @@ def _backfill_first_payment_bonus_flags():
         print(f"  ⚠️  first-payment bonus backfill skipped: {e}")
 
 
+def _backfill_free_trial_30_days():
+    """Upgrade the default 14-day free trial setting and active 14-day driver trials to 30 days."""
+    try:
+        with DbContext() as session:
+            if session.query(Setting).filter_by(key="free_trial_30d_backfill_done").first():
+                return
+            setting_row = session.query(Setting).filter_by(key="free_trial_days").first()
+            if setting_row and str(setting_row.value).strip() == "14":
+                setting_row.value = "30"
+            now = datetime.utcnow()
+            cutoff_14d = now + timedelta(days=15)
+            active_drivers = (
+                session.query(Driver)
+                .filter(
+                    Driver.subscription_until != None,  # noqa: E711
+                    Driver.subscription_until > now,
+                    Driver.subscription_until <= cutoff_14d,
+                )
+                .all()
+            )
+            for drv in active_drivers:
+                drv.subscription_until = drv.subscription_until + timedelta(days=16)
+            session.add(Setting(key="free_trial_30d_backfill_done", value="1"))
+    except Exception as e:
+        print(f"  ⚠️  free_trial 30d backfill skipped: {e}")
+
+
 def _upsert_setting(session, key: str, value: str) -> None:
     """Insert or overwrite a scalar Setting row."""
     row = session.query(Setting).filter_by(key=key).first()
@@ -583,6 +610,7 @@ def migrate_legacy_json(json_path: str = LEGACY_JSON_PATH) -> dict:
     # Must run before the commission scheduler's first poll, which is why it sits here
     # (immediately after the column pass) rather than at the end with the other backfills.
     _backfill_commission_charged()
+    _backfill_free_trial_30_days()
 
     # Seed routes (isolated so a failure here can't skip later steps).
     try:

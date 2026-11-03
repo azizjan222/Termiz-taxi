@@ -157,6 +157,7 @@ def _register_handlers(app) -> None:
     app.add_handler(CommandHandler("start", menu.start))
     app.add_handler(CommandHandler("admin", menu.admin_panel))
     app.add_handler(CommandHandler("pul", admin_actions.add_balance_command))
+    app.add_handler(CommandHandler("guruh_post", admin_actions.cmd_group_post))
     _register_admin_commands(app)
 
     app.add_handler(_build_order_conversation())
