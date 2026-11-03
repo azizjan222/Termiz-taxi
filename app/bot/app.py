@@ -29,7 +29,11 @@ from app.bot.handlers import (
     payments,
 )
 from app.bot.notifications import notify_admin_order_cancelled
-from app.bot.pdf import cmd_driver_documents, driver_pdf_callback
+from app.bot.pdf import (
+    cmd_driver_documents,
+    driver_doc_review_callback,
+    driver_pdf_callback,
+)
 from app.bot.state import BOT_TOKEN
 from app.bot.store import store
 from app.database import init_db
@@ -183,6 +187,7 @@ def _register_handlers(app) -> None:
     app.add_handler(CallbackQueryHandler(payments.approve_receipt, pattern="^topup_(ok|no)_"))
     app.add_handler(CallbackQueryHandler(payments.approve_app_topup, pattern="^apppay_(ok|no)_"))
     app.add_handler(CallbackQueryHandler(driver_pdf_callback, pattern="^drvpdf_"))
+    app.add_handler(CallbackQueryHandler(driver_doc_review_callback, pattern="^drvdoc_(ok|no)_"))
     app.add_handler(CallbackQueryHandler(
         orders.order_action_callback,
         pattern="^(order_close|driver_cancel|passenger_cancel)_"))

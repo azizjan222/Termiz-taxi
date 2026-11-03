@@ -342,6 +342,7 @@ async def _handle_driver_upload(
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
         old_value = getattr(saved, field_name)
         setattr(saved, field_name, stored_value)
+        saved.last_active = datetime.utcnow()
         if analysis is not None:
             _record_document_fingerprint(session, driver.id, upload_type, analysis)
         session.commit()

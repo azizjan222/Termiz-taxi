@@ -72,6 +72,171 @@ async def driver_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await send_driver_pdf(context.bot, ADMIN_ID, telegram_id)
 
 
+async def driver_doc_review_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle ✅ Tasdiqlash / ❌ Rad etish buttons on driver document notifications."""
+    from datetime import datetime
+    from html import escape
+
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    from app import config
+    from app.admin.audit import add_actor_audit
+    from app.api.drivers import _grant_free_trial_if_eligible
+    from app.database import get_session
+    from app.models import Driver
+    from app.services.push import send_push
+
+    query = update.callback_query
+    if not query or not update.effective_user:
+        return
+    if not is_admin(update.effective_user.id):
+        await query.answer("⛔ Faqat admin uchun", show_alert=True)
+        return
+
+    parts = (query.data or "").split("_")
+    if len(parts) < 3 or parts[1] not in ("ok", "no"):
+        await query.answer("Noto'g'ri amal", show_alert=True)
+        return
+
+    action = parts[1]
+    try:
+        driver_id = int(parts[2])
+    except ValueError:
+        await query.answer("Noto'g'ri haydovchi ID", show_alert=True)
+        return
+
+    session = get_session()
+    driver_tg_id = None
+    driver_name = ""
+    driver_phone = ""
+    car_label = ""
+    try:
+        driver = session.query(Driver).filter_by(id=driver_id).first()
+        if not driver:
+            await query.answer("❌ Haydovchi topilmadi", show_alert=True)
+            return
+
+        driver_tg_id = driver.telegram_id
+        driver_name = f"{driver.first_name or ''} {driver.last_name or ''}".strip() or f"#{driver.id}"
+        driver_phone = driver.phone or ""
+        car_label = " · ".join(p for p in [driver.car_model, driver.car_number, driver.car_year] if p)
+
+        if action == "ok":
+            driver.is_verified = True
+            driver.documents_submitted = True
+            driver.last_active = datetime.utcnow()
+            add_actor_audit(
+                session,
+                actor=f"telegram:{update.effective_user.id}",
+                action="driver.verify",
+                target_type="driver",
+                target_id=driver.id,
+                update_id=update.update_id,
+            )
+            session.commit()
+            _grant_free_trial_if_eligible(session, driver)
+            session.commit()
+            try:
+                await send_push(
+                    session,
+                    recipient_type="driver",
+                    recipient_id=driver.id,
+                    title="Hujjatlaringiz tasdiqlandi! ✅",
+                    body="Tabriklaymiz! Akkauntingiz tasdiqlandi. Endi Sarix Driver ilovasida onlayn bo'lib zakaslarni qabul qilishingiz mumkin.",
+                )
+            except Exception:
+                pass
+        else:
+            driver.is_verified = False
+            driver.documents_submitted = False
+            driver.is_online = False
+            driver.online_since = None
+            add_actor_audit(
+                session,
+                actor=f"telegram:{update.effective_user.id}",
+                action="driver.reject",
+                target_type="driver",
+                target_id=driver.id,
+                update_id=update.update_id,
+            )
+            session.commit()
+            try:
+                await send_push(
+                    session,
+                    recipient_type="driver",
+                    recipient_id=driver.id,
+                    title="Hujjatlar rad etildi ❌",
+                    body="Hujjatlaringiz administrator tomonidan rad etildi. Iltimos, Sarix Driver ilovasida hujjat rasmlarini qaytadan yuklang.",
+                )
+            except Exception:
+                pass
+    except Exception as e:
+        session.rollback()
+        logger.error("driver_doc_review_callback error: %s", e)
+        await query.answer("Xatolik yuz berdi", show_alert=True)
+        return
+    finally:
+        session.close()
+
+    if action == "ok":
+        await query.answer("✅ Haydovchi tasdiqlandi!")
+        status_line = "✅ <b>TASDIQLANDI</b> (30 kun 0% bonus yoqildi)"
+        if driver_tg_id and driver_tg_id > 0:
+            try:
+                await context.bot.send_message(
+                    chat_id=driver_tg_id,
+                    text=(
+                        "🎉 <b>Tabriklaymiz! Hujjatlaringiz tasdiqlandi!</b>\n\n"
+                        "✅ Akkauntingiz faollashtirildi va <b>30 kunlik 0% komissiya</b> bonusi yoqildi.\n"
+                        "Endi <b>Sarix Driver</b> ilovasiga kirib «Onlayn» tugmasini bosing va zakaslarni qabul qiling!"
+                    ),
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+    else:
+        await query.answer("❌ Rad etildi")
+        status_line = "❌ <b>RAD ETILDI</b> (hujjatlar qayta yuklanishi kerak)"
+        if driver_tg_id and driver_tg_id > 0:
+            try:
+                await context.bot.send_message(
+                    chat_id=driver_tg_id,
+                    text=(
+                        "⚠️ <b>Hujjatlaringiz rad etildi</b>\n\n"
+                        "Iltimos, <b>Sarix Driver</b> ilovasiga kirib, haydovchilik guvohnomasi, "
+                        "texpasport (old va orqa tomoni) hamda mashina rasmini aniq ko'rinadigan qilib qaytadan yuklang."
+                    ),
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
+    buttons = []
+    if config.ADMIN_PANEL_URL:
+        buttons.append(
+            [InlineKeyboardButton("🔍 Panelda ko'rish", url=f"{config.ADMIN_PANEL_URL}drivers")]
+        )
+    if driver_tg_id:
+        buttons.append(
+            [InlineKeyboardButton("📄 PDF yuklab olish", callback_data=f"drvpdf_{driver_tg_id}")]
+        )
+    new_text = (
+        f"{status_line}\n\n"
+        f"👤 {escape(driver_name)}\n"
+        f"📞 {escape(driver_phone)}\n"
+        f"🚗 {escape(car_label)}\n"
+        f"🆔 Panelda ID: <code>{driver_id}</code>"
+    )
+    try:
+        await query.edit_message_text(
+            new_text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+        )
+    except Exception:
+        pass
+
+
 async def cmd_driver_documents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/hujjat <telegram_id | phone> — send a driver's document PDF to the admin."""
     if not is_admin(update.effective_user.id):

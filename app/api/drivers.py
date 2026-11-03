@@ -703,6 +703,7 @@ async def submit_documents(request: web.Request) -> web.Response:
         # re-upload, a second tap) and the admin should be told once, not once per call.
         already_submitted = bool(d.documents_submitted)
         d.documents_submitted = True
+        d.last_active = datetime.utcnow()
         session.commit()
         # Ensure the 1-month bonus is granted once onboarding completes — covers
         # bot-registered drivers who may have entered before the grant ran at login.

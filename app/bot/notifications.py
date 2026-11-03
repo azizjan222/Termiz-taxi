@@ -78,11 +78,19 @@ async def notify_admin_driver_documents(
         f"🆔 Panelda ID: <code>{int(driver_id)}</code>"
     )
 
-    buttons = []
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "✅ Tasdiqlash", callback_data=f"drvdoc_ok_{int(driver_id)}"
+            ),
+            InlineKeyboardButton(
+                "❌ Rad etish", callback_data=f"drvdoc_no_{int(driver_id)}"
+            ),
+        ]
+    ]
     panel_url = config.ADMIN_PANEL_URL
     if panel_url:
-        # Straight to the drivers list, where the review modal opens. There is no
-        # per-driver page to deep-link to, which is why the ID is in the text above.
+        # Straight to the drivers list, where the pending review queue appears at the top.
         buttons.append([InlineKeyboardButton("🔍 Panelda tekshirish", url=f"{panel_url}drivers")])
     if telegram_id:
         buttons.append(

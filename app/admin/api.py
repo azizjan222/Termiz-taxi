@@ -8,7 +8,7 @@ from collections import Counter, OrderedDict
 from datetime import datetime, timedelta
 
 from aiohttp import web
-from sqlalchemy import func
+from sqlalchemy import case, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
@@ -23,6 +23,7 @@ from app.models import (
     Driver,
     NotificationLog,
     Order,
+    Payment,
     Route,
     Setting,
     User,
@@ -247,12 +248,34 @@ def _stats_payload() -> dict:
         revenue_today = max(0, revenue_today - _reimbursed_since(today_start))
         revenue_month = max(0, revenue_month - _reimbursed_since(month_start))
 
+        pending_drivers_count = (
+            session.query(Driver)
+            .filter(
+                Driver.is_verified == False,  # noqa: E712
+                Driver.documents_submitted == True,  # noqa: E712
+            )
+            .count()
+        )
+        verified_drivers_count = (
+            session.query(Driver)
+            .filter(Driver.is_verified == True)  # noqa: E712
+            .count()
+        )
+        pending_payments_count = (
+            session.query(Payment)
+            .filter(Payment.status == "pending")
+            .count()
+        )
+
         return {
             "drivers_count": drivers_count,
             "passengers_count": passengers_count,
             "orders_count": orders_count,
             "active_orders": active_orders,
             "online_drivers": online_drivers,
+            "pending_drivers_count": pending_drivers_count,
+            "verified_drivers_count": verified_drivers_count,
+            "pending_payments_count": pending_payments_count,
             "revenue_today": revenue_today,
             "revenue_month": revenue_month,
         }
@@ -266,12 +289,99 @@ async def api_stats(request: web.Request) -> web.Response:
     return web.json_response(await asyncio.to_thread(_stats_payload))
 
 
+def _serialize_admin_driver_row(d: Driver) -> dict:
+    return {
+        "id": d.id,
+        "telegram_id": d.telegram_id,
+        "phone": d.phone,
+        "contact_phone": d.contact_phone,
+        "first_name": d.first_name,
+        "last_name": d.last_name,
+        "pinfl": d.pinfl,
+        "car_model": d.car_model,
+        "car_number": d.car_number,
+        "car_color": d.car_color,
+        "car_year": d.car_year,
+        "balance": d.balance or 0,
+        "is_online": d.is_online,
+        "is_verified": d.is_verified,
+        "is_blocked": d.is_blocked,
+        "documents_submitted": d.documents_submitted,
+        "rating": d.rating,
+        "total_orders": d.total_orders or 0,
+        "created_at": _iso(d.created_at),
+        "last_active": _iso(d.last_active),
+        # Document availability (Telegram file or uploaded image) for the details view.
+        "has_license": bool(d.license_file_id or d.license_photo_url),
+        "has_license_back": bool(d.license_back_url),
+        "has_tech_passport": bool(d.tech_passport_file_id or d.tech_passport_url),
+        "has_tech_passport_back": bool(d.tech_passport_back_url),
+        "has_car_photo": bool(d.car_photo_file_id or d.car_photo_url),
+    }
+
+
 def _drivers_payload(page: int, per_page: int, q: str, filt: str) -> dict:
     session = get_session()
     try:
+        counts = {
+            "all": session.query(Driver).count(),
+            "pending": (
+                session.query(Driver)
+                .filter(
+                    Driver.is_verified == False,  # noqa: E712
+                    Driver.documents_submitted == True,  # noqa: E712
+                )
+                .count()
+            ),
+            "verified": (
+                session.query(Driver)
+                .filter(Driver.is_verified == True)  # noqa: E712
+                .count()
+            ),
+            "online": (
+                session.query(Driver)
+                .filter(Driver.is_online == True)  # noqa: E712
+                .count()
+            ),
+            "has_car": (
+                session.query(Driver)
+                .filter(
+                    Driver.car_number.isnot(None),
+                    Driver.car_number != "",
+                )
+                .count()
+            ),
+            "nodocs": (
+                session.query(Driver)
+                .filter(
+                    Driver.is_verified == False,  # noqa: E712
+                    Driver.documents_submitted == False,  # noqa: E712
+                )
+                .count()
+            ),
+            "blocked": (
+                session.query(Driver)
+                .filter(Driver.is_blocked == True)  # noqa: E712
+                .count()
+            ),
+        }
+
+        pending_rows = (
+            session.query(Driver)
+            .filter(
+                Driver.is_verified == False,  # noqa: E712
+                Driver.documents_submitted == True,  # noqa: E712
+            )
+            .order_by(
+                func.coalesce(Driver.last_active, Driver.created_at).desc(),
+                Driver.id.desc(),
+            )
+            .limit(50)
+            .all()
+        )
+        pending_items = [_serialize_admin_driver_row(d) for d in pending_rows]
+
         query = session.query(Driver)
-        # Filtering and searching move to SQL: the browser used to receive every driver row
-        # and do this in JS.
         if filt == "online":
             query = query.filter(Driver.is_online == True)  # noqa: E712
         elif filt == "verified":
@@ -281,6 +391,11 @@ def _drivers_payload(page: int, per_page: int, q: str, filt: str) -> dict:
                 Driver.is_verified == False,  # noqa: E712
                 Driver.documents_submitted == True,  # noqa: E712
             )
+        elif filt == "has_car":
+            query = query.filter(
+                Driver.car_number.isnot(None),
+                Driver.car_number != "",
+            )
         elif filt == "nodocs":
             query = query.filter(
                 Driver.is_verified == False,  # noqa: E712
@@ -288,48 +403,68 @@ def _drivers_payload(page: int, per_page: int, q: str, filt: str) -> dict:
             )
         elif filt == "blocked":
             query = query.filter(Driver.is_blocked == True)  # noqa: E712
+
         if q:
-            like = f"%{q}%"
-            query = query.filter(
-                func.lower(func.coalesce(Driver.first_name, "")).like(func.lower(like))
-                | func.lower(func.coalesce(Driver.last_name, "")).like(func.lower(like))
-                | func.coalesce(Driver.phone, "").like(like)
-                | func.coalesce(Driver.car_number, "").like(like)
-            )
+            q_clean = q.lstrip("#").strip()
+            like = f"%{q_clean}%"
+            clauses = [
+                func.lower(func.coalesce(Driver.first_name, "")).like(func.lower(like)),
+                func.lower(func.coalesce(Driver.last_name, "")).like(func.lower(like)),
+                func.coalesce(Driver.phone, "").like(like),
+                func.coalesce(Driver.contact_phone, "").like(like),
+                func.lower(func.coalesce(Driver.car_number, "")).like(func.lower(like)),
+                func.lower(func.coalesce(Driver.car_model, "")).like(func.lower(like)),
+                func.coalesce(Driver.pinfl, "").like(like),
+            ]
+            digits = "".join(ch for ch in q_clean if ch.isdigit())
+            if q_clean.isdigit():
+                try:
+                    num = int(q_clean)
+                    clauses.append(Driver.id == num)
+                    clauses.append(Driver.telegram_id == num)
+                except ValueError:
+                    pass
+            if len(digits) >= 4:
+                clauses.append(func.coalesce(Driver.phone, "").like(f"%{digits}%"))
+                clauses.append(func.coalesce(Driver.contact_phone, "").like(f"%{digits}%"))
+            query = query.filter(or_(*clauses))
+
+        # Priority order so newly submitted drivers waiting for verification (like ID 64, ID 4)
+        # ALWAYS appear at the very top of Page 1, followed by verified drivers and drivers
+        # with car details, instead of being buried under hundreds of empty unsubmitted rows.
+        priority_order = case(
+            (
+                (Driver.documents_submitted == True) & (Driver.is_verified == False),  # noqa: E712
+                0,
+            ),
+            (Driver.is_verified == True, 1),  # noqa: E712
+            (
+                (Driver.car_number.isnot(None)) & (Driver.car_number != ""),
+                2,
+            ),
+            else_=3,
+        )
+
         total = query.count()
         drivers = (
-            query.order_by(Driver.id.desc())
+            query.order_by(
+                priority_order.asc(),
+                func.coalesce(Driver.last_active, Driver.created_at).desc(),
+                Driver.id.desc(),
+            )
             .offset((page - 1) * per_page)
             .limit(per_page)
             .all()
         )
-        result = []
-        for d in drivers:
-            result.append({
-                "id": d.id,
-                "telegram_id": d.telegram_id,
-                "phone": d.phone,
-                "first_name": d.first_name,
-                "last_name": d.last_name,
-                "pinfl": d.pinfl,
-                "car_model": d.car_model,
-                "car_number": d.car_number,
-                "car_color": d.car_color,
-                "car_year": d.car_year,
-                "balance": d.balance or 0,
-                "is_online": d.is_online,
-                "is_verified": d.is_verified,
-                "is_blocked": d.is_blocked,
-                "documents_submitted": d.documents_submitted,
-                "rating": d.rating,
-                "total_orders": d.total_orders or 0,
-                "created_at": _iso(d.created_at),
-                # Document availability (Telegram file or uploaded image) for the details view.
-                "has_license": bool(d.license_file_id or d.license_photo_url),
-                "has_tech_passport": bool(d.tech_passport_file_id or d.tech_passport_url),
-                "has_car_photo": bool(d.car_photo_file_id or d.car_photo_url),
-            })
-        return {"items": result, "total": total, "page": page, "per_page": per_page}
+        result = [_serialize_admin_driver_row(d) for d in drivers]
+        return {
+            "items": result,
+            "pending_items": pending_items,
+            "counts": counts,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+        }
     finally:
         session.close()
 
@@ -722,28 +857,88 @@ async def api_push(request: web.Request) -> web.Response:
 async def api_verify_driver(request: web.Request) -> web.Response:
     """POST /admin/api/drivers/{id}/verify - verify a driver."""
     driver_id = int(request.match_info["id"])
+    force = request.query.get("force") in ("1", "true", "yes")
+    if not force:
+        try:
+            body = await request.json()
+            if isinstance(body, dict) and body.get("force"):
+                force = True
+        except Exception:
+            pass
+
     session = get_session()
+    driver_tg_id = None
+    driver_db_id = None
     try:
         driver = session.query(Driver).filter_by(id=driver_id).first()
         if not driver:
             return web.json_response({"error": "Haydovchi topilmadi"}, status=404)
-        from app.api.drivers import missing_driver_approval_requirements
+        from app.api.drivers import (
+            _grant_free_trial_if_eligible,
+            missing_driver_approval_requirements,
+        )
 
         missing = missing_driver_approval_requirements(driver)
-        if missing:
+        if missing and not force:
             return web.json_response(
-                {"error": "Tasdiqlash uchun yetishmaydi: " + ", ".join(missing)},
+                {
+                    "error": "Tasdiqlash uchun yetishmaydi: " + ", ".join(missing),
+                    "missing": missing,
+                    "can_force": True,
+                },
                 status=400,
             )
         driver.is_verified = True
-        add_admin_audit(session, request, "driver.verify", target_type="driver", target_id=driver.id)
+        driver.documents_submitted = True
+        driver.last_active = datetime.utcnow()
+        driver_tg_id = driver.telegram_id
+        driver_db_id = driver.id
+        add_admin_audit(
+            session,
+            request,
+            "driver.verify",
+            target_type="driver",
+            target_id=driver.id,
+            details={"force": force, "missing": missing} if force else None,
+        )
         session.commit()
-        return web.json_response({"ok": True, "detail": "Tasdiqlandi"})
+        _grant_free_trial_if_eligible(session, driver)
+        session.commit()
+
+        # Best-effort push + Telegram notification to the driver
+        try:
+            await send_push(
+                session,
+                recipient_type="driver",
+                recipient_id=driver_db_id,
+                title="Hujjatlaringiz tasdiqlandi! ✅",
+                body="Tabriklaymiz! Akkauntingiz tasdiqlandi. Endi Sarix Driver ilovasida onlayn bo'lib zakaslarni qabul qilishingiz mumkin.",
+            )
+        except Exception:
+            pass
     except Exception:
         session.rollback()
         return _server_error("driver.verify")
     finally:
         session.close()
+
+    if driver_tg_id and driver_tg_id > 0:
+        try:
+            bot = request.app.get("bot")
+            if bot:
+                await bot.send_message(
+                    chat_id=driver_tg_id,
+                    text=(
+                        "🎉 <b>Tabriklaymiz! Hujjatlaringiz tasdiqlandi!</b>\n\n"
+                        "✅ Akkauntingiz faollashtirildi va <b>30 kunlik 0% komissiya</b> bonusi yoqildi.\n"
+                        "Endi <b>Sarix Driver</b> ilovasiga kirib «Onlayn» tugmasini bosing va zakaslarni qabul qiling!"
+                    ),
+                    parse_mode="HTML",
+                )
+        except Exception:
+            pass
+
+    return web.json_response({"ok": True, "detail": "Haydovchi tasdiqlandi!"})
 
 
 @require_admin_api
@@ -751,6 +946,8 @@ async def api_reject_driver(request: web.Request) -> web.Response:
     """POST /admin/api/drivers/{id}/reject - reject a driver."""
     driver_id = int(request.match_info["id"])
     session = get_session()
+    driver_tg_id = None
+    driver_db_id = None
     try:
         driver = session.query(Driver).filter_by(id=driver_id).first()
         if not driver:
@@ -759,14 +956,44 @@ async def api_reject_driver(request: web.Request) -> web.Response:
         driver.documents_submitted = False
         driver.is_online = False
         driver.online_since = None
+        driver_tg_id = driver.telegram_id
+        driver_db_id = driver.id
         add_admin_audit(session, request, "driver.reject", target_type="driver", target_id=driver.id)
         session.commit()
-        return web.json_response({"ok": True, "detail": "Rad etildi"})
+
+        try:
+            await send_push(
+                session,
+                recipient_type="driver",
+                recipient_id=driver_db_id,
+                title="Hujjatlar rad etildi ❌",
+                body="Hujjatlaringiz administrator tomonidan rad etildi. Iltimos, Sarix Driver ilovasiga kirib hujjat rasmlarini aniq va to'liq qilib qaytadan yuklang.",
+            )
+        except Exception:
+            pass
     except Exception:
         session.rollback()
         return _server_error("driver.reject")
     finally:
         session.close()
+
+    if driver_tg_id and driver_tg_id > 0:
+        try:
+            bot = request.app.get("bot")
+            if bot:
+                await bot.send_message(
+                    chat_id=driver_tg_id,
+                    text=(
+                        "⚠️ <b>Hujjatlaringiz rad etildi</b>\n\n"
+                        "Iltimos, <b>Sarix Driver</b> ilovasiga kirib, haydovchilik guvohnomasi, "
+                        "texpasport (old va orqa tomoni) hamda mashina rasmini aniq ko'rinadigan qilib qaytadan yuklang."
+                    ),
+                    parse_mode="HTML",
+                )
+        except Exception:
+            pass
+
+    return web.json_response({"ok": True, "detail": "Rad etildi"})
 
 
 @require_admin_api

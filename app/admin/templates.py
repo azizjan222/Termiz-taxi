@@ -4,33 +4,48 @@ BOOTSTRAP_CSS = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap
 BOOTSTRAP_JS = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
 
 BASE_HTML = """<!DOCTYPE html>
-<html lang="en">
+<html lang="uz">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title} - Sarix Go Admin</title>
 <link rel="stylesheet" href="{bootstrap_css}">
 <style>
-body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
-.sidebar {{ min-height: 100vh; background: #212529; }}
-.sidebar a {{ color: #adb5bd; text-decoration: none; padding: 10px 20px; display: block; }}
-.sidebar a:hover, .sidebar a.active {{ color: #fff; background: #343a40; }}
-.main-content {{ padding: 20px; }}
-.stat-card {{ border-radius: 10px; padding: 20px; color: #fff; }}
-.logout-button {{ color: #adb5bd; background: transparent; border: 0; padding: 10px 20px; width: 100%; text-align: left; }}
-.logout-button:hover {{ color: #fff; background: #343a40; }}
+body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; }}
+.sidebar {{ min-height: 100vh; background: #1e2125; box-shadow: 2px 0 8px rgba(0,0,0,0.08); }}
+.sidebar a {{ color: #adb5bd; text-decoration: none; padding: 11px 18px; display: flex; align-items: center; justify-content: space-between; font-size: 0.94rem; border-left: 3px solid transparent; transition: all .15s; }}
+.sidebar a:hover, .sidebar a.active {{ color: #fff; background: #2c3036; border-left-color: #0d6efd; font-weight: 500; }}
+.main-content {{ padding: 20px; background: #f8f9fa; min-height: 100vh; }}
+.stat-card {{ border-radius: 12px; padding: 18px; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }}
+.logout-button {{ color: #adb5bd; background: transparent; border: 0; padding: 11px 18px; width: 100%; text-align: left; font-size: 0.94rem; }}
+.logout-button:hover {{ color: #fff; background: #2c3036; }}
+.action-btns {{ display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 210px; }}
+.action-btns .btn {{ padding: 3px 8px; font-size: 0.78rem; white-space: nowrap; }}
+.pending-queue-card {{ border: 2px solid #ffc107; border-radius: 12px; background: #fffdf5; box-shadow: 0 3px 10px rgba(255,193,7,0.18); }}
+.pending-driver-item {{ background: #fff; border: 1px solid #ffe69c; border-radius: 10px; padding: 12px 14px; }}
+.filter-pills {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+.filter-pills .btn {{ border-radius: 20px; font-size: 0.84rem; padding: 5px 12px; }}
+@media (max-width: 767.98px) {{
+  .sidebar {{ min-height: auto; }}
+  .main-content {{ padding: 12px; }}
+  .stat-card {{ padding: 14px; }}
+}}
 </style>
 </head>
 <body>
+<div class="d-md-none bg-dark text-white d-flex align-items-center justify-content-between px-3 py-2 sticky-top shadow-sm">
+  <span class="fw-bold">🚖 Sarix Go Admin</span>
+  <button class="btn btn-sm btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#admin-sidebar-nav" aria-expanded="false">☰ Menyu</button>
+</div>
 <div class="container-fluid">
 <div class="row">
-<nav class="col-md-2 sidebar p-0">
-<div class="p-3 text-white fw-bold">Sarix Go Admin</div>
+<nav class="col-md-2 sidebar p-0 collapse d-md-block" id="admin-sidebar-nav">
+<div class="p-3 text-white fw-bold d-none d-md-block border-bottom border-secondary">🚖 Sarix Go Admin</div>
 {nav}
-<hr class="text-secondary">
+<hr class="text-secondary my-2">
 <form method="POST" action="/admin/logout" id="logout-form">
 <input type="hidden" name="csrf_token" value="{csrf_token}">
-<button type="submit" class="logout-button">Chiqish</button>
+<button type="submit" class="logout-button">🚪 Chiqish</button>
 </form>
 </nav>
 <main class="col-md-10 main-content">
@@ -56,9 +71,6 @@ window.fetch=function(input,init){{
     headers.set('X-CSRF-Token',adminCookie('admin_csrf'));
     opts.headers=headers;
   }}
-  // An expired session answers every API call with 401 JSON. Each page then tried to
-  // iterate that error object, threw, and left the table stuck on "..." with no hint that
-  // the admin had simply been logged out. Send them back to the login form instead.
   return originalFetch(input,opts).then(function(res){{
     if(res.status===401&&sameOrigin&&url.pathname.indexOf('/admin/')===0){{
       window.location.href='/admin/login';
@@ -67,21 +79,27 @@ window.fetch=function(input,init){{
   }});
 }};
 document.addEventListener('DOMContentLoaded',()=>{{
-  // The token is rendered server-side; this only refreshes it if the cookie was rotated
-  // after the page was served. Logout must not depend on JS running at all.
   const field=document.querySelector('#logout-form input[name="csrf_token"]');
   const cookie=adminCookie('admin_csrf');
   if(field&&cookie)field.value=cookie;
+  // Highlight pending drivers and payments in sidebar navigation
+  fetch('/admin/api/stats').then(r=>r.json()).then(st=>{{
+    if(!st||st.error)return;
+    const drvLink=document.querySelector('.sidebar a[href="/admin/drivers"]');
+    if(drvLink&&st.pending_drivers_count>0){{
+      let b=drvLink.querySelector('.nav-badge');
+      if(!b){{b=document.createElement('span');b.className='badge bg-warning text-dark nav-badge ms-1';drvLink.appendChild(b);}}
+      b.textContent=st.pending_drivers_count+' yangi';
+    }}
+    const payLink=document.querySelector('.sidebar a[href="/admin/payments"]');
+    if(payLink&&st.pending_payments_count>0){{
+      let b=payLink.querySelector('.nav-badge');
+      if(!b){{b=document.createElement('span');b.className='badge bg-danger nav-badge ms-1';payLink.appendChild(b);}}
+      b.textContent=st.pending_payments_count;
+    }}
+  }}).catch(()=>{{}});
 }});
-// `if(!s)` also swallowed 0 and false, so any numeric column routed through esc()
-// rendered blank for a legitimate zero.
-// Single quote and backtick are escaped too: every attribute here is double-quoted today,
-// so they were not strictly needed — but that made the escaper silently useless the moment
-// anyone wrote value='${{esc(x)}}'.
 function esc(s){{if(s===null||s===undefined)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');}}
-// Every timestamp from the API is now an explicit UTC instant (…+00:00). Render it in
-// Tashkent time, not the raw ISO string: the panel used to print UTC with microseconds,
-// i.e. 5 hours behind, with nothing saying so.
 function fmtDt(v){{
   if(!v)return '';
   const d=new Date(v);
@@ -90,14 +108,8 @@ function fmtDt(v){{
   const g=t=>(p.find(x=>x.type===t)||{{}}).value||'';
   return `${{g('year')}}-${{g('month')}}-${{g('day')}} ${{g('hour')}}:${{g('minute')}}`;
 }}
-// Money/quantity formatter shared by every page.
 function fmtNum(n){{return (Number(n)||0).toLocaleString('ru-RU').replace(/\\u00a0/g,' ');}}
-// A rating only means something once somebody has rated. `d.rating||5` reported an
-// unrated driver as a perfect 5.
 function fmtRating(rating,count){{return (count>0&&rating!=null)?Number(rating).toFixed(1):'—';}}
-// Shared pager. Every list endpoint now returns {{items,total,page,per_page}} instead of
-// the whole table: loading every driver and every user into the browser and filtering in JS
-// was fine at a few hundred rows and unusable at ten thousand.
 function renderPager(elId,d,onGo){{
   const el=document.getElementById(elId);
   if(!el)return;
@@ -105,7 +117,7 @@ function renderPager(elId,d,onGo){{
   const pages=Math.max(1,Math.ceil(total/per));
   if(total===0){{el.innerHTML='';return;}}
   const from=(page-1)*per+1, to=Math.min(page*per,total);
-  el.innerHTML=`<div class="d-flex align-items-center gap-2">
+  el.innerHTML=`<div class="d-flex align-items-center gap-2 flex-wrap">
     <button class="btn btn-sm btn-outline-secondary" ${{page<=1?'disabled':''}} data-go="${{page-1}}">‹ Oldingi</button>
     <span class="text-muted small">${{from}}–${{to}} / ${{total}} (${{page}}/${{pages}}-sahifa)</span>
     <button class="btn btn-sm btn-outline-secondary" ${{page>=pages?'disabled':''}} data-go="${{page+1}}">Keyingi ›</button>
@@ -114,9 +126,7 @@ function renderPager(elId,d,onGo){{
     b.onclick=()=>onGo(Number(b.getAttribute('data-go')));
   }});
 }}
-// Debounce so typing in a search box does not fire a request per keystroke.
 function debounce(fn,ms){{let t;return function(){{clearTimeout(t);t=setTimeout(fn,ms||350);}};}}
-// Shared error banner: every page used to fail silently in the console.
 function adminError(msg){{
   const main=document.querySelector('.main-content');
   if(!main)return;
@@ -170,21 +180,26 @@ LOGIN_HTML = """<!DOCTYPE html>
 </body>
 </html>"""
 
-DASHBOARD_HTML = """<h2>Dashboard</h2>
-<div class="row g-3 mb-4" id="stats-row">
-<div class="col-md-3"><div class="stat-card bg-primary"><h6>Haydovchilar</h6><h3 id="s-drivers">...</h3></div></div>
-<div class="col-md-3"><div class="stat-card bg-success"><h6>Yo'lovchilar</h6><h3 id="s-passengers">...</h3></div></div>
-<div class="col-md-3"><div class="stat-card bg-info"><h6>Buyurtmalar</h6><h3 id="s-orders">...</h3></div></div>
-<div class="col-md-3"><div class="stat-card bg-warning"><h6>Faol buyurtmalar</h6><h3 id="s-active">...</h3></div></div>
+DASHBOARD_HTML = """<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+<h2 class="mb-0">Dashboard</h2>
+<a href="/admin/drivers" class="btn btn-outline-primary btn-sm">👨‍✈️ Haydovchilar ro'yxati →</a>
+</div>
+<div id="dash-pending-banner"></div>
+<div class="row g-3 mb-3" id="stats-row">
+<div class="col-6 col-md-3"><div class="stat-card bg-primary"><h6>Jami haydovchilar</h6><h3 id="s-drivers">...</h3><small id="s-verified-note"></small></div></div>
+<div class="col-6 col-md-3"><div class="stat-card bg-warning text-dark"><h6>⏳ Tasdiq kutilmoqda</h6><h3 id="s-pending-drivers">...</h3><small><a href="/admin/drivers?filter=pending" class="text-dark fw-bold text-decoration-underline">Tekshirish →</a></small></div></div>
+<div class="col-6 col-md-3"><div class="stat-card bg-success"><h6>Yo'lovchilar</h6><h3 id="s-passengers">...</h3></div></div>
+<div class="col-6 col-md-3"><div class="stat-card bg-info"><h6>Jami buyurtmalar</h6><h3 id="s-orders">...</h3></div></div>
 </div>
 <div class="row g-3 mb-4">
-<div class="col-md-3"><div class="stat-card bg-dark"><h6>Online haydovchilar</h6><h3 id="s-online">...</h3></div></div>
-<div class="col-md-3"><div class="stat-card bg-secondary"><h6>Bugungi daromad</h6><h3 id="s-rev-today">...</h3></div></div>
-<div class="col-md-3"><div class="stat-card bg-danger"><h6>Oylik daromad</h6><h3 id="s-rev-month">...</h3></div></div>
+<div class="col-6 col-md-3"><div class="stat-card bg-dark"><h6>🟢 Online haydovchilar</h6><h3 id="s-online">...</h3></div></div>
+<div class="col-6 col-md-3"><div class="stat-card bg-primary"><h6>🚕 Faol buyurtmalar</h6><h3 id="s-active">...</h3></div></div>
+<div class="col-6 col-md-3"><div class="stat-card bg-secondary"><h6>Bugungi daromad</h6><h3 id="s-rev-today">...</h3></div></div>
+<div class="col-6 col-md-3"><div class="stat-card bg-danger"><h6>Oylik daromad</h6><h3 id="s-rev-month">...</h3></div></div>
 </div>
 <h4 class="mt-4">Top 10 haydovchilar (zakaslar bo'yicha)</h4>
-<div class="table-responsive">
-<table class="table table-sm table-striped" id="top-drivers-table">
+<div class="table-responsive bg-white rounded shadow-sm p-2">
+<table class="table table-sm table-striped mb-0" id="top-drivers-table">
 <thead><tr><th>#</th><th>Ism</th><th>Telefon</th><th>Zakaslar</th><th>Reyting</th><th>Holat</th></tr></thead>
 <tbody></tbody>
 </table>
@@ -194,12 +209,24 @@ DASHBOARD_JS = """<script>
 fetch('/admin/api/stats').then(r=>r.json()).then(d=>{
 if(!d||d.error||d.drivers_count===undefined){adminError(d&&d.error?d.error:'Statistikani yuklab bo\\'lmadi');return;}
 document.getElementById('s-drivers').textContent=d.drivers_count;
+const pendEl=document.getElementById('s-pending-drivers');
+if(pendEl)pendEl.textContent=d.pending_drivers_count||0;
+const verNote=document.getElementById('s-verified-note');
+if(verNote)verNote.textContent='✅ Tasdiqlangan: '+(d.verified_drivers_count||0)+' ta';
 document.getElementById('s-passengers').textContent=d.passengers_count;
 document.getElementById('s-orders').textContent=d.orders_count;
 document.getElementById('s-active').textContent=d.active_orders;
 document.getElementById('s-online').textContent=d.online_drivers;
 document.getElementById('s-rev-today').textContent=fmtNum(d.revenue_today)+" so'm";
 document.getElementById('s-rev-month').textContent=fmtNum(d.revenue_month)+" so'm";
+const banner=document.getElementById('dash-pending-banner');
+if(banner&&(d.pending_drivers_count||0)>0){
+  banner.innerHTML=`<div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 shadow-sm mb-3">
+    <div><strong>🆕 ${d.pending_drivers_count} ta haydovchi hujjatlarini yuborgan va tasdiqlashni kutmoqda!</strong><br>
+    <span class="small">Haydovchilar bo'limiga o'tib hujjatlarni ko'ring va «Tasdiqlash» tugmasini bosing.</span></div>
+    <a href="/admin/drivers" class="btn btn-warning fw-bold">🔍 Hozir tekshirish →</a>
+  </div>`;
+}
 }).catch(e=>{console.error(e);adminError('Statistikani yuklab bo\\'lmadi');});
 fetch('/admin/api/top-drivers').then(r=>r.json()).then(data=>{
 const tb=document.querySelector('#top-drivers-table tbody');
@@ -207,8 +234,8 @@ tb.innerHTML='';
 if(!(Array.isArray(data)&&data.length))tb.innerHTML='<tr><td colspan="6" class="text-muted">Ma\\'lumot yo\\'q</td></tr>';
 (Array.isArray(data)?data:[]).forEach((d,i)=>{
 const online=d.is_online?'<span class="badge bg-info">Online</span>':'<span class="badge bg-secondary">Oflayn</span>';
-const flags=(d.is_blocked?'<span class="badge bg-danger">🚫</span> ':'')+(d.is_verified?'':'<span class="badge bg-warning">tasdiqlanmagan</span> ');
-tb.innerHTML+=`<tr><td>${i+1}</td><td>${flags}${esc((d.first_name||'')+' '+(d.last_name||''))}</td><td>${esc(d.phone||'')}</td><td>${fmtNum(d.total_orders)}</td><td>${fmtRating(d.rating,d.rating_count)}</td><td>${online}</td></tr>`;
+const flags=(d.is_blocked?'<span class="badge bg-danger">🚫</span> ':'')+(d.is_verified?'':'<span class="badge bg-warning text-dark">tasdiqlanmagan</span> ');
+tb.innerHTML+=`<tr><td>${i+1}</td><td><a href="/admin/drivers?driver_id=${d.id}" class="text-decoration-none">${flags}${esc((d.first_name||'')+' '+(d.last_name||''))}</a></td><td>${esc(d.phone||'')}</td><td>${fmtNum(d.total_orders)}</td><td>${fmtRating(d.rating,d.rating_count)}</td><td>${online}</td></tr>`;
 });
 }).catch(e=>{console.error(e);adminError('Top haydovchilarni yuklab bo\\'lmadi');});
 </script>"""
@@ -404,12 +431,19 @@ fetch('/admin/api/statistics').then(r=>r.json()).then(d=>{
 }).catch(e=>{console.error(e);adminError('Statistikani yuklab bo\\'lmadi');});
 </script>"""
 
-DRIVERS_HTML = """<h2>Haydovchilar</h2>
-<div class="mb-3">
-<button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#new-driver-form">➕ Yangi haydovchi</button>
+DRIVERS_HTML = """<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+<h2 class="mb-0">Haydovchilar</h2>
+<div class="d-flex gap-2">
+  <button class="btn btn-outline-secondary btn-sm" type="button" onclick="loadDrivers()">🔄 Yangilash</button>
+  <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#new-driver-form">➕ Yangi haydovchi qo'shish</button>
 </div>
+</div>
+
+<!-- Prominent Pending Verification Queue -->
+<div id="pending-drivers-box" class="mb-3" style="display:none"></div>
+
 <div class="collapse mb-3" id="new-driver-form">
-<div class="card card-body">
+<div class="card card-body shadow-sm">
 <h5>Yangi haydovchi qo'shish</h5>
 <div class="row g-2">
 <div class="col-md-3"><input class="form-control" id="nd-phone" placeholder="Telefon * (+998...)"></div>
@@ -418,7 +452,7 @@ DRIVERS_HTML = """<h2>Haydovchilar</h2>
 <div class="col-md-3"><input class="form-control" id="nd-pinfl" placeholder="JSHSHIR (14 raqam)"></div>
 <div class="col-md-3"><input class="form-control" id="nd-carnum" placeholder="Mashina raqami"></div>
 <div class="col-md-3"><input class="form-control" id="nd-model" placeholder="Modeli" list="car-models-list"></div>
-<div class="col-md-3"><input class="form-control" id="nd-year" placeholder="Yili (masalan 2018)"></div>
+<div class="col-md-3"><input class="form-control" id="nd-year" placeholder="Yili (masalan 2022)"></div>
 <div class="col-md-3"><input class="form-control" id="nd-tgid" placeholder="Telegram ID (ixtiyoriy)"></div>
 </div>
 <datalist id="car-models-list"></datalist>
@@ -426,35 +460,60 @@ DRIVERS_HTML = """<h2>Haydovchilar</h2>
 <button class="btn btn-success" onclick="createDriver()">Saqlash</button>
 <span class="ms-2" id="nd-result"></span>
 </div>
-<small class="text-muted mt-1">Haydovchi <b>hujjat yubormagan</b> holatida yaratiladi va
-"Hujjat yubormagan" filtrida ko'rinadi. U ilovada hujjatlarni yuklagach "Kutilmoqda"ga o'tadi —
-shundan keyin tasdiqlashingiz mumkin.</small>
+<small class="text-muted mt-1">Haydovchi <b>hujjat yubormagan</b> holatida yaratiladi. U ilovada hujjatlarni yuklagach "Kutilmoqda" navbatiga chiqadi.</small>
 </div>
 </div>
-<div class="mb-3">
-<input type="text" class="form-control w-auto d-inline" id="driver-search" placeholder="Ism, telefon yoki mashina raqami..." style="min-width:280px">
-<select class="form-select w-auto d-inline" id="driver-filter" onchange="reloadDrivers()">
-<option value="all">Barchasi</option>
-<option value="online">Onlayn</option>
-<option value="verified">Tasdiqlangan</option>
-<option value="pending">Kutilmoqda (hujjat yuborgan)</option>
-<option value="nodocs">Hujjat yubormagan</option>
-<option value="blocked">Bloklangan</option>
-</select>
-<span class="ms-2 text-muted" id="driver-count"></span>
+
+<!-- Quick Filter Pills -->
+<div class="filter-pills mb-3" id="driver-filter-pills">
+  <button type="button" class="btn btn-dark" data-filt="all" onclick="setDriverFilter('all')">Barchasi <span class="badge bg-secondary ms-1" id="cnt-all">0</span></button>
+  <button type="button" class="btn btn-outline-warning text-dark fw-semibold" data-filt="pending" onclick="setDriverFilter('pending')">⏳ Tasdiq kutilmoqda <span class="badge bg-warning text-dark ms-1" id="cnt-pending">0</span></button>
+  <button type="button" class="btn btn-outline-success" data-filt="verified" onclick="setDriverFilter('verified')">✅ Tasdiqlangan <span class="badge bg-success ms-1" id="cnt-verified">0</span></button>
+  <button type="button" class="btn btn-outline-primary" data-filt="has_car" onclick="setDriverFilter('has_car')">🚗 Mashinasi bor <span class="badge bg-primary ms-1" id="cnt-has_car">0</span></button>
+  <button type="button" class="btn btn-outline-info text-dark" data-filt="online" onclick="setDriverFilter('online')">🟢 Onlayn <span class="badge bg-info text-dark ms-1" id="cnt-online">0</span></button>
+  <button type="button" class="btn btn-outline-secondary" data-filt="nodocs" onclick="setDriverFilter('nodocs')">📝 Hujjat yubormagan <span class="badge bg-secondary ms-1" id="cnt-nodocs">0</span></button>
+  <button type="button" class="btn btn-outline-danger" data-filt="blocked" onclick="setDriverFilter('blocked')">🚫 Bloklangan <span class="badge bg-danger ms-1" id="cnt-blocked">0</span></button>
 </div>
-<div class="table-responsive">
-<table class="table table-striped table-sm" id="drivers-table">
-<thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>Mashina</th><th>Raqam</th><th>Balans</th><th>Zakaslar</th><th>Holat</th><th>Amallar</th></tr></thead>
+
+<div class="card card-body shadow-sm mb-3 py-2 px-3">
+<div class="row g-2 align-items-center">
+<div class="col-12 col-md-6">
+  <div class="input-group input-group-sm">
+    <span class="input-group-text bg-light">🔎</span>
+    <input type="text" class="form-control" id="driver-search" placeholder="ID (masalan: 64 yoki 4), ism, telefon yoki mashina raqami...">
+    <button class="btn btn-outline-secondary" type="button" onclick="clearDriverSearch()">✕</button>
+  </div>
+</div>
+<div class="col-8 col-md-4">
+  <select class="form-select form-select-sm" id="driver-filter" onchange="reloadDrivers()">
+    <option value="all">Saralash: Muhimlar va yangilar yuqorida (Barchasi)</option>
+    <option value="pending">⏳ Tasdiq kutilmoqda (hujjat yuborgan)</option>
+    <option value="verified">✅ Tasdiqlangan haydovchilar</option>
+    <option value="has_car">🚗 Mashina ma'lumoti borlar</option>
+    <option value="online">🟢 Hozir onlayn</option>
+    <option value="nodocs">📝 Hujjat yubormaganlar</option>
+    <option value="blocked">🚫 Bloklanganlar</option>
+  </select>
+</div>
+<div class="col-4 col-md-2 text-end">
+  <span class="badge bg-dark" id="driver-count">0 ta</span>
+</div>
+</div>
+</div>
+
+<div class="table-responsive bg-white rounded shadow-sm">
+<table class="table table-hover align-middle table-sm mb-0" id="drivers-table">
+<thead class="table-light"><tr><th>ID</th><th>Haydovchi</th><th>Telefon</th><th>Mashina</th><th>Raqam</th><th>Hujjatlar</th><th>Balans / Zakas</th><th>Holat</th><th>Amallar</th></tr></thead>
 <tbody></tbody>
 </table>
 </div>
-<div id="drivers-pager" class="mt-2"></div>
+<div id="drivers-pager" class="mt-3"></div>
+
 <!-- Driver details modal -->
 <div class="modal fade" id="driver-detail-modal" tabindex="-1">
-<div class="modal-dialog modal-lg">
+<div class="modal-dialog modal-lg modal-dialog-scrollable">
 <div class="modal-content">
-<div class="modal-header"><h5 class="modal-title">Haydovchi ma'lumotlari</h5>
+<div class="modal-header"><h5 class="modal-title">Haydovchi ma'lumotlari va hujjatlari</h5>
 <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
 <div class="modal-body" id="driver-detail-body">Yuklanmoqda...</div>
 </div>
@@ -477,159 +536,300 @@ shundan keyin tasdiqlashingiz mumkin.</small>
 
 DRIVERS_JS = """<script>
 let allDrivers=[];
+let pendingDrivers=[];
 let driverPage=1;
+
+function setDriverFilter(val){
+  const sel=document.getElementById('driver-filter');
+  if(sel)sel.value=val;
+  syncFilterPills(val);
+  loadDrivers(1);
+}
+function syncFilterPills(val){
+  document.querySelectorAll('#driver-filter-pills button[data-filt]').forEach(btn=>{
+    const f=btn.getAttribute('data-filt');
+    const active=(f===val);
+    btn.classList.toggle('active',active);
+    if(f==='all'){btn.className=active?'btn btn-dark':'btn btn-outline-dark';}
+    else if(f==='pending'){btn.className=active?'btn btn-warning text-dark fw-bold':'btn btn-outline-warning text-dark fw-semibold';}
+    else if(f==='verified'){btn.className=active?'btn btn-success':'btn btn-outline-success';}
+    else if(f==='has_car'){btn.className=active?'btn btn-primary':'btn btn-outline-primary';}
+    else if(f==='online'){btn.className=active?'btn btn-info text-dark':'btn btn-outline-info text-dark';}
+    else if(f==='nodocs'){btn.className=active?'btn btn-secondary':'btn btn-outline-secondary';}
+    else if(f==='blocked'){btn.className=active?'btn btn-danger':'btn btn-outline-danger';}
+  });
+}
+function clearDriverSearch(){
+  const qEl=document.getElementById('driver-search');
+  if(qEl){qEl.value='';reloadDrivers();}
+}
+function docBadgesHtml(d){
+  const docs=[
+    ['Guv.old',d.has_license],
+    ['Guv.orqa',d.has_license_back],
+    ['Tex.old',d.has_tech_passport],
+    ['Tex.orqa',d.has_tech_passport_back],
+    ['Mashina',d.has_car_photo]
+  ];
+  const uploadedCount=docs.filter(x=>x[1]).length;
+  if(uploadedCount===0)return '<span class="text-muted small">Yuklanmagan (0/5)</span>';
+  const badgeCls=uploadedCount>=4?'bg-success':'bg-warning text-dark';
+  return `<span class="badge ${badgeCls}" title="${docs.map(x=>x[0]+': '+(x[1]?'Bor':'Yo\\'q')).join(', ')}">📎 ${uploadedCount}/5 rasm</span>`;
+}
+function renderPendingQueue(){
+  const box=document.getElementById('pending-drivers-box');
+  if(!box)return;
+  if(!Array.isArray(pendingDrivers)||!pendingDrivers.length){
+    box.style.display='none';
+    box.innerHTML='';
+    return;
+  }
+  box.style.display='block';
+  const cards=pendingDrivers.map(d=>{
+    const fullName=((d.first_name||'')+' '+(d.last_name||'')).trim()||('Haydovchi #'+d.id);
+    const carInfo=[d.car_model,d.car_number,d.car_year].filter(Boolean).join(' · ')||'Mashina kiritilmagan';
+    return `<div class="pending-driver-item mb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <div class="fw-bold">
+          <span class="badge bg-dark me-1">ID: ${d.id}</span>
+          ${esc(fullName)}
+          <span class="badge bg-warning text-dark ms-1">⏳ Hujjatlar tekshiruvda</span>
+          ${docBadgesHtml(d)}
+        </div>
+        <div class="small text-muted mt-1">
+          📞 <b>${esc(d.phone||'')}</b> ${d.contact_phone&&d.contact_phone!==d.phone?'('+esc(d.contact_phone)+')':''}
+          · 🚗 <b>${esc(carInfo)}</b>
+          ${d.telegram_id?` · TG: <code>${esc(d.telegram_id)}</code>`:''}
+        </div>
+      </div>
+      <div class="action-btns">
+        <button class="btn btn-sm btn-primary fw-semibold" onclick="showDriver(${d.id})">🔍 Hujjatlarni ko'rish</button>
+        <button class="btn btn-sm btn-success fw-semibold" onclick="verifyDriver(${d.id})">✅ Tasdiqlash</button>
+        <button class="btn btn-sm btn-danger" onclick="rejectDriver(${d.id})">❌ Rad etish</button>
+        <a class="btn btn-sm btn-outline-secondary" href="/admin/api/drivers/${d.id}/pdf" target="_blank" rel="noopener">📄 PDF</a>
+      </div>
+    </div>`;
+  }).join('');
+  box.innerHTML=`<div class="pending-queue-card p-3">
+    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+      <h5 class="mb-0 text-dark">⏳ Tasdiqlash kutilayotgan yangi haydovchilar (${pendingDrivers.length} ta)</h5>
+      <span class="small text-muted">Telegram botga kelgan yangi hujjatlar shu yerda chiqadi</span>
+    </div>
+    ${cards}
+  </div>`;
+}
 function loadDrivers(page){
-driverPage=page||driverPage;
-const f=document.getElementById('driver-filter').value;
-const qEl=document.getElementById('driver-search');
-const q=qEl?qEl.value.trim():'';
-fetch('/admin/api/drivers?page='+driverPage+'&filter='+encodeURIComponent(f)+'&q='+encodeURIComponent(q))
-.then(r=>r.json()).then(d=>{
-if(!d||d.error||!Array.isArray(d.items)){adminError(d&&d.error?d.error:'Haydovchilarni yuklab bo\\'lmadi');return;}
-allDrivers=d.items;
-document.getElementById('driver-count').textContent=fmtNum(d.total)+' ta';
-renderDrivers();
-renderPager('drivers-pager',d,loadDrivers);
-}).catch(()=>adminError('Haydovchilarni yuklab bo\\'lmadi'));
+  driverPage=page||driverPage;
+  const f=document.getElementById('driver-filter').value;
+  syncFilterPills(f);
+  const qEl=document.getElementById('driver-search');
+  const q=qEl?qEl.value.trim():'';
+  fetch('/admin/api/drivers?page='+driverPage+'&filter='+encodeURIComponent(f)+'&q='+encodeURIComponent(q))
+  .then(r=>r.json()).then(d=>{
+    if(!d||d.error||!Array.isArray(d.items)){adminError(d&&d.error?d.error:'Haydovchilarni yuklab bo\\'lmadi');return;}
+    allDrivers=d.items;
+    pendingDrivers=Array.isArray(d.pending_items)?d.pending_items:[];
+    if(d.counts){
+      ['all','pending','verified','has_car','online','nodocs','blocked'].forEach(k=>{
+        const el=document.getElementById('cnt-'+k);
+        if(el&&d.counts[k]!==undefined)el.textContent=fmtNum(d.counts[k]);
+      });
+    }
+    document.getElementById('driver-count').textContent=fmtNum(d.total)+' ta';
+    renderPendingQueue();
+    renderDrivers();
+    renderPager('drivers-pager',d,loadDrivers);
+  }).catch(()=>adminError('Haydovchilarni yuklab bo\\'lmadi'));
 }
-// Changing a filter or search term must go back to page 1, otherwise the request asks for
-// page 7 of a result set that now has two pages and the table looks empty.
 function reloadDrivers(){loadDrivers(1);}
-// A document can be recorded on the driver row while the file itself is unreachable (a
-// legacy Telegram file_id with no bot attached to this process). The <img> then rendered
-// as a broken-image icon with no explanation.
 function imgFallback(el){
-el.style.display='none';
-const note=document.createElement('div');
-note.className='text-danger small';
-note.textContent='Rasm yuklanmadi';
-el.parentNode.appendChild(note);
+  el.style.display='none';
+  const note=document.createElement('div');
+  note.className='text-danger small';
+  note.textContent='Rasm yuklanmadi';
+  el.parentNode.appendChild(note);
 }
-// Populate the car-model datalist (same list as the bot/app) for the new-driver form.
 fetch('/api/car-models').then(r=>r.json()).then(d=>{
-const dl=document.getElementById('car-models-list');
-if(dl&&d&&Array.isArray(d.models)){dl.innerHTML=d.models.map(m=>`<option value="${esc(m)}">`).join('');}
+  const dl=document.getElementById('car-models-list');
+  if(dl&&d&&Array.isArray(d.models)){dl.innerHTML=d.models.map(m=>`<option value="${esc(m)}">`).join('');}
 }).catch(()=>{});
-// Filtering, searching and paging are done by the server now — see renderPager().
 function renderDrivers(){
-const tb=document.querySelector('#drivers-table tbody');
-const data=allDrivers;
-tb.innerHTML='';
-if(!data.length)tb.innerHTML='<tr><td colspan="9" class="text-muted">Haydovchi topilmadi</td></tr>';
-data.forEach(d=>{
-const status=d.is_verified?'<span class="badge bg-success">Tasdiqlangan</span>':
-(d.documents_submitted?'<span class="badge bg-warning">Kutilmoqda</span>':'<span class="badge bg-secondary">Tasdiqlanmagan</span>');
-const online=d.is_online?'<span class="badge bg-info">Online</span>':'';
-tb.innerHTML+=`<tr>
-<td>${d.id}</td><td>${esc(d.first_name||'')} ${esc(d.last_name||'')} ${d.is_blocked?'<span class="badge bg-danger">🚫 Bloklangan</span>':''}</td><td>${esc(d.phone)}</td>
-<td>${esc(d.car_model||'-')}</td><td>${esc(d.car_number||'-')}</td><td>${(d.balance||0).toLocaleString()}</td>
-<td>${d.total_orders||0}</td>
-<td>${status} ${online}</td>
-<td>
-<button class="btn btn-sm btn-outline-dark" onclick="showDriver(${d.id})">Batafsil</button>
-<button class="btn btn-sm btn-outline-secondary" onclick="editDriver(${d.id})">✏️</button>
-${!d.is_verified?`<button class="btn btn-sm btn-success" onclick="verifyDriver(${d.id})">Tasdiqlash</button>`:''}
-${d.is_verified?`<button class="btn btn-sm btn-danger" onclick="rejectDriver(${d.id})">Rad etish</button>`:''}
-<button class="btn btn-sm btn-outline-success" onclick="topUpDriver(${d.id})">Balans +</button>
-<button class="btn btn-sm btn-outline-primary" onclick="pushDriver(${d.id})">Push</button>
-${d.is_blocked
-  ? `<button class="btn btn-sm btn-success" onclick="unblockDriver(${d.id})">Blokdan chiqarish</button>`
-  : `<button class="btn btn-sm btn-outline-danger" onclick="blockDriver(${d.id})">Bloklash</button>`}
-<a class="btn btn-sm btn-outline-secondary" href="/admin/api/drivers/${d.id}/pdf" target="_blank" rel="noopener">PDF</a>
-</td></tr>`;
-});
+  const tb=document.querySelector('#drivers-table tbody');
+  const data=allDrivers;
+  tb.innerHTML='';
+  if(!data.length){
+    tb.innerHTML='<tr><td colspan="9" class="text-muted text-center py-4">Haydovchi topilmadi</td></tr>';
+    return;
+  }
+  data.forEach(d=>{
+    const isPending=!d.is_verified&&d.documents_submitted;
+    const rowClass=isPending?'table-warning':'';
+    const status=d.is_verified?'<span class="badge bg-success">✅ Tasdiqlangan</span>':
+      (d.documents_submitted?'<span class="badge bg-warning text-dark">⏳ Kutilmoqda</span>':'<span class="badge bg-secondary">Hujjat yo\\'q</span>');
+    const online=d.is_online?'<span class="badge bg-info text-dark">Online</span>':'';
+    const fullName=((d.first_name||'')+' '+(d.last_name||'')).trim()||'—';
+    const carModel=d.car_model?`${esc(d.car_model)}${d.car_year?' ('+esc(d.car_year)+')':''}`:'<span class="text-muted">-</span>';
+    const carNum=d.car_number?`<span class="badge bg-light text-dark border font-monospace">${esc(d.car_number)}</span>`:'<span class="text-muted">-</span>';
+    tb.innerHTML+=`<tr class="${rowClass}">
+      <td><span class="fw-bold">#${d.id}</span></td>
+      <td>
+        <div class="fw-semibold"><a href="javascript:void(0)" onclick="showDriver(${d.id})" class="text-decoration-none text-dark">${esc(fullName)}</a></div>
+        ${d.is_blocked?'<span class="badge bg-danger">🚫 Bloklangan</span>':''}
+        ${d.telegram_id?`<div class="text-muted" style="font-size:0.74rem">TG: ${esc(d.telegram_id)}</div>`:''}
+      </td>
+      <td>
+        <div>${esc(d.phone||'')}</div>
+        ${d.contact_phone&&d.contact_phone!==d.phone?`<div class="small text-muted">${esc(d.contact_phone)}</div>`:''}
+      </td>
+      <td>${carModel}</td>
+      <td>${carNum}</td>
+      <td><a href="javascript:void(0)" onclick="showDriver(${d.id})" class="text-decoration-none">${docBadgesHtml(d)}</a></td>
+      <td>
+        <div class="fw-semibold">${fmtNum(d.balance)} so'm</div>
+        <div class="small text-muted">${d.total_orders||0} ta zakas</div>
+      </td>
+      <td>${status} ${online}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn btn-sm btn-outline-dark" onclick="showDriver(${d.id})">🔍 Batafsil</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="editDriver(${d.id})" title="Tahrirlash">✏️</button>
+          ${!d.is_verified?`<button class="btn btn-sm btn-success" onclick="verifyDriver(${d.id})">✅ Tasdiqlash</button>`:''}
+          ${(d.is_verified||d.documents_submitted)?`<button class="btn btn-sm btn-danger" onclick="rejectDriver(${d.id})">❌ Rad etish</button>`:''}
+          <button class="btn btn-sm btn-outline-success" onclick="topUpDriver(${d.id})">💰 Balans +</button>
+          <button class="btn btn-sm btn-outline-primary" onclick="pushDriver(${d.id})">🔔 Push</button>
+          ${d.is_blocked
+            ? `<button class="btn btn-sm btn-success" onclick="unblockDriver(${d.id})">Blokdan chiqarish</button>`
+            : `<button class="btn btn-sm btn-outline-danger" onclick="blockDriver(${d.id})">Bloklash</button>`}
+          <a class="btn btn-sm btn-outline-secondary" href="/admin/api/drivers/${d.id}/pdf" target="_blank" rel="noopener">PDF</a>
+        </div>
+      </td>
+    </tr>`;
+  });
 }
 function row(label,val){return `<tr><th style="width:40%">${esc(label)}</th><td>${esc(val==null||val===''?'-':String(val))}</td></tr>`;}
 function showDriver(id){
-const modalEl=document.getElementById('driver-detail-modal');
-const body=document.getElementById('driver-detail-body');
-body.innerHTML='Yuklanmoqda...';
-const modal=new bootstrap.Modal(modalEl);modal.show();
-fetch('/admin/api/drivers/'+id).then(r=>r.json()).then(d=>{
-if(d.error){body.innerHTML='<div class="alert alert-danger">'+esc(d.error)+'</div>';return;}
-let photos='';
-// The back sides were stored and printed into the PDF but had no viewer here.
-const kinds=[['license','Guvohnoma (old)',d.has_license],['license_back','Guvohnoma (orqa)',d.has_license_back],['tech_passport','Texpasport (old)',d.has_tech_passport],['tech_passport_back','Texpasport (orqa)',d.has_tech_passport_back],['car','Mashina surati',d.has_car_photo]];
-kinds.forEach(([k,label,has])=>{
-if(has){photos+=`<div class="col-md-4 text-center mb-3"><div class="small text-muted">${esc(label)}</div>`+
-`<a href="/admin/api/drivers/${id}/photo/${k}" target="_blank" rel="noopener"><img src="/admin/api/drivers/${id}/photo/${k}" style="max-width:100%;max-height:160px;border:1px solid #ddd;border-radius:6px" loading="lazy" onerror="imgFallback(this)"></a></div>`;}
-else{photos+=`<div class="col-md-4 text-center mb-3"><div class="small text-muted">${esc(label)}</div><div class="text-muted">Yuborilmagan</div></div>`;}
-});
-body.innerHTML=`<table class="table table-sm table-bordered">
-${row('ID',d.id)}${row('Telegram ID',d.telegram_id)}${row('Ism',d.first_name)}${row('Familiya',d.last_name)}
-${row('JSHSHIR',d.pinfl)}${row('Telefon',d.phone)}${row('Aloqa telefoni',d.contact_phone)}
-${row('Mashina modeli',d.car_model)}${row('Mashina raqami',d.car_number)}
-${row('Yili',d.car_year)}${row('Rangi',d.car_color)}${row('O\\'rindiqlar',d.seats)}
-${row('Balans',fmtNum(d.balance)+" so'm")}${row('Reyting',fmtRating(d.rating,d.rating_count)+' ('+fmtNum(d.rating_count)+' baho)')}
-${row('Zakaslar',d.total_orders)}${row('Tasdiqlangan',d.is_verified?'Ha':'Yo\\'q')}${row('Hujjatlar yuborilgan',d.documents_submitted?'Ha':'Yo\\'q')}
-${row('Online',d.is_online?'Ha':'Yo\\'q')}${row('Bloklangan',d.is_blocked?'Ha':'Yo\\'q')}
-${row('Obuna tugashi',fmtDt(d.subscription_until))}${row('Ro\\'yxatdan o\\'tgan',fmtDt(d.created_at))}
-${row('Oxirgi faollik',fmtDt(d.last_active))}
-</table>
-<h6>Hujjatlar</h6><div class="row">${photos}</div>
-<a class="btn btn-sm btn-outline-secondary mt-2" href="/admin/api/drivers/${id}/pdf" target="_blank" rel="noopener">📄 PDF yuklab olish</a>`;
-}).catch(()=>{body.innerHTML='<div class="alert alert-danger">Xatolik</div>';});
+  const modalEl=document.getElementById('driver-detail-modal');
+  const body=document.getElementById('driver-detail-body');
+  body.innerHTML='Yuklanmoqda...';
+  const modal=bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.show();
+  fetch('/admin/api/drivers/'+id).then(r=>r.json()).then(d=>{
+    if(d.error){body.innerHTML='<div class="alert alert-danger">'+esc(d.error)+'</div>';return;}
+    let photos='';
+    const kinds=[
+      ['license','Guvohnoma (old tomoni)',d.has_license],
+      ['license_back','Guvohnoma (orqa tomoni)',d.has_license_back],
+      ['tech_passport','Texpasport (old tomoni)',d.has_tech_passport],
+      ['tech_passport_back','Texpasport (orqa tomoni)',d.has_tech_passport_back],
+      ['car','Mashina surati',d.has_car_photo]
+    ];
+    kinds.forEach(([k,label,has])=>{
+      if(has){
+        photos+=`<div class="col-6 col-md-4 text-center mb-3">
+          <div class="small fw-semibold mb-1 text-success">✅ ${esc(label)}</div>
+          <a href="/admin/api/drivers/${id}/photo/${k}" target="_blank" rel="noopener">
+            <img src="/admin/api/drivers/${id}/photo/${k}" style="max-width:100%;max-height:180px;border:2px solid #198754;border-radius:8px;object-fit:cover" loading="lazy" onerror="imgFallback(this)">
+          </a>
+        </div>`;
+      }else{
+        photos+=`<div class="col-6 col-md-4 text-center mb-3">
+          <div class="small text-muted mb-1">❌ ${esc(label)}</div>
+          <div class="p-3 bg-light border rounded text-muted small">Yuborilmagan</div>
+        </div>`;
+      }
+    });
+    const statusBanner=d.is_verified
+      ? '<div class="alert alert-success py-2 mb-3">✅ <b>Haydovchi tasdiqlangan</b> — zakaslar qabul qila oladi.</div>'
+      : (d.documents_submitted
+          ? '<div class="alert alert-warning py-2 mb-3">⏳ <b>Hujjatlar yuborilgan — tasdiqlash kutilmoqda!</b> Quyidagi rasmlarni ko\'rib chiqib «Tasdiqlash» tugmasini bosing.</div>'
+          : '<div class="alert alert-secondary py-2 mb-3">📝 Haydovchi hali ilovada barcha hujjatlarni yubormagan.</div>');
+
+    const actionBar=`<div class="d-flex flex-wrap gap-2 mb-3">
+      ${!d.is_verified?`<button class="btn btn-success fw-bold" onclick="verifyDriver(${d.id},false,true)">✅ Haydovchini tasdiqlash</button>`:''}
+      ${(d.is_verified||d.documents_submitted)?`<button class="btn btn-danger" onclick="rejectDriver(${d.id},true)">❌ Rad etish</button>`:''}
+      <button class="btn btn-outline-secondary" onclick="bootstrap.Modal.getInstance(document.getElementById('driver-detail-modal')).hide();editDriver(${d.id})">✏️ Tahrirlash</button>
+      <button class="btn btn-outline-success" onclick="topUpDriver(${d.id})">💰 Balans +</button>
+      <a class="btn btn-outline-dark" href="/admin/api/drivers/${id}/pdf" target="_blank" rel="noopener">📄 PDF yuklab olish</a>
+    </div>`;
+
+    body.innerHTML=`${statusBanner}${actionBar}
+    <h6>📎 Yuklangan hujjat rasmlari (ustiga bossangiz kattalashadi)</h6>
+    <div class="row mb-3">${photos}</div>
+    <h6>📋 Batafsil anketa</h6>
+    <table class="table table-sm table-bordered">
+    ${row('ID',d.id)}${row('Telegram ID',d.telegram_id)}${row('Ism',d.first_name)}${row('Familiya',d.last_name)}
+    ${row('JSHSHIR',d.pinfl)}${row('Telefon',d.phone)}${row('Aloqa telefoni',d.contact_phone)}
+    ${row('Mashina modeli',d.car_model)}${row('Mashina raqami',d.car_number)}
+    ${row('Yili',d.car_year)}${row('Rangi',d.car_color)}${row('O\\'rindiqlar',d.seats)}
+    ${row('Balans',fmtNum(d.balance)+" so'm")}${row('Reyting',fmtRating(d.rating,d.rating_count)+' ('+fmtNum(d.rating_count)+' baho)')}
+    ${row('Zakaslar',d.total_orders)}${row('Tasdiqlangan',d.is_verified?'Ha':'Yo\\'q')}${row('Hujjatlar yuborilgan',d.documents_submitted?'Ha':'Yo\\'q')}
+    ${row('Online',d.is_online?'Ha':'Yo\\'q')}${row('Bloklangan',d.is_blocked?'Ha':'Yo\\'q')}
+    ${row('Obuna tugashi (30 kun bonus)',fmtDt(d.subscription_until))}${row('Ro\\'yxatdan o\\'tgan',fmtDt(d.created_at))}
+    ${row('Oxirgi faollik',fmtDt(d.last_active))}
+    </table>
+    ${actionBar}`;
+  }).catch(()=>{body.innerHTML='<div class="alert alert-danger">Xatolik</div>';});
 }
 function createDriver(){
-const body={
-phone:document.getElementById('nd-phone').value.trim(),
-first_name:document.getElementById('nd-first').value.trim(),
-last_name:document.getElementById('nd-last').value.trim(),
-pinfl:document.getElementById('nd-pinfl').value.trim(),
-car_number:document.getElementById('nd-carnum').value.trim(),
-car_model:document.getElementById('nd-model').value.trim(),
-car_year:document.getElementById('nd-year').value.trim(),
-telegram_id:document.getElementById('nd-tgid').value.trim()
-};
-if(!body.phone){alert('Telefon raqam kerak');return;}
-const res=document.getElementById('nd-result');
-res.textContent='...';
-fetch('/admin/api/drivers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-.then(r=>r.json().then(d=>({ok:r.ok,d}))).then(({ok,d})=>{
-res.innerHTML='<span class="text-'+(ok?'success':'danger')+'">'+esc(d.detail||d.error||'')+'</span>';
-if(ok){['nd-phone','nd-first','nd-last','nd-pinfl','nd-carnum','nd-model','nd-year','nd-tgid'].forEach(i=>document.getElementById(i).value='');loadDrivers();}
-}).catch(()=>{res.innerHTML='<span class="text-danger">Xato</span>';});
+  const body={
+    phone:document.getElementById('nd-phone').value.trim(),
+    first_name:document.getElementById('nd-first').value.trim(),
+    last_name:document.getElementById('nd-last').value.trim(),
+    pinfl:document.getElementById('nd-pinfl').value.trim(),
+    car_number:document.getElementById('nd-carnum').value.trim(),
+    car_model:document.getElementById('nd-model').value.trim(),
+    car_year:document.getElementById('nd-year').value.trim(),
+    telegram_id:document.getElementById('nd-tgid').value.trim()
+  };
+  if(!body.phone){alert('Telefon raqam kerak');return;}
+  const res=document.getElementById('nd-result');
+  res.textContent='...';
+  fetch('/admin/api/drivers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+  .then(r=>r.json().then(d=>({ok:r.ok,d}))).then(({ok,d})=>{
+    res.innerHTML='<span class="text-'+(ok?'success':'danger')+'">'+esc(d.detail||d.error||'')+'</span>';
+    if(ok){['nd-phone','nd-first','nd-last','nd-pinfl','nd-carnum','nd-model','nd-year','nd-tgid'].forEach(i=>document.getElementById(i).value='');loadDrivers();}
+  }).catch(()=>{res.innerHTML='<span class="text-danger">Xato</span>';});
 }
-// Both used to ignore the response completely: approving a driver with incomplete
-// documents returns 400 with the list of what is missing, and the admin saw nothing
-// happen at all.
-function verifyDriver(id){
-fetch('/admin/api/drivers/'+id+'/verify',{method:'POST'}).then(r=>r.json()).then(d=>{
-if(d.error)alert(d.error);
-loadDrivers();
-}).catch(()=>alert('Xatolik'));
+function verifyDriver(id,force,refreshModal){
+  const url='/admin/api/drivers/'+id+'/verify'+(force?'?force=1':'');
+  fetch(url,{method:'POST'}).then(r=>r.json().then(d=>({ok:r.ok,d}))).then(({ok,d})=>{
+    if(!ok&&d&&d.can_force){
+      if(confirm(d.error+"\\n\\nShunga qaramay bu haydovchini majburiy tasdiqlaysizmi?")){
+        verifyDriver(id,true,refreshModal);
+      }
+      return;
+    }
+    if(d&&d.error){alert(d.error);return;}
+    loadDrivers();
+    if(refreshModal)showDriver(id);
+  }).catch(()=>alert('Xatolik'));
 }
-function rejectDriver(id){
-if(!confirm('Haydovchini rad etamizmi? Tasdiq va hujjatlar holati bekor qilinadi.'))return;
-fetch('/admin/api/drivers/'+id+'/reject',{method:'POST'}).then(r=>r.json()).then(d=>{
-if(d.error)alert(d.error);
-loadDrivers();
-}).catch(()=>alert('Xatolik'));
+function rejectDriver(id,refreshModal){
+  if(!confirm('Haydovchini rad etamizmi? Tasdiq va hujjatlar holati bekor qilinadi hamda haydovchiga qayta yuklash haqida xabar boradi.'))return;
+  fetch('/admin/api/drivers/'+id+'/reject',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(d.error)alert(d.error);
+    loadDrivers();
+    if(refreshModal)showDriver(id);
+  }).catch(()=>alert('Xatolik'));
 }
 const _topUpInFlight={};
 function topUpDriver(id){
-// Guard against a double-click / second tab: the idempotency key below is minted per
-// call, so two clicks used to mint two different keys and the server -- correctly --
-// treated them as two separate logical top-ups and credited BOTH.
-if(_topUpInFlight[id]){alert('Iltimos kutib turing...');return;}
-const raw=prompt("Qancha so'm qo'shilsin? (manfiy = ayirish)");
-if(raw===null)return;
-// parseInt("50 000") === 50. Every amount in this panel is rendered space-grouped, so an
-// admin copying "50 000" credited 50 so'm and the alert reported success. Strip the
-// separators the UI itself produces, then demand a clean integer.
-const normalized=String(raw).replace(/[\\s\\u00a0’']/g,'').replace(/,/g,'');
-if(!/^-?\\d+$/.test(normalized)){alert("Noto'g'ri summa. Faqat raqam kiriting, masalan: 50000");return;}
-const amount=parseInt(normalized,10);
-if(!Number.isSafeInteger(amount)||amount===0){alert("Noto'g'ri summa");return;}
-const pretty=amount.toLocaleString('ru-RU').replace(/\\u00a0/g,' ');
-if(!confirm((amount>0?'Qo\\'shilsin: +':'Ayirilsin: ')+pretty+" so'm\\n\\nTasdiqlaysizmi?"))return;
-const idempotency_key=(globalThis.crypto&&globalThis.crypto.randomUUID)?globalThis.crypto.randomUUID():`admin-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-_topUpInFlight[id]=true;
-fetch('/admin/api/drivers/'+id+'/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,idempotency_key})}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'Bajarildi');loadDrivers();}).catch(()=>alert('Xato')).finally(()=>{delete _topUpInFlight[id];});
+  if(_topUpInFlight[id]){alert('Iltimos kutib turing...');return;}
+  const raw=prompt("Qancha so'm qo'shilsin? (manfiy = ayirish)");
+  if(raw===null)return;
+  const normalized=String(raw).replace(/[\\s\\u00a0’']/g,'').replace(/,/g,'');
+  if(!/^-?\\d+$/.test(normalized)){alert("Noto'g'ri summa. Faqat raqam kiriting, masalan: 50000");return;}
+  const amount=parseInt(normalized,10);
+  if(!Number.isSafeInteger(amount)||amount===0){alert("Noto'g'ri summa");return;}
+  const pretty=amount.toLocaleString('ru-RU').replace(/\\u00a0/g,' ');
+  if(!confirm((amount>0?'Qo\\'shilsin: +':'Ayirilsin: ')+pretty+" so'm\\n\\nTasdiqlaysizmi?"))return;
+  const idempotency_key=(globalThis.crypto&&globalThis.crypto.randomUUID)?globalThis.crypto.randomUUID():`admin-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  _topUpInFlight[id]=true;
+  fetch('/admin/api/drivers/'+id+'/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,idempotency_key})}).then(r=>r.json()).then(d=>{alert(d.detail||d.error||'Bajarildi');loadDrivers();}).catch(()=>alert('Xato')).finally(()=>{delete _topUpInFlight[id];});
 }
 function pushDriver(id){
-const msg=prompt('Xabar matni:');
-if(msg)fetch('/admin/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:'specific',recipient_id:id,recipient_type:'driver',message:msg})}).then(r=>r.json()).then(d=>alert(d.detail||d.error||'Yuborildi')).catch(()=>alert('Xatolik'));
+  const msg=prompt('Xabar matni:');
+  if(msg)fetch('/admin/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:'specific',recipient_id:id,recipient_type:'driver',message:msg})}).then(r=>r.json()).then(d=>alert(d.detail||d.error||'Yuborildi')).catch(()=>alert('Xatolik'));
 }
 function blockDriver(id){
   if(!confirm('Haydovchini bloklashni tasdiqlaysizmi? U zakas ola olmaydi va ilovaga kira olmaydi.'))return;
@@ -643,45 +843,58 @@ function unblockDriver(id){
     .then(r=>r.json()).then(d=>{alert(d.detail||d.error||'OK');loadDrivers();})
     .catch(()=>alert('Xatolik'));
 }
-// Edit form: until now a typo in a phone or car number entered here could only be fixed
-// in the database.
 const EDIT_FIELDS=[['ed-first','first_name','Ism'],['ed-last','last_name','Familiya'],['ed-phone','phone','Telefon'],['ed-contact','contact_phone','Aloqa telefoni'],['ed-pinfl','pinfl','JSHSHIR'],['ed-model','car_model','Mashina modeli'],['ed-carnum','car_number','Mashina raqami'],['ed-color','car_color','Rangi'],['ed-year','car_year','Yili'],['ed-seats','seats',"O'rindiqlar"],['ed-tgid','telegram_id','Telegram ID']];
 let editingDriverId=null;
 function editDriver(id){
-editingDriverId=id;
-const body=document.getElementById('driver-edit-body');
-body.innerHTML='Yuklanmoqda...';
-new bootstrap.Modal(document.getElementById('driver-edit-modal')).show();
-fetch('/admin/api/drivers/'+id).then(r=>r.json()).then(d=>{
-if(d.error){body.innerHTML='<div class="alert alert-danger">'+esc(d.error)+'</div>';return;}
-body.innerHTML='<div class="row g-2">'+EDIT_FIELDS.map(([elId,key,label])=>
-`<div class="col-md-6"><label class="form-label small mb-0">${esc(label)}</label>
-<input class="form-control form-control-sm" id="${elId}" value="${esc(d[key]==null?'':d[key])}"></div>`
-).join('')+'</div><div class="form-text mt-2">Bo\\'sh qoldirilgan maydon tozalanadi. Telefon va Telegram ID takrorlanmasligi tekshiriladi.</div>';
-}).catch(()=>{body.innerHTML='<div class="alert alert-danger">Xatolik</div>';});
+  editingDriverId=id;
+  const body=document.getElementById('driver-edit-body');
+  body.innerHTML='Yuklanmoqda...';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('driver-edit-modal')).show();
+  fetch('/admin/api/drivers/'+id).then(r=>r.json()).then(d=>{
+    if(d.error){body.innerHTML='<div class="alert alert-danger">'+esc(d.error)+'</div>';return;}
+    body.innerHTML='<div class="row g-2">'+EDIT_FIELDS.map(([elId,key,label])=>
+      `<div class="col-md-6"><label class="form-label small mb-0">${esc(label)}</label>
+      <input class="form-control form-control-sm" id="${elId}" value="${esc(d[key]==null?'':d[key])}"></div>`
+    ).join('')+'</div><div class="form-text mt-2">Bo\\'sh qoldirilgan maydon tozalanadi. Telefon va Telegram ID takrorlanmasligi tekshiriladi.</div>';
+  }).catch(()=>{body.innerHTML='<div class="alert alert-danger">Xatolik</div>';});
 }
 function saveDriverEdit(){
-if(!editingDriverId)return;
-const out=document.getElementById('driver-edit-result');
-const body={};
-for(const [elId,key] of EDIT_FIELDS){
-const el=document.getElementById(elId);
-if(!el)continue;
-const raw=String(el.value).trim();
-if(key==='seats'){if(raw===''){continue;}if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger mb-0">O\\'rindiqlar soni butun son bo\\'lishi kerak</div>';return;}body[key]=parseInt(raw,10);continue;}
-if(key==='telegram_id'){if(raw===''){continue;}if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger mb-0">Telegram ID raqam bo\\'lishi kerak</div>';return;}body[key]=raw;continue;}
-body[key]=raw;
-}
-out.innerHTML='<div class="text-muted">Saqlanmoqda...</div>';
-fetch('/admin/api/drivers/'+editingDriverId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-.then(r=>r.json()).then(d=>{
-out.innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+' mb-0">'+esc(d.detail||d.error||'Saqlandi')+'</div>';
-if(!d.error)loadDrivers();
-}).catch(()=>{out.innerHTML='<div class="alert alert-danger mb-0">Saqlashda xatolik</div>';});
+  if(!editingDriverId)return;
+  const out=document.getElementById('driver-edit-result');
+  const body={};
+  for(const [elId,key] of EDIT_FIELDS){
+    const el=document.getElementById(elId);
+    if(!el)continue;
+    const raw=String(el.value).trim();
+    if(key==='seats'){if(raw===''){continue;}if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger mb-0">O\\'rindiqlar soni butun son bo\\'lishi kerak</div>';return;}body[key]=parseInt(raw,10);continue;}
+    if(key==='telegram_id'){if(raw===''){continue;}if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger mb-0">Telegram ID raqam bo\\'lishi kerak</div>';return;}body[key]=raw;continue;}
+    body[key]=raw;
+  }
+  out.innerHTML='<div class="text-muted">Saqlanmoqda...</div>';
+  fetch('/admin/api/drivers/'+editingDriverId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+  .then(r=>r.json()).then(d=>{
+    out.innerHTML='<div class="alert alert-'+(d.error?'danger':'success')+' mb-0">'+esc(d.detail||d.error||'Saqlandi')+'</div>';
+    if(!d.error)loadDrivers();
+  }).catch(()=>{out.innerHTML='<div class="alert alert-danger mb-0">Saqlashda xatolik</div>';});
 }
 const driverSearchEl=document.getElementById('driver-search');
-if(driverSearchEl)driverSearchEl.addEventListener('input',debounce(reloadDrivers,400));
-loadDrivers(1);
+if(driverSearchEl)driverSearchEl.addEventListener('input',debounce(reloadDrivers,350));
+// Support URL query params ?filter=pending or ?driver_id=64
+(function initDriversPage(){
+  const params=new URLSearchParams(window.location.search);
+  const initFilt=params.get('filter');
+  if(initFilt){
+    const sel=document.getElementById('driver-filter');
+    if(sel)sel.value=initFilt;
+  }
+  const initQ=params.get('q');
+  if(initQ&&driverSearchEl)driverSearchEl.value=initQ;
+  loadDrivers(1);
+  const openId=params.get('driver_id');
+  if(openId&&/^\\d+$/.test(openId)){
+    setTimeout(()=>showDriver(parseInt(openId,10)),250);
+  }
+})();
 </script>"""
 
 PASSENGERS_HTML = """<h2>Yo'lovchilar</h2>

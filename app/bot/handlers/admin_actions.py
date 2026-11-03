@@ -565,6 +565,68 @@ async def _is_group_or_bot_admin(update: Update, context: ContextTypes.DEFAULT_T
     return False
 
 
+def _remember_active_group(chat_id: int) -> None:
+    """Remember a group chat ID in memory and persist it in the Setting table."""
+    if not chat_id:
+        return
+    is_new = chat_id not in _active_group_ids
+    _active_group_ids.add(chat_id)
+    if not is_new:
+        return
+    try:
+        import json
+
+        from app.database import get_session
+        from app.models import Setting
+
+        session = get_session()
+        try:
+            row = session.query(Setting).filter_by(key="active_group_ids").first()
+            stored: list[int] = []
+            if row and row.value:
+                try:
+                    stored = [int(x) for x in json.loads(row.value) if x]
+                except Exception:
+                    stored = []
+            merged = sorted(set(stored) | _active_group_ids)
+            if not row:
+                row = Setting(key="active_group_ids", value=json.dumps(merged))
+                session.add(row)
+            else:
+                row.value = json.dumps(merged)
+            session.commit()
+        finally:
+            session.close()
+    except Exception:
+        pass
+
+
+def _get_known_group_ids() -> list[int]:
+    """Return known group IDs (from memory, DB Setting, and DRIVERS_GROUP_ID)."""
+    known: list[int] = list(_active_group_ids)
+    try:
+        import json
+
+        from app.database import get_session
+        from app.models import Setting
+
+        session = get_session()
+        try:
+            row = session.query(Setting).filter_by(key="active_group_ids").first()
+            if row and row.value:
+                for x in json.loads(row.value):
+                    if x and int(x) not in known:
+                        known.append(int(x))
+                        _active_group_ids.add(int(x))
+        finally:
+            session.close()
+    except Exception:
+        pass
+    if config.DRIVERS_GROUP_ID and config.DRIVERS_GROUP_ID not in known:
+        known.append(config.DRIVERS_GROUP_ID)
+    return known
+
+
 async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Smart group listener: deletes unauthorized links and replies once every 10 group messages."""
     message = update.effective_message
@@ -572,8 +634,8 @@ async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message or not message.chat or message.chat.type not in ("group", "supergroup"):
         return
 
-    # Remember active group for periodic promo posts
-    _active_group_ids.add(message.chat_id)
+    # Remember active group for periodic promo posts and /guruh_post
+    _remember_active_group(message.chat_id)
 
     raw_text = (message.text or message.caption or "").strip()
 
@@ -698,15 +760,12 @@ def build_group_promo_post(bot_username: str | None = None) -> tuple[str, Inline
 
 
 async def group_reminder(context: ContextTypes.DEFAULT_TYPE):
-    from app.bot.state import DRIVERS_GROUP_ID
-    targets: set[int] = set(_active_group_ids)
-    if DRIVERS_GROUP_ID:
-        targets.add(DRIVERS_GROUP_ID)
+    targets = _get_known_group_ids()
     if not targets:
         return
     bot_username = getattr(context.bot, "username", None) or config.BOT_USERNAME
     text, markup = build_group_promo_post(bot_username)
-    for chat_id in list(targets):
+    for chat_id in targets:
         try:
             await context.bot.send_message(
                 chat_id=chat_id,
@@ -729,43 +788,86 @@ async def cmd_group_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not chat:
         return
 
-    # If run directly inside a group/supergroup, ALWAYS post & pin in THIS group
-    if chat.type in ("group", "supergroup"):
-        target_chat_id = chat.id
-        _active_group_ids.add(chat.id)
-    else:
-        target_chat_id = config.DRIVERS_GROUP_ID or (
-            next(iter(_active_group_ids)) if _active_group_ids else chat.id
-        )
-
     bot_username = getattr(context.bot, "username", None) or config.BOT_USERNAME
     text, markup = build_group_promo_post(bot_username)
-    try:
-        sent = await context.bot.send_message(
-            chat_id=target_chat_id,
-            text=text,
-            parse_mode="HTML",
-            reply_markup=markup,
-            disable_web_page_preview=True,
-        )
-        try:
-            await context.bot.pin_chat_message(
-                chat_id=target_chat_id,
-                message_id=sent.message_id,
-                disable_notification=False,
-            )
-        except Exception:
-            pass
 
-        # Clean up the "/guruh_post" command message inside the group if possible
-        if chat.type in ("group", "supergroup") and message:
+    # If run directly inside a group/supergroup, ALWAYS post & pin in THIS group
+    if chat.type in ("group", "supergroup"):
+        _remember_active_group(chat.id)
+        try:
+            sent = await context.bot.send_message(
+                chat_id=chat.id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=markup,
+                disable_web_page_preview=True,
+            )
             try:
-                await message.delete()
+                await context.bot.pin_chat_message(
+                    chat_id=chat.id,
+                    message_id=sent.message_id,
+                    disable_notification=False,
+                )
             except Exception:
                 pass
-        elif target_chat_id != chat.id and message:
-            await message.reply_text("✅ Guruhga reklama posti yuborildi va qadaldi (pin qilindi)!")
-    except Exception as e:
+            if message:
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+        except Exception as e:
+            if message:
+                await message.reply_text(f"❌ Guruhga yuborishda xatolik: {e}")
+        return
+
+    # Run from private chat with the bot: try all known group IDs
+    candidate_ids = _get_known_group_ids()
+    sent_groups = 0
+    for target_chat_id in candidate_ids:
+        try:
+            sent = await context.bot.send_message(
+                chat_id=target_chat_id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=markup,
+                disable_web_page_preview=True,
+            )
+            sent_groups += 1
+            try:
+                await context.bot.pin_chat_message(
+                    chat_id=target_chat_id,
+                    message_id=sent.message_id,
+                    disable_notification=False,
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            logger.debug("cmd_group_post candidate %s failed: %s", target_chat_id, e)
+
+    if sent_groups > 0:
         if message:
-            await message.reply_text(f"❌ Guruhga yuborishda xatolik: {e}")
+            await message.reply_text(
+                f"✅ Guruhga reklama posti yuborildi va qadaldi (pin qilindi)!"
+            )
+    else:
+        # Fallback: send the post right here so the admin has it and explain how to trigger in group
+        try:
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=markup,
+                disable_web_page_preview=True,
+            )
+            if message:
+                await message.reply_text(
+                    "ℹ️ Yuqoridagi reklama postini guruhga forward qilishingiz yoki "
+                    "to'g'ridan-to'g'ri <b>guruhning o'zida</b> <code>/guruh_post</code> deb yozishingiz mumkin "
+                    "(shunda bot guruh ID'sini eslab qoladi va avtomatik pin qiladi).",
+                    parse_mode="HTML",
+                )
+        except Exception as e:
+            if message:
+                await message.reply_text(f"❌ Xatolik: {e}")
+
 
