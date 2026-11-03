@@ -306,15 +306,56 @@ import re
 import time as _time
 from html import escape as _escape
 
-# Per-user cooldown in group chats so rapid consecutive messages don't spam replies.
-_GROUP_REPLY_COOLDOWN_SEC = 45.0
-_last_group_reply_at: dict[tuple[int, int], float] = {}
+# Reply only once every N messages per group (instead of replying to every message).
+_GROUP_REPLY_EVERY_N = 10
+_group_message_counts: dict[int, int] = {}
+
+# Matches URLs, Telegram links (t.me / tg://), www.* and common domain links in group messages.
+_GROUP_LINK_RE = re.compile(
+    r"(?i)(?:"
+    r"https?://\S+|"
+    r"www\.\S+|"
+    r"tg://\S+|"
+    r"(?:t|telegram)\.(?:me|dog)/\S+|"
+    r"\b[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:uz|ru|com|net|org|io|me|app|xyz|info|biz|tv|cc|ly|gl|co|su|pro|top|site|online|shop|club|vip|link|click)\b(?:/\S*)?"
+    r")"
+)
+
+
+def _message_contains_link(message) -> bool:
+    """Return True if a Telegram message contains any URL, t.me link, text_link entity, or URL button."""
+    if not message:
+        return False
+
+    for entities in (getattr(message, "entities", None), getattr(message, "caption_entities", None)):
+        if not entities:
+            continue
+        for ent in entities:
+            if getattr(ent, "type", None) in ("url", "text_link"):
+                return True
+
+    combined_text = f"{getattr(message, 'text', '') or ''}\n{getattr(message, 'caption', '') or ''}"
+    if _GROUP_LINK_RE.search(combined_text):
+        return True
+
+    reply_markup = getattr(message, "reply_markup", None)
+    inline_kb = getattr(reply_markup, "inline_keyboard", None) if reply_markup else None
+    if inline_kb:
+        for row in inline_kb:
+            for btn in row:
+                if getattr(btn, "url", None) or getattr(btn, "login_url", None) or getattr(btn, "web_app", None):
+                    return True
+
+    return False
 
 # Canonical Surxondaryo districts & common group spellings (Latin + Cyrillic + typos).
 _CITY_ALIASES: list[tuple[str, tuple[str, ...]]] = [
-    ("Termiz", ("termiz", "termez", "термиз", "термез", "trmiz")),
-    ("Sariosiyo", ("sariosiyo", "sariosio", "saryosiyo", "сариосиё", "сариосийо", "saryosio")),
-    ("Denov", ("denov", "денов", "dnov", "dinov")),
+    ("Termiz", ("termiz", "termez", "термиз", "термез", "trmiz", "tirmiz")),
+    ("Sariosiyo", (
+        "sariosiyo", "sariosio", "sarisoyo", "saryosiyo", "saryosio", "sariosyo",
+        "сариосиё", "сариосийо", "сариосио", "сарёсиё",
+    )),
+    ("Denov", ("denov", "denova", "денов", "денова", "dnov", "dinov", "динов")),
     ("Uzun", ("uzun", "узун")),
     ("Sharg'un", ("sharg'un", "shargun", "sharg‘un", "warg'un", "wargun", "warg‘un", "шарғун", "шаргун")),
     ("Sho'rchi", ("sho'rchi", "shorchi", "sho‘rchi", "шўрчи", "шурчи")),
@@ -328,6 +369,12 @@ _CITY_ALIASES: list[tuple[str, tuple[str, ...]]] = [
     ("Qiziriq", ("qiziriq", "қизириқ", "кизирик")),
     ("Bandixon", ("bandixon", "бандихон")),
 ]
+
+# Primary northern endpoints paired with Termiz in this corridor
+_NORTH_CITIES = ("Sariosiyo", "Denov", "Uzun")
+
+# Group IDs where /guruh_post was used at runtime, so periodic reminders also reach them
+_active_group_ids: set[int] = set()
 
 _DRIVER_KEYWORDS = (
     "cobalt", "kobalt", "кобальт", "кобалт",
@@ -351,12 +398,30 @@ _PHONE_RE = re.compile(r"(?:\+?998[\s\-]?)?(\d{2}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?
 _SEAT_COUNT_RE = re.compile(r"\b([1-4])\s*(?:ta\s*)?(?:kishi|kiwi|k\.k|odam|киши|одам)\b", re.IGNORECASE)
 
 
+def _has_suffix(low_text: str, aliases: tuple[str, ...], suffixes: str) -> bool:
+    for alias in aliases:
+        if re.search(rf"{re.escape(alias)}\s*(?:{suffixes})\b", low_text):
+            return True
+    return False
+
+
 def parse_group_taxi_message(raw_text: str) -> dict:
-    """Analyze a raw Telegram group message and classify role, route, phone, and extras."""
+    """Analyze a raw Telegram group message and classify role, route, phone, and extras.
+
+    Routes in this corridor are ALWAYS anchored between Termiz on one side and
+    Sariosiyo, Denov, or Uzun on the other side:
+      - Termiz <-> Sariosiyo
+      - Termiz <-> Denov
+      - Termiz <-> Uzun
+    Even when a driver lists multiple pickup towns along the road
+    (e.g. "Сариосиё Узун Шаргун Деновдан Термезга Борамиз"), we never output
+    northern-to-northern pairs like "Denov ➔ Sariosiyo".
+    """
     low = (raw_text or "").lower()
 
     # Find mentioned cities in order of appearance in the text
     found_cities: list[tuple[int, str]] = []
+    alias_map: dict[str, tuple[str, ...]] = dict(_CITY_ALIASES)
     for canonical, aliases in _CITY_ALIASES:
         earliest_pos = None
         for alias in aliases:
@@ -368,17 +433,65 @@ def parse_group_taxi_message(raw_text: str) -> dict:
     found_cities.sort(key=lambda item: item[0])
     ordered_cities = [c for _, c in found_cities]
 
-    # Check if any city explicitly has "-dan" / "-дан" suffix to mark origin
-    from_city = ordered_cities[0] if len(ordered_cities) >= 1 else None
-    to_city = ordered_cities[1] if len(ordered_cities) >= 2 else None
-    for canonical, aliases in _CITY_ALIASES:
-        for alias in aliases:
-            if re.search(rf"{re.escape(alias)}\s*(?:dan|дан)\b", low):
-                from_city = canonical
-                others = [c for c in ordered_cities if c != canonical]
-                if others:
-                    to_city = others[0]
-                break
+    # Determine northern endpoint candidate(s) among Sariosiyo, Denov, Uzun
+    north_candidates = [c for c in ordered_cities if c in _NORTH_CITIES]
+    if not north_candidates and "Sharg'un" in ordered_cities:
+        north_candidates = ["Sariosiyo"]
+
+    from_city: str | None = None
+    to_city: str | None = None
+
+    if ordered_cities:
+        termiz_aliases = alias_map["Termiz"]
+        termiz_from = _has_suffix(low, termiz_aliases, r"dan|дан")
+        termiz_to = _has_suffix(low, termiz_aliases, r"ga|га|ka|ка")
+
+        north_from_cities: list[str] = []
+        north_to_cities: list[str] = []
+        for nc in ("Sariosiyo", "Denov", "Uzun", "Sharg'un"):
+            nc_aliases = alias_map[nc]
+            mapped_nc = "Sariosiyo" if nc == "Sharg'un" else nc
+            if _has_suffix(low, nc_aliases, r"dan|дан") and mapped_nc not in north_from_cities:
+                north_from_cities.append(mapped_nc)
+            if _has_suffix(low, nc_aliases, r"ga|га|ka|ка") and mapped_nc not in north_to_cities:
+                north_to_cities.append(mapped_nc)
+
+        # Decide direction: True = North ➔ Termiz, False = Termiz ➔ North
+        if termiz_to and not termiz_from:
+            to_termiz = True
+        elif termiz_from and not termiz_to:
+            to_termiz = False
+        elif north_from_cities and not north_to_cities:
+            to_termiz = True
+        elif north_to_cities and not north_from_cities:
+            to_termiz = False
+        elif "Termiz" in ordered_cities and ordered_cities[0] == "Termiz":
+            to_termiz = False
+        else:
+            to_termiz = True
+
+        # Pick which northern city (Sariosiyo, Denov, or Uzun) represents the northern end
+        if not north_candidates:
+            north_city = "Sariosiyo"
+        elif len(north_candidates) == 1:
+            north_city = north_candidates[0]
+        else:
+            if to_termiz:
+                # E.g. "Сариосиё Узун Шаргун Деновдан Термезга" -> starts from Sariosiyo (first listed)
+                north_city = north_candidates[0]
+            else:
+                # E.g. "Termizdan Denovga" -> explicit -ga wins; else "Sariosiyo" if listed, else first
+                if north_to_cities:
+                    north_city = north_to_cities[0]
+                elif "Sariosiyo" in north_candidates:
+                    north_city = "Sariosiyo"
+                else:
+                    north_city = north_candidates[0]
+
+        if to_termiz:
+            from_city, to_city = north_city, "Termiz"
+        else:
+            from_city, to_city = "Termiz", north_city
 
     has_driver_kw = any(kw in low for kw in _DRIVER_KEYWORDS)
     has_passenger_kw = any(kw in low for kw in _PASSENGER_KEYWORDS)
@@ -428,34 +541,90 @@ def _build_group_funnel_buttons(bot_username: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+async def _is_group_or_bot_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Return True if the update comes from ADMIN_ID, an anonymous group admin, or a group creator/admin."""
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if user and is_admin(user.id):
+        return True
+    # Anonymous Group Admin ("Anonim sifatida yuborish"): sender_chat is the group itself
+    # or effective_user is Telegram's @GroupAnonymousBot (1087968824).
+    if message and message.sender_chat and chat and message.sender_chat.id == chat.id:
+        return True
+    if user and (user.id == 1087968824 or getattr(user, "username", None) == "GroupAnonymousBot"):
+        return True
+    if chat and chat.type in ("group", "supergroup") and user:
+        try:
+            member = await context.bot.get_chat_member(chat.id, user.id)
+            if getattr(member, "status", None) in ("creator", "administrator", "owner"):
+                return True
+        except Exception:
+            pass
+    return False
+
+
 async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Smart group listener: parses driver & passenger ads in the group and funnels them to Sarix Go / Sarix Driver."""
+    """Smart group listener: deletes unauthorized links and replies once every 10 group messages."""
     message = update.effective_message
     user = update.effective_user
-    if not message or not user or user.is_bot:
+    if not message or not message.chat or message.chat.type not in ("group", "supergroup"):
         return
-    if message.chat.type not in ("group", "supergroup"):
-        return
-    if is_admin(user.id):
-        return
+
+    # Remember active group for periodic promo posts
+    _active_group_ids.add(message.chat_id)
 
     raw_text = (message.text or message.caption or "").strip()
-    if not raw_text:
+
+    # Support "/guruh_post" even if triggered without standard command entity or by anonymous admin
+    if raw_text.lower().startswith("/guruh_post"):
+        await cmd_group_post(update, context)
         return
 
-    # Cooldown per user in the same group so 3 forwarded messages don't trigger 3 bot replies
-    now_mono = _time.monotonic()
-    cooldown_key = (message.chat_id, user.id)
-    last_ts = _last_group_reply_at.get(cooldown_key, 0.0)
-    if now_mono - last_ts < _GROUP_REPLY_COOLDOWN_SEC:
+    is_admin_sender = await _is_group_or_bot_admin(update, context)
+
+    # 1. Anti-link moderation: if a non-admin sends any link in the group, delete it immediately
+    if not is_admin_sender and _message_contains_link(message):
+        try:
+            await message.delete()
+            logger.info(
+                "Deleted link message %s from user %s in group %s",
+                message.message_id,
+                user.id if user else None,
+                message.chat_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "Could not delete link message in group %s (grant bot Delete Messages admin right): %s",
+                message.chat_id,
+                e,
+            )
         return
-    _last_group_reply_at[cooldown_key] = now_mono
+
+    # Ignore messages from admins, anonymous group admins, or bots for auto-reply counting
+    if is_admin_sender or not user or user.is_bot:
+        return
+
+    if not raw_text or raw_text.startswith("/"):
+        return
+
+    # 2. Reply only once every 10 messages in the group
+    msg_count = _group_message_counts.get(message.chat_id, 0) + 1
+    if msg_count < _GROUP_REPLY_EVERY_N:
+        _group_message_counts[message.chat_id] = msg_count
+        return
+    _group_message_counts[message.chat_id] = 0
 
     parsed = parse_group_taxi_message(raw_text)
     role = parsed["role"]
     from_city = parsed["from_city"]
     to_city = parsed["to_city"]
-    route_str = f"<b>{_escape(from_city)} ➔ {_escape(to_city)}</b>" if (from_city and to_city) else "<b>Termiz — Denov — Sariosiyo — Uzun</b>"
+    route_str = (
+        f"<b>{_escape(from_city)} ➔ {_escape(to_city)}</b>"
+        if (from_city and to_city)
+        else "<b>Termiz ➔ Sariosiyo / Denov / Uzun</b>"
+    )
     user_name = _escape(user.first_name or "Foydalanuvchi")
     bot_username = getattr(context.bot, "username", None) or config.BOT_USERNAME
     buttons = _build_group_funnel_buttons(bot_username)
@@ -482,7 +651,7 @@ async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         reply_html = (
-            f"👋 Hurmatli <b>{user_name}</b>, <b>Termiz — Denov — Sariosiyo — Uzun</b> "
+            f"👋 Hurmatli <b>{user_name}</b>, <b>Termiz — Sariosiyo, Denov — Termiz, Uzun — Termiz</b> "
             "yo'nalishidagi barcha taksilar va yo'lovchilar endi rasmiy ilovada!\n\n"
             "📱 <b>Sarix Go</b> — yo'lovchilar va pochta yuborish uchun\n"
             "🚖 <b>Sarix Driver</b> — haydovchilar uchun (<b>30 kun komissiya 0%!</b>) 👇"
@@ -514,7 +683,7 @@ def build_group_promo_post(bot_username: str | None = None) -> tuple[str, Inline
     """Build the promotional group post (for periodic reminders and /guruh_post)."""
     text = (
         "🔥 <b>Guruhda xabar qidirib vaqt yo'qotmang!</b>\n\n"
-        "Endi <b>Termiz — Denov — Sariosiyo — Uzun — Sharg'un</b> yo'nalishidagi "
+        "Endi <b>Termiz — Sariosiyo, Denov — Termiz, Uzun — Termiz</b> yo'nalishidagi "
         "barcha taksilar, yo'lovchilar va pochta xizmati rasmiy <b>Sarix Go</b> tizimida!\n\n"
         "🙋‍♂️ <b>Yo'lovchilar uchun (Sarix Go):</b>\n"
         "• «Salonda ayol kishi bor», «Old o'rindiq», «Yukxona bor» mashinalarni 1 bosishda tanlash\n"
@@ -530,27 +699,45 @@ def build_group_promo_post(bot_username: str | None = None) -> tuple[str, Inline
 
 async def group_reminder(context: ContextTypes.DEFAULT_TYPE):
     from app.bot.state import DRIVERS_GROUP_ID
-    if not DRIVERS_GROUP_ID:
+    targets: set[int] = set(_active_group_ids)
+    if DRIVERS_GROUP_ID:
+        targets.add(DRIVERS_GROUP_ID)
+    if not targets:
         return
     bot_username = getattr(context.bot, "username", None) or config.BOT_USERNAME
     text, markup = build_group_promo_post(bot_username)
-    try:
-        await context.bot.send_message(
-            chat_id=DRIVERS_GROUP_ID,
-            text=text,
-            parse_mode="HTML",
-            reply_markup=markup,
-            disable_web_page_preview=True,
-        )
-    except Exception as e:
-        logger.debug("Group reminder failed: %s", e)
+    for chat_id in list(targets):
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=markup,
+                disable_web_page_preview=True,
+            )
+        except Exception as e:
+            logger.debug("Group reminder failed for %s: %s", chat_id, e)
 
 
 async def cmd_group_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/guruh_post — admin command to immediately post (and try to pin) the promo banner in DRIVERS_GROUP_ID."""
-    if not update.effective_user or not is_admin(update.effective_user.id):
+    """/guruh_post — admin command to immediately post and pin the promo banner in the group."""
+    if not await _is_group_or_bot_admin(update, context):
         return
-    target_chat_id = config.DRIVERS_GROUP_ID or update.effective_chat.id
+
+    chat = update.effective_chat
+    message = update.effective_message
+    if not chat:
+        return
+
+    # If run directly inside a group/supergroup, ALWAYS post & pin in THIS group
+    if chat.type in ("group", "supergroup"):
+        target_chat_id = chat.id
+        _active_group_ids.add(chat.id)
+    else:
+        target_chat_id = config.DRIVERS_GROUP_ID or (
+            next(iter(_active_group_ids)) if _active_group_ids else chat.id
+        )
+
     bot_username = getattr(context.bot, "username", None) or config.BOT_USERNAME
     text, markup = build_group_promo_post(bot_username)
     try:
@@ -569,8 +756,16 @@ async def cmd_group_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             pass
-        if target_chat_id != update.effective_chat.id:
-            await update.message.reply_text("✅ Guruhga reklama posti yuborildi va qadaldi (pin qilindi)!")
+
+        # Clean up the "/guruh_post" command message inside the group if possible
+        if chat.type in ("group", "supergroup") and message:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+        elif target_chat_id != chat.id and message:
+            await message.reply_text("✅ Guruhga reklama posti yuborildi va qadaldi (pin qilindi)!")
     except Exception as e:
-        await update.message.reply_text(f"❌ Guruhga yuborishda xatolik: {e}")
+        if message:
+            await message.reply_text(f"❌ Guruhga yuborishda xatolik: {e}")
 

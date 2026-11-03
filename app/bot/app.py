@@ -109,6 +109,8 @@ def _build_driver_registration_conversation() -> ConversationHandler:
 
 
 async def _photo_router(update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+        return
     if context.user_data.get("topup_step") == "receipt":
         await payments.receive_receipt(update, context)
         return
@@ -158,6 +160,12 @@ def _register_handlers(app) -> None:
     app.add_handler(CommandHandler("admin", menu.admin_panel))
     app.add_handler(CommandHandler("pul", admin_actions.add_balance_command))
     app.add_handler(CommandHandler("guruh_post", admin_actions.cmd_group_post))
+    app.add_handler(MessageHandler(
+        filters.Regex(r"(?i)^\s*/?guruh_post(?:@\w+)?\s*$"),
+        admin_actions.cmd_group_post,
+    ))
+    app.add_handler(MessageHandler(
+        filters.ChatType.GROUPS, admin_actions.group_auto_reply))
     _register_admin_commands(app)
 
     app.add_handler(_build_order_conversation())
@@ -165,8 +173,6 @@ def _register_handlers(app) -> None:
     app.add_handler(CommandHandler("hujjat", cmd_driver_documents))
 
     app.add_handler(MessageHandler(filters.CONTACT, driver_registration.save_shared_contact))
-    app.add_handler(MessageHandler(
-        filters.ChatType.GROUPS & ~filters.COMMAND, admin_actions.group_auto_reply))
     app.add_handler(MessageHandler(filters.PHOTO, _photo_router))
     app.add_handler(MessageHandler(
         filters.VIDEO | filters.Document.ALL, admin_actions.broadcast_media))
