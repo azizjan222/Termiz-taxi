@@ -1464,6 +1464,38 @@ async def accept_order(request: web.Request) -> web.Response:
         except Exception as e:
             logger.error(f"Admin accept notify failed: {e}")
 
+        # If the order was created via the Telegram bot (or has passenger_telegram_id),
+        # notify the passenger directly on Telegram with the driver & car details!
+        if order.passenger_telegram_id:
+            try:
+                bot = request.app.get("bot")
+                if bot:
+                    from html import escape
+                    from app.bot import keyboards as kb
+                    driver_name = escape((" ".join(
+                        p for p in [d.first_name, d.last_name] if p
+                    ) or "Haydovchi").strip())
+                    driver_phone = escape(str(d.contact_phone or d.phone or "—"))
+                    car_info = escape(" · ".join(
+                        p for p in [d.car_model, d.car_color, d.car_number] if p
+                    ) or "—")
+                    pax_msg = (
+                        f"✅ <b>Haydovchi topildi! (Zakas #{order.id})</b>\n\n"
+                        f"👨‍✈️ Haydovchi: <b>{driver_name}</b>\n"
+                        f"📞 Telefon: <code>{driver_phone}</code>\n"
+                        f"🚗 Mashina: <b>{car_info}</b>\n"
+                        f"📍 Yo'nalish: <b>{escape(str(order.from_city or '—'))} ➔ {escape(str(order.to_city or '—'))}</b>\n\n"
+                        "Haydovchi tez orada siz bilan bog'lanadi! 🚕"
+                    )
+                    await bot.send_message(
+                        order.passenger_telegram_id,
+                        pax_msg,
+                        parse_mode="HTML",
+                        reply_markup=kb.passenger_cancel(order.id),
+                    )
+            except Exception as e:
+                logger.debug("Bot passenger accept notify failed for order %s: %s", order.id, e)
+
         # Reveal the passenger phone now that the driver accepted, and tell the app the
         # 15-minute contact window has started (countdown shown to the driver).
         return web.json_response({
@@ -1527,6 +1559,17 @@ async def start_trip(request: web.Request) -> web.Response:
                 "type": "order_started",
                 "order_id": order.id,
             })
+        if order.passenger_telegram_id and (order.source or "bot") == "bot":
+            try:
+                bot = request.app.get("bot")
+                if bot:
+                    await bot.send_message(
+                        order.passenger_telegram_id,
+                        f"🚗 <b>Safar boshlandi! (Zakas #{order.id})</b>\nOq yo'l tilaymiz!",
+                        parse_mode="HTML",
+                    )
+            except Exception:
+                pass
 
         return web.json_response({
             "success": True,
@@ -1615,6 +1658,18 @@ async def complete_order(request: web.Request) -> web.Response:
                 "type": "order_completed",
                 "order_id": order.id,
             })
+        if order.passenger_telegram_id and (order.source or "bot") == "bot":
+            try:
+                bot = request.app.get("bot")
+                if bot:
+                    await bot.send_message(
+                        order.passenger_telegram_id,
+                        f"✅ <b>Manzilga yetib keldingiz! (Zakas #{order.id})</b>\n"
+                        "Xizmatimizdan foydalanganingiz uchun rahmat! 🙌",
+                        parse_mode="HTML",
+                    )
+            except Exception:
+                pass
 
         # Push
         try:
@@ -1848,6 +1903,18 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
                 "order_id": order.id,
                 "by": "driver",
             })
+        if order.passenger_telegram_id and (order.source or "bot") == "bot":
+            try:
+                bot = request.app.get("bot")
+                if bot:
+                    await bot.send_message(
+                        order.passenger_telegram_id,
+                        f"❌ <b>Haydovchi zakasni (#{order.id}) bekor qildi.</b>\n"
+                        "Iltimos, qaytadan buyurtma bering.",
+                        parse_mode="HTML",
+                    )
+            except Exception:
+                pass
 
         # A reversal is a DEBIT on a cash-carrying account. The credit it undoes was
         # announced with "you lose nothing", so staying silent here would leave the driver

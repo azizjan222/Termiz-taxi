@@ -7,10 +7,10 @@ the single DB-backed store.
 import logging
 from datetime import datetime
 
-from telegram import ReplyKeyboardRemove, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.ext import ContextTypes, ConversationHandler
 
-from app import car_models
+from app import car_models, config
 from app.bot import keyboards as kb
 from app.bot.access import check_access
 from app.bot.state import (
@@ -27,16 +27,57 @@ from app.bot.store import store
 logger = logging.getLogger("sarixgo.bot.driver_reg")
 
 
+def _driver_app_buttons() -> InlineKeyboardMarkup | None:
+    rows = []
+    if config.DRIVER_APP_URL:
+        rows.append([
+            InlineKeyboardButton(
+                "📲 Sarix Driver ilovasini yuklash",
+                url=config.DRIVER_APP_URL,
+            )
+        ])
+    if config.PASSENGER_APP_URL:
+        rows.append([
+            InlineKeyboardButton(
+                "📱 Yo'lovchi ilovasi (Sarix Go)",
+                url=config.PASSENGER_APP_URL,
+            )
+        ])
+    return InlineKeyboardMarkup(rows) if rows else None
+
+
+async def send_driver_app_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send the Sarix Driver app onboarding message and links."""
+    uid = update.effective_user.id if update.effective_user else 0
+    already_phone = store.get_driver_phone(uid) if uid else None
+    text = (
+        "🚖 <b>Sarix Driver — Haydovchilar tizimi!</b>\n\n"
+        "Haydovchi bo'lib ro'yxatdan o'tish, hujjatlarni yuklash va zakaslarni "
+        "qabul qilish <b>Sarix Driver</b> mobil ilovasi orqali amalga oshiriladi.\n\n"
+        "✅ Termiz — Sariosiyo — Denov — Uzun yo'nalishlarida tayyor zakaslar\n"
+        "✅ Yo'l-yo'lakay tumanlar filtri va ovozli bildirishnoma\n"
+        "🎁 <b>Yangi haydovchilarga 30 KUN KOMISSIYA 0% (bepul sinov davri)!</b>\n\n"
+        "👇 <b>Quyidagi tugma orqali Sarix Driver ilovasini yuklab oling va "
+        "ro'yxatdan o'ting:</b>"
+    )
+    if not already_phone:
+        text += (
+            "\n\n💡 <i>Ilovaga Telegram OTP kod orqali kirish uchun "
+            "«Telegram orqali kirish» tugmasini bosing.</i>"
+        )
+    buttons = _driver_app_buttons()
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=buttons if buttons else kb.main_menu(),
+    )
+
+
 async def become_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Legacy quick entry: prompt for phone (kept for the '/start olish_' path)."""
+    """Redirect to the Sarix Driver mobile app."""
     if not await check_access(update, context):
         return
-    uid = update.effective_user.id
-    if store.is_driver(uid):
-        await update.message.reply_text("✅ Siz allaqachon ro'yxatdan o'tgansiz!")
-        return
-    await update.message.reply_text(
-        "📞 Telefon raqamingizni yuboring:", reply_markup=kb.share_phone())
+    await send_driver_app_redirect(update, context)
 
 
 def _own_contact_phone(update: Update) -> str | None:
@@ -122,10 +163,20 @@ async def save_shared_contact(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # Quick driver registration (just the phone).
     if update.message.contact:
-        store.register_driver(uid, _own_contact_phone(update))
+        phone = _own_contact_phone(update)
+        store.register_driver(
+            uid,
+            phone,
+            first_name=update.effective_user.first_name or "",
+            last_name=update.effective_user.last_name or "",
+        )
         await update.message.reply_text(
-            "🎉 <b>Ro'yxatdan o'tdingiz!</b>\n/start bosing.",
-            parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
+            "✅ <b>Telefon raqamingiz saqlandi!</b>\n\n"
+            "Endi <b>Sarix Driver</b> ilovasiga kirib hujjatlaringizni yuklang va "
+            "zakaslarni qabul qiling:",
+            parse_mode="HTML",
+            reply_markup=_driver_app_buttons() or kb.main_menu(),
+        )
         if "pending_order" in context.user_data:
             from app.bot.handlers.orders import assign_order_to_driver
             order_id = context.user_data.pop("pending_order")
@@ -136,14 +187,9 @@ async def save_shared_contact(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def reg_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_access(update, context):
         return ConversationHandler.END
-    context.user_data["reg"] = {}
-    await update.message.reply_text(
-        "👨‍✈️ <b>Haydovchi ro'yxatdan o'tish</b>\n\n"
-        "Bir necha qadam: ism, familiya, JSHSHIR va mashina ma'lumotlari.\n"
-        "Hujjatlarni keyinroq ilovada yuklaysiz.\n\n"
-        "1️⃣ Telefon raqamingizni yuboring:",
-        parse_mode="HTML", reply_markup=kb.share_phone_or_cancel())
-    return REG_PHONE
+    context.user_data.pop("reg", None)
+    await send_driver_app_redirect(update, context)
+    return ConversationHandler.END
 
 
 async def reg_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):

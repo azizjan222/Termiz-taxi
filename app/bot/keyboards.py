@@ -103,8 +103,46 @@ def cancel_only() -> ReplyKeyboardMarkup:
 
 def share_location_or_cancel() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        [[KeyboardButton(BTN_SHARE_LOCATION, request_location=True)],
-         [KeyboardButton(BTN_CANCEL)]],
+        [
+            [KeyboardButton(BTN_SHARE_LOCATION, request_location=True)],
+            [KeyboardButton("Termiz"), KeyboardButton("Sariosiyo"), KeyboardButton("Denov")],
+            [KeyboardButton("Uzun"), KeyboardButton("Sharg'un"), KeyboardButton("Sho'rchi")],
+            [KeyboardButton("Qumqo'rg'on"), KeyboardButton("Jarqo'rg'on")],
+            [KeyboardButton(BTN_CANCEL)],
+        ],
+        resize_keyboard=True, one_time_keyboard=True,
+    )
+
+
+def city_to_keyboard(exclude_city: str = "") -> ReplyKeyboardMarkup:
+    cities = [
+        "Termiz", "Sariosiyo", "Denov", "Uzun",
+        "Sharg'un", "Sho'rchi", "Qumqo'rg'on", "Jarqo'rg'on",
+    ]
+    ex = (exclude_city or "").strip().lower()
+    filtered = [c for c in cities if c.lower() != ex]
+    rows = [[KeyboardButton(c) for c in filtered[i:i + 3]] for i in range(0, len(filtered), 3)]
+    rows.append([KeyboardButton(BTN_CANCEL)])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=True)
+
+
+def person_count_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("1"), KeyboardButton("2"), KeyboardButton("3"), KeyboardButton("4")],
+            [KeyboardButton(BTN_CANCEL)],
+        ],
+        resize_keyboard=True, one_time_keyboard=True,
+    )
+
+
+def departure_time_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("Hozir"), KeyboardButton("30 daqiqada"), KeyboardButton("1 soatdan keyin")],
+            [KeyboardButton("Bugun kechqurun"), KeyboardButton("Ertaga ertalab")],
+            [KeyboardButton(BTN_CANCEL)],
+        ],
         resize_keyboard=True, one_time_keyboard=True,
     )
 
@@ -143,3 +181,4 @@ def driver_order_actions(order_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("✅ Yopildi", callback_data=f"order_close_{order_id}")],
         [InlineKeyboardButton(BTN_CANCEL, callback_data=f"driver_cancel_{order_id}")],
     ])
+

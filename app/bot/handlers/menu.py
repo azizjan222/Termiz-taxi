@@ -103,46 +103,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if param.startswith("ref_"):
             await _handle_referral_link(update, user_id, param[len("ref_"):])
             return
-        if param.startswith("apporder_"):
-            from app.bot.handlers.orders import accept_app_order_from_bot
-            try:
-                order_id = int(param.split("_")[1])
-            except (ValueError, IndexError):
-                await update.message.reply_text("❌ Noto'g'ri havola.")
-                return
-            await accept_app_order_from_bot(update, context, user_id, order_id)
-            return
-        if param.startswith("olish_"):
-            from app.bot.handlers.orders import assign_order_to_driver
-            try:
-                order_id = int(param.split("_")[1])
-            except (ValueError, IndexError):
-                await update.message.reply_text("❌ Noto'g'ri havola.")
-                return
-            if store.is_driver(user_id):
-                await assign_order_to_driver(update, context, user_id, order_id)
-            else:
-                context.user_data["pending_order"] = order_id
-                await update.message.reply_text(
-                    "👨‍✈️ Zakasni olish uchun telefon raqamingizni yuborib "
-                    "ro'yxatdan o'ting:",
-                    reply_markup=kb.share_phone())
-            return
-
-        if param == "driver":
+        if param.startswith("apporder_") or param.startswith("olish_"):
             from telegram import InlineKeyboardButton, InlineKeyboardMarkup
             buttons = []
             if config.DRIVER_APP_URL:
-                buttons.append([InlineKeyboardButton("📲 Sarix Driver ilovasini yuklash", url=config.DRIVER_APP_URL)])
+                buttons.append([
+                    InlineKeyboardButton(
+                        "📲 Sarix Driver ilovasida qabul qilish",
+                        url=config.DRIVER_APP_URL,
+                    )
+                ])
             await update.message.reply_text(
-                "🚖 <b>Sarix Driver — Haydovchilar uchun rasmiy ilova!</b>\n\n"
-                "✅ Termiz — Denov — Sariosiyo — Uzun yo'nalishlarida tayyor yo'lovchi va pochta zakaslari\n"
-                "✅ «Salonda ayol bor» va yo'l-yo'lakay tumanlar filtri\n"
-                "🎁 <b>Yangi haydovchilarga 30 kun komissiya 0% (mutlaqo bepul)!</b>\n\n"
-                "Ilovani yuklab oling yoki pastdagi «👨‍✈️ Haydovchi bo'lish» tugmasini bosing 👇",
+                "🚖 <b>Zakaslarni qabul qilish Sarix Driver ilovasi orqali amalga oshiriladi!</b>\n\n"
+                "Mijoz telefon raqamini ko'rish va zakasni qabul qilish uchun "
+                "<b>Sarix Driver</b> ilovasiga kiring.\n"
+                "🎁 Yangi haydovchilarga <b>30 kun komissiya 0% (bepul)</b>!",
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(buttons) if buttons else kb.main_menu(),
             )
+            return
+
+        if param == "driver":
+            from app.bot.handlers.driver_registration import send_driver_app_redirect
+            await send_driver_app_redirect(update, context)
             return
         if param == "order":
             from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -161,8 +144,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     await update.message.reply_text(
-        "Assalomu alaykum! Termiz-Sariosiyo taksi xizmatiga xush kelibsiz.\n\n"
+        "Assalomu alaykum! 🚕 <b>Termiz — Sariosiyo — Denov — Uzun</b> taksi xizmatiga xush kelibsiz.\n\n"
         "Iltimos, kerakli bo'limni tanlang:",
+        parse_mode="HTML",
         reply_markup=kb.main_menu())
 
 
@@ -176,7 +160,8 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cabinet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not store.is_driver(uid):
-        await update.message.reply_text("❗ Siz haydovchi emassiz.")
+        from app.bot.handlers.driver_registration import send_driver_app_redirect
+        await send_driver_app_redirect(update, context)
         return
     balance = store.get_balance(uid)
     phone = store.get_driver_phone(uid) or ""
@@ -186,17 +171,25 @@ async def cabinet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    rows = []
+    if config.PASSENGER_APP_URL:
+        rows.append([InlineKeyboardButton("📱 Yo'lovchi ilovasi (Sarix Go)", url=config.PASSENGER_APP_URL)])
+    if config.DRIVER_APP_URL:
+        rows.append([InlineKeyboardButton("🚖 Haydovchi ilovasi (Sarix Driver)", url=config.DRIVER_APP_URL)])
     await update.message.reply_text(
-        "📚 <b>YO'RIQNOMA</b>\n\n"
-        "1️⃣ Zakas narxi: 1 odam = 10 000 so'm\n\n"
-        "2️⃣ Hisobni to'ldirish:\n"
-        "🔸 Kabinet → Hisobni to'ldirish\n"
-        "🔸 Karta raqamiga to'lab, chekni yuboring\n"
-        "🔸 Admin tasdiqlashi bilan balans to'ldiriladi\n\n"
-        "3️⃣ Zakas olish:\n"
-        "🔸 Ilovada zakasni ko'rib qabul qiling\n"
-        "🔸 Yetkazgach ✅ Yopildi tugmasini bosing",
-        parse_mode="HTML")
+        "📚 <b>YO'RIQNOMA — SARIX GO & SARIX DRIVER</b>\n\n"
+        "👤 <b>Yo'lovchilar uchun:</b>\n"
+        "🔸 Botdagi «🚕 Taksi buyurtma qilish» tugmasini bosing yoki <b>Sarix Go</b> ilovasidan buyurtma bering.\n"
+        "🔸 Buyurtmangiz darhol online haydovchilarga va guruhga yuboriladi.\n\n"
+        "👨‍✈️ <b>Haydovchilar uchun:</b>\n"
+        "🔸 <b>Sarix Driver</b> ilovasini yuklab olib, hujjatlaringizni ilova ichida yuboring.\n"
+        "🔸 🎁 Yangi haydovchilarga <b>30 kun komissiya 0% (bepul sinov davri)</b>!\n"
+        "🔸 Zakaslarni bevosita <b>Sarix Driver</b> ilovasi orqali qabul qiling.\n"
+        "🔸 Hisobni to'ldirish: «💳 Kabinet (Balans)» → «💰 Hisobni to'ldirish».",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(rows) if rows else None,
+    )
 
 
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -206,11 +199,22 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     uid = update.effective_user.id
 
+    if text in {kb.BTN_BECOME_DRIVER, kb.BTN_CABINET, kb.BTN_GUIDE, kb.BTN_CANCEL}:
+        context.user_data.pop("topup_step", None)
+        context.user_data.pop("topup_amount", None)
+
+    if text == kb.BTN_BECOME_DRIVER:
+        from app.bot.handlers.driver_registration import send_driver_app_redirect
+        await send_driver_app_redirect(update, context)
+        return
     if text == kb.BTN_CABINET:
         await cabinet(update, context)
         return
     if text == kb.BTN_GUIDE:
         await show_guide(update, context)
+        return
+    if text == kb.BTN_CANCEL:
+        await update.message.reply_text("❌ Bekor qilindi.", reply_markup=kb.main_menu())
         return
 
     # Custom top-up amount step (non-admin).
@@ -223,3 +227,4 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_admin(uid):
         from app.bot.handlers.admin_actions import handle_admin_text
         await handle_admin_text(update, context)
+

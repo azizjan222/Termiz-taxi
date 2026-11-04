@@ -68,6 +68,7 @@ def _build_order_conversation() -> ConversationHandler:
                 MessageHandler(filters.ALL, passenger_order.order_timeout)],
         },
         fallbacks=[
+            CommandHandler("start", passenger_order.restart_from_order),
             CommandHandler("cancel", passenger_order.cancel_order_form),
             MessageHandler(filters.Regex(f"^{kb.BTN_CANCEL}$"),
                            passenger_order.cancel_order_form),

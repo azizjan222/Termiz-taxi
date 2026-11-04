@@ -472,14 +472,13 @@ async def create_order(request: web.Request) -> web.Response:
             except Exception as e:
                 logger.error(f"Direct recommend notify failed: {e}")
 
-        # Post a masked vitrina card (phone hidden as +998 9* *** ** **) to DRIVERS_GROUP_ID
-        # if configured, funneling group drivers into the Sarix Driver app / verified bot claim flow.
-        if config.DRIVERS_GROUP_ID:
-            try:
-                from app.bot.notifications import notify_group_new_order
-                await notify_group_new_order(request.app.get("bot"), order)
-            except Exception as e:
-                logger.warning("Group order vitrina notify failed: %s", e)
+        # Post a masked vitrina card (phone hidden as +998 9* *** ** **) to known Telegram
+        # group(s), funneling group drivers into the Sarix Driver app.
+        try:
+            from app.bot.notifications import notify_group_new_order
+            await notify_group_new_order(request.app.get("bot"), order)
+        except Exception as e:
+            logger.warning("Group order vitrina notify failed: %s", e)
 
         response = {
             "success": True,

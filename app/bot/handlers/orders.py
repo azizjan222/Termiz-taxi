@@ -203,13 +203,30 @@ async def order_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer()
         _stop_timers(context, order_id)
         await _append_status(query, "❌ Buyurtma bekor qilindi.")
-        if refunded and order.driver_telegram_id:
+        if order.driver_telegram_id:
             try:
-                await context.bot.send_message(
-                    order.driver_telegram_id,
-                    "❌ Yo'lovchi bekor qildi. Pul qaytarildi.")
+                msg = (
+                    "❌ Yo'lovchi bekor qildi. Pul qaytarildi."
+                    if refunded
+                    else f"❌ Yo'lovchi zakasni (#{order.id}) bekor qildi."
+                )
+                await context.bot.send_message(order.driver_telegram_id, msg)
             except Exception:
                 pass
+        try:
+            from app.services.websocket import ws_manager
+            if order.driver_telegram_id:
+                await ws_manager.send_to_driver(order.driver_telegram_id, {
+                    "type": "order_cancelled",
+                    "order_id": order.id,
+                    "by": "passenger",
+                })
+            await ws_manager.broadcast_to_drivers({
+                "type": "order_taken",
+                "order_id": order.id,
+            })
+        except Exception:
+            pass
 
 
 async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAULT_TYPE,

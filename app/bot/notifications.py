@@ -299,35 +299,41 @@ def format_group_order_vitrina(order) -> tuple[str, InlineKeyboardMarkup]:
     if landmark:
         lines.append(f"🧭 <b>Mo'ljal:</b> {escape(str(landmark))}")
     lines.extend([
-        f"📞 <b>Telefon:</b> <code>{masked_phone}</code> <i>(yopiq)</i>",
+        f"📞 <b>Telefon:</b> <code>{masked_phone}</code> <i>(ilovada qabul qilganda ochiladi)</i>",
         "",
-        "👇 <i>Zakasni qabul qilish va mijoz raqamini ochish uchun tugmani bosing "
+        "📲 <i>Zakasni qabul qilish va mijoz raqamini ko'rish uchun <b>Sarix Driver</b> ilovasiga kiring "
         "(Yangi haydovchilarga <b>30 kun komissiya 0%</b>!):</i>",
     ])
 
-    bot_username = (config.BOT_USERNAME or "termizsariosiyotaxi_bot").lstrip("@")
-    source = getattr(order, "source", "app") or "app"
-    start_param = f"olish_{order.id}" if source == "bot" else f"apporder_{order.id}"
-    accept_url = f"https://t.me/{bot_username}?start={start_param}"
+    bot_username = (getattr(config, "BOT_USERNAME", "") or "termizsariosiyotaxi_bot").lstrip("@")
+    driver_app_url = config.DRIVER_APP_URL or f"https://t.me/{bot_username}?start=driver"
 
     rows = [
-        [InlineKeyboardButton(f"🚖 Zakasni qabul qilish (#{order.id})", url=accept_url)],
+        [InlineKeyboardButton(f"🚖 Ilova orqali qabul qilish (#{order.id})", url=driver_app_url)],
     ]
-    app_row = []
-    if config.DRIVER_APP_URL:
-        app_row.append(InlineKeyboardButton("📲 Sarix Driver ilovasi", url=config.DRIVER_APP_URL))
+    second_row = []
     if config.PASSENGER_APP_URL:
-        app_row.append(InlineKeyboardButton("📱 Sarix Go ilovasi", url=config.PASSENGER_APP_URL))
-    if app_row:
-        rows.append(app_row)
+        second_row.append(InlineKeyboardButton("📱 Yo'lovchi ilovasi (Sarix Go)", url=config.PASSENGER_APP_URL))
+    second_row.append(InlineKeyboardButton("🚕 Botda zakas berish", url=f"https://t.me/{bot_username}?start=order"))
+    rows.append(second_row)
 
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
 async def notify_group_new_order(bot, order) -> None:
-    """Post a masked order card ('vitrina') to DRIVERS_GROUP_ID when configured."""
-    group_id = config.DRIVERS_GROUP_ID
-    if not group_id:
+    """Post a masked order card ('vitrina') to known active Telegram group(s)."""
+    target_groups: list[int] = []
+    try:
+        from app.bot.handlers.admin_actions import _get_known_group_ids
+        for gid in _get_known_group_ids():
+            if gid and gid not in target_groups:
+                target_groups.append(int(gid))
+    except Exception:
+        pass
+    if config.DRIVERS_GROUP_ID and config.DRIVERS_GROUP_ID not in target_groups:
+        target_groups.append(int(config.DRIVERS_GROUP_ID))
+
+    if not target_groups:
         return
 
     text, markup = format_group_order_vitrina(order)
@@ -341,19 +347,100 @@ async def notify_group_new_order(bot, order) -> None:
     try:
         if own_bot:
             await bot.initialize()
-        await bot.send_message(
-            chat_id=group_id,
-            text=text,
-            parse_mode="HTML",
-            reply_markup=markup,
-            disable_web_page_preview=True,
-        )
-    except Exception as e:
-        logger.warning("Failed to post new order #%s to group %s: %s", getattr(order, "id", "?"), group_id, e)
+        for gid in target_groups:
+            try:
+                await bot.send_message(
+                    chat_id=gid,
+                    text=text,
+                    parse_mode="HTML",
+                    reply_markup=markup,
+                    disable_web_page_preview=True,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to post new order #%s to group %s: %s",
+                    getattr(order, "id", "?"), gid, e,
+                )
     finally:
         if own_bot:
             try:
                 await bot.shutdown()
             except Exception:
                 pass
+
+
+async def broadcast_bot_order_to_app(bot, order) -> None:
+    """Broadcast a bot-created order to the Sarix Driver mobile app (WebSocket + Push) and notify Admin."""
+    from datetime import datetime
+    from sqlalchemy import or_
+    from app.api.drivers import get_min_driver_balance
+    from app.api.orders import _serialize_order
+    from app.database import get_session
+    from app.models import Driver, Order
+    from app.services import notify_i18n as nt
+    from app.services.websocket import ws_manager
+
+    session = get_session()
+    try:
+        db_order = session.query(Order).filter_by(id=order.id).first()
+        if not db_order:
+            return
+
+        now = datetime.utcnow()
+        min_balance = get_min_driver_balance(session)
+        eligible_drivers = (
+            session.query(Driver)
+            .filter(
+                Driver.is_blocked == False,  # noqa: E712
+                Driver.is_verified == True,  # noqa: E712
+                Driver.is_online == True,  # noqa: E712
+                or_(
+                    Driver.subscription_until > now,
+                    Driver.balance >= min_balance,
+                ),
+            )
+            .all()
+        )
+
+        order_payload = {
+            "type": "new_order",
+            "order": _serialize_order(db_order, include_passenger=False),
+        }
+
+        for d in eligible_drivers:
+            if d.telegram_id:
+                try:
+                    await ws_manager.send_to_driver(d.telegram_id, order_payload)
+                except Exception as e:
+                    logger.debug("WS new_order (bot) to driver %s failed: %s", d.telegram_id, e)
+
+        try:
+            from app.services.push import notify_driver_new_order
+            online_drivers = [d for d in eligible_drivers if d.is_online and d.push_token]
+            if online_drivers:
+                await notify_driver_new_order(session, db_order, online_drivers)
+        except Exception as e:
+            logger.error("Push notify drivers for bot order #%s failed: %s", db_order.id, e)
+
+        if bot and ADMIN_ID:
+            try:
+                price_str = nt.price_text("uz", db_order.price)
+                admin_text = (
+                    f"🆕 <b>Yangi zakas #{db_order.id} (Telegram bot orqali)</b>\n\n"
+                    f"👤 Yo'lovchi: <b>{escape(str(db_order.passenger_name or '—'))}</b>\n"
+                    f"📞 Tel: <code>{escape(str(db_order.passenger_phone or '—'))}</code>\n"
+                    f"📍 Yo'nalish: <b>{escape(str(db_order.from_city or '—'))} ➔ {escape(str(db_order.to_city or '—'))}</b>\n"
+                    f"👥 Soni: <b>{db_order.person_count or 1} kishi</b>\n"
+                    f"⏰ Vaqt: <b>{escape(str(db_order.departure_time or 'Hozir'))}</b>\n"
+                    f"💰 Komissiya: <b>{price_str}</b>\n"
+                    f"📡 Online haydovchilarga ({len(eligible_drivers)} ta) va guruhga yuborildi."
+                )
+                await bot.send_message(ADMIN_ID, admin_text, parse_mode="HTML")
+            except Exception as e:
+                logger.debug("Admin notify for bot order #%s failed: %s", db_order.id, e)
+    except Exception as e:
+        logger.error("broadcast_bot_order_to_app error for order #%s: %s", getattr(order, "id", "?"), e)
+    finally:
+        session.close()
+
 
