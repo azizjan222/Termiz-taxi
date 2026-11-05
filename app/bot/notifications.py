@@ -108,21 +108,128 @@ async def notify_admin_driver_documents(
         logger.error("Admin driver-documents notify error: %s", e)
 
 
-async def notify_admin_order_cancelled(driver_telegram_id, order_id, refunded):
-    """When a passenger cancels an app order, notify the ADMIN only (driver app already
-    updated over WebSocket)."""
+async def notify_admin_new_passenger(
+    bot=None,
+    *,
+    name: str = "",
+    phone: str = "",
+    source: str = "app",
+    user_id: int | None = None,
+    telegram_id: int | None = None,
+) -> None:
+    """Send a live notification to ADMIN_ID when a new passenger registers."""
+    if not ADMIN_ID:
+        return
+    own_bot = False
+    if bot is None:
+        if not BOT_TOKEN:
+            return
+        bot = Bot(token=BOT_TOKEN)
+        own_bot = True
+
+    source_label = "Sarix Go ilovasi" if source == "app" else "Telegram bot"
+    lines = [
+        "🆕 👤 <b>Yangi yo'lovchi ro'yxatdan o'tdi!</b>",
+        "",
+        f"👤 Ism: <b>{escape(str(name or 'Nomalum'))}</b>",
+    ]
+    if phone:
+        lines.append(f"📞 Tel: <code>{escape(str(phone))}</code>")
+    if user_id:
+        lines.append(f"🆔 Ilova ID: <code>{user_id}</code>")
+    if telegram_id:
+        lines.append(f"💬 Telegram ID: <code>{telegram_id}</code>")
+    lines.append(f"📲 Manba: <b>{source_label}</b>")
+
+    try:
+        if own_bot:
+            await bot.initialize()
+        await bot.send_message(chat_id=ADMIN_ID, text="\n".join(lines), parse_mode="HTML")
+    except Exception as e:
+        logger.error("Failed to notify admin about new passenger: %s", e)
+    finally:
+        if own_bot:
+            try:
+                await bot.shutdown()
+            except Exception:
+                pass
+
+
+async def notify_admin_new_app_order(bot, order, eligible_drivers_count: int = 0) -> None:
+    """Send a live notification to ADMIN_ID when a new order is placed in the Sarix Go app."""
+    if not ADMIN_ID:
+        return
+    from app.services import notify_i18n as nt
+
+    own_bot = False
+    if bot is None:
+        if not BOT_TOKEN:
+            return
+        bot = Bot(token=BOT_TOKEN)
+        own_bot = True
+
+    service_type = getattr(order, "service_type", "taxi") or "taxi"
+    if service_type == "parcel":
+        service_label = "📦 Pochta (posilka)"
+    elif service_type == "full_car":
+        service_label = "🚗 Bo'sh mashina (salon to'liq)"
+    else:
+        service_label = f"🚕 Taksi ({getattr(order, 'person_count', 1) or 1} kishi)"
+
+    price_str = nt.price_text("uz", getattr(order, "price", 0))
+    text = (
+        f"🆕 🚕 <b>Yangi zakas #{order.id} (Sarix Go ilovasi)</b>\n\n"
+        f"👤 Yo'lovchi: <b>{escape(str(getattr(order, 'passenger_name', '') or '—'))}</b>\n"
+        f"📞 Tel: <code>{escape(str(getattr(order, 'passenger_phone', '') or '—'))}</code>\n"
+        f"📍 Yo'nalish: <b>{escape(str(getattr(order, 'from_city', '') or '—'))} ➔ "
+        f"{escape(str(getattr(order, 'to_city', '') or '—'))}</b>\n"
+        f"👥 Xizmat: <b>{service_label}</b>\n"
+        f"⏰ Vaqt: <b>{escape(str(getattr(order, 'departure_time', '') or 'Hozir'))}</b>\n"
+        f"💰 Narxi: <b>{price_str}</b>\n"
+        f"📡 Online haydovchilarga ({eligible_drivers_count} ta) va guruhga yuborildi."
+    )
+    try:
+        if own_bot:
+            await bot.initialize()
+        await bot.send_message(chat_id=ADMIN_ID, text=text, parse_mode="HTML")
+    except Exception as e:
+        logger.error("Failed to notify admin about new app order #%s: %s", getattr(order, "id", "?"), e)
+    finally:
+        if own_bot:
+            try:
+                await bot.shutdown()
+            except Exception:
+                pass
+
+
+async def notify_admin_order_cancelled(
+    driver_telegram_id=None,
+    order_id: int = 0,
+    refunded: bool = False,
+    *,
+    cancelled_by: str = "passenger",
+    bot=None,
+):
+    """Notify ADMIN_ID in real time whenever any order is cancelled or expires."""
     if not ADMIN_ID:
         return
     from app.database import get_session
     from app.models import Driver, Order
 
-    from_city = to_city = passenger_name = driver_label = None
+    from_city = to_city = passenger_name = passenger_phone = driver_label = source = None
     session = get_session()
     try:
         order = session.query(Order).filter_by(id=order_id).first()
         if order:
-            from_city, to_city, passenger_name = (
-                order.from_city, order.to_city, order.passenger_name)
+            from_city = order.from_city
+            to_city = order.to_city
+            passenger_name = order.passenger_name
+            passenger_phone = order.passenger_phone
+            source = order.source or "app"
+            if not driver_telegram_id and order.driver_telegram_id:
+                driver_telegram_id = order.driver_telegram_id
+            if not cancelled_by and order.cancelled_by:
+                cancelled_by = order.cancelled_by
         if driver_telegram_id:
             drv = session.query(Driver).filter_by(telegram_id=driver_telegram_id).first()
             if drv:
@@ -133,23 +240,50 @@ async def notify_admin_order_cancelled(driver_telegram_id, order_id, refunded):
     finally:
         session.close()
 
-    try:
+    if cancelled_by == "driver":
+        header = "🚫 <b>Haydovchi zakasni bekor qildi (Otkaz)</b>"
+    elif cancelled_by in ("system", "expired"):
+        header = "⌛ <b>Zakas vaqti tugadi (Otkaz — haydovchi topilmadi)</b>"
+    else:
+        header = "🚫 <b>Yo'lovchi zakasni bekor qildi (Otkaz)</b>"
+
+    source_tag = "Telegram bot" if source == "bot" else "Sarix Go ilovasi"
+    lines = [
+        header,
+        f"🧷 Zakas: <b>#{order_id}</b> <i>({source_tag})</i>",
+    ]
+    if from_city or to_city:
+        lines.append(f"📍 Yo'nalish: <b>{escape(str(from_city or '—'))} ➔ {escape(str(to_city or '—'))}</b>")
+    if passenger_name or passenger_phone:
+        pax_str = escape(str(passenger_name or "—"))
+        if passenger_phone:
+            pax_str += f" (<code>{escape(str(passenger_phone))}</code>)"
+        lines.append(f"👤 Yo'lovchi: {pax_str}")
+    if driver_label:
+        lines.append(f"🚖 Haydovchi: {escape(driver_label)}")
+    elif driver_telegram_id:
+        lines.append(f"🚖 Haydovchi ID: <code>{driver_telegram_id}</code>")
+    if refunded:
+        lines.append("💰 Komissiya haydovchiga qaytarildi.")
+
+    own_bot = False
+    if bot is None:
+        if not BOT_TOKEN:
+            return
         bot = Bot(token=BOT_TOKEN)
-        lines = ["🚫 <b>Yo'lovchi zakasni bekor qildi</b>", f"🧷 Zakas #{order_id}"]
-        if from_city or to_city:
-            lines.append(f"📍 {from_city or '—'} → {to_city or '—'}")
-        if passenger_name:
-            lines.append(f"👤 Yo'lovchi: {passenger_name}")
-        if driver_label:
-            lines.append(f"🚖 Haydovchi: {driver_label}")
-        elif driver_telegram_id:
-            lines.append(f"🚖 Haydovchi ID: {driver_telegram_id}")
-        if refunded:
-            lines.append("💰 Komissiya haydovchiga qaytarildi.")
+        own_bot = True
+    try:
+        if own_bot:
+            await bot.initialize()
         await bot.send_message(chat_id=ADMIN_ID, text="\n".join(lines), parse_mode="HTML")
-        await bot.shutdown()
     except Exception as e:
         logger.error("Failed to notify admin about cancel: %s", e)
+    finally:
+        if own_bot:
+            try:
+                await bot.shutdown()
+            except Exception:
+                pass
 
 
 async def broadcast_telegram(chat_ids, text: str, *, rate: int = 25) -> dict:
@@ -306,10 +440,15 @@ def format_group_order_vitrina(order) -> tuple[str, InlineKeyboardMarkup]:
     ])
 
     bot_username = (getattr(config, "BOT_USERNAME", "") or "termizsariosiyotaxi_bot").lstrip("@")
-    driver_app_url = config.DRIVER_APP_URL or f"https://t.me/{bot_username}?start=driver"
+    # Smart deep-link URL: opens Sarix Driver directly to the order if installed,
+    # or shows the Sarix Driver install page (Google Play) if not installed.
+    if config.PUBLIC_BASE_URL:
+        driver_order_url = f"{config.PUBLIC_BASE_URL}/go/driver-order/{order.id}"
+    else:
+        driver_order_url = config.DRIVER_APP_URL or f"https://t.me/{bot_username}?start=driver"
 
     rows = [
-        [InlineKeyboardButton(f"🚖 Ilova orqali qabul qilish (#{order.id})", url=driver_app_url)],
+        [InlineKeyboardButton(f"🚖 Ilova orqali qabul qilish (#{order.id})", url=driver_order_url)],
     ]
     second_row = []
     if config.PASSENGER_APP_URL:
@@ -320,8 +459,125 @@ def format_group_order_vitrina(order) -> tuple[str, InlineKeyboardMarkup]:
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
+_GROUP_ORDER_MSGS_KEY = "group_order_msgs"
+
+
+def _save_group_order_messages(order_id: int, sent_pairs: list[tuple[int, int]]) -> None:
+    """Persist [(chat_id, message_id), ...] for an order so it can be deleted when accepted/cancelled."""
+    if not sent_pairs:
+        return
+    import json
+    from app.database import get_session
+    from app.models import Setting
+
+    session = get_session()
+    try:
+        row = session.query(Setting).filter_by(key=_GROUP_ORDER_MSGS_KEY).first()
+        mapping: dict[str, list[list[int]]] = {}
+        if row and row.value:
+            try:
+                loaded = json.loads(row.value)
+                if isinstance(loaded, dict):
+                    mapping = loaded
+            except Exception:
+                mapping = {}
+        key = str(order_id)
+        existing = mapping.get(key, [])
+        for cid, mid in sent_pairs:
+            pair = [int(cid), int(mid)]
+            if pair not in existing:
+                existing.append(pair)
+        mapping[key] = existing
+        # Keep only the most recent 200 orders to keep the Setting value compact
+        if len(mapping) > 200:
+            sorted_keys = sorted(mapping.keys(), key=lambda k: int(k) if k.isdigit() else 0)
+            for old_k in sorted_keys[:-200]:
+                mapping.pop(old_k, None)
+        raw = json.dumps(mapping)
+        if row:
+            row.value = raw
+        else:
+            session.add(Setting(key=_GROUP_ORDER_MSGS_KEY, value=raw))
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.debug("Failed to save group order message ids for #%s: %s", order_id, e)
+    finally:
+        session.close()
+
+
+def _pop_group_order_messages(order_id: int) -> list[tuple[int, int]]:
+    """Retrieve and remove stored [(chat_id, message_id), ...] for an order."""
+    import json
+    from app.database import get_session
+    from app.models import Setting
+
+    session = get_session()
+    try:
+        row = session.query(Setting).filter_by(key=_GROUP_ORDER_MSGS_KEY).first()
+        if not row or not row.value:
+            return []
+        try:
+            mapping = json.loads(row.value)
+        except Exception:
+            return []
+        if not isinstance(mapping, dict):
+            return []
+        pairs = mapping.pop(str(order_id), None)
+        if not pairs:
+            return []
+        row.value = json.dumps(mapping)
+        session.commit()
+        result: list[tuple[int, int]] = []
+        for item in pairs:
+            if isinstance(item, (list, tuple)) and len(item) == 2:
+                try:
+                    result.append((int(item[0]), int(item[1])))
+                except (TypeError, ValueError):
+                    pass
+        return result
+    except Exception as e:
+        session.rollback()
+        logger.debug("Failed to pop group order message ids for #%s: %s", order_id, e)
+        return []
+    finally:
+        session.close()
+
+
+async def delete_group_order_messages(bot, order_id: int) -> None:
+    """Delete the group vitrina message(s) for an order once it is accepted, cancelled, or expired."""
+    pairs = _pop_group_order_messages(order_id)
+    if not pairs:
+        return
+
+    own_bot = False
+    if bot is None:
+        if not BOT_TOKEN:
+            return
+        bot = Bot(token=BOT_TOKEN)
+        own_bot = True
+
+    try:
+        if own_bot:
+            await bot.initialize()
+        for chat_id, message_id in pairs:
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=message_id)
+            except Exception as e:
+                logger.debug(
+                    "Could not delete group message %s in chat %s for order #%s: %s",
+                    message_id, chat_id, order_id, e,
+                )
+    finally:
+        if own_bot:
+            try:
+                await bot.shutdown()
+            except Exception:
+                pass
+
+
 async def notify_group_new_order(bot, order) -> None:
-    """Post a masked order card ('vitrina') to known active Telegram group(s)."""
+    """Post a masked order card ('vitrina') to known active Telegram group(s) and save message_id."""
     target_groups: list[int] = []
     try:
         from app.bot.handlers.admin_actions import _get_known_group_ids
@@ -344,18 +600,21 @@ async def notify_group_new_order(bot, order) -> None:
         bot = Bot(token=BOT_TOKEN)
         own_bot = True
 
+    sent_pairs: list[tuple[int, int]] = []
     try:
         if own_bot:
             await bot.initialize()
         for gid in target_groups:
             try:
-                await bot.send_message(
+                sent_msg = await bot.send_message(
                     chat_id=gid,
                     text=text,
                     parse_mode="HTML",
                     reply_markup=markup,
                     disable_web_page_preview=True,
                 )
+                if sent_msg and getattr(sent_msg, "message_id", None):
+                    sent_pairs.append((int(gid), int(sent_msg.message_id)))
             except Exception as e:
                 logger.warning(
                     "Failed to post new order #%s to group %s: %s",
@@ -367,6 +626,9 @@ async def notify_group_new_order(bot, order) -> None:
                 await bot.shutdown()
             except Exception:
                 pass
+
+    if sent_pairs and getattr(order, "id", None):
+        _save_group_order_messages(int(order.id), sent_pairs)
 
 
 async def broadcast_bot_order_to_app(bot, order) -> None:

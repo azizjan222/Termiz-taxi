@@ -155,6 +155,23 @@ async def expire_orders_and_notify() -> int:
                     await notify_passenger_no_driver(session, order)
             except Exception as e:
                 logger.warning(f"Push expire notify failed (order {order_id}): {e}")
+
+            # 3) Remove group vitrina card and notify admin on Telegram.
+            try:
+                from app.bot.notifications import (
+                    delete_group_order_messages,
+                    notify_admin_order_cancelled,
+                )
+                await delete_group_order_messages(None, order_id)
+                await notify_admin_order_cancelled(
+                    None,
+                    order_id,
+                    False,
+                    cancelled_by="expired",
+                    bot=None,
+                )
+            except Exception as e:
+                logger.debug(f"Group/admin expire notify failed (order {order_id}): {e}")
     finally:
         session.close()
 

@@ -145,32 +145,59 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "stat_overview":
+        p = store.order_period_stats()
+        t_stat = p["today"]
+        w_stat = p["week"]
+        m_stat = p["month"]
+        a_stat = p["all"]
         text = (
             "📈 <b>UMUMIY STATISTIKA</b>\n\n"
-            f"👨‍✈️ Haydovchilar: {store.count_drivers()} ta\n"
-            f"👤 Yo'lovchilar: {store.count_passengers()} ta\n"
-            f"💰 Umumiy balans: {money(store.total_balance_sum())} so'm\n"
-            f"🚕 Jami zakaslar: {store.total_orders()}\n"
-            f"🚫 Bloklangan: {len(store.list_banned_ids())}"
+            f"👨‍✈️ Haydovchilar: <b>{store.count_drivers()}</b> ta "
+            f"(✅ {p['verified_drivers']} tasdiqlangan | 🟢 {p['online_drivers']} onlayn)\n"
+            f"👤 Yo'lovchilar: <b>{p['app_users']}</b> ta (ilova) | <b>{store.count_passengers()}</b> ta (bot)\n"
+            f"💰 Umumiy balans: <b>{money(store.total_balance_sum())} so'm</b>\n"
+            f"🚫 Bloklangan: <b>{len(store.list_banned_ids())}</b> ta\n\n"
+            "🚕 <b>ZAKASLAR VA OTKAZLAR:</b>\n"
+            f"📅 <b>Bugun:</b> {t_stat['total']} ta zakas | ✅ {t_stat['completed']} bajarildi | ❌ {t_stat['cancelled']} otkaz\n"
+            f"📆 <b>1 haftada (7 kun):</b> {w_stat['total']} ta zakas | ✅ {w_stat['completed']} bajarildi | ❌ {w_stat['cancelled']} otkaz\n"
+            f"🗓 <b>1 oyda (30 kun):</b> {m_stat['total']} ta zakas | ✅ {m_stat['completed']} bajarildi | ❌ {m_stat['cancelled']} otkaz\n"
+            f"📊 <b>Jami (barcha vaqt):</b> {a_stat['total']} ta zakas | ✅ {a_stat['completed']} bajarildi | ❌ {a_stat['cancelled']} otkaz"
         )
         buttons = InlineKeyboardMarkup([[
-            InlineKeyboardButton("📦 Zakaslar", callback_data="stat_orders"),
+            InlineKeyboardButton("📦 Zakaslar batafsil", callback_data="stat_orders"),
             InlineKeyboardButton("🔄 Yangilash", callback_data="stat_overview"),
         ]])
-        await query.edit_message_text(text, parse_mode="HTML", reply_markup=buttons)
+        try:
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=buttons)
+        except Exception:
+            pass
 
     elif query.data == "stat_orders":
-        done_today, done_total = store.history_counts("completed")
-        cancel_today, cancel_total = store.history_counts("cancelled")
+        p = store.order_period_stats()
+        t_stat = p["today"]
+        w_stat = p["week"]
+        m_stat = p["month"]
+        a_stat = p["all"]
         text = (
-            "📦 <b>ZAKASLAR</b>\n\n"
-            f"📅 Bugun: {done_today} qabul | {cancel_today} bekor\n"
-            f"📊 Jami: {done_total} qabul | {cancel_total} bekor\n\n"
-            "✅ <b>Oxirgi 5 qabul:</b>\n"
+            "📦 <b>ZAKASLAR VA OTKAZLAR HISOBOTI</b>\n\n"
+            f"📅 <b>Bugun:</b>\n"
+            f"   • Jami zakas: <b>{t_stat['total']}</b> ta\n"
+            f"   • ✅ Bajarildi: <b>{t_stat['completed']}</b> ta | ❌ Otkaz (bekor): <b>{t_stat['cancelled']}</b> ta\n"
+            f"   • 🟡 Hozir faol: <b>{t_stat['active']}</b> ta\n\n"
+            f"📆 <b>Oxirgi 1 hafta (7 kun):</b>\n"
+            f"   • Jami zakas: <b>{w_stat['total']}</b> ta\n"
+            f"   • ✅ Bajarildi: <b>{w_stat['completed']}</b> ta | ❌ Otkaz (bekor): <b>{w_stat['cancelled']}</b> ta\n\n"
+            f"🗓 <b>Oxirgi 1 oy (30 kun):</b>\n"
+            f"   • Jami zakas: <b>{m_stat['total']}</b> ta\n"
+            f"   • ✅ Bajarildi: <b>{m_stat['completed']}</b> ta | ❌ Otkaz (bekor): <b>{m_stat['cancelled']}</b> ta\n\n"
+            f"📊 <b>Umumiy (barcha vaqt):</b>\n"
+            f"   • Jami zakas: <b>{a_stat['total']}</b> ta\n"
+            f"   • ✅ Bajarildi: <b>{a_stat['completed']}</b> ta | ❌ Otkaz (bekor): <b>{a_stat['cancelled']}</b> ta\n\n"
+            "✅ <b>Oxirgi 5 bajarilgan:</b>\n"
         )
         for row in store.recent_history("completed", 5):
             text += f"🚕 {row['from_city']} → {row['to_city']} | ⏰ {row['time']}\n"
-        text += "\n❌ <b>Oxirgi 5 bekor:</b>\n"
+        text += "\n❌ <b>Oxirgi 5 otkaz (bekor):</b>\n"
         for row in store.recent_history("cancelled", 5):
             text += f"🚕 {row['from_city']} → {row['to_city']} | ⏰ {row['time']}\n"
         buttons = InlineKeyboardMarkup([[

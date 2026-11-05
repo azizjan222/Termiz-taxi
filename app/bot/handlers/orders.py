@@ -84,6 +84,21 @@ async def _auto_cancel(context: ContextTypes.DEFAULT_TYPE):
                 target, "❌ Buyurtma bekor qilindi (vaqt tugadi).")
         except Exception:
             pass
+    try:
+        from app.bot.notifications import (
+            delete_group_order_messages,
+            notify_admin_order_cancelled,
+        )
+        await delete_group_order_messages(context.bot, order.id)
+        await notify_admin_order_cancelled(
+            order.driver_telegram_id,
+            order.id,
+            False,
+            cancelled_by="system",
+            bot=context.bot,
+        )
+    except Exception:
+        pass
 
 
 async def assign_order_to_driver(update: Update, context: ContextTypes.DEFAULT_TYPE,
@@ -102,6 +117,12 @@ async def assign_order_to_driver(update: Update, context: ContextTypes.DEFAULT_T
 
     order = result.order
     driver_phone = store.get_driver_phone(driver_tg_id) or ""
+
+    try:
+        from app.bot.notifications import delete_group_order_messages
+        await delete_group_order_messages(context.bot, order.id)
+    except Exception:
+        pass
 
     # Guarded: the assignment is already committed at this point, so an exception here
     # would leave the order accepted and the driver debited while skipping the driver
@@ -192,6 +213,21 @@ async def order_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 order.passenger_telegram_id, "❌ Haydovchi bekor qildi.")
         except Exception:
             pass
+        try:
+            from app.bot.notifications import (
+                delete_group_order_messages,
+                notify_admin_order_cancelled,
+            )
+            await delete_group_order_messages(context.bot, order.id)
+            await notify_admin_order_cancelled(
+                order.driver_telegram_id,
+                order.id,
+                refunded,
+                cancelled_by="driver",
+                bot=context.bot,
+            )
+        except Exception:
+            pass
 
     elif action == "passenger_cancel":
         order, refunded = store.cancel_order(
@@ -225,6 +261,21 @@ async def order_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 "type": "order_taken",
                 "order_id": order.id,
             })
+        except Exception:
+            pass
+        try:
+            from app.bot.notifications import (
+                delete_group_order_messages,
+                notify_admin_order_cancelled,
+            )
+            await delete_group_order_messages(context.bot, order.id)
+            await notify_admin_order_cancelled(
+                order.driver_telegram_id,
+                order.id,
+                refunded,
+                cancelled_by="passenger",
+                bot=context.bot,
+            )
         except Exception:
             pass
 
@@ -432,6 +483,12 @@ async def accept_app_order_from_bot(update: Update, context: ContextTypes.DEFAUL
                 })
         except Exception as e:
             logger.error("WS to passenger failed: %s", e)
+
+        try:
+            from app.bot.notifications import delete_group_order_messages
+            await delete_group_order_messages(context.bot, order.id)
+        except Exception:
+            pass
 
         await _notify_admin_order_accepted(context, order, driver)
         await _confirm_accept_to_driver(context, driver_telegram_id, order)

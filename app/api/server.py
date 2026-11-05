@@ -272,6 +272,264 @@ async def legacy_db(request: web.Request) -> web.Response:
         session.close()
 
 
+async def driver_order_deeplink(request: web.Request) -> web.Response:
+    """Smart deep-link bridge for Telegram group order buttons.
+
+    - If Sarix Driver (uz.sarixgo.driver) is installed on the phone, Android's intent://
+      URI immediately opens the Sarix Driver app on the orders screen for this order.
+    - If Sarix Driver is NOT installed on the phone, Android's S.browser_fallback_url
+      (and the on-page UI) shows the 'Sarix Driver ilovasini o'rnatish' install screen
+      with a one-tap button to Google Play.
+    """
+    from html import escape
+    from urllib.parse import quote
+    from app.database import get_session
+    from app.models import Order
+    from app.services import notify_i18n as nt
+
+    raw_id = request.match_info.get("id", "")
+    order_id = int(raw_id) if raw_id.isdigit() else 0
+    install_mode = request.query.get("install") == "1"
+
+    route_str = "Termiz — Sariosiyo — Denov — Uzun"
+    detail_str = ""
+    order_active = True
+
+    if order_id > 0:
+        session = get_session()
+        try:
+            order = session.query(Order).filter_by(id=order_id).first()
+            if order:
+                from_c = escape(str(order.from_city or "—"))
+                to_c = escape(str(order.to_city or "—"))
+                route_str = f"{from_c} ➔ {to_c}"
+                price_txt = escape(nt.price_text("uz", order.price))
+                service_type = getattr(order, "service_type", "taxi") or "taxi"
+                if service_type == "parcel":
+                    subj = "📦 Pochta"
+                elif service_type == "full_car":
+                    subj = "🚗 Bo'sh mashina"
+                else:
+                    subj = f"👥 {int(order.person_count or 1)} kishi"
+                dep = escape(str(order.departure_time or "Hozir"))
+                detail_str = f"{subj} · ⏰ {dep} · 💰 {price_txt}"
+                order_active = order.status == "new"
+            else:
+                order_active = False
+        except Exception:
+            pass
+        finally:
+            session.close()
+
+    play_url = (
+        config.DRIVER_APP_URL
+        or "https://play.google.com/store/apps/details?id=uz.sarixgo.driver"
+    )
+    base_url = config.PUBLIC_BASE_URL or "https://termiz-taxi-production.up.railway.app"
+    if order_id > 0:
+        fallback_url = f"{base_url}/go/driver-order/{order_id}?install=1"
+        deep_path = f"orders?order_id={order_id}"
+        title_txt = f"Zakas #{order_id} — Sarix Driver"
+    else:
+        fallback_url = f"{base_url}/go/driver?install=1"
+        deep_path = "orders"
+        title_txt = "Sarix Driver"
+
+    encoded_fallback = quote(fallback_url, safe="")
+    intent_url = (
+        f"intent://{deep_path}#Intent;"
+        f"scheme=sarixgodriver;"
+        f"package=uz.sarixgo.driver;"
+        f"S.browser_fallback_url={encoded_fallback};"
+        f"end"
+    )
+    scheme_url = f"sarixgodriver://{deep_path}"
+
+    status_banner = ""
+    if order_id > 0 and not order_active:
+        status_banner = (
+            "<div class='taken-banner'>"
+            f"⚠️ Zakas #{order_id} allaqachon boshqa haydovchi tomonidan qabul qilingan yoki bekor bo'lgan. "
+            "Boshqa yangi zakaslarni ko'rish uchun Sarix Driver ilovasiga kiring."
+            "</div>"
+        )
+
+    auto_script = ""
+    if not install_mode:
+        auto_script = f"""
+  <script>
+    (function() {{
+      var ua = navigator.userAgent || '';
+      var isAndroid = /Android/i.test(ua);
+      var intentUrl = {intent_url!r};
+      var schemeUrl = {scheme_url!r};
+      var installBox = document.getElementById('install-card');
+
+      // Immediately attempt to launch Sarix Driver app
+      if (isAndroid) {{
+        window.location.href = intentUrl;
+      }} else {{
+        window.location.href = schemeUrl;
+      }}
+
+      // If the user is still on this page after 1100ms, they likely don't have the app installed
+      setTimeout(function() {{
+        if (!document.hidden && installBox) {{
+          installBox.classList.add('highlight');
+        }}
+      }}, 1100);
+    }})();
+  </script>
+"""
+
+    html_body = f"""<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{escape(title_txt)}</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0b132b;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }}
+    .card {{
+      width: 100%;
+      max-width: 420px;
+      background: #1c2541;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 24px 20px;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+    }}
+    .badge {{
+      display: inline-block;
+      background: rgba(245, 158, 11, 0.18);
+      color: #fbbf24;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }}
+    h1 {{
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }}
+    .route {{
+      font-size: 18px;
+      font-weight: 700;
+      color: #38bdf8;
+      margin-bottom: 6px;
+    }}
+    .details {{
+      font-size: 14px;
+      color: #cbd5e1;
+      margin-bottom: 18px;
+    }}
+    .taken-banner {{
+      background: rgba(239, 68, 68, 0.18);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      color: #fecaca;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 13.5px;
+      margin-bottom: 16px;
+      line-height: 1.45;
+    }}
+    .btn {{
+      display: block;
+      width: 100%;
+      padding: 15px 16px;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      text-decoration: none;
+      margin-bottom: 12px;
+      transition: transform 0.12s ease;
+    }}
+    .btn:active {{ transform: scale(0.98); }}
+    .btn-open {{
+      background: #f59e0b;
+      color: #0f172a;
+    }}
+    .install-card {{
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1.5px solid rgba(16, 185, 129, 0.4);
+      text-align: left;
+    }}
+    .install-card.highlight {{
+      background: rgba(16, 185, 129, 0.22);
+      border-color: #10b981;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+    }}
+    .install-title {{
+      font-size: 15px;
+      font-weight: 800;
+      color: #34d399;
+      margin-bottom: 6px;
+    }}
+    .install-sub {{
+      font-size: 13.5px;
+      color: #e2e8f0;
+      line-height: 1.45;
+      margin-bottom: 12px;
+    }}
+    .btn-install {{
+      background: #10b981;
+      color: #052e16;
+      margin-bottom: 0;
+      text-align: center;
+    }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">🚖 SARIX DRIVER</div>
+    <h1>{"Zakas #" + str(order_id) if order_id > 0 else "Haydovchi ilovasi"}</h1>
+    <div class="route">{route_str}</div>
+    {f'<div class="details">{detail_str}</div>' if detail_str else ''}
+    {status_banner}
+
+    <a class="btn btn-open" href="{escape(intent_url)}">
+      🚖 Sarix Driver ilovasida ochish{f" (#{order_id})" if order_id > 0 else ""}
+    </a>
+
+    <div id="install-card" class="install-card{' highlight' if install_mode else ''}">
+      <div class="install-title">📲 Sarix Driver o'rnatilmaganmi?</div>
+      <div class="install-sub">
+        Zakasni qabul qilish va mijoz telefon raqamini ko'rish uchun
+        <b>Sarix Driver</b> ilovasini o'rnating.<br>
+        🎁 Yangi haydovchilarga <b>30 kun komissiya 0% (bepul)</b>!
+      </div>
+      <a class="btn btn-install" href="{escape(play_url)}">
+        📥 Sarix Driver ilovasini o'rnatish (Google Play)
+      </a>
+    </div>
+  </div>
+{auto_script}
+</body>
+</html>"""
+    return web.Response(
+        text=html_body,
+        content_type="text/html",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 # aiohttp defaults to a 1 MiB request body, which rejects ordinary phone
 # screenshots before any handler runs — and does so with a plain-text 413 the
 # apps cannot show a useful message for. Keep this above the per-handler 5 MB
@@ -297,12 +555,14 @@ def create_app(bot=None) -> web.Application:
     if bot is not None:
         app["bot"] = bot
 
-    # Health
+    # Health & Deep-link bridges
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
     app.router.add_get("/ready", readiness)
     app.router.add_get("/health/ready", readiness)
     app.router.add_get("/health/db", health_db)
+    app.router.add_get(r"/go/driver-order/{id:\d+}", driver_order_deeplink)
+    app.router.add_get("/go/driver", driver_order_deeplink)
 
     # Auth
     app.router.add_post("/api/auth/request-otp", auth_api.request_otp)

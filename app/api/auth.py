@@ -161,6 +161,23 @@ async def verify_otp_endpoint(request: web.Request) -> web.Response:
 
         token = create_token(user.id, user.phone)
 
+        if is_new:
+            try:
+                import asyncio
+                from app.bot.notifications import notify_admin_new_passenger
+                asyncio.create_task(
+                    notify_admin_new_passenger(
+                        request.app.get("bot"),
+                        name=user.first_name or "",
+                        phone=user.phone or "",
+                        source="app",
+                        user_id=user.id,
+                        telegram_id=user.telegram_id,
+                    )
+                )
+            except Exception:
+                pass
+
         return web.json_response({
             "success": True,
             "is_new": is_new,
@@ -385,6 +402,23 @@ def _issue_passenger_login(db, sess, profile_photo_url: str = "") -> web.Respons
         logger.exception("Failed to apply pending referral for user %s", user.id)
 
     jwt_token = create_token(user.id, user.phone)
+    if is_new:
+        try:
+            import asyncio
+            from app.bot.notifications import notify_admin_new_passenger
+            full_name = " ".join(p for p in [user.first_name, user.last_name] if p).strip()
+            asyncio.create_task(
+                notify_admin_new_passenger(
+                    None,
+                    name=full_name,
+                    phone=user.phone or "",
+                    source="app",
+                    user_id=user.id,
+                    telegram_id=user.telegram_id,
+                )
+            )
+        except Exception:
+            pass
     return web.json_response({
         "status": "verified",
         "is_new": is_new,

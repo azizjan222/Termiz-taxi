@@ -125,14 +125,17 @@ async def driver_doc_review_callback(update: Update, context: ContextTypes.DEFAU
             driver.is_verified = True
             driver.documents_submitted = True
             driver.last_active = datetime.utcnow()
-            add_actor_audit(
-                session,
-                actor=f"telegram:{update.effective_user.id}",
-                action="driver.verify",
-                target_type="driver",
-                target_id=driver.id,
-                update_id=update.update_id,
-            )
+            try:
+                add_actor_audit(
+                    session,
+                    actor=f"telegram:{update.effective_user.id}",
+                    action="driver.verify",
+                    target_type="driver",
+                    target_id=driver.id,
+                    details={"telegram_update_id": update.update_id},
+                )
+            except Exception as audit_err:
+                logger.warning("driver.verify audit log failed: %s", audit_err)
             session.commit()
             _grant_free_trial_if_eligible(session, driver)
             session.commit()
@@ -151,14 +154,17 @@ async def driver_doc_review_callback(update: Update, context: ContextTypes.DEFAU
             driver.documents_submitted = False
             driver.is_online = False
             driver.online_since = None
-            add_actor_audit(
-                session,
-                actor=f"telegram:{update.effective_user.id}",
-                action="driver.reject",
-                target_type="driver",
-                target_id=driver.id,
-                update_id=update.update_id,
-            )
+            try:
+                add_actor_audit(
+                    session,
+                    actor=f"telegram:{update.effective_user.id}",
+                    action="driver.reject",
+                    target_type="driver",
+                    target_id=driver.id,
+                    details={"telegram_update_id": update.update_id},
+                )
+            except Exception as audit_err:
+                logger.warning("driver.reject audit log failed: %s", audit_err)
             session.commit()
             try:
                 await send_push(

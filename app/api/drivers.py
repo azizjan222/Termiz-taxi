@@ -1434,6 +1434,13 @@ async def accept_order(request: web.Request) -> web.Response:
             # Best-effort push; the passenger also gets the WS event above.
             logger.debug("Push order_accepted to passenger %s failed: %s", order.passenger_id, e)
 
+        # Remove the order's vitrina card from the Telegram group(s) now that it's accepted.
+        try:
+            from app.bot.notifications import delete_group_order_messages
+            await delete_group_order_messages(request.app.get("bot"), order.id)
+        except Exception:
+            pass
+
         # Notify the admin via the Telegram bot that a driver accepted the order.
         try:
             bot = request.app.get("bot")
@@ -1929,6 +1936,23 @@ async def cancel_by_driver(request: web.Request) -> web.Response:
                 logger.debug(
                     "Reimbursement reversal push failed (order %s): %s", order.id, e,
                 )
+
+        try:
+            from app.bot.notifications import (
+                delete_group_order_messages,
+                notify_admin_order_cancelled,
+            )
+            bot_instance = request.app.get("bot")
+            await delete_group_order_messages(bot_instance, order.id)
+            await notify_admin_order_cancelled(
+                d.telegram_id if d else driver.telegram_id,
+                order.id,
+                False,
+                cancelled_by="driver",
+                bot=bot_instance,
+            )
+        except Exception:
+            pass
 
         return web.json_response({
             "success": True,

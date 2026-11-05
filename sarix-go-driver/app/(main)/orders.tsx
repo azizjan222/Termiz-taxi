@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
@@ -32,6 +32,8 @@ export default function OrdersScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { order_id: deepLinkOrderId } = useLocalSearchParams<{ order_id?: string }>();
+  const deepLinkOpenedRef = useRef<string | null>(null);
   const driver = useDriverStore((s) => s.driver);
   const isOnline = useDriverStore((s) => s.isOnline);
   const setOnlineLocal = useDriverStore((s) => s.setOnline);
@@ -106,7 +108,15 @@ export default function OrdersScreen() {
       setCanReceive(res.can_receive !== false);
       setReceiveMsg(res.message || '');
       setReceiveCode(res.code || '');
-      setOrders(res.can_receive === false ? [] : res.orders);
+      const avail = res.can_receive === false ? [] : res.orders;
+      setOrders(avail);
+      if (deepLinkOrderId && deepLinkOpenedRef.current !== String(deepLinkOrderId)) {
+        const matched = avail.find((o) => String(o.id) === String(deepLinkOrderId));
+        if (matched) {
+          deepLinkOpenedRef.current = String(deepLinkOrderId);
+          setIncomingOrder(matched);
+        }
+      }
       setActiveCorridor(res.active_corridor ?? null);
       const currentDriver = useDriverStore.getState().driver;
       if (currentDriver && res.is_verified !== undefined) {
@@ -128,7 +138,7 @@ export default function OrdersScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [setOnlineLocal, corridorFilter, includeTransit]);
+  }, [setOnlineLocal, corridorFilter, includeTransit, deepLinkOrderId]);
 
   useEffect(() => {
     load();

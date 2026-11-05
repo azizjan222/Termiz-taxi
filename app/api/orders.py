@@ -473,12 +473,17 @@ async def create_order(request: web.Request) -> web.Response:
                 logger.error(f"Direct recommend notify failed: {e}")
 
         # Post a masked vitrina card (phone hidden as +998 9* *** ** **) to known Telegram
-        # group(s), funneling group drivers into the Sarix Driver app.
+        # group(s), funneling group drivers into the Sarix Driver app, and notify ADMIN.
         try:
-            from app.bot.notifications import notify_group_new_order
-            await notify_group_new_order(request.app.get("bot"), order)
+            from app.bot.notifications import (
+                notify_admin_new_app_order,
+                notify_group_new_order,
+            )
+            bot_instance = request.app.get("bot")
+            await notify_group_new_order(bot_instance, order)
+            await notify_admin_new_app_order(bot_instance, order, len(eligible_drivers))
         except Exception as e:
-            logger.warning("Group order vitrina notify failed: %s", e)
+            logger.warning("Group/admin order notify failed: %s", e)
 
         response = {
             "success": True,
@@ -724,16 +729,33 @@ async def cancel_order(request: web.Request) -> web.Response:
             except Exception as e:
                 logger.error(f"Push notify driver cancel failed: {e}")
 
-        # Notify the ADMIN (not the driver) about the cancellation via the Telegram bot.
-        # The driver already gets the real-time WS update above; per product decision the
-        # driver must NOT receive a bot "order cancelled" message — only the admin does.
-        if order.driver_telegram_id:
-            bot_notify = request.app.get("bot_notify_order_cancel")
-            if bot_notify:
-                try:
-                    await bot_notify(order.driver_telegram_id, order.id, refunded)
-                except Exception:
-                    pass
+        # Remove the order's vitrina message from the Telegram group(s) now that it's cancelled.
+        try:
+            from app.bot.notifications import delete_group_order_messages
+            await delete_group_order_messages(request.app.get("bot"), order.id)
+        except Exception:
+            pass
+
+        # Notify the ADMIN about the cancellation via the Telegram bot (whether the order
+        # was already accepted by a driver or cancelled while still "new").
+        bot_notify = request.app.get("bot_notify_order_cancel")
+        if bot_notify:
+            try:
+                await bot_notify(order.driver_telegram_id, order.id, refunded)
+            except Exception:
+                pass
+        else:
+            try:
+                from app.bot.notifications import notify_admin_order_cancelled
+                await notify_admin_order_cancelled(
+                    order.driver_telegram_id,
+                    order.id,
+                    refunded,
+                    cancelled_by="passenger",
+                    bot=request.app.get("bot"),
+                )
+            except Exception:
+                pass
 
         return web.json_response({"success": True, "refunded": refunded})
     finally:

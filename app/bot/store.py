@@ -266,7 +266,7 @@ class BotStore:
     # ------------------------------------------------------------------ #
     # Bot passengers (Setting-backed id set)
     # ------------------------------------------------------------------ #
-    def add_passenger(self, telegram_id: int) -> None:
+    def add_passenger(self, telegram_id: int) -> bool:
         session = self._session_factory()
         try:
             ids = self._get_id_set(session, _KEY_PASSENGERS)
@@ -274,6 +274,8 @@ class BotStore:
                 ids.add(telegram_id)
                 self._set_id_set(session, _KEY_PASSENGERS, ids)
                 session.commit()
+                return True
+            return False
         finally:
             session.close()
 
@@ -739,6 +741,48 @@ class BotStore:
                 == today_prefix
             )
             return today, total
+        finally:
+            session.close()
+
+    def order_period_stats(self) -> dict:
+        """Compute order & cancel ('otkaz') counts for Today, 1 Week (7d), 1 Month (30d), and All Time."""
+        from app.models import User
+        from app.utils.timefmt import local_day_start_utc
+
+        now = datetime.utcnow()
+        today_start = local_day_start_utc()
+        week_start = now - timedelta(days=7)
+        month_start = now - timedelta(days=30)
+
+        session = self._session_factory()
+        try:
+            def _period(since: datetime | None):
+                q = session.query(Order)
+                if since is not None:
+                    q = q.filter(Order.created_at >= since)
+                total_c = q.count()
+                done_c = q.filter(Order.status == "completed").count()
+                cancel_c = q.filter(Order.status.in_(["cancelled", "expired"])).count()
+                active_c = q.filter(Order.status.in_(["new", "accepted", "in_progress"])).count()
+                return {
+                    "total": total_c,
+                    "completed": done_c,
+                    "cancelled": cancel_c,
+                    "active": active_c,
+                }
+
+            app_users = session.query(User).count()
+            online_drivers = session.query(Driver).filter_by(is_online=True).count()
+            verified_drivers = session.query(Driver).filter_by(is_verified=True).count()
+            return {
+                "today": _period(today_start),
+                "week": _period(week_start),
+                "month": _period(month_start),
+                "all": _period(None),
+                "app_users": app_users,
+                "online_drivers": online_drivers,
+                "verified_drivers": verified_drivers,
+            }
         finally:
             session.close()
 

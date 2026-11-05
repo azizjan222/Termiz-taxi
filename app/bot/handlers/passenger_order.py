@@ -71,7 +71,18 @@ async def start_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_access(update, context):
         return ConversationHandler.END
     _clear_draft(context)
-    store.add_passenger(update.effective_user.id)
+    is_new_pax = store.add_passenger(update.effective_user.id)
+    if is_new_pax:
+        try:
+            from app.bot.notifications import notify_admin_new_passenger
+            await notify_admin_new_passenger(
+                context.bot,
+                name=update.effective_user.full_name or update.effective_user.first_name or "",
+                source="bot",
+                telegram_id=update.effective_user.id,
+            )
+        except Exception:
+            pass
     await update.message.reply_text(
         "👤 Ismingizni yozing:", reply_markup=kb.cancel_only())
     return ASK_NAME

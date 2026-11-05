@@ -50,6 +50,12 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
 
+    from datetime import datetime, timedelta
+
+    now = datetime.utcnow()
+    week_start = now - timedelta(days=7)
+    month_start = now - timedelta(days=30)
+
     with DbContext() as session:
         drivers_count = session.query(Driver).count()
         active_drivers = session.query(Driver).filter_by(is_online=True).count()
@@ -70,23 +76,52 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             Order.status == "completed",
             Order.completed_at >= today_start
         ).count()
+        today_cancelled = session.query(Order).filter(
+            Order.status.in_(["cancelled", "expired"]),
+            Order.created_at >= today_start,
+        ).count()
+
+        # Last 7 days (1 week)
+        week_orders = session.query(Order).filter(Order.created_at >= week_start).count()
+        week_completed = session.query(Order).filter(
+            Order.status == "completed",
+            Order.created_at >= week_start,
+        ).count()
+        week_cancelled = session.query(Order).filter(
+            Order.status.in_(["cancelled", "expired"]),
+            Order.created_at >= week_start,
+        ).count()
+
+        # Last 30 days (1 month)
+        month_orders = session.query(Order).filter(Order.created_at >= month_start).count()
+        month_completed = session.query(Order).filter(
+            Order.status == "completed",
+            Order.created_at >= month_start,
+        ).count()
+        month_cancelled = session.query(Order).filter(
+            Order.status.in_(["cancelled", "expired"]),
+            Order.created_at >= month_start,
+        ).count()
 
         total_balance = session.query(Driver).all()
         balance_sum = sum(d.balance or 0 for d in total_balance)
 
     text = (
         f"📊 <b>UMUMIY STATISTIKA</b>\n\n"
-        f"👨‍✈️ Haydovchilar: <b>{drivers_count}</b> ta\n"
-        f"   🟢 Onlayn: {active_drivers}\n"
+        f"👨‍✈️ Haydovchilar: <b>{drivers_count}</b> ta (🟢 Onlayn: {active_drivers})\n"
         f"👤 Yo'lovchilar (ilova): <b>{users_count}</b> ta\n\n"
-        f"🚕 <b>BUYURTMALAR</b>\n"
-        f"   Jami: {total_orders}\n"
-        f"   ✅ Yakunlangan: {completed}\n"
-        f"   ❌ Bekor: {cancelled}\n"
-        f"   🟡 Faol: {active_orders}\n\n"
         f"📅 <b>BUGUN</b>\n"
-        f"   Yangi: {today_orders}\n"
-        f"   Yakunlandi: {today_completed}\n\n"
+        f"   🚕 Jami zakas: <b>{today_orders}</b> ta\n"
+        f"   ✅ Yakunlandi: <b>{today_completed}</b> ta | ❌ Otkaz: <b>{today_cancelled}</b> ta\n\n"
+        f"📆 <b>OXIRGI 1 HAFTA (7 kun)</b>\n"
+        f"   🚕 Jami zakas: <b>{week_orders}</b> ta\n"
+        f"   ✅ Yakunlandi: <b>{week_completed}</b> ta | ❌ Otkaz: <b>{week_cancelled}</b> ta\n\n"
+        f"🗓 <b>OXIRGI 1 OY (30 kun)</b>\n"
+        f"   🚕 Jami zakas: <b>{month_orders}</b> ta\n"
+        f"   ✅ Yakunlandi: <b>{month_completed}</b> ta | ❌ Otkaz: <b>{month_cancelled}</b> ta\n\n"
+        f"📊 <b>UMUMIY (Barcha vaqt)</b>\n"
+        f"   🚕 Jami: <b>{total_orders}</b> | ✅ Yakunlangan: <b>{completed}</b>\n"
+        f"   ❌ Otkaz (bekor): <b>{cancelled}</b> | 🟡 Faol: <b>{active_orders}</b>\n\n"
         f"💰 <b>Umumiy balans:</b> {fmt(balance_sum)} so'm"
     )
 
