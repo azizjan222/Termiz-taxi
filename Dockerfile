@@ -17,10 +17,10 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Install dependencies first so this layer is cached until the requirements change.
-# requirements.txt pins transitive versions via `-c requirements-prod.lock`, so both
+# requirements-prod.txt pins transitive versions via `-c requirements-prod.lock`, so both
 # files must be present before the install runs.
-COPY requirements.txt requirements-prod.lock ./
-RUN pip install -r requirements.txt
+COPY requirements-prod.txt requirements-prod.lock ./
+RUN pip install -r requirements-prod.txt
 
 # Copy the rest of the backend source (app/, main.py, fonts, etc.).
 COPY . .

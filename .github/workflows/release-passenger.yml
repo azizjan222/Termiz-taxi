@@ -3,6 +3,11 @@ name: Release Passenger App (Play Store AAB)
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: "Ilova versiyasi (masalan: 1.0.4)"
+        type: string
+        required: false
+        default: "1.0.4"
       submit:
         description: "Submit this exact build to Google Play"
         type: boolean
@@ -76,6 +81,25 @@ jobs:
         run: |
           test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_PASSENGER_JSON_B64 is required"; exit 1; }
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
+      - name: Set app version if provided
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            node -e '
+              const fs = require("fs");
+              const ver = process.env.INPUT_VERSION.trim().replace(/^[vV]/, "");
+              if (!/^\d+\.\d+\.\d+$/.test(ver)) {
+                console.error("Invalid version format:", ver);
+                process.exit(1);
+              }
+              const pkg = JSON.parse(fs.readFileSync("app.json", "utf8"));
+              pkg.expo.version = ver;
+              if (pkg.expo.ios) pkg.expo.ios.buildNumber = ver;
+              fs.writeFileSync("app.json", JSON.stringify(pkg, null, 2) + "\n");
+              console.log("Updated app.json version to", ver);
+            '
+          fi
       - name: Validate and test release source
         run: |
           test -n "$EXPO_PUBLIC_YANDEX_JS_API_KEY" || { echo "::error::YANDEX_JS_API_KEY is required"; exit 1; }
