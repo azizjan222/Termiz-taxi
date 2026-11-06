@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Ilova versiyasi (masalan: 1.0.4)"
+        description: "Ilova versiyasi (bo'sh qoldirilsa avtomatik 1.0.<run> bo'ladi, masalan: 1.0.5)"
         type: string
         required: false
-        default: "1.0.4"
+        default: ""
       submit:
         description: "Submit this exact build to Google Play"
         type: boolean
@@ -59,6 +59,7 @@ jobs:
       EXPO_PUBLIC_YANDEX_SUGGEST_KEY: ${{ secrets.YANDEX_SUGGEST_KEY }}
       EXPO_PUBLIC_YANDEX_SDK_API_KEY: ${{ secrets.YANDEX_SDK_API_KEY }}
       GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_PASSENGER_JSON_B64 }}
+      EAS_BUILD_NO_EXPO_GO_WARNING: "true"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -84,22 +85,22 @@ jobs:
       - name: Set app version if provided
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
-          if [ -n "$INPUT_VERSION" ]; then
-            node -e '
-              const fs = require("fs");
-              const ver = process.env.INPUT_VERSION.trim().replace(/^[vV]/, "");
-              if (!/^\d+\.\d+\.\d+$/.test(ver)) {
-                console.error("Invalid version format:", ver);
-                process.exit(1);
-              }
-              const pkg = JSON.parse(fs.readFileSync("app.json", "utf8"));
-              pkg.expo.version = ver;
-              if (pkg.expo.ios) pkg.expo.ios.buildNumber = ver;
-              fs.writeFileSync("app.json", JSON.stringify(pkg, null, 2) + "\n");
-              console.log("Updated app.json version to", ver);
-            '
-          fi
+          node -e '
+            const fs = require("fs");
+            const raw = (process.env.INPUT_VERSION || "").trim().replace(/^[vV]/, "");
+            const ver = raw || `1.0.${process.env.RUN_NUMBER || "4"}`;
+            if (!/^\d+\.\d+\.\d+$/.test(ver)) {
+              console.error("Invalid version format:", ver);
+              process.exit(1);
+            }
+            const pkg = JSON.parse(fs.readFileSync("app.json", "utf8"));
+            pkg.expo.version = ver;
+            if (pkg.expo.ios) pkg.expo.ios.buildNumber = ver;
+            fs.writeFileSync("app.json", JSON.stringify(pkg, null, 2) + "\n");
+            console.log("Updated app.json version to", ver);
+          '
       - name: Validate and test release source
         run: |
           test -n "$EXPO_PUBLIC_YANDEX_JS_API_KEY" || { echo "::error::YANDEX_JS_API_KEY is required"; exit 1; }

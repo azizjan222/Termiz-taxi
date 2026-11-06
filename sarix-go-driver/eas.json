@@ -28,10 +28,11 @@
     },
     "production": {
       "channel": "production",
+      "autoIncrement": true,
       "environment": "production",
       "android": {
         "buildType": "app-bundle",
-        "autoIncrement": "version"
+        "autoIncrement": true
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://termiz-taxi-production.up.railway.app",
