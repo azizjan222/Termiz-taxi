@@ -204,3 +204,34 @@ def get_driver_tutorial_url(session=None) -> str:
     finally:
         s.close()
 
+
+def _read_version(key: str, default: str, session=None) -> str:
+    """Read a semantic version string (e.g. '1.0.3') from Setting, or return `default`."""
+    import re
+    own_session = session is None
+    if own_session:
+        session = get_session()
+    try:
+        val = get_str_setting(session, key, default).strip().lstrip("vV")
+        if re.match(r"^\d+\.\d+\.\d+$", val):
+            return val
+    except Exception:
+        pass
+    finally:
+        if own_session:
+            session.close()
+    return default
+
+
+def get_passenger_min_version(session=None) -> str:
+    """Minimum required version for the passenger app (Sarix Go)."""
+    default = getattr(config, "_get", lambda k, d: d)("PASSENGER_MIN_VERSION", "1.0.0")
+    return _read_version("passenger_min_version", default, session=session)
+
+
+def get_driver_min_version(session=None) -> str:
+    """Minimum required version for the driver app (Sarix Driver)."""
+    default = getattr(config, "_get", lambda k, d: d)("DRIVER_MIN_VERSION", "1.0.0")
+    return _read_version("driver_min_version", default, session=session)
+
+

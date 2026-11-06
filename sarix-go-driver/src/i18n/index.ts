@@ -789,6 +789,11 @@ export const uz = {
     retry: 'Qayta urinish',
     stillDown: "Texnik ishlar hali tugamagan. Birozdan so'ng qayta urinib ko'ring.",
   },
+  forceUpdate: {
+    title: 'Yangilash talab qilinadi',
+    message: "Ilovaning yangi versiyasi chiqdi. Davom etish uchun Google Play orqali yangilang.",
+    button: 'Google Play orqali yangilash',
+  },
 };
 
 export const ru = {
@@ -1507,6 +1512,11 @@ export const ru = {
     retry: 'Повторить',
     stillDown: 'Технические работы ещё не закончились. Попробуйте немного позже.',
   },
+  forceUpdate: {
+    title: 'Требуется обновление',
+    message: 'Вышла новая версия приложения. Пожалуйста, обновите через Google Play для продолжения.',
+    button: 'Обновить в Google Play',
+  },
 };
 
 export const en = {
@@ -2221,6 +2231,11 @@ export const en = {
     message: 'The app is temporarily unavailable. Please try again in a little while.',
     retry: 'Try again',
     stillDown: 'Maintenance is still in progress. Please try again in a little while.',
+  },
+  forceUpdate: {
+    title: 'Update required',
+    message: 'A new version of the app is available. Please update from Google Play to continue.',
+    button: 'Update on Google Play',
   },
 };
 
@@ -2937,6 +2952,11 @@ export const uzCyrl = {
     message: 'Илова вақтинча ишламайди. Илтимос, бироздан сўнг қайта уриниб кўринг.',
     retry: 'Қайта уриниш',
     stillDown: 'Техник ишлар ҳали тугамаган. Бироздан сўнг қайта уриниб кўринг.',
+  },
+  forceUpdate: {
+    title: 'Янгилаш талаб қилинади',
+    message: 'Илованинг янги версияси чиқди. Давом этиш учун Google Play орқали янгиланг.',
+    button: 'Google Play орқали янгилаш',
   },
 };
 

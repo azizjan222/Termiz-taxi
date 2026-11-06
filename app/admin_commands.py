@@ -553,6 +553,76 @@ async def cmd_payments(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(text, parse_mode="HTML")
 
 
+# ============ /versiya - Majburiy yangilash versiyasi ============
+async def cmd_min_version(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """View or update passenger_min_version and driver_min_version in Setting table."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    import re
+    from datetime import datetime
+    from app.models.database import Setting
+    from app.services.dynamic_settings import get_driver_min_version, get_passenger_min_version
+
+    args = context.args
+    if not args or len(args) < 2:
+        p_ver = get_passenger_min_version()
+        d_ver = get_driver_min_version()
+        await update.effective_message.reply_text(
+            "📲 <b>Majburiy yangilash (Force Update — Play Market)</b>\n\n"
+            f"📱 Yo'lovchi ilovasi (Sarix Go): <code>{p_ver}</code>\n"
+            f"🚖 Haydovchi ilovasi (Sarix Driver): <code>{d_ver}</code>\n\n"
+            "O'zgartirish uchun:\n"
+            "<code>/versiya passenger 1.0.3</code> — Yo'lovchi ilovasini majburiy yangilash\n"
+            "<code>/versiya driver 1.0.3</code> — Haydovchi ilovasini majburiy yangilash\n"
+            "<code>/versiya all 1.0.3</code> — Ikkala ilovani ham 1.0.3 ga o'rnatish",
+            parse_mode="HTML",
+        )
+        return
+
+    target = args[0].strip().lower()
+    raw_ver = args[1].strip().lstrip("vV")
+    if not re.match(r"^\d+\.\d+\.\d+$", raw_ver):
+        await update.effective_message.reply_text(
+            "❌ Versiya formati xato! Masalan: <code>1.0.3</code> ko'rinishida yozing.",
+            parse_mode="HTML",
+        )
+        return
+
+    keys = []
+    if target in ("passenger", "yolovchi", "user", "go"):
+        keys = ["passenger_min_version"]
+    elif target in ("driver", "haydovchi"):
+        keys = ["driver_min_version"]
+    elif target in ("all", "hammasi", "both"):
+        keys = ["passenger_min_version", "driver_min_version"]
+    else:
+        await update.effective_message.reply_text(
+            "❌ Maqsad noto'g'ri: <code>passenger</code>, <code>driver</code> yoki <code>all</code> yozing.",
+            parse_mode="HTML",
+        )
+        return
+
+    with DbContext() as session:
+        for key in keys:
+            existing = session.query(Setting).filter_by(key=key).first()
+            if existing:
+                existing.value = raw_ver
+                existing.updated_at = datetime.utcnow()
+            else:
+                session.add(Setting(key=key, value=raw_ver))
+
+    p_ver = get_passenger_min_version()
+    d_ver = get_driver_min_version()
+    await update.effective_message.reply_text(
+        "✅ <b>Minimal versiya yangilandi!</b>\n\n"
+        f"📱 Yo'lovchi ilovasi (Sarix Go): <code>{p_ver}</code>\n"
+        f"🚖 Haydovchi ilovasi (Sarix Driver): <code>{d_ver}</code>\n\n"
+        "Eski versiyadagi foydalanuvchilarda ilova ochilganda Play Marketdan yangilash oynasi chiqadi.",
+        parse_mode="HTML",
+    )
+
+
 # ============ /admin_help - Yordam ============
 async def cmd_admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
@@ -581,7 +651,8 @@ async def cmd_admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/verify telegram_id - Haydovchini tasdiqlash\n"
         "/reject telegram_id - Haydovchini rad etish\n"
         "/price shahar1 shahar2 narx - Yo'nalish narxini o'zgartirish\n"
-        "/commission foiz - Komissiya foizini belgilash\n\n"
+        "/commission foiz - Komissiya foizini belgilash\n"
+        "/versiya [passenger|driver|all] [1.0.3] - Majburiy yangilash versiyasi\n\n"
         "📢 <b>Push xabarlar</b>\n"
         "/push_all matn - Hammaga push yuborish\n"
         "/push_drivers matn - Haydovchilarga push\n"

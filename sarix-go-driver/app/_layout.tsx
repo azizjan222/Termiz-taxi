@@ -23,8 +23,10 @@ import * as realtime from '../src/services/realtime';
 // creates after the app has been killed. Registering it from a screen would be too late.
 import { syncBackgroundLocationState } from '../src/services/backgroundLocation';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
+import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
 import { MaintenanceModal } from '../src/components/MaintenanceModal';
-import { isAppsMaintenance } from '../src/api/appConfig';
+import { getAppConfig, isAppsMaintenance, compareVersions } from '../src/api/appConfig';
+import Constants from 'expo-constants';
 import { CrashScreen } from '../src/components/CrashScreen';
 
 /**
@@ -41,6 +43,7 @@ export { CrashScreen as ErrorBoundary };
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState<{ show: boolean; url: string }>({ show: false, url: '' });
   // Server-declared maintenance for the mobile apps (not the Telegram bot — separate switch).
   const [maintenance, setMaintenance] = useState(false);
   const loadDriver = useDriverStore((s) => s.loadDriver);
@@ -118,9 +121,20 @@ export default function RootLayout() {
   // maintenance ended, and without this a driver would have to force-quit to find out.
   useEffect(() => {
     if (!ready) return;
-    isAppsMaintenance().then(setMaintenance);
+    const checkConfig = () => {
+      const currentVersion = Constants.expoConfig?.version || '1.0.0';
+      getAppConfig().then((cfg) => {
+        setMaintenance(Boolean(cfg.maintenance_mode));
+        if (compareVersions(currentVersion, cfg.min_version) < 0) {
+          setForceUpdate({ show: true, url: cfg.play_url });
+        } else {
+          setForceUpdate({ show: false, url: '' });
+        }
+      });
+    };
+    checkConfig();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') isAppsMaintenance().then(setMaintenance);
+      if (state === 'active') checkConfig();
     });
     return () => sub.remove();
   }, [ready]);
@@ -244,6 +258,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style={isDark ? 'light' : 'dark'} />
+        <ForceUpdateModal visible={forceUpdate.show} updateUrl={forceUpdate.url} />
         <MaintenanceModal
           visible={maintenance}
           onRetry={async () => {

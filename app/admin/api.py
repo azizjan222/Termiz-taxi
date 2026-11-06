@@ -1447,6 +1447,7 @@ async def api_update_route(request: web.Request) -> web.Response:
 # everything; either alone is a legitimate state (e.g. migrating bot handlers while the apps
 # keep working). See app/services/dynamic_settings.py for why the bot key keeps its old name.
 MAINTENANCE_SETTINGS: tuple[str, ...] = ("maintenance_mode", "maintenance_mode_apps")
+VERSION_SETTINGS: tuple[str, ...] = ("passenger_min_version", "driver_min_version")
 
 SETTING_LIMITS: dict[str, tuple[int, int]] = {
     "commission_percent": (0, 100),
@@ -1534,6 +1535,13 @@ def _settings_payload() -> dict:
             payload[key] = str(settings_map.get(key) or "").strip().lower() in (
                 "1", "true", "yes", "on",
             )
+        version_defaults = {
+            "passenger_min_version": getattr(config, "_get", lambda k, d: d)("PASSENGER_MIN_VERSION", "1.0.0"),
+            "driver_min_version": getattr(config, "_get", lambda k, d: d)("DRIVER_MIN_VERSION", "1.0.0"),
+        }
+        for key, vdefault in version_defaults.items():
+            raw_v = str(settings_map.get(key) or "").strip().lstrip("vV")
+            payload[key] = raw_v if re.match(r"^\d+\.\d+\.\d+$", raw_v) else vdefault
         return payload
     finally:
         session.close()
@@ -1556,7 +1564,7 @@ async def api_update_settings(request: web.Request) -> web.Response:
     # Reject unknown keys instead of answering "Sozlamalar saqlandi" without saving
     # anything — a client sending e.g. loyalty_reward_bonus used to get a success message
     # and no change at all.
-    known = set(SETTING_LIMITS) | set(MAINTENANCE_SETTINGS)
+    known = set(SETTING_LIMITS) | set(MAINTENANCE_SETTINGS) | set(VERSION_SETTINGS)
     unknown = sorted(set(data) - known)
     if unknown:
         return web.json_response(
@@ -1582,6 +1590,22 @@ async def api_update_settings(request: web.Request) -> web.Response:
             else:
                 session.add(Setting(key=key, value="1" if enabled else "0"))
             changes[key] = {"before": previous, "after": enabled}
+        for key in VERSION_SETTINGS:
+            if key not in data:
+                continue
+            raw_ver = str(data[key] or "").strip().lstrip("vV")
+            if not re.match(r"^\d+\.\d+\.\d+$", raw_ver):
+                return web.json_response(
+                    {"error": f"'{key}' format xato (masalan: 1.0.3 bo'lishi kerak)"}, status=400
+                )
+            existing = session.query(Setting).filter_by(key=key).first()
+            previous = existing.value if existing else None
+            if existing:
+                existing.value = raw_ver
+                existing.updated_at = datetime.utcnow()
+            else:
+                session.add(Setting(key=key, value=raw_ver))
+            changes[key] = {"before": previous, "after": raw_ver}
         for key, (minimum, maximum) in limits.items():
             if key not in data:
                 continue

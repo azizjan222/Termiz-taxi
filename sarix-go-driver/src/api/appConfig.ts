@@ -8,6 +8,10 @@ import { api } from './client';
  * they are read somewhere — they are not, the driver app gets those elsewhere.
  */
 export interface DriverAppConfig {
+  min_version: string;
+  latest_version?: string;
+  play_url: string;
+  force_update?: boolean;
   /**
    * Maintenance for the MOBILE APPS, not the Telegram bot.
    *
@@ -18,9 +22,32 @@ export interface DriverAppConfig {
   maintenance_mode: boolean;
 }
 
+const DEFAULT_DRIVER_PLAY_URL = 'https://play.google.com/store/apps/details?id=uz.sarixgo.driver';
+
 export async function getDriverAppConfig(): Promise<DriverAppConfig> {
   const r = await api.get<DriverAppConfig>('/api/config', { params: { app: 'driver' } });
   return r.data;
+}
+
+export async function getAppConfig(): Promise<DriverAppConfig> {
+  try {
+    const cfg = await getDriverAppConfig();
+    return {
+      min_version: cfg?.min_version || '1.0.0',
+      latest_version: cfg?.latest_version || '1.0.0',
+      play_url: cfg?.play_url || DEFAULT_DRIVER_PLAY_URL,
+      force_update: !!cfg?.force_update,
+      maintenance_mode: !!cfg?.maintenance_mode,
+    };
+  } catch {
+    return {
+      min_version: '1.0.0',
+      latest_version: '1.0.0',
+      play_url: DEFAULT_DRIVER_PLAY_URL,
+      force_update: false,
+      maintenance_mode: false,
+    };
+  }
 }
 
 /**
@@ -38,3 +65,15 @@ export async function isAppsMaintenance(): Promise<boolean> {
     return false;
   }
 }
+
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const va = pa[i] || 0;
+    const vb = pb[i] || 0;
+    if (va !== vb) return va - vb;
+  }
+  return 0;
+}
+

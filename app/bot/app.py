@@ -155,6 +155,7 @@ def _register_admin_commands(app) -> None:
         "commission": admcmd.cmd_commission, "online_drivers": admcmd.cmd_online_drivers,
         "active_orders": admcmd.cmd_active_orders, "revenue": admcmd.cmd_revenue,
         "top_drivers": admcmd.cmd_top_drivers,
+        "versiya": admcmd.cmd_min_version, "min_version": admcmd.cmd_min_version,
     }.items():
         app.add_handler(CommandHandler(name, handler))
     app.add_handler(CallbackQueryHandler(admcmd.admin_callback, pattern="^adm_"))

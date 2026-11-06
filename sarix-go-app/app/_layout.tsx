@@ -82,6 +82,12 @@ export default function RootLayout() {
   // maintenance would sit behind the blocker until they force-quit.
   const recheckMaintenance = async () => {
     const cfg = await getAppConfig('passenger');
+    const currentVersion = Constants.expoConfig?.version || '1.0.0';
+    if (compareVersions(currentVersion, cfg.min_version) < 0) {
+      setForceUpdate({ show: true, url: cfg.play_url });
+    } else {
+      setForceUpdate({ show: false, url: '' });
+    }
     const down = !!cfg.maintenance_mode;
     setMaintenance(down);
     return !down;

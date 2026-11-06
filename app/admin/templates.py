@@ -1338,6 +1338,20 @@ o'qiydi. Bo'sh qoldirmang.</p>
 </div>
 </div></div>
 
+<div class="card mb-3 border-primary"><div class="card-body">
+<h6 class="mb-3">📲 Majburiy yangilash (Force Update — Play Market)</h6>
+<div class="form-text mb-2">Play Marketda yangi versiya chiqqanidan so'ng shu yerga yangi versiya raqamini (masalan, <b>1.0.3</b>) yozib saqlang. Eski versiyadagi foydalanuvchilarda ilova ochilganda <b>"Yangilash talab qilinadi"</b> oynasi chiqib, Play Marketga yo'naltiradi.</div>
+<div class="mb-3">
+<label class="form-label">Yo'lovchi ilovasi minimal versiyasi (Sarix Go)</label>
+<input type="text" class="form-control" id="set-passenger-min-version" placeholder="1.0.0">
+</div>
+<div class="mb-3">
+<label class="form-label">Haydovchi ilovasi minimal versiyasi (Sarix Driver)</label>
+<input type="text" class="form-control" id="set-driver-min-version" placeholder="1.0.0">
+</div>
+<div class="form-text text-warning">⚠️ Ehtiyot bo'ling: faqat yangi versiya Google Play'da <b>Production</b>da tasdiqlanib chiqqanidan keyin o'zgartiring!</div>
+</div></div>
+
 <div class="card mb-3 border-warning"><div class="card-body">
 <h6 class="mb-3">🛠 Texnik xizmat rejimi</h6>
 <div class="form-text mb-2">Bot va mobil ilovalar <b>alohida</b> to'xtatiladi. Serverni
@@ -1426,6 +1440,10 @@ const SETTING_FIELDS=[
 ['set-ref-rides','referral_new_user_max_rides'],
 ['set-ref-max','referral_max_rewarded']
 ];
+const VERSION_FIELDS=[
+['set-passenger-min-version','passenger_min_version'],
+['set-driver-min-version','driver_min_version']
+];
 // Boolean switches: [checkbox id, setting key, label used in the confirm dialog].
 // Two independent flags — the bot and the apps are paused separately, and checking both is
 // how you pause everything.
@@ -1439,6 +1457,7 @@ if(!d||d.error){adminError(d&&d.error?d.error:'Sozlamalarni yuklab bo\\'lmadi');
 // `??`, not `||`: 0 is a legal value for these settings, and `||` displayed a saved
 // 0% commission as 10% — then the next Save wrote that 10% back.
 SETTING_FIELDS.forEach(([id,key])=>{const el=document.getElementById(id);if(el)el.value=d[key]??'';});
+VERSION_FIELDS.forEach(([id,key])=>{const el=document.getElementById(id);if(el)el.value=d[key]??'1.0.0';});
 const used=document.getElementById('set-trial-used');
 if(used)used.textContent=fmtNum(d.free_trial_granted_count);
 MAINTENANCE_FIELDS.forEach(([id,key])=>{const el=document.getElementById(id);if(el)el.checked=!!d[key];});
@@ -1454,6 +1473,13 @@ const raw=String(el.value).trim();
 // Validate here instead of shipping NaN -> JSON null to the server.
 if(!/^\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger">"'+esc(el.previousElementSibling?el.previousElementSibling.textContent:key)+'" butun son bo\\'lishi kerak (bo\\'sh qoldirmang)</div>';el.focus();return;}
 body[key]=parseInt(raw,10);
+}
+for(const [id,key] of VERSION_FIELDS){
+const el=document.getElementById(id);
+if(!el)continue;
+const raw=String(el.value).trim().replace(/^[vV]/,'');
+if(!/^\\d+\\.\\d+\\.\\d+$/.test(raw)){out.innerHTML='<div class="alert alert-danger">"'+esc(el.previousElementSibling?el.previousElementSibling.textContent:key)+'" versiya formati xato (masalan: 1.0.3)</div>';el.focus();return;}
+body[key]=raw;
 }
 // Confirm ONCE, listing exactly what is being paused. Two separate confirms for two
 // checkboxes trained the operator to click through them, which defeats the point.

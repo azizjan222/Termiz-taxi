@@ -3,8 +3,10 @@ from aiohttp import web
 
 from app import config
 from app.services.dynamic_settings import (
+    get_driver_min_version,
     get_driver_tutorial_url,
     get_min_driver_balance,
+    get_passenger_min_version,
     get_passenger_tutorial_url,
     is_apps_maintenance,
 )
@@ -20,13 +22,13 @@ async def get_app_config(request: web.Request) -> web.Response:
     driver_tutorial_url = get_driver_tutorial_url()
 
     if app_type == "driver":
-        min_version = config._get("DRIVER_MIN_VERSION", "1.0.0")
-        latest_version = config._get("DRIVER_LATEST_VERSION", "1.0.0")
+        min_version = get_driver_min_version()
+        latest_version = config._get("DRIVER_LATEST_VERSION", min_version)
         play_url = "https://play.google.com/store/apps/details?id=uz.sarixgo.driver"
         tutorial_video_url = driver_tutorial_url
     else:
-        min_version = config._get("PASSENGER_MIN_VERSION", "1.0.0")
-        latest_version = config._get("PASSENGER_LATEST_VERSION", "1.0.0")
+        min_version = get_passenger_min_version()
+        latest_version = config._get("PASSENGER_LATEST_VERSION", min_version)
         play_url = "https://play.google.com/store/apps/details?id=uz.sarixgo.passenger"
         tutorial_video_url = passenger_tutorial_url
 
