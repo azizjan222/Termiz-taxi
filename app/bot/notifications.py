@@ -631,6 +631,61 @@ async def notify_group_new_order(bot, order) -> None:
         _save_group_order_messages(int(order.id), sent_pairs)
 
 
+async def notify_online_drivers_telegram_order(bot, order, drivers: list) -> None:
+    """Send direct Telegram notification to online drivers who do not have a mobile push_token yet.
+
+    Drivers with a valid push_token already receive the native mobile push notification
+    (with new_order.wav sound) even when the app is closed. This fallback ensures that
+    online drivers whose device hasn't registered a push_token yet still get alerted
+    immediately and can tap 'Ilova orqali qabul qilish' to open the order in Sarix Driver.
+    Sent messages are tracked in _save_group_order_messages so they are automatically
+    deleted when the order is accepted, cancelled, or expires.
+    """
+    targets = [
+        d for d in drivers
+        if getattr(d, "is_online", False)
+        and getattr(d, "telegram_id", None)
+        and not getattr(d, "push_token", None)
+    ]
+    if not targets:
+        return
+
+    text, markup = format_group_order_vitrina(order)
+    own_bot = False
+    if bot is None:
+        if not BOT_TOKEN:
+            return
+        bot = Bot(token=BOT_TOKEN)
+        own_bot = True
+
+    sent_pairs: list[tuple[int, int]] = []
+    try:
+        if own_bot:
+            await bot.initialize()
+        for d in targets:
+            try:
+                sent_msg = await bot.send_message(
+                    chat_id=int(d.telegram_id),
+                    text=text,
+                    parse_mode="HTML",
+                    reply_markup=markup,
+                    disable_web_page_preview=True,
+                )
+                if sent_msg and getattr(sent_msg, "message_id", None):
+                    sent_pairs.append((int(d.telegram_id), int(sent_msg.message_id)))
+            except Exception as e:
+                logger.debug("Telegram fallback to online driver %s failed: %s", d.telegram_id, e)
+    finally:
+        if own_bot:
+            try:
+                await bot.shutdown()
+            except Exception:
+                pass
+
+    if sent_pairs and getattr(order, "id", None):
+        _save_group_order_messages(int(order.id), sent_pairs)
+
+
 async def broadcast_bot_order_to_app(bot, order) -> None:
     """Broadcast a bot-created order to the Sarix Driver mobile app (WebSocket + Push) and notify Admin."""
     from datetime import datetime
@@ -684,6 +739,11 @@ async def broadcast_bot_order_to_app(bot, order) -> None:
         except Exception as e:
             logger.error("Push notify drivers for bot order #%s failed: %s", db_order.id, e)
 
+        try:
+            await notify_online_drivers_telegram_order(bot, db_order, eligible_drivers)
+        except Exception as e:
+            logger.debug("Telegram fallback for bot order #%s failed: %s", db_order.id, e)
+
         if bot and ADMIN_ID:
             try:
                 price_str = nt.price_text("uz", db_order.price)
@@ -704,5 +764,6 @@ async def broadcast_bot_order_to_app(bot, order) -> None:
         logger.error("broadcast_bot_order_to_app error for order #%s: %s", getattr(order, "id", "?"), e)
     finally:
         session.close()
+
 
 

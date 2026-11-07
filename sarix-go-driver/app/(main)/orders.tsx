@@ -22,7 +22,7 @@ import { isAppForeground } from '../../src/utils/appForeground';
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { IncomingOrderModal } from '../../src/components/IncomingOrderModal';
 import { AcceptButton } from '../../src/components/AcceptButton';
-import { stopAlert, playDriverStatusChime } from '../../src/services/notifications';
+import { stopAlert, playDriverStatusChime, registerPushToken } from '../../src/services/notifications';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 import { formatDepartureTime } from '../../src/utils/departureTime';
@@ -232,6 +232,9 @@ export default function OrdersScreen() {
       setOrders([]);
       setIncomingOrder(null);
     } else {
+      // Ensure push permission is granted and push token is registered on the server
+      // so the driver receives loud new-order notifications even when the app is closed.
+      registerPushToken(true).catch(() => {});
       load();
     }
     try {

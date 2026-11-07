@@ -224,15 +224,11 @@ export async function setupNotificationChannels() {
 // ---------------------------------------------------------------------------
 // Push token management
 // ---------------------------------------------------------------------------
-export async function requestNotificationPermissions(forcePrompt = false): Promise<boolean> {
+export async function requestNotificationPermissions(forcePrompt = true): Promise<boolean> {
   if (!Device.isDevice) return false;
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   if (existingStatus === 'granted') return true;
 
-  // Never trigger an unprompted OS runtime permission dialog in the background, as Google
-  // Play's Prominent Disclosure & Consent policy strictly requires that the ONLY runtime
-  // permission dialog shown after the Location Prominent Disclosure modal is the Location
-  // permission dialog itself.
   if (!forcePrompt) {
     return false;
   }
@@ -241,11 +237,12 @@ export async function requestNotificationPermissions(forcePrompt = false): Promi
   return status === 'granted';
 }
 
-export async function getExpoPushToken(forcePrompt = false): Promise<string | null> {
+export async function getExpoPushToken(forcePrompt = true): Promise<string | null> {
   if (!Device.isDevice) return null;
   try {
-    if (forcePrompt) {
-      await requestNotificationPermissions(true);
+    const granted = await requestNotificationPermissions(forcePrompt);
+    if (!granted) {
+      return null;
     }
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ||
@@ -273,10 +270,10 @@ export function isPushRegistered(): boolean {
   return pushRegistered;
 }
 
-export async function registerPushToken(): Promise<boolean> {
+export async function registerPushToken(forcePrompt = true): Promise<boolean> {
   try {
     await setupNotificationChannels();
-    const token = await getExpoPushToken();
+    const token = await getExpoPushToken(forcePrompt);
     if (!token) {
       // Usually a denied notification permission. Nothing here can recover that, but it
       // must not pass silently: this is the difference between a driver who receives
@@ -317,6 +314,10 @@ export function addNotificationResponseListener(
   handler: (response: Notifications.NotificationResponse) => void
 ) {
   return Notifications.addNotificationResponseReceivedListener(handler);
+}
+
+export function getLastNotificationResponseAsync() {
+  return Notifications.getLastNotificationResponseAsync();
 }
 
 // ---------------------------------------------------------------------------

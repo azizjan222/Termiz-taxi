@@ -478,9 +478,11 @@ async def create_order(request: web.Request) -> web.Response:
             from app.bot.notifications import (
                 notify_admin_new_app_order,
                 notify_group_new_order,
+                notify_online_drivers_telegram_order,
             )
             bot_instance = request.app.get("bot")
             await notify_group_new_order(bot_instance, order)
+            await notify_online_drivers_telegram_order(bot_instance, order, broadcast_drivers)
             await notify_admin_new_app_order(bot_instance, order, len(eligible_drivers))
         except Exception as e:
             logger.warning("Group/admin order notify failed: %s", e)

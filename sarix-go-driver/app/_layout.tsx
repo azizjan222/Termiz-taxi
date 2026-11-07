@@ -14,6 +14,7 @@ import {
   isPushRegistered,
   addNotificationReceivedListener,
   addNotificationResponseListener,
+  getLastNotificationResponseAsync,
   stopAlert,
 } from '../src/services/notifications';
 import { addNotification, syncAnnouncements } from '../src/services/notificationHistory';
@@ -204,12 +205,17 @@ export default function RootLayout() {
   // existed but was never wired up, so a driver who tapped a new-order push just landed on
   // whatever screen was already open. Tapping also silences the loud alarm.
   useEffect(() => {
-    const sub = addNotificationResponseListener((response) => {
+    let handledResponseId: string | null = null;
+
+    const handleResponse = (response: any) => {
+      if (!response?.notification) return;
+      const responseId = response.notification.request?.identifier;
+      if (responseId && handledResponseId === responseId) return;
+      if (responseId) handledResponseId = responseId;
+
       stopAlert();
 
       const data = (response?.notification?.request?.content?.data || {}) as any;
-      // Don't navigate for terminal events: the backend sends order_id on
-      // order_cancelled / order_expired / order_completed too, and opening a dead order is just confusing.
       if (
         data.type === 'order_cancelled' ||
         data.type === 'order_expired' ||
@@ -218,35 +224,36 @@ export default function RootLayout() {
         return;
       }
 
-      // Only navigate once the driver is actually logged in, otherwise expo-router
-      // would push an authenticated screen over the login flow.
       if (!useDriverStore.getState().isAuthenticated) return;
 
-      // A NEW order is not yet ours, so it must not open /order/[id] — that screen is the
-      // accepted-ride view, and its only data source is listMyActive() (my accepted /
-      // in_progress rides). A `new` order is unassigned by definition, so it is never in
-      // that list: the screen's first poll concluded "this order is gone", fired
-      // "Bu zakas endi faol emas — bekor qilingan yoki boshqa haydovchi oldi" and bounced
-      // the driver out. Every single new-order push a driver tapped produced that alert
-      // for a perfectly live order.
-      //
-      // The orders list is where an unaccepted order belongs: it shows the order with its
-      // Accept button, and the driver reaches /order/[id] through accepting — which is
-      // also the only point at which the ride actually becomes theirs.
+      const orderId = data.order_id ?? data.orderId;
       if (data.type === 'new_order') {
-        router.push('/(main)/orders');
+        if (orderId != null && Number.isFinite(Number(orderId))) {
+          router.push({ pathname: '/(main)/orders', params: { order_id: String(orderId) } });
+        } else {
+          router.push('/(main)/orders');
+        }
         return;
       }
 
-      const orderId = data.order_id ?? data.orderId;
       if (orderId == null) return;
 
       const numericId = Number(orderId);
       if (!Number.isFinite(numericId)) return;
       router.push(`/order/${numericId}`);
-    });
+    };
+
+    if (ready && isAuth) {
+      getLastNotificationResponseAsync()
+        .then((res) => {
+          if (res) handleResponse(res);
+        })
+        .catch(() => {});
+    }
+
+    const sub = addNotificationResponseListener(handleResponse);
     return () => sub.remove();
-  }, []);
+  }, [ready, isAuth]);
 
   // `ready` is forwarded so the splash only starts fading out once bootstrap is
   // done — otherwise a slow boot would leave an empty screen after the fade.
