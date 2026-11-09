@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
-  TouchableOpacity, Alert, Switch,
+  TouchableOpacity, Alert, Switch, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,7 +22,19 @@ import { isAppForeground } from '../../src/utils/appForeground';
 import { Icon, IconText, type IconName } from '../../src/components/Icon';
 import { IncomingOrderModal } from '../../src/components/IncomingOrderModal';
 import { AcceptButton } from '../../src/components/AcceptButton';
-import { stopAlert, playDriverStatusChime, registerPushToken } from '../../src/services/notifications';
+import {
+  stopAlert,
+  playDriverStatusChime,
+  registerPushToken,
+  playNewOrderAlert,
+  wasOrderAlerted,
+  newOrderBody,
+} from '../../src/services/notifications';
+import { addNotification } from '../../src/services/notificationHistory';
+import {
+  startOnlineBackgroundWatch,
+  stopOnlineBackgroundWatch,
+} from '../../src/services/backgroundLocation';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 import { formatDepartureTime } from '../../src/utils/departureTime';
@@ -81,6 +93,37 @@ export default function OrdersScreen() {
     to_city: string;
   } | null>(null);
   const [includeTransit, setIncludeTransit] = useState(true);
+  const knownOrderIdsRef = useRef<Set<number> | null>(null);
+
+  // Prominent disclosure modal for Google Play compliance before requesting location permission
+  const [disclosureVisible, setDisclosureVisible] = useState(false);
+  const disclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
+
+  const answerDisclosure = (accepted: boolean) => {
+    setDisclosureVisible(false);
+    const resolve = disclosureResolverRef.current;
+    disclosureResolverRef.current = null;
+    if (resolve) resolve(accepted);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (disclosureResolverRef.current) {
+        const resolve = disclosureResolverRef.current;
+        disclosureResolverRef.current = null;
+        resolve(false);
+      }
+    };
+  }, []);
+
+  const confirmBackgroundTracking = useCallback(
+    () =>
+      new Promise<boolean>((resolve) => {
+        disclosureResolverRef.current = resolve;
+        setDisclosureVisible(true);
+      }),
+    []
+  );
 
   useEffect(() => {
     incomingOrderRef.current = incomingOrder;
@@ -94,8 +137,20 @@ export default function OrdersScreen() {
     isOnlineRef.current = isOnline;
   }, [isOnline]);
 
+  useEffect(() => {
+    if (onlineEnabled) {
+      startOnlineBackgroundWatch({
+        labels: {
+          title: `Sarix Driver — ${t('home.online')}`,
+          body: t('home.noOrdersHint'),
+        },
+        confirm: confirmBackgroundTracking,
+      }).catch(() => {});
+    }
+  }, [onlineEnabled, t, confirmBackgroundTracking]);
+
   // `silent` keeps the polled refresh invisible. `refreshing` drives BOTH the
-  // RefreshControl spinner and the empty-state gate, so the 15s poll made the spinner
+  // RefreshControl spinner and the empty-state gate, so the poll made the spinner
   // appear unprompted and blanked "yangi zakaslar yo'q" four times a minute.
   const load = useCallback(async (silent = false) => {
     if (!silent) setRefreshing(true);
@@ -110,6 +165,41 @@ export default function OrdersScreen() {
       setReceiveCode(res.code || '');
       const avail = res.can_receive === false ? [] : res.orders;
       setOrders(avail);
+
+      const effectiveOnline =
+        res.is_online !== undefined ? res.is_online : isOnlineRef.current;
+      const isInitialBaseline = knownOrderIdsRef.current === null;
+      if (!knownOrderIdsRef.current) {
+        knownOrderIdsRef.current = new Set<number>();
+      }
+      const now = Date.now();
+      for (const o of avail) {
+        const alreadyKnown = knownOrderIdsRef.current.has(o.id);
+        knownOrderIdsRef.current.add(o.id);
+        const createdMs = o.created_at ? new Date(o.created_at).getTime() : 0;
+        const isFreshOrder = createdMs > 0 && now - createdMs < 90000;
+        if (
+          effectiveOnline &&
+          (!alreadyKnown || isFreshOrder) &&
+          (!isInitialBaseline || !isAppForeground() || isFreshOrder) &&
+          !wasOrderAlerted(o.id)
+        ) {
+          playNewOrderAlert({
+            from: o.from_city,
+            to: o.to_city,
+            price: o.price,
+            orderId: o.id,
+          });
+          addNotification({
+            title: t('notifications.newOrder'),
+            body: newOrderBody({ from: o.from_city, to: o.to_city, price: o.price }),
+            type: 'new_order',
+            data: { order_id: o.id },
+          });
+          setIncomingOrder(o);
+        }
+      }
+
       if (deepLinkOrderId && deepLinkOpenedRef.current !== String(deepLinkOrderId)) {
         const matched = avail.find((o) => String(o.id) === String(deepLinkOrderId));
         if (matched) {
@@ -138,16 +228,14 @@ export default function OrdersScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [setOnlineLocal, corridorFilter, includeTransit, deepLinkOrderId]);
+  }, [setOnlineLocal, corridorFilter, includeTransit, deepLinkOrderId, t]);
 
   useEffect(() => {
     load();
-    // Foreground-gated: a backgrounded app kept fetching the order list every 15s for as
-    // long as Android let the JS thread run. New orders arrive over the WebSocket
-    // (src/services/realtime.ts); this interval is only the fallback beneath it.
+    // Poll every 8s whenever the app is in foreground OR the driver is Online in background.
     const interval = setInterval(() => {
-      if (isAppForeground()) load(true);
-    }, 15000);
+      if (isAppForeground() || isOnlineRef.current) load(true);
+    }, 8000);
     return () => clearInterval(interval);
   }, [load]);
 
@@ -231,10 +319,18 @@ export default function OrdersScreen() {
     if (!val) {
       setOrders([]);
       setIncomingOrder(null);
+      stopOnlineBackgroundWatch().catch(() => {});
     } else {
       // Ensure push permission is granted and push token is registered on the server
       // so the driver receives loud new-order notifications even when the app is closed.
       registerPushToken(true).catch(() => {});
+      startOnlineBackgroundWatch({
+        labels: {
+          title: `Sarix Driver — ${t('home.online')}`,
+          body: t('home.noOrdersHint'),
+        },
+        confirm: confirmBackgroundTracking,
+      }).catch(() => {});
       load();
     }
     try {
@@ -894,6 +990,44 @@ export default function OrdersScreen() {
           setIncomingOrder(null);
         }}
       />
+
+      {/* Google Play Prominent Disclosure Modal before requesting runtime location permission */}
+      <Modal
+        visible={disclosureVisible}
+        transparent
+        animationType="none"
+        onRequestClose={() => answerDisclosure(false)}
+      >
+        <View style={styles.disclosureBackdrop}>
+          <View style={styles.disclosureCard}>
+            <View style={styles.disclosureIconWrap}>
+              <Icon name="location" size={32} color={colors.primary} />
+            </View>
+            <Text style={styles.disclosureTitle}>{t('tracking.disclosureTitle')}</Text>
+            <Text style={styles.disclosureBody}>{t('tracking.disclosureBody')}</Text>
+            <View style={styles.disclosureActions}>
+              <TouchableOpacity
+                style={styles.disclosureDenyBtn}
+                onPress={() => answerDisclosure(false)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={t('tracking.disclosureDeny')}
+              >
+                <Text style={styles.disclosureDenyText}>{t('tracking.disclosureDeny')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.disclosureAllowBtn}
+                onPress={() => answerDisclosure(true)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t('tracking.disclosureAllow')}
+              >
+                <Text style={styles.disclosureAllowText}>{t('tracking.disclosureAllow')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1285,6 +1419,78 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '700',
   },
   corridorChipTextActive: {
+    color: colors.textOnPrimary,
+  },
+  disclosureBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(14, 23, 48, 0.68)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  disclosureCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: colors.white,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    alignItems: 'center',
+    shadowColor: '#0E1730',
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  disclosureIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primary100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  disclosureTitle: {
+    ...typography.h3,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  disclosureBody: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: spacing.lg,
+  },
+  disclosureActions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: spacing.sm,
+  },
+  disclosureDenyBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disclosureDenyText: {
+    ...typography.bodyBold,
+    color: colors.textSecondary,
+  },
+  disclosureAllowBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disclosureAllowText: {
+    ...typography.bodyBold,
     color: colors.textOnPrimary,
   },
 });

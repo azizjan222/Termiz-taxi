@@ -22,7 +22,12 @@ import * as realtime from '../src/services/realtime';
 // Imported for its side effect too: the background-location task must be registered with
 // TaskManager during startup, in EVERY JS context — including the headless one the OS
 // creates after the app has been killed. Registering it from a screen would be too late.
-import { syncBackgroundLocationState } from '../src/services/backgroundLocation';
+import {
+  syncBackgroundLocationState,
+  startOnlineBackgroundWatch,
+  stopOnlineBackgroundWatch,
+  checkNewOrdersInBackground,
+} from '../src/services/backgroundLocation';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
 import { MaintenanceModal } from '../src/components/MaintenanceModal';
@@ -52,6 +57,7 @@ export default function RootLayout() {
   } = useAppUpdate(ready);
   const loadDriver = useDriverStore((s) => s.loadDriver);
   const isAuth = useDriverStore((s) => s.isAuthenticated);
+  const isOnline = useDriverStore((s) => s.isOnline);
   const driver = useDriverStore((s) => s.driver);
   const themeInit = useThemeStore((s) => s.init);
   const themeColors = useThemeStore((s) => s.colors);
@@ -146,17 +152,48 @@ export default function RootLayout() {
     }
   }, [isAuth, driver?.telegram_id]);
 
-  // Reconnect when the app returns to the foreground and the socket is not OPEN
-  // (the manager is idempotent, so a redundant call is a no-op).
+  // Keep the Android Foreground Service & background order watcher active whenever the
+  // driver is Online so new orders trigger loud notifications even when the app is
+  // minimized, another app is in front, or the phone screen is locked.
+  useEffect(() => {
+    if (!ready || !isAuth) return;
+    if (isOnline && driver?.is_verified) {
+      startOnlineBackgroundWatch({
+        labels: {
+          title: `Sarix Driver — ${i18n.t('home.online')}`,
+          body: i18n.t('home.noOrdersHint'),
+        },
+      }).catch(() => {});
+
+      const pollTimer = setInterval(() => {
+        const st = useDriverStore.getState();
+        if (!st.isAuthenticated || !st.isOnline) return;
+        if (!realtime.isOpen() && st.driver?.telegram_id) {
+          realtime.connect(st.driver.telegram_id);
+        }
+        checkNewOrdersInBackground().catch(() => {});
+      }, 8000);
+
+      return () => {
+        clearInterval(pollTimer);
+      };
+    } else if (!isOnline) {
+      stopOnlineBackgroundWatch().catch(() => {});
+    }
+  }, [ready, isAuth, isOnline, driver?.is_verified]);
+
+  // Reconnect when the app changes state (foreground or background while online)
+  // and the socket is not OPEN (the manager is idempotent, so a redundant call is a no-op).
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
-      if (
-        nextState === 'active' &&
-        useDriverStore.getState().isAuthenticated &&
-        !realtime.isOpen()
-      ) {
-        const id = useDriverStore.getState().driver?.telegram_id;
+      const st = useDriverStore.getState();
+      if (!st.isAuthenticated) return;
+      if ((nextState === 'active' || st.isOnline) && !realtime.isOpen()) {
+        const id = st.driver?.telegram_id;
         if (id) realtime.connect(id);
+      }
+      if (st.isOnline && st.driver?.is_verified) {
+        checkNewOrdersInBackground().catch(() => {});
       }
     });
     return () => sub.remove();

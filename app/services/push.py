@@ -97,6 +97,7 @@ async def send_push(
         "body": body,
         "sound": sound,
         "priority": priority,
+        "ttl": 300,
         "data": data or {},
     }
     # Always pin a HIGH/MAX-importance Android channel. Without a channelId (or with one
@@ -295,6 +296,7 @@ async def send_push_bulk_stats(
             "body": item["body"],
             "sound": sound,
             "priority": "high",
+            "ttl": 300,
             "channelId": item.get("channel_id", channel_id),
             "data": item.get("data") or {},
         }

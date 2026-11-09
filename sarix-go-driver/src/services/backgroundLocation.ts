@@ -221,6 +221,112 @@ async function selfStop(reason: string): Promise<void> {
   await stopBackgroundLocation();
 }
 
+export const ONLINE_WATCH_ID = 'online';
+const SEEN_ORDERS_KEY = 'sarixgo_driver_bg_seen_orders';
+let seenOrderIdsMemory: Set<number> | null = null;
+
+/**
+ * Poll available orders in the background (or foreground) and fire the loud local
+ * notification (`orders_v2` channel with `new_order.wav` + vibration) for any new order
+ * that hasn't been alerted yet.
+ */
+export async function checkNewOrdersInBackground(): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const driverApi = require('../api/driver');
+    if (typeof driverApi?.listAvailableOrders !== 'function') return;
+
+    const res = await driverApi.listAvailableOrders();
+    if (!res || !Array.isArray(res.orders)) return;
+
+    if (res.is_online === false) {
+      const state = await readState();
+      if (state?.orderId === ONLINE_WATCH_ID) {
+        await selfStop('driver-offline');
+      }
+      return;
+    }
+
+    if (res.can_receive === false) return;
+
+    if (!seenOrderIdsMemory) {
+      seenOrderIdsMemory = new Set<number>();
+      try {
+        const raw = await AsyncStorage.getItem(SEEN_ORDERS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            for (const id of parsed) {
+              if (typeof id === 'number') seenOrderIdsMemory.add(id);
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const notif = require('./notifications');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const notifHistory = require('./notificationHistory');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const realtimeStore = require('../store/realtime');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const i18nMod = require('../i18n');
+    const i18n = i18nMod?.default || i18nMod;
+
+    let changed = false;
+    const now = Date.now();
+
+    for (const order of res.orders) {
+      if (!order || typeof order.id !== 'number') continue;
+      const isSeen = seenOrderIdsMemory.has(order.id);
+      const createdMs = order.created_at ? new Date(order.created_at).getTime() : 0;
+      const isRecent = createdMs > 0 && now - createdMs < 120000;
+
+      if (!isSeen) {
+        seenOrderIdsMemory.add(order.id);
+        changed = true;
+      }
+
+      if ((!isSeen || isRecent) && typeof notif?.wasOrderAlerted === 'function') {
+        if (!notif.wasOrderAlerted(order.id)) {
+          await notif.playNewOrderAlert({
+            from: order.from_city,
+            to: order.to_city,
+            price: order.price,
+            orderId: order.id,
+          });
+          if (typeof notifHistory?.addNotification === 'function') {
+            notifHistory.addNotification({
+              title: typeof i18n?.t === 'function' ? i18n.t('notifications.newOrder') : 'Yangi zakas!',
+              body:
+                typeof notif?.newOrderBody === 'function'
+                  ? notif.newOrderBody({
+                      from: order.from_city,
+                      to: order.to_city,
+                      price: order.price,
+                    })
+                  : `${order.from_city} → ${order.to_city}`,
+              type: 'new_order',
+              data: { order_id: order.id },
+            });
+          }
+          if (typeof realtimeStore?.useRealtimeStore?.getState === 'function') {
+            realtimeStore.useRealtimeStore.getState().pushNewOrder(order);
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      const compact = Array.from(seenOrderIdsMemory).slice(-100);
+      await AsyncStorage.setItem(SEEN_ORDERS_KEY, JSON.stringify(compact)).catch(() => {});
+    }
+  } catch {
+    // Never let background order poll errors crash the location task
+  }
+}
+
 // Registered at module load, before anything can invoke it. `defineTask` must run during
 // startup in EVERY context, including the headless one the OS spins up after the app is
 // killed — which is why app/_layout.tsx imports this module for its side effect.
@@ -259,7 +365,9 @@ TaskManager.defineTask(DRIVER_LOCATION_TASK, async ({ data, error }) => {
     await selfStop('no-tracking-state');
     return;
   }
-  if (Date.now() - state.startedAt > MAX_TRACKING_MS) {
+  const isOnlineWatch = state.orderId === ONLINE_WATCH_ID;
+  const maxDuration = isOnlineWatch ? 12 * 60 * 60 * 1000 : MAX_TRACKING_MS;
+  if (Date.now() - state.startedAt > maxDuration) {
     await selfStop('max-duration');
     return;
   }
@@ -274,10 +382,12 @@ TaskManager.defineTask(DRIVER_LOCATION_TASK, async ({ data, error }) => {
     diagnostics.lastSentAt = now;
     await persistDiagnostics();
 
-    // The backend already computes the driver's active orders to decide which passengers to
-    // broadcast to, so it can tell us for free whether tracking still has a purpose. Older
-    // backends omit the field — `undefined` must mean "keep going", never "stop".
-    if (result && result.active_orders === 0) {
+    if (isOnlineWatch) {
+      await checkNewOrdersInBackground();
+    } else if (result && result.active_orders === 0) {
+      // The backend already computes the driver's active orders to decide which passengers to
+      // broadcast to, so it can tell us for free whether tracking still has a purpose. Older
+      // backends omit the field — `undefined` must mean "keep going", never "stop".
       await selfStop('no-active-orders');
     }
   } catch (e: any) {
@@ -460,6 +570,99 @@ export async function stopBackgroundLocation(): Promise<void> {
     await clearState();
     try {
       // Guarded: stopping a task that was never started throws on Android.
+      if (await osTaskRunning()) {
+        await Location.stopLocationUpdatesAsync(DRIVER_LOCATION_TASK);
+      }
+    } catch {}
+    await persistDiagnostics();
+    await syncFlag();
+  });
+}
+
+/**
+ * Start the Android Foreground Service for an ONLINE driver waiting for new orders.
+ *
+ * Uses `distanceInterval: 0` so the OS task continues firing every ~10s even while the
+ * driver's car is parked/stationary, keeping the JS runtime and WebSocket alive in the
+ * background and polling `checkNewOrdersInBackground()` for new orders.
+ *
+ * If `confirm` is omitted, only starts if foreground location permission is already granted
+ * (never triggers an OS permission prompt without the Google Play prominent disclosure).
+ */
+export async function startOnlineBackgroundWatch(options: {
+  labels: BackgroundLocationLabels;
+  confirm?: () => Promise<boolean>;
+}): Promise<boolean> {
+  const { labels, confirm } = options;
+  return serialize(async () => {
+    try {
+      const existing = await readState();
+      const running = await osTaskRunning();
+      // If already tracking an active trip or already watching in online mode, keep it running.
+      if (running && existing) {
+        return syncFlag();
+      }
+
+      let hasPermission = false;
+      if (confirm) {
+        hasPermission = await ensureLocationPermissionWithDisclosure(confirm, ONLINE_WATCH_ID);
+      } else {
+        const fg = await Location.getForegroundPermissionsAsync();
+        hasPermission = fg.status === 'granted';
+      }
+      if (!hasPermission) {
+        return syncFlag();
+      }
+
+      await writeState({
+        orderId: ONLINE_WATCH_ID,
+        startedAt: existing?.orderId === ONLINE_WATCH_ID ? existing.startedAt : Date.now(),
+      });
+
+      diagnostics = emptyDiagnostics();
+      lastSentAt = 0;
+      await persistDiagnostics();
+
+      if (!(await osTaskRunning())) {
+        try {
+          await Location.startLocationUpdatesAsync(DRIVER_LOCATION_TASK, {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: BACKEND_MIN_INTERVAL_MS,
+            distanceInterval: 0,
+            pausesUpdatesAutomatically: false,
+            activityType: Location.ActivityType.AutomotiveNavigation,
+            showsBackgroundLocationIndicator: true,
+            foregroundService: {
+              notificationTitle: labels.title,
+              notificationBody: labels.body,
+              notificationColor: '#2E6BE0',
+              killServiceOnDestroy: false,
+            },
+          });
+        } catch {}
+      }
+      checkNewOrdersInBackground().catch(() => {});
+      return syncFlag();
+    } catch {
+      return syncFlag();
+    }
+  });
+}
+
+/**
+ * Stop the online-mode background watcher when the driver goes Offline.
+ * Does not interrupt an active-order tracking session if one is in progress.
+ */
+export async function stopOnlineBackgroundWatch(): Promise<void> {
+  await serialize(async () => {
+    const existing = await readState();
+    if (existing && existing.orderId !== ONLINE_WATCH_ID) {
+      return;
+    }
+    declinedOrderId = null;
+    declinedInSession = false;
+    await clearState();
+    try {
       if (await osTaskRunning()) {
         await Location.stopLocationUpdatesAsync(DRIVER_LOCATION_TASK);
       }

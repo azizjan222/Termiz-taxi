@@ -632,20 +632,20 @@ async def notify_group_new_order(bot, order) -> None:
 
 
 async def notify_online_drivers_telegram_order(bot, order, drivers: list) -> None:
-    """Send direct Telegram notification to online drivers who do not have a mobile push_token yet.
+    """Send direct Telegram notification to all online drivers with a telegram_id.
 
-    Drivers with a valid push_token already receive the native mobile push notification
-    (with new_order.wav sound) even when the app is closed. This fallback ensures that
-    online drivers whose device hasn't registered a push_token yet still get alerted
-    immediately and can tap 'Ilova orqali qabul qilish' to open the order in Sarix Driver.
-    Sent messages are tracked in _save_group_order_messages so they are automatically
-    deleted when the order is accepted, cancelled, or expires.
+    Even when a driver has a mobile push_token stored in the database, OEM battery savers,
+    background restrictions, or FCM credential mismatches can prevent remote push delivery
+    when the app is closed. Sending the direct Telegram alert to every online driver
+    guarantees instant background notification, and tapping 'Ilova orqali qabul qilish'
+    deep-links straight into Sarix Driver. Sent messages are tracked in
+    _save_group_order_messages so they are automatically deleted when the order is
+    accepted, cancelled, or expires.
     """
     targets = [
         d for d in drivers
         if getattr(d, "is_online", False)
         and getattr(d, "telegram_id", None)
-        and not getattr(d, "push_token", None)
     ]
     if not targets:
         return
