@@ -1,12 +1,15 @@
 /**
  * Location service.
  * Wraps `expo-location` behind a small, typed, UI-agnostic API that requests
- * permission, checks whether device location services are enabled, and acquires
- * the device's current coordinates, returning a discriminated `DetectResult`.
+ * permission, ensures device location services + network provider are enabled,
+ * and acquires the device's current coordinates using a multi-tier strategy
+ * (last-known seed -> fast Balanced/High fused fix -> continuous High/BestForNavigation
+ * refinement), returning a discriminated `DetectResult`.
  *
  * The service never throws: every path resolves to a `DetectResult` variant so
  * callers can branch on `status` without try/catch.
  */
+import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 
 /** Successful acquisition of the device coordinates. */
@@ -30,173 +33,206 @@ export type DetectResult = DetectSuccess | DetectError;
 
 /** Options controlling a detection attempt. */
 export interface DetectOptions {
-  /** Maximum time to wait for a fix, in milliseconds. Defaults to 5000. */
+  /** Maximum time to wait for a fix, in milliseconds. Defaults to 8000. */
   timeoutMs?: number;
   /**
-   * Called every time a MORE ACCURATE fix arrives before the detection settles.
-   * Lets the UI move the pin / re-resolve the address progressively as the GPS
-   * chip warms up (the first fix is often coarse, later fixes converge to a tight
-   * radius). Without this, a cold start would block for the whole timeout and then
-   * apply a single — possibly coarse — fix, which is why the location used to look
-   * "wrong" on the first try and only correct on a second attempt.
+   * Called every time a fix arrives or improves before the detection settles.
+   * Lets the UI move the pin / re-resolve the address immediately on the first
+   * fused fix and refine it progressively as the GPS chip converges.
    */
   onUpdate?: (fix: DetectSuccess) => void;
 }
 
 /** Default Detection_Timeout, in milliseconds. */
-const DEFAULT_TIMEOUT_MS = 5000;
+const DEFAULT_TIMEOUT_MS = 8000;
 
 /**
- * Target horizontal accuracy (meters). Once a fix at or below this radius arrives we
- * resolve immediately; otherwise we keep the most accurate fix seen until the timeout.
- * 5 m gives an extra-tight, house/door-level pin matching the high precision the user
- * expects (used for both taxi and parcel/pochta order entry).
+ * Target horizontal accuracy (meters). Once a live fix at or below this radius
+ * arrives we resolve immediately; otherwise once we have a usable live fix (<= 150m)
+ * we allow a short 2s refinement window and then resolve with the best fix seen.
  */
-const TARGET_ACCURACY_M = 5;
+const TARGET_ACCURACY_M = 15;
 
 /**
- * Maximum age (ms) for a fix to count as "fresh". A cold-start `getCurrentPositionAsync`
- * on Android often returns the device's LAST-KNOWN location immediately — an old, cached
- * position (from wherever the phone last had a fix) that still reports a small accuracy.
- * Early-resolving on that stale reading was the root cause of the "coarse/far pin on the
- * first try, correct only on the second try" bug: the second try happened after the GPS
- * had warmed up. We therefore ignore stale readings for both the early-finish decision
- * and the on-screen pin, so the first detection converges to a real, live fix.
+ * How long to wait for tighter satellite fixes after a usable fused/network fix
+ * (<= 150m accuracy) has already been delivered to the UI.
  */
-const FRESH_MS = 10000;
+const REFINEMENT_WINDOW_MS = 2000;
 
-/**
- * Detect the device's current location.
- *
- * Performs the full permission -> services-enabled -> bounded acquisition flow:
- *  1. Reads the current foreground permission. If it is already denied and the OS
- *     will not allow re-prompting (`canAskAgain === false`), short-circuits to
- *     `permission-denied` without issuing a new request (R2.5).
- *  2. When the permission is not yet granted, requests it; if the request does not
- *     return `granted`, resolves to `permission-denied` (R2.1, R2.3). An already
- *     granted permission proceeds without re-requesting (R2.4).
- *  3. Checks whether device location services are enabled; if not, resolves to
- *     `services-disabled` (R3.5).
- *  4. Acquires a single current position with `High` accuracy (~5 m target radius), raced
- *     against a `timeoutMs` timer (default 5000). The first fix resolves to `success`
- *     (R3.1, R3.2); the timer winning resolves to `timeout` (R3.4, R7.5).
- *
- * The whole flow is wrapped in try/catch so any thrown error resolves to
- * `{ status: 'error', message }` and the service never throws (R7.2).
- *
- * @param opts Optional detection options. `timeoutMs` defaults to 5000.
- * @returns A `DetectResult` discriminated union describing the outcome.
- */
+/** Maximum age (ms) for `getLastKnownPositionAsync` to be used as an initial seed. */
+const MAX_LAST_KNOWN_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
 export async function detectLocation(opts?: DetectOptions): Promise<DetectResult> {
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let refineTimer: ReturnType<typeof setTimeout> | undefined;
 
   try {
-    // 1. Read the current permission (R2.5).
+    // 1. Check and request foreground location permission.
     const current = await Location.getForegroundPermissionsAsync();
     if (current.status !== 'granted') {
-      // Already denied and the OS will not allow re-prompting: do not re-request.
-      if (current.status === 'denied' && current.canAskAgain === false) {
-        return { status: 'permission-denied' };
-      }
-      // 2. Undetermined (or still requestable): request permission (R2.1, R2.3).
       const requested = await Location.requestForegroundPermissionsAsync();
       if (requested.status !== 'granted') {
         return { status: 'permission-denied' };
       }
     }
-    // Otherwise the permission is already granted: proceed without re-requesting (R2.4).
 
-    // 3. Ensure device location services are enabled (R3.5).
-    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    // 2. On Android, prompt Google Play Services Location Accuracy (Wi-Fi + Cell + GPS)
+    // if network location or GPS is currently disabled.
+    if (Platform.OS === 'android') {
+      await Location.enableNetworkProviderAsync().catch(() => {});
+    }
+
+    // 3. Ensure device location services are enabled.
+    let servicesEnabled = await Location.hasServicesEnabledAsync();
+    if (!servicesEnabled && Platform.OS === 'android') {
+      await Location.enableNetworkProviderAsync().catch(() => {});
+      servicesEnabled = await Location.hasServicesEnabledAsync();
+    }
     if (!servicesEnabled) {
       return { status: 'services-disabled' };
     }
 
-    // 4. Acquire the most accurate position fix within the timeout.
-    // Phone GPS reports improve as the chip warms up: the first fix is often a coarse
-    // (~100 m+) network/last-known position, then it converges to a tight (~5-20 m)
-    // satellite fix. To match Yandex-like precision we OPEN A CONTINUOUS WATCH at the
-    // highest accuracy and keep the BEST (smallest-accuracy) reading. We resolve early
-    // as soon as a fix at or below TARGET_ACCURACY_M arrives; otherwise we return the
-    // best reading collected by the time the timeout elapses (R3.1, R3.2, R3.4, R7.5).
+    // 4. Multi-tier acquisition:
+    //    - Tier A: `getLastKnownPositionAsync` for an instant (<50ms) initial pin jump.
+    //    - Tier B: `getCurrentPositionAsync(Balanced)` + `getCurrentPositionAsync(High)`
+    //      so indoor users on Wi-Fi / 4G get a fast fused fix even when roof blocks GPS.
+    //    - Tier C: `watchPositionAsync(High)` + `watchPositionAsync(BestForNavigation)`
+    //      to converge to street/house-level accuracy.
     const best = await new Promise<DetectSuccess | 'timeout'>((resolve) => {
-      // Best FRESH (live) fix — the only kind we move the pin to / early-finish on.
-      let bestFresh: DetectSuccess | null = null;
-      // Best fix regardless of freshness — a last-resort fallback for the timeout so
-      // we still return SOMETHING if the GPS never produced a live fix in the window.
-      let bestAny: DetectSuccess | null = null;
-      let watcher: Location.LocationSubscription | null = null;
+      let bestLive: DetectSuccess | null = null;
+      let bestSeed: DetectSuccess | null = null;
+      const watchers: Location.LocationSubscription[] = [];
       let settled = false;
 
       const finish = (value: DetectSuccess | 'timeout') => {
         if (settled) return;
         settled = true;
-        watcher?.remove();
-        watcher = null;
+        if (refineTimer !== undefined) {
+          clearTimeout(refineTimer);
+          refineTimer = undefined;
+        }
+        while (watchers.length > 0) {
+          const sub = watchers.pop();
+          try {
+            sub?.remove();
+          } catch {}
+        }
         resolve(value);
       };
 
-      // Record a fix. Stale (cached last-known) readings update only the fallback and
-      // are NEVER surfaced to the UI, so the pin can't jump to an old, far-away
-      // position. A fresh reading that is the most accurate one seen updates the pin
-      // via onUpdate. Returns true when THIS fix is fresh AND tight enough to stop early.
-      const consider = (pos: Location.LocationObject): boolean => {
-        const fix: DetectSuccess = {
+      const toFix = (pos: Location.LocationObject | null | undefined): DetectSuccess | null => {
+        if (!pos?.coords) return null;
+        const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        return {
           status: 'success',
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-          accuracy: pos.coords.accuracy ?? null,
+          lat,
+          lon,
+          accuracy: accuracy != null && Number.isFinite(accuracy) ? accuracy : null,
         };
-        const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
-        const ts = pos.timestamp ?? Date.now();
-        const fresh = Date.now() - ts <= FRESH_MS;
+      };
 
-        if (!bestAny || acc < (bestAny.accuracy ?? Number.POSITIVE_INFINITY)) {
-          bestAny = fix;
-        }
-        if (!fresh) return false;
+      const recordLive = (pos: Location.LocationObject | null | undefined) => {
+        if (settled) return;
+        const fix = toFix(pos);
+        if (!fix) return;
 
-        if (!bestFresh || acc < (bestFresh.accuracy ?? Number.POSITIVE_INFINITY)) {
-          bestFresh = fix;
-          // Surface only fresh improvements so the pin + address converge on a real,
-          // live position (ignore listener errors).
+        const acc = fix.accuracy != null && fix.accuracy > 0 ? fix.accuracy : 100;
+        const prevAcc =
+          bestLive?.accuracy != null && bestLive.accuracy > 0
+            ? bestLive.accuracy
+            : Number.POSITIVE_INFINITY;
+
+        // Always accept the first live fix (replacing any cached last-known seed),
+        // or any subsequent live fix that improves accuracy (or is already <= TARGET_ACCURACY_M).
+        if (!bestLive || acc < prevAcc || acc <= TARGET_ACCURACY_M) {
+          bestLive = fix;
           try {
             opts?.onUpdate?.(fix);
           } catch {}
         }
-        return acc <= TARGET_ACCURACY_M;
+
+        // Tight fix achieved -> resolve immediately.
+        if (acc <= TARGET_ACCURACY_M) {
+          finish(bestLive);
+          return;
+        }
+
+        // Once we have a usable live fix (<= 200m, typical indoor fused Wi-Fi/4G accuracy),
+        // start a short refinement window so we don't block the UI for the full timeout
+        // waiting for outdoor-only 5m satellite lock.
+        if (acc <= 200 && refineTimer === undefined) {
+          refineTimer = setTimeout(() => {
+            if (bestLive) finish(bestLive);
+          }, REFINEMENT_WINDOW_MS);
+        }
       };
 
-      // On timeout prefer the best fresh fix; fall back to any fix, else report timeout.
-      timer = setTimeout(() => finish(bestFresh ?? bestAny ?? 'timeout'), timeoutMs);
+      timer = setTimeout(() => {
+        finish(bestLive ?? bestSeed ?? 'timeout');
+      }, timeoutMs);
 
-      // Seed quickly with a single current-position read so we always have something
-      // even if the watch is slow to emit, then let the watch refine it. A stale seed
-      // will NOT early-finish (consider returns false for stale), so a cold start keeps
-      // watching until a live fix arrives instead of locking onto last-known.
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest })
+      // Tier A: Instant last-known position seed.
+      Location.getLastKnownPositionAsync({
+        maxAge: MAX_LAST_KNOWN_AGE_MS,
+        requiredAccuracy: 500,
+      })
         .then((pos) => {
-          if (consider(pos) && bestFresh) finish(bestFresh);
+          if (settled) return;
+          const fix = toFix(pos);
+          if (!fix) return;
+          bestSeed = fix;
+          if (!bestLive) {
+            try {
+              opts?.onUpdate?.(fix);
+            } catch {}
+          }
         })
         .catch(() => {});
 
+      // Tier B1: Fast Fused Location (Wi-Fi + Cell + GPS, works reliably indoors).
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+        .then((pos) => recordLive(pos))
+        .catch(() => {});
+
+      // Tier B2: High-accuracy current position.
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
+        .then((pos) => recordLive(pos))
+        .catch(() => {});
+
+      // Tier C1: Continuous High-accuracy watcher.
+      Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 500,
+          distanceInterval: 0,
+        },
+        (pos) => recordLive(pos),
+      )
+        .then((sub) => {
+          if (settled) {
+            sub.remove();
+          } else {
+            watchers.push(sub);
+          }
+        })
+        .catch(() => {});
+
+      // Tier C2: Continuous BestForNavigation watcher for outdoor street-level lock.
       Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
           timeInterval: 500,
           distanceInterval: 0,
         },
-        (pos) => {
-          // Fresh + good enough -> stop early so the UI doesn't wait the full timeout.
-          if (consider(pos) && bestFresh) finish(bestFresh);
-        },
+        (pos) => recordLive(pos),
       )
         .then((sub) => {
           if (settled) {
             sub.remove();
           } else {
-            watcher = sub;
+            watchers.push(sub);
           }
         })
         .catch(() => {});
@@ -207,13 +243,14 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
     }
     return best;
   } catch (err) {
-    // Any thrown error collapses into the `error` variant (R7.2).
     const message = err instanceof Error ? err.message : String(err);
     return { status: 'error', message };
   } finally {
-    // Clear the timeout timer to avoid leaks regardless of which branch won.
     if (timer !== undefined) {
       clearTimeout(timer);
+    }
+    if (refineTimer !== undefined) {
+      clearTimeout(refineTimer);
     }
   }
 }

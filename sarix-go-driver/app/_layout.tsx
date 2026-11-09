@@ -26,8 +26,7 @@ import { syncBackgroundLocationState } from '../src/services/backgroundLocation'
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
 import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
 import { MaintenanceModal } from '../src/components/MaintenanceModal';
-import { getAppConfig, isAppsMaintenance, compareVersions } from '../src/api/appConfig';
-import Constants from 'expo-constants';
+import { useAppUpdate } from '../src/hooks/useAppUpdate';
 import { CrashScreen } from '../src/components/CrashScreen';
 
 /**
@@ -44,9 +43,13 @@ export { CrashScreen as ErrorBoundary };
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
-  const [forceUpdate, setForceUpdate] = useState<{ show: boolean; url: string }>({ show: false, url: '' });
-  // Server-declared maintenance for the mobile apps (not the Telegram bot — separate switch).
-  const [maintenance, setMaintenance] = useState(false);
+  const {
+    forceUpdate,
+    maintenance,
+    checkAppUpdate,
+    recheckForceUpdate,
+    recheckMaintenance,
+  } = useAppUpdate(ready);
   const loadDriver = useDriverStore((s) => s.loadDriver);
   const isAuth = useDriverStore((s) => s.isAuthenticated);
   const driver = useDriverStore((s) => s.driver);
@@ -65,6 +68,7 @@ export default function RootLayout() {
       // order screen's own watcher would double-report every fix. Cheap, and it closes the
       // gap before any order screen can mount.
       await syncBackgroundLocationState().catch(() => false);
+      await checkAppUpdate();
       setReady(true);
     })();
     // One-time bootstrap (i18n/theme/driver); store actions are stable.
@@ -113,32 +117,6 @@ export default function RootLayout() {
     });
     return () => sub.remove();
   }, [isAuth, ready]);
-
-  // Operator-declared maintenance for the MOBILE APPS.
-  //
-  // The admin panel has two independent switches; this is the apps one, so a paused Telegram
-  // bot does not blank out the driver app. Re-checked when the app returns to the foreground
-  // so it clears itself once the deployment finishes — nobody notifies the app that
-  // maintenance ended, and without this a driver would have to force-quit to find out.
-  useEffect(() => {
-    if (!ready) return;
-    const checkConfig = () => {
-      const currentVersion = Constants.expoConfig?.version || '1.0.0';
-      getAppConfig().then((cfg) => {
-        setMaintenance(Boolean(cfg.maintenance_mode));
-        if (compareVersions(currentVersion, cfg.min_version) < 0) {
-          setForceUpdate({ show: true, url: cfg.play_url });
-        } else {
-          setForceUpdate({ show: false, url: '' });
-        }
-      });
-    };
-    checkConfig();
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') checkConfig();
-    });
-    return () => sub.remove();
-  }, [ready]);
 
   // Session expiry: the server rejected our token (HTTP 401, or the realtime socket's
   // "unauthorized" frame). Sign the driver out locally and send them to login.
@@ -265,14 +243,14 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style={isDark ? 'light' : 'dark'} />
-        <ForceUpdateModal visible={forceUpdate.show} updateUrl={forceUpdate.url} />
+        <ForceUpdateModal
+          visible={forceUpdate.show}
+          updateUrl={forceUpdate.url}
+          onRetry={recheckForceUpdate}
+        />
         <MaintenanceModal
-          visible={maintenance}
-          onRetry={async () => {
-            const down = await isAppsMaintenance();
-            setMaintenance(down);
-            return !down;
-          }}
+          visible={maintenance && !forceUpdate.show}
+          onRetry={recheckMaintenance}
         />
         <Stack
           screenOptions={{

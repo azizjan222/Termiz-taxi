@@ -39,6 +39,10 @@ export interface YandexMapHandle {
    * HTTP Geocoder key. Resolves to the address string, or null if unavailable.
    */
   reverseGeocode: (lat: number, lon: number) => Promise<string | null>;
+  /**
+   * Fallback geolocation using WebView HTML5 navigator.geolocation / ymaps.geolocation.
+   */
+  geolocate: () => Promise<{ lat: number; lon: number } | null>;
 }
 
 // JavaScript Maps API key (for the WebView map). This is DIFFERENT from the Geocoder key.
@@ -65,13 +69,6 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   // Build the map HTML exactly ONCE, capturing the props as they are at mount.
-  // The map label language and the in-page diagnostics are therefore fixed for the life of
-  // this instance; switching language re-labels the map the next time a map screen opens,
-  // which is the right trade-off against reloading (and resetting) a live map.
-  // Regenerating it on every render would change the WebView `source`, forcing a full
-  // page reload that throws away the user's current zoom/pan — that is the "map jumps
-  // back to its previous state when zooming in" bug. All later updates (center, zoom,
-  // markers, route) are applied imperatively via sendCommand instead of re-rendering.
   const htmlRef = useRef<string | null>(null);
   if (htmlRef.current === null) {
     htmlRef.current = generateMapHtml({
@@ -81,8 +78,6 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
       initialZoom: props.initialZoom ?? DEFAULT_ZOOM,
       markers: props.markers ?? [],
       isDark,
-      // Diagnostics rendered inside the WebView, localized here because the page has no
-      // access to i18n.
       msgApiFailed: t('map.apiLoadFailed'),
       msgInitFailed: t('map.initFailed'),
       msgApiTimeout: t('map.apiTimeout'),
@@ -90,8 +85,6 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
   }
   const html = htmlRef.current;
 
-  // Keep the WebView `source` object identity stable so the map is never reloaded
-  // after the initial mount.
   const source = useMemo(() => ({ html, baseUrl: 'https://yandex.com/' }), [html]);
 
   const sendCommand = (cmd: object) => {
@@ -105,11 +98,18 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
     Map<number, { resolve: (v: string | null) => void; timer: ReturnType<typeof setTimeout> }>
   >(new Map());
 
-  // Resolve and clear anything still pending when the map goes away. Without this every
-  // in-flight geocode left a live 8s timer whose promise later resolved into a consumer
-  // that had already unmounted — order-entry's `finally` then ran setResolving(false) on a
-  // dead screen, which happens on almost every exit since the address resolves on each
-  // camera move.
+  // Pending in-map geolocate requests.
+  const geolocateReqId = useRef(0);
+  const pendingGeolocates = useRef<
+    Map<
+      number,
+      {
+        resolve: (v: { lat: number; lon: number } | null) => void;
+        timer: ReturnType<typeof setTimeout>;
+      }
+    >
+  >(new Map());
+
   useEffect(
     () => () => {
       pendingGeocodes.current.forEach(({ resolve, timer }) => {
@@ -117,6 +117,12 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
         resolve(null);
       });
       pendingGeocodes.current.clear();
+
+      pendingGeolocates.current.forEach(({ resolve, timer }) => {
+        clearTimeout(timer);
+        resolve(null);
+      });
+      pendingGeolocates.current.clear();
     },
     []
   );
@@ -135,15 +141,18 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
         pendingGeocodes.current.set(reqId, { resolve, timer });
         sendCommand({ type: 'geocode', reqId, lat, lon });
       }),
+    geolocate: () =>
+      new Promise<{ lat: number; lon: number } | null>((resolve) => {
+        const reqId = ++geolocateReqId.current;
+        const timer = setTimeout(() => {
+          pendingGeolocates.current.delete(reqId);
+          resolve(null);
+        }, 6000);
+        pendingGeolocates.current.set(reqId, { resolve, timer });
+        sendCommand({ type: 'geolocate', reqId });
+      }),
   }));
 
-  // Update markers when they actually CHANGE.
-  //
-  // The dep used to be the array identity, and callers build a fresh literal on every
-  // render — so during live driver tracking every WebSocket position frame (and every
-  // unrelated re-render) re-injected setMarkers, which removes and rebuilds every
-  // placemark in the page. The pins visibly blinked while the passenger watched the car
-  // move. Comparing the serialized content makes this fire only on a real change.
   const markersKey = props.markers ? JSON.stringify(props.markers) : '';
   useEffect(() => {
     if (!markersKey) return;
@@ -180,6 +189,19 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
           }
           break;
         }
+        case 'geolocateResult': {
+          const p = pendingGeolocates.current.get(data.reqId);
+          if (p) {
+            clearTimeout(p.timer);
+            pendingGeolocates.current.delete(data.reqId);
+            if (Number.isFinite(data.lat) && Number.isFinite(data.lon)) {
+              p.resolve({ lat: Number(data.lat), lon: Number(data.lon) });
+            } else {
+              p.resolve(null);
+            }
+          }
+          break;
+        }
       }
     } catch {}
   };
@@ -188,14 +210,12 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
     <View style={[styles.container, props.style]}>
       <WebView
         ref={webViewRef}
-        // A real https baseUrl gives the page a proper origin/referrer. Without it the
-        // page origin is about:blank and the Yandex Maps script (and referrer-restricted
-        // API keys) can silently fail to load -> blank map.
         source={source}
         style={styles.webview}
         onMessage={handleMessage}
         javaScriptEnabled
         domStorageEnabled
+        geolocationEnabled
         originWhitelist={['*']}
         mixedContentMode="always"
         androidLayerType="hardware"
@@ -210,7 +230,6 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
           setErrorMsg(e.nativeEvent?.description || t('map.webviewError'));
         }}
         onHttpError={(e) => {
-          // Don't override a successful map load; only surface a hard failure.
           if (status !== 'ready') {
             setStatus('error');
             setErrorMsg(t('map.networkError', { code: e.nativeEvent?.statusCode ?? '?' }));
@@ -274,7 +293,6 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     apiKey, initialLat, initialLon, initialZoom, markers, isDark,
     msgApiFailed, msgInitFailed, msgApiTimeout,
   } = opts;
-  // Embedded in a JS string literal inside the page -> escape quotes.
   const js = (v: string) => JSON.stringify(v);
   const apiUrl = apiKey
     ? `https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=${mapLang()}`
@@ -314,6 +332,8 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   var map;
   var markerObjects = {};
   var routeLine = null;
+  var pendingCenter = null;
+  var programmaticMoveCount = 0;
 
   function send(data) {
     if (window.ReactNativeWebView) {
@@ -326,26 +346,39 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   };
 
   function init() {
+    var startLat = pendingCenter ? pendingCenter.lat : ${initialLat};
+    var startLon = pendingCenter ? pendingCenter.lon : ${initialLon};
+    var startZoom = (pendingCenter && typeof pendingCenter.zoom === 'number') ? pendingCenter.zoom : ${initialZoom};
+    pendingCenter = null;
+
+    programmaticMoveCount++;
     map = new ymaps.Map('map', {
-      center: [${initialLat}, ${initialLon}],
-      zoom: ${initialZoom},
+      center: [startLat, startLon],
+      zoom: startZoom,
       controls: ['zoomControl']
     }, {
       suppressMapOpenBlock: true
     });
+    setTimeout(function() {
+      programmaticMoveCount = Math.max(0, programmaticMoveCount - 1);
+    }, 250);
 
     map.events.add('click', function(e) {
       var coords = e.get('coords');
       send({ type: 'mapPress', lat: coords[0], lon: coords[1] });
     });
 
-    map.events.add('boundschange', function() {
-      var center = map.getCenter();
+    map.events.add('boundschange', function(e) {
+      if (programmaticMoveCount > 0) {
+        return;
+      }
+      var center = (e && e.get && e.get('newCenter')) || map.getCenter();
+      var zoom = (e && e.get && e.get('newZoom')) || map.getZoom();
       send({
         type: 'cameraMove',
         lat: center[0],
         lon: center[1],
-        zoom: map.getZoom()
+        zoom: zoom
       });
     });
 
@@ -354,7 +387,7 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   }
 
   function setMarkers(markers) {
-    // Clear old
+    if (!map) return;
     for (var key in markerObjects) {
       map.geoObjects.remove(markerObjects[key]);
     }
@@ -378,11 +411,39 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   }
 
   function setCenter(lat, lon, zoom) {
-    map.setCenter([lat, lon], zoom || map.getZoom(), { duration: 500 });
+    if (!map) {
+      pendingCenter = { lat: lat, lon: lon, zoom: zoom };
+      return;
+    }
+    var targetZoom = typeof zoom === 'number' ? zoom : map.getZoom();
+    programmaticMoveCount++;
+    try {
+      var p = map.setCenter([lat, lon], targetZoom, { checkZoomRange: true });
+      if (p && typeof p.then === 'function') {
+        p.then(
+          function() {
+            setTimeout(function() {
+              programmaticMoveCount = Math.max(0, programmaticMoveCount - 1);
+            }, 80);
+          },
+          function() {
+            setTimeout(function() {
+              programmaticMoveCount = Math.max(0, programmaticMoveCount - 1);
+            }, 80);
+          }
+        );
+      } else {
+        setTimeout(function() {
+          programmaticMoveCount = Math.max(0, programmaticMoveCount - 1);
+        }, 120);
+      }
+    } catch (e) {
+      programmaticMoveCount = Math.max(0, programmaticMoveCount - 1);
+    }
   }
 
   function fitBounds(markers) {
-    if (!markers || markers.length === 0) return;
+    if (!map || !markers || markers.length === 0) return;
     var bounds = markers.map(function(m) { return [m.lat, m.lon]; });
     map.setBounds(
       [
@@ -396,6 +457,7 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   }
 
   function drawRoute(from, to) {
+    if (!map) return;
     if (routeLine) {
       map.geoObjects.remove(routeLine);
     }
@@ -427,6 +489,56 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     }
   }
 
+  // WebView geolocation fallback using HTML5 navigator.geolocation or ymaps.geolocation.
+  function geolocate(reqId) {
+    var done = false;
+    function finish(lat, lon) {
+      if (done) return;
+      done = true;
+      send({ type: 'geolocateResult', reqId: reqId, lat: lat, lon: lon });
+    }
+
+    if (navigator && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        function(pos) {
+          if (pos && pos.coords) {
+            finish(pos.coords.latitude, pos.coords.longitude);
+          }
+        },
+        function() {
+          if (typeof ymaps !== 'undefined' && ymaps.geolocation) {
+            ymaps.geolocation.get({ provider: 'auto' }).then(function(res) {
+              var coords = res.geoObjects.position;
+              if (coords && coords.length === 2) {
+                finish(coords[0], coords[1]);
+              } else {
+                finish(null, null);
+              }
+            }, function() { finish(null, null); });
+          } else {
+            finish(null, null);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 4500, maximumAge: 60000 }
+      );
+      return;
+    }
+
+    if (typeof ymaps !== 'undefined' && ymaps.geolocation) {
+      ymaps.geolocation.get({ provider: 'auto' }).then(function(res) {
+        var coords = res.geoObjects.position;
+        if (coords && coords.length === 2) {
+          finish(coords[0], coords[1]);
+        } else {
+          finish(null, null);
+        }
+      }, function() { finish(null, null); });
+      return;
+    }
+
+    finish(null, null);
+  }
+
   window.handleCommand = function(cmd) {
     switch (cmd.type) {
       case 'setCenter': setCenter(cmd.lat, cmd.lon, cmd.zoom); break;
@@ -434,10 +546,10 @@ function generateMapHtml(opts: MapHtmlOptions): string {
       case 'fitBounds': fitBounds(cmd.markers || []); break;
       case 'drawRoute': drawRoute(cmd.from, cmd.to); break;
       case 'geocode': reverseGeocode(cmd.reqId, cmd.lat, cmd.lon); break;
+      case 'geolocate': geolocate(cmd.reqId); break;
     }
   };
 
-  // Wait for the Yandex API; if it never loads, report an error instead of a blank map.
   (function waitForYmaps(tries) {
     if (typeof ymaps !== 'undefined' && ymaps.ready) {
       try {
@@ -452,7 +564,7 @@ function generateMapHtml(opts: MapHtmlOptions): string {
       return;
     }
     setTimeout(function() { waitForYmaps(tries - 1); }, 300);
-  })(40); // ~12s
+  })(40);
 </script>
 </body>
 </html>`;

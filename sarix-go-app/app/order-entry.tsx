@@ -10,6 +10,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -204,6 +205,7 @@ export default function OrderEntryScreen() {
   // apply the close-up DETECT_ZOOM on the FIRST fix; later refinements just nudge the
   // center so the map doesn't keep re-animating/zooming under the user.
   const zoomedRef = useRef(false);
+  const detectingRef = useRef(true);
 
   const resolveAddress = useCallback((lat: number, lon: number) => {
     lastCoordsRef.current = { lat, lon };
@@ -292,8 +294,8 @@ export default function OrderEntryScreen() {
     (lat: number, lon: number) => {
       detectedRef.current = { lat, lon };
       setCenter({ lat, lon });
+      mapRef.current?.setCenter(lat, lon, zoomedRef.current ? undefined : DETECT_ZOOM);
       if (mapReadyRef.current) {
-        mapRef.current?.setCenter(lat, lon, zoomedRef.current ? undefined : DETECT_ZOOM);
         zoomedRef.current = true;
       }
       resolveAddress(lat, lon);
@@ -303,37 +305,63 @@ export default function OrderEntryScreen() {
 
   // Auto-detect the device location on mount (requests GPS permission).
   const detect = useCallback(async () => {
+    detectingRef.current = true;
     setDetecting(true);
     zoomedRef.current = false;
     let gotFix = false;
     try {
       const result = await detectLocation({
-        timeoutMs: 12000,
-        // As the GPS chip warms up it emits progressively tighter fixes. Apply each
-        // one immediately so the pin + address self-correct on screen — this is what
-        // removes the old "wrong address on the first try, correct on the second"
-        // behaviour for BOTH taxi and parcel (pochta) order entry.
+        timeoutMs: 8000,
         onUpdate: (fix) => {
           gotFix = true;
+          detectingRef.current = false;
           setDetecting(false);
           applyFix(fix.lat, fix.lon);
         },
       });
       if (result.status === 'success') {
+        gotFix = true;
         applyFix(result.lat, result.lon);
       } else if (!gotFix) {
-        // No fix at all (permission denied / services off / hard timeout with zero
-        // readings). Resolve an address for the current map center so the card isn't
-        // blank, but only if we never managed to detect anything.
-        //
-        // Read the center from a ref, not the captured `center` state: this callback is
-        // memoised and is also the recenter button's handler, so after the user panned
-        // the map the stale closure filled the card with the address of the OLD location
-        // while savePickup() stored the CURRENT pin -- an order whose address string and
-        // coordinates pointed at different places.
+        // Fallback: try WebView HTML5 / Yandex geolocation before falling back to map center.
+        const webFix = await mapRef.current?.geolocate().catch(() => null);
+        if (webFix && Number.isFinite(webFix.lat) && Number.isFinite(webFix.lon)) {
+          gotFix = true;
+          applyFix(webFix.lat, webFix.lon);
+          return;
+        }
+
+        if (result.status === 'permission-denied') {
+          Alert.alert(
+            t('common.attention'),
+            t(
+              'orderEntry.locationPermissionDenied',
+              "Joylashuvni aniqlash uchun ilovaga GPS ruxsatini bering."
+            ),
+            [
+              { text: t('common.cancel'), style: 'cancel' },
+              {
+                text: t('common.ok'),
+                onPress: () => {
+                  Linking.openSettings().catch(() => {});
+                },
+              },
+            ]
+          );
+        } else if (result.status === 'services-disabled') {
+          Alert.alert(
+            t('common.attention'),
+            t(
+              'orderEntry.locationServicesDisabled',
+              "Joylashuvni aniqlash uchun telefoningizda GPS (Joylashuv) xizmatini yoqing."
+            )
+          );
+        }
+
         resolveAddress(centerRef.current.lat, centerRef.current.lon);
       }
     } finally {
+      detectingRef.current = false;
       setDetecting(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -431,6 +459,13 @@ export default function OrderEntryScreen() {
   };
 
   const handleCameraMove = (lat: number, lon: number) => {
+    if (
+      detectingRef.current &&
+      !detectedRef.current &&
+      distanceMeters(lat, lon, DEFAULT_LAT, DEFAULT_LON) < 50
+    ) {
+      return;
+    }
     setCenter({ lat, lon });
     resolveAddress(lat, lon);
   };

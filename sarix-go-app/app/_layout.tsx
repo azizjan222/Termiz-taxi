@@ -12,7 +12,7 @@ import { useThemeStore } from '../src/store/theme';
 import { ForceUpdateModal } from '../src/components/ForceUpdateModal';
 import { MaintenanceModal } from '../src/components/MaintenanceModal';
 import { AnimatedSplash } from '../src/components/AnimatedSplash';
-import { getAppConfig, compareVersions } from '../src/api/app-config';
+import { useAppUpdate } from '../src/hooks/useAppUpdate';
 import {
   registerPushToken,
   addNotificationReceivedListener,
@@ -22,7 +22,6 @@ import {
 } from '../src/services/notifications';
 import { addNotification, syncAnnouncements } from '../src/services/notificationHistory';
 import { connectPassengerSocket } from '../src/services/passengerSocket';
-import Constants from 'expo-constants';
 import { CrashScreen } from '../src/components/CrashScreen';
 
 /**
@@ -38,10 +37,13 @@ export { CrashScreen as ErrorBoundary };
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
-  const [forceUpdate, setForceUpdate] = useState<{ show: boolean; url: string }>({ show: false, url: '' });
-  // Server-declared maintenance for the MOBILE APPS specifically. The admin panel has a
-  // separate switch for the Telegram bot, so a paused bot must not blank out the app.
-  const [maintenance, setMaintenance] = useState(false);
+  const {
+    forceUpdate,
+    maintenance,
+    checkAppUpdate,
+    recheckForceUpdate,
+    recheckMaintenance,
+  } = useAppUpdate(ready);
   const loadUser = useAuthStore((s) => s.loadUser);
   const isAuth = useAuthStore((s) => s.isAuthenticated);
   const userId = useAuthStore((s) => s.user?.id);
@@ -54,54 +56,12 @@ export default function RootLayout() {
       await initI18n();
       await themeInit();
       await loadUser();
-
-      // Force update + maintenance check.
-      //
-      // Both come from the same config call, and both stay silent on failure: a config
-      // endpoint that is unreachable must not lock the user out of an app that might work
-      // fine offline-ish. Maintenance is opt-in from the server, never inferred locally.
-      try {
-        const cfg = await getAppConfig('passenger');
-        const currentVersion = Constants.expoConfig?.version || '1.0.0';
-        if (compareVersions(currentVersion, cfg.min_version) < 0) {
-          setForceUpdate({ show: true, url: cfg.play_url });
-        }
-        setMaintenance(!!cfg.maintenance_mode);
-      } catch {}
-
+      await checkAppUpdate();
       setReady(true);
     })();
     // One-time bootstrap (i18n/theme/user/config); store actions are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Re-check maintenance on demand, and whenever the app returns to the foreground.
-  //
-  // The foreground check is what makes this recover on its own: an operator finishing a
-  // deployment does not notify anyone, so without it a user who backgrounded the app during
-  // maintenance would sit behind the blocker until they force-quit.
-  const recheckMaintenance = async () => {
-    const cfg = await getAppConfig('passenger');
-    const currentVersion = Constants.expoConfig?.version || '1.0.0';
-    if (compareVersions(currentVersion, cfg.min_version) < 0) {
-      setForceUpdate({ show: true, url: cfg.play_url });
-    } else {
-      setForceUpdate({ show: false, url: '' });
-    }
-    const down = !!cfg.maintenance_mode;
-    setMaintenance(down);
-    return !down;
-  };
-
-  useEffect(() => {
-    if (!ready) return;
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') recheckMaintenance().catch(() => {});
-    });
-    return () => sub.remove();
-    // `recheckMaintenance` is redefined every render but closes over nothing that changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
 
   // Session expiry: the server rejected our token. Sign the user out locally and send them
   // to the login flow. Without this the app kept rendering a signed-in UI (Home greeting
@@ -209,7 +169,11 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style={isDark ? 'light' : 'dark'} />
-        <ForceUpdateModal visible={forceUpdate.show} playUrl={forceUpdate.url} />
+        <ForceUpdateModal
+          visible={forceUpdate.show}
+          playUrl={forceUpdate.url}
+          onRetry={recheckForceUpdate}
+        />
         {/* Force update wins when both apply: it is the one the user can actually act on,
             and stacking two full-screen blockers would hide it behind a retry button that
             cannot succeed. */}

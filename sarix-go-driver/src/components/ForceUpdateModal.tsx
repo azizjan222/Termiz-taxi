@@ -1,5 +1,13 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Linking } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  TouchableOpacity,
+  Linking,
+  ActivityIndicator,
+} from 'react-native';
 
 import { useTranslation } from 'react-i18next';
 
@@ -11,12 +19,26 @@ import { Icon } from './Icon';
 interface Props {
   visible: boolean;
   updateUrl: string;
+  onRetry?: () => Promise<boolean>;
 }
 
-export const ForceUpdateModal: React.FC<Props> = ({ visible, updateUrl }) => {
+export const ForceUpdateModal: React.FC<Props> = ({ visible, updateUrl, onRetry }) => {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [checking, setChecking] = useState(false);
+
+  const handleRetry = async () => {
+    if (!onRetry || checking) return;
+    setChecking(true);
+    try {
+      await onRetry();
+    } catch {
+      // Never let a failed retry reject unhandled.
+    } finally {
+      setChecking(false);
+    }
+  };
 
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -32,6 +54,20 @@ export const ForceUpdateModal: React.FC<Props> = ({ visible, updateUrl }) => {
           >
             <Text style={styles.buttonText}>{t('forceUpdate.button')}</Text>
           </TouchableOpacity>
+          {onRetry ? (
+            <TouchableOpacity
+              style={[styles.retryButton, checking && styles.buttonDisabled]}
+              onPress={handleRetry}
+              disabled={checking}
+              activeOpacity={0.8}
+            >
+              {checking ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -77,4 +113,22 @@ const createStyles = (colors: ThemeColors) =>
       alignItems: 'center',
     },
     buttonText: { ...typography.button, color: colors.textOnPrimary },
+    retryButton: {
+      marginTop: spacing.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      width: '100%',
+      minHeight: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    retryButtonText: {
+      ...typography.body,
+      color: colors.primary,
+      fontWeight: '600',
+    },
+    buttonDisabled: { opacity: 0.6 },
   });

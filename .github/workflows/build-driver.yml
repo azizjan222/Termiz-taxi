@@ -46,6 +46,21 @@ jobs:
         run: |
           test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_DRIVER_JSON_B64 is required"; exit 1; }
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
+      - name: Set app version and versionCode
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            const runNum = parseInt(process.env.RUN_NUMBER || '1', 10) || 1;
+            const versionCode = 30 + runNum;
+            pkg.expo.version = '1.0.' + versionCode;
+            pkg.expo.android = pkg.expo.android || {};
+            pkg.expo.android.versionCode = versionCode;
+            fs.writeFileSync('app.json', JSON.stringify(pkg, null, 2) + '\n');
+            console.log('Set version to', pkg.expo.version, 'and versionCode to', versionCode);
+          "
       - name: Validate Expo dependencies and project configuration
         run: |
           test -n "$EXPO_PUBLIC_YANDEX_JS_API_KEY" || { echo "::error::YANDEX_JS_API_KEY is required"; exit 1; }
