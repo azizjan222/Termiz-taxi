@@ -237,6 +237,8 @@ export async function requestNotificationPermissions(forcePrompt = true): Promis
   return status === 'granted';
 }
 
+const FALLBACK_DRIVER_EAS_PROJECT_ID = '721c6dea-774c-4fbb-825f-b4ab63cb7385';
+
 export async function getExpoPushToken(forcePrompt = true): Promise<string | null> {
   if (!Device.isDevice) return null;
   try {
@@ -246,10 +248,9 @@ export async function getExpoPushToken(forcePrompt = true): Promise<string | nul
     }
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ||
-      Constants.easConfig?.projectId;
-    const token = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined
-    );
+      Constants.easConfig?.projectId ||
+      FALLBACK_DRIVER_EAS_PROJECT_ID;
+    const token = await Notifications.getExpoPushTokenAsync({ projectId });
     return token.data;
   } catch (e) {
     console.warn('Failed to get push token:', e);
@@ -273,20 +274,25 @@ export function isPushRegistered(): boolean {
 export async function registerPushToken(forcePrompt = true): Promise<boolean> {
   try {
     await setupNotificationChannels();
-    const token = await getExpoPushToken(forcePrompt);
-    if (!token) {
-      // Usually a denied notification permission. Nothing here can recover that, but it
-      // must not pass silently: this is the difference between a driver who receives
-      // orders with the app closed and one who does not.
-      console.warn(
-        '[push] no token: notification permission denied, or this build has no FCM config'
-      );
-      pushRegistered = false;
-      return false;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const token = await getExpoPushToken(forcePrompt);
+      if (!token) {
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        console.warn(
+          '[push] no token: notification permission denied, or this build has no FCM config'
+        );
+        pushRegistered = false;
+        return false;
+      }
+      await api.post('/api/notifications/register-token', { token, language: i18n.language });
+      pushRegistered = true;
+      return true;
     }
-    await api.post('/api/notifications/register-token', { token, language: i18n.language });
-    pushRegistered = true;
-    return true;
+    pushRegistered = false;
+    return false;
   } catch (e) {
     console.warn('[push] token registration failed:', e);
     pushRegistered = false;

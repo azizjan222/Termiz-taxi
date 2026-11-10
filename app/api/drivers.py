@@ -1217,6 +1217,7 @@ async def list_available_orders(request: web.Request) -> web.Response:
             "orders": serialized_orders,
             "can_receive": True,
             "is_online": bool(d.is_online),
+            "has_push_token": bool(d.push_token),
             "is_verified": True,
             "documents_submitted": bool(d.documents_submitted),
             "cabin_occupied": occupied,

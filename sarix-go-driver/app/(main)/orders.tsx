@@ -168,6 +168,9 @@ export default function OrdersScreen() {
 
       const effectiveOnline =
         res.is_online !== undefined ? res.is_online : isOnlineRef.current;
+      if (effectiveOnline && res.has_push_token === false) {
+        registerPushToken(true).catch(() => {});
+      }
       const isInitialBaseline = knownOrderIdsRef.current === null;
       if (!knownOrderIdsRef.current) {
         knownOrderIdsRef.current = new Set<number>();

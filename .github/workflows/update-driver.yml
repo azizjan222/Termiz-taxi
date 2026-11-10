@@ -25,10 +25,10 @@ on:
         description: "Release channel that should receive this update"
         type: choice
         required: true
-        default: preview
+        default: production
         options:
-          - preview
           - production
+          - preview
       message:
         description: "Update message"
         required: false

@@ -151,6 +151,7 @@ export interface AvailableOrdersResponse {
   min_required?: number;
   code?: 'verification_pending' | 'documents_required' | string;
   is_online?: boolean;
+  has_push_token?: boolean;
   is_verified?: boolean;
   documents_submitted?: boolean;
   active_corridor?: { from_city: string; to_city: string } | null;
@@ -174,6 +175,7 @@ export async function listAvailableOrders(params?: {
     min_required: response.data.min_required,
     code: response.data.code,
     is_online: response.data.is_online,
+    has_push_token: response.data.has_push_token,
     is_verified: response.data.is_verified,
     documents_submitted: response.data.documents_submitted,
     active_corridor: response.data.active_corridor ?? null,

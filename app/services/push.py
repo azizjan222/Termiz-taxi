@@ -91,11 +91,16 @@ async def send_push(
         session.commit()
         return False
 
+    # Expo Push API's `sound` field only officially accepts "default" or null; on Android 8+
+    # the custom sound (e.g. new_order.wav) is defined on the NotificationChannel referenced
+    # by `channelId` ("orders_v2", "alerts_v2", "balance"). Passing "default" ensures Expo
+    # triggers the channel's sound reliably when the app is completely closed.
+    expo_sound = "default" if sound else None
     payload = {
         "to": token,
         "title": title,
         "body": body,
-        "sound": sound,
+        "sound": expo_sound,
         "priority": priority,
         "ttl": 300,
         "data": data or {},
@@ -289,12 +294,14 @@ async def send_push_bulk_stats(
         if status == "failed":
             failures[error or "Unknown"] += 1
 
+    expo_sound = "default" if sound else None
+
     def _message(item):
         return {
             "to": item["token"],
             "title": item["title"],
             "body": item["body"],
-            "sound": sound,
+            "sound": expo_sound,
             "priority": "high",
             "ttl": 300,
             "channelId": item.get("channel_id", channel_id),
