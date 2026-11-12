@@ -47,6 +47,7 @@ export interface Driver {
   documents_submitted?: boolean;
   documents_required?: boolean;
   is_verified?: boolean;
+  has_push_token?: boolean;
   subscription_until?: string | null;
   has_active_subscription?: boolean;
   subscription_days_left?: number;

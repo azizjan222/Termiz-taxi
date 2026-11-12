@@ -545,7 +545,7 @@ def _pop_group_order_messages(order_id: int) -> list[tuple[int, int]]:
 
 
 async def delete_group_order_messages(bot, order_id: int) -> None:
-    """Delete the group vitrina message(s) for an order once it is accepted, cancelled, or expired."""
+    """Delete (and unpin) the group vitrina message(s) for an order once it is accepted, cancelled, or expired."""
     pairs = _pop_group_order_messages(order_id)
     if not pairs:
         return
@@ -561,6 +561,11 @@ async def delete_group_order_messages(bot, order_id: int) -> None:
         if own_bot:
             await bot.initialize()
         for chat_id, message_id in pairs:
+            if int(chat_id) < 0:
+                try:
+                    await bot.unpin_chat_message(chat_id=chat_id, message_id=message_id)
+                except Exception:
+                    pass
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=message_id)
             except Exception as e:
@@ -577,7 +582,7 @@ async def delete_group_order_messages(bot, order_id: int) -> None:
 
 
 async def notify_group_new_order(bot, order) -> None:
-    """Post a masked order card ('vitrina') to known active Telegram group(s) and save message_id."""
+    """Post a masked order card ('vitrina') to known active Telegram group(s), pin it, and save message_id."""
     target_groups: list[int] = []
     try:
         from app.bot.handlers.admin_actions import _get_known_group_ids
@@ -615,6 +620,17 @@ async def notify_group_new_order(bot, order) -> None:
                 )
                 if sent_msg and getattr(sent_msg, "message_id", None):
                     sent_pairs.append((int(gid), int(sent_msg.message_id)))
+                    try:
+                        await bot.pin_chat_message(
+                            chat_id=gid,
+                            message_id=sent_msg.message_id,
+                            disable_notification=False,
+                        )
+                    except Exception as pin_err:
+                        logger.warning(
+                            "Could not pin order #%s message %s in group %s: %s",
+                            getattr(order, "id", "?"), sent_msg.message_id, gid, pin_err,
+                        )
             except Exception as e:
                 logger.warning(
                     "Failed to post new order #%s to group %s: %s",

@@ -79,6 +79,8 @@ jobs:
         run: |
           test -n "$GOOGLE_SERVICES_JSON_B64" || { echo "::error::GOOGLE_SERVICES_DRIVER_JSON_B64 is required"; exit 1; }
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > google-services.json
+          sed -i '/google-services\.json/d' .gitignore || true
+          eas env:create --name GOOGLE_SERVICES_JSON_B64 --value "$GOOGLE_SERVICES_JSON_B64" --environment production --environment preview --visibility sensitive --scope project --force --non-interactive || true
       - name: Set app version and versionCode
         env:
           INPUT_VERSION: ${{ inputs.version }}

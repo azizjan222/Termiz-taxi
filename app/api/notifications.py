@@ -24,20 +24,80 @@ _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 100
 
 
+from datetime import datetime, timedelta
+from app.models import Announcement, AnnouncementRead, Driver, NotificationLog, User
+
+
 async def register_token(request: web.Request) -> web.Response:
     """POST /api/notifications/register-token
-    Body: {"token": "ExponentPushToken[...]"}
+    Body: {"token": "ExponentPushToken[...]"} or {"client_error": "..."}
     Works for authenticated user (passenger) or driver.
     """
     try:
         data = await read_json_object(request)
         token = read_str(data, "token", max_length=200)
+        client_error = read_str(data, "client_error", max_length=300)
         lang = read_str(data, "language")
     except BodyError as e:
         return e.response
 
+    # Optional language so push notifications can be localized to the user's choice.
+    if lang not in SUPPORTED_LANGUAGES:
+        lang = None
+
+    driver = _get_driver_from_request(request)
+    from app.utils.auth import get_current_user
+    user = None if driver else get_current_user(request)
+
+    if not driver and not user:
+        return web.json_response({"error": "Avtorizatsiya kerak"}, status=401)
+
     if not token:
+        if client_error:
+            recipient_type = "driver" if driver else "user"
+            recipient_id = driver.id if driver else user.id
+            session = get_session()
+            try:
+                if driver and lang:
+                    d = session.query(Driver).filter_by(id=driver.id).first()
+                    if d:
+                        d.language = lang
+                elif user and lang:
+                    u = session.query(User).filter_by(id=user.id).first()
+                    if u:
+                        u.language = lang
+                cutoff = datetime.utcnow() - timedelta(hours=6)
+                recent = (
+                    session.query(NotificationLog)
+                    .filter(
+                        NotificationLog.recipient_type == recipient_type,
+                        NotificationLog.recipient_id == recipient_id,
+                        NotificationLog.notif_type == "token_register",
+                        NotificationLog.created_at >= cutoff,
+                    )
+                    .first()
+                )
+                if not recent:
+                    session.add(
+                        NotificationLog(
+                            recipient_type=recipient_type,
+                            recipient_id=recipient_id,
+                            notif_type="token_register",
+                            title="Push token ro'yxatdan o'tmadi",
+                            body=client_error[:200],
+                            status="failed",
+                            error=f"Qurilma xatosi: {client_error[:220]}",
+                        )
+                    )
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                logger.warning("Failed to record push client_error: %s", e)
+            finally:
+                session.close()
+            return web.json_response({"success": False, "logged": True})
         return web.json_response({"error": "Token kerak"}, status=400)
+
     # Any string used to be accepted and written to push_token. A malformed value is not
     # harmless: Expo rejects the whole batch it appears in, so one bad token could stop
     # notifications for the drivers/passengers batched alongside it, and the column is
@@ -45,12 +105,6 @@ async def register_token(request: web.Request) -> web.Response:
     if not _EXPO_TOKEN_RE.match(token):
         return web.json_response({"error": "Push token noto'g'ri"}, status=400)
 
-    # Optional language so push notifications can be localized to the user's choice.
-    if lang not in SUPPORTED_LANGUAGES:
-        lang = None
-
-    # Check driver auth first
-    driver = _get_driver_from_request(request)
     if driver:
         session = get_session()
         try:
@@ -64,9 +118,6 @@ async def register_token(request: web.Request) -> web.Response:
         finally:
             session.close()
 
-    # Try passenger auth
-    from app.utils.auth import get_current_user
-    user = get_current_user(request)
     if user:
         session = get_session()
         try:

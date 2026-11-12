@@ -651,6 +651,7 @@ def _serialize_driver(d: Driver) -> dict:
             and not _is_test_driver(d.phone)
         ),
         "is_verified": bool(d.is_verified),
+        "has_push_token": bool(d.push_token),
         "subscription_until": iso_utc(d.subscription_until),
         "has_active_subscription": _subscription_active(d),
         "subscription_days_left": _subscription_days_left(d),

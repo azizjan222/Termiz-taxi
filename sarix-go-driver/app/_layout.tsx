@@ -96,8 +96,9 @@ export default function RootLayout() {
     let cancelled = false;
 
     const attempt = () => {
-      if (cancelled || isPushRegistered()) return;
-      registerPushToken().catch(() => {
+      if (cancelled) return;
+      if (isPushRegistered() && driver?.has_push_token !== false) return;
+      registerPushToken(true).catch(() => {
         // registerPushToken already logs; never let this reject unhandled.
       });
     };
@@ -110,7 +111,7 @@ export default function RootLayout() {
       cancelled = true;
       sub.remove();
     };
-  }, [isAuth, ready]);
+  }, [isAuth, ready, driver?.has_push_token]);
 
   // Pull admin announcements once signed in, and again whenever the app is brought back
   // to the foreground. Push is not a reliable delivery channel — it needs a registered

@@ -63,8 +63,26 @@ function assertMapKeysPresentOnEasBuild() {
   }
 }
 
+function ensureGoogleServicesFile() {
+  const filePath = path.join(__dirname, 'google-services.json');
+  if (!fs.existsSync(filePath) && process.env.GOOGLE_SERVICES_JSON_B64) {
+    fs.writeFileSync(
+      filePath,
+      Buffer.from(process.env.GOOGLE_SERVICES_JSON_B64, 'base64')
+    );
+  }
+  if (process.env.EAS_BUILD === 'true' && !fs.existsSync(filePath)) {
+    throw new Error(
+      'google-services.json is MISSING on the EAS build worker! ' +
+        'Without it, Firebase/FCM cannot initialize on Android and push notifications will fail.'
+    );
+  }
+  return fs.existsSync(filePath) ? './google-services.json' : undefined;
+}
+
 module.exports = () => {
   assertMapKeysPresentOnEasBuild();
+  const googleServicesFile = ensureGoogleServicesFile();
 
   const expo = staticConfig.expo;
   const projectId = process.env.EAS_PROJECT_ID || expo.extra?.eas?.projectId;
@@ -79,9 +97,7 @@ module.exports = () => {
     ...expo,
     android: {
       ...expo.android,
-      googleServicesFile: fs.existsSync(path.join(__dirname, 'google-services.json'))
-        ? './google-services.json'
-        : undefined,
+      googleServicesFile,
     },
     extra,
     updates: {

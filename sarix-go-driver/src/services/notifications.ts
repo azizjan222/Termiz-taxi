@@ -238,12 +238,17 @@ export async function requestNotificationPermissions(forcePrompt = true): Promis
 }
 
 const FALLBACK_DRIVER_EAS_PROJECT_ID = '721c6dea-774c-4fbb-825f-b4ab63cb7385';
+let lastPushTokenError: string | null = null;
 
 export async function getExpoPushToken(forcePrompt = true): Promise<string | null> {
-  if (!Device.isDevice) return null;
+  if (!Device.isDevice) {
+    lastPushTokenError = 'not_physical_device';
+    return null;
+  }
   try {
     const granted = await requestNotificationPermissions(forcePrompt);
     if (!granted) {
+      lastPushTokenError = 'permission_not_granted';
       return null;
     }
     const projectId =
@@ -251,8 +256,10 @@ export async function getExpoPushToken(forcePrompt = true): Promise<string | nul
       Constants.easConfig?.projectId ||
       FALLBACK_DRIVER_EAS_PROJECT_ID;
     const token = await Notifications.getExpoPushTokenAsync({ projectId });
+    lastPushTokenError = null;
     return token.data;
-  } catch (e) {
+  } catch (e: any) {
+    lastPushTokenError = e?.message ? String(e.message) : String(e);
     console.warn('Failed to get push token:', e);
     return null;
   }
@@ -282,8 +289,15 @@ export async function registerPushToken(forcePrompt = true): Promise<boolean> {
           continue;
         }
         console.warn(
-          '[push] no token: notification permission denied, or this build has no FCM config'
+          '[push] no token: notification permission denied, or this build has no FCM config',
+          lastPushTokenError
         );
+        try {
+          await api.post('/api/notifications/register-token', {
+            client_error: lastPushTokenError || 'unknown_token_error',
+            language: i18n.language,
+          });
+        } catch {}
         pushRegistered = false;
         return false;
       }

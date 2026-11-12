@@ -1,0 +1,45 @@
+# Root .easignore for EAS Build in monorepo layout.
+#
+# CRITICAL: eas-cli resolves .easignore at the Git repository root (/), NOT inside
+# subdirectory project roots (sarix-go-driver/ or sarix-go-app/). Without this file at the
+# repository root, eas-cli falls back to .gitignore rules and strips google-services.json
+# from the archive uploaded to the EAS build worker.
+#
+# google-services.json is deliberately NOT listed here so the file decoded in CI is
+# always uploaded to the EAS worker.
+.env
+.env.local
+.env.*.local
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv/
+*.egg-info/
+*.db
+*.sqlite
+*.sqlite3
+/data/
+taksi_baza.json
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.log
+logs/
+**/node_modules/
+**/.expo/
+**/dist/
+**/web-build/
+*.jks
+*.keystore
+sarix-go-app/ios/
+sarix-go-app/android/
+sarix-go-driver/ios/
+sarix-go-driver/android/
