@@ -55,10 +55,10 @@ const YANDEX_API_KEY =
   (Constants.expoConfig?.extra as any)?.yandexSdkApiKey ||
   '';
 
-// Default center: Termiz, Surxondaryo
-const DEFAULT_LAT = 37.224;
-const DEFAULT_LON = 67.278;
-const DEFAULT_ZOOM = 11;
+// Default overview center: Surxondaryo region (never a specific house in Termiz)
+const DEFAULT_LAT = 37.85;
+const DEFAULT_LON = 67.55;
+const DEFAULT_ZOOM = 9;
 
 const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
   const { t } = useTranslation();
@@ -489,7 +489,9 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     }
   }
 
-  // WebView geolocation fallback using HTML5 navigator.geolocation or ymaps.geolocation.
+  // WebView geolocation fallback using HTML5 navigator.geolocation only.
+  // Never use ymaps.geolocation({ provider: 'auto' }): on mobile data in Surxondaryo
+  // its IP fallback resolves to the regional gateway in Termiz (Langar ko'chasi).
   function geolocate(reqId) {
     var done = false;
     function finish(lat, lon) {
@@ -501,38 +503,17 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     if (navigator && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         function(pos) {
-          if (pos && pos.coords) {
+          if (pos && pos.coords && pos.coords.accuracy <= 1500) {
             finish(pos.coords.latitude, pos.coords.longitude);
-          }
-        },
-        function() {
-          if (typeof ymaps !== 'undefined' && ymaps.geolocation) {
-            ymaps.geolocation.get({ provider: 'auto' }).then(function(res) {
-              var coords = res.geoObjects.position;
-              if (coords && coords.length === 2) {
-                finish(coords[0], coords[1]);
-              } else {
-                finish(null, null);
-              }
-            }, function() { finish(null, null); });
           } else {
             finish(null, null);
           }
         },
-        { enableHighAccuracy: true, timeout: 4500, maximumAge: 60000 }
-      );
-      return;
-    }
-
-    if (typeof ymaps !== 'undefined' && ymaps.geolocation) {
-      ymaps.geolocation.get({ provider: 'auto' }).then(function(res) {
-        var coords = res.geoObjects.position;
-        if (coords && coords.length === 2) {
-          finish(coords[0], coords[1]);
-        } else {
+        function() {
           finish(null, null);
-        }
-      }, function() { finish(null, null); });
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+      );
       return;
     }
 

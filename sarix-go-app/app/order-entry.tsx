@@ -30,9 +30,14 @@ import { useThemeStore } from '../src/store/theme';
 import { typography, spacing, radius } from '../src/theme';
 import type { ThemeColors } from '../src/theme/colors-themed';
 
-// Termiz, Surxondaryo (default center)
-const DEFAULT_LAT = 37.224;
-const DEFAULT_LON = 67.278;
+import * as Location from 'expo-location';
+
+// Surxondaryo region overview center (never a specific house in Termiz)
+const DEFAULT_LAT = 37.85;
+const DEFAULT_LON = 67.55;
+const LEGACY_LANGAR_LAT = 37.224;
+const LEGACY_LANGAR_LON = 67.278;
+const OVERVIEW_ZOOM = 9;
 const DETECT_ZOOM = 18; // building-level (very close) zoom for precise pickup pin
 
 
@@ -127,8 +132,7 @@ function formatDisplayAddress(full: string): string {
  *    permission automatically)
  *  - the map center is the pickup point; the top card shows its address
  *    ("Manzilingiz")
- *  - bottom sheet: "Qayerga borasiz?" (-> destination picker) and 2 quick
- *    long-haul districts (>= 70 km away) pulled from the app's route data
+ *  - bottom sheet: "Qayerga borasiz?" (-> destination picker)
  */
 export default function OrderEntryScreen() {
   const { t } = useTranslation();
@@ -137,21 +141,15 @@ export default function OrderEntryScreen() {
   const isDark = useThemeStore((s) => s.isDark);
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-  // `pick` selects what the map center represents:
-  //  - 'from' (default) -> the pickup point (Yo'lovchini olish nuqtasi)
-  //  - 'to'             -> the final destination (Yakuniy manzil), opened from the
-  //                        "Xarita" button on the destination row of route-select.
-  //  - 'save'           -> not part of an order at all: pick a point to store in
-  //                        "Mening manzillarim". Opened from saved-addresses.tsx.
-  //
-  // 'save' reuses this screen rather than getting its own because everything it needs is
-  // already here and hard to get right: the debounced Uzbek reverse-geocode, the 150 m
-  // staleness guard, GPS auto-detect, and tap-to-move-the-pin.
   const { pick } = useLocalSearchParams<{ pick?: 'from' | 'to' | 'save' }>();
   const pickMode: 'from' | 'to' | 'save' =
     pick === 'to' ? 'to' : pick === 'save' ? 'save' : 'from';
   const isDest = pickMode === 'to';
   const isSaveMode = pickMode === 'save';
+
+  const hasInitialPoint =
+    (pick === 'to' && orderStore.toLat != null && orderStore.toLon != null) ||
+    (pick !== 'to' && orderStore.fromLat != null && orderStore.fromLon != null);
 
   const [center, setCenter] = useState<{ lat: number; lon: number }>(() => {
     if (pick === 'to' && orderStore.toLat != null && orderStore.toLon != null) {
@@ -162,48 +160,33 @@ export default function OrderEntryScreen() {
       lon: orderStore.fromLon ?? DEFAULT_LON,
     };
   });
+  const [hasRealPoint, setHasRealPoint] = useState<boolean>(hasInitialPoint);
+  const hasRealPointRef = useRef<boolean>(hasInitialPoint);
+  const userMovedRef = useRef<boolean>(false);
+
   const [address, setAddress] = useState('');
-  // Full, un-shortened geocoded address. We keep this separately because the
-  // displayed (formatted) address drops the region words, and we need the full
-  // string (incl. "Sariosiyo tumani") to correctly derive `from_city`/`to_city`.
   const [fullAddress, setFullAddress] = useState('');
-  const [resolving, setResolving] = useState(true); // Start as resolving since we detect on mount
-  const [detecting, setDetecting] = useState(true); // Start as detecting
+  const [resolving, setResolving] = useState(true);
+  const [detecting, setDetecting] = useState(true);
   const [cities, setCities] = useState<string[]>([]);
 
-  // Saved addresses, loaded so the cap and the duplicate check can be answered before
-  // firing a request the server would only reject with an untranslated message.
   const [saved, setSaved] = useState<SavedAddress[]>([]);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saveLabel, setSaveLabel] = useState('');
   const [savingAddress, setSavingAddress] = useState(false);
-  // Synchronous guard: `savingAddress` only disables the button on the next render.
   const saveInFlightRef = useRef(false);
-
 
   const mapRef = useRef<YandexMapHandle>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reqIdRef = useRef(0);
   const lastCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
-  // The coordinate the currently displayed address was actually resolved for, so a
-  // failed lookup can tell "same spot, keep the text" from "different place, the text
-  // is now wrong". See ADDRESS_KEEP_RADIUS_M.
   const addressCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
-  // The auto-detected device location. Stored in a ref so that whichever finishes
-  // first — GPS detection or the map WebView load — can apply the close-up center.
   const detectedRef = useRef<{ lat: number; lon: number } | null>(null);
-  // Whether the map WebView has finished loading. Kept in a ref (not state) so
-  // resolveAddress always reads the current value without stale closures.
   const mapReadyRef = useRef(false);
-  // Mirror of `center` for memoised callbacks that must read the CURRENT pin rather
-  // than the value captured when they were created.
   const centerRef = useRef(center);
   useEffect(() => {
     centerRef.current = center;
   }, [center]);
-  // Whether the detected location has been centered+zoomed at least once. We only
-  // apply the close-up DETECT_ZOOM on the FIRST fix; later refinements just nudge the
-  // center so the map doesn't keep re-animating/zooming under the user.
   const zoomedRef = useRef(false);
   const detectingRef = useRef(true);
 
@@ -215,11 +198,6 @@ export default function OrderEntryScreen() {
       const reqId = ++reqIdRef.current;
       try {
         let result: string | null = null;
-        // When the map is ready, prefer the IN-MAP ymaps.geocode: it uses the
-        // uz_UZ locale and returns Uzbek, house-level addresses just like the
-        // Yandex app. Fall back to the HTTP geocoder (Russian) if it fails.
-        // Before the WebView is ready (initial mount) use the HTTP geocoder
-        // first so we never wait on the in-map call's long timeout.
         if (mapReadyRef.current) {
           try {
             result = (await mapRef.current?.reverseGeocode(lat, lon)) ?? null;
@@ -236,18 +214,12 @@ export default function OrderEntryScreen() {
           }
         }
         if (reqId !== reqIdRef.current) return;
-        // Keep the full address for city derivation, show the formatted one
-        // (tuman → qishloq → street) to the user. Don't wipe a previously good
-        // address if this lookup came back empty (can happen at very high zoom).
         const full = result || '';
         if (full) {
           addressCoordsRef.current = { lat, lon };
           setFullAddress(full);
           setAddress(formatDisplayAddress(full));
         } else {
-          // Nothing came back for this point. Keep the text only while the pin is still
-          // within ADDRESS_KEEP_RADIUS_M of where that text came from; further away it
-          // describes a different place and must not travel onto the order.
           const origin = addressCoordsRef.current;
           const stillNearby =
             origin && distanceMeters(origin.lat, origin.lon, lat, lon) <= ADDRESS_KEEP_RADIUS_M;
@@ -260,17 +232,11 @@ export default function OrderEntryScreen() {
       } finally {
         if (reqId === reqIdRef.current) setResolving(false);
       }
-    }, 200); // Fast debounce for responsiveness
+    }, 200);
   }, [t]);
 
-  // Once the map's WebView finishes loading, re-resolve the current center via the
-  // in-map (Uzbek) geocoder so the initial HTTP (Russian) result is upgraded to a
-  // higher-precision Uzbek address — matching the Yandex app experience.
   const handleMapReady = useCallback(() => {
     mapReadyRef.current = true;
-    // If GPS already produced a fix before the map was ready, center+zoom in close
-    // on it now (the earlier setCenter command would have been dropped). Otherwise
-    // just re-resolve the address for the current center.
     const detected = detectedRef.current;
     if (detected) {
       mapRef.current?.setCenter(detected.lat, detected.lon, zoomedRef.current ? undefined : DETECT_ZOOM);
@@ -279,7 +245,9 @@ export default function OrderEntryScreen() {
       return;
     }
     const c = lastCoordsRef.current;
-    if (c) resolveAddress(c.lat, c.lon);
+    if (c && hasRealPointRef.current) {
+      resolveAddress(c.lat, c.lon);
+    }
   }, [resolveAddress]);
 
   const deriveCity = useCallback(
@@ -287,12 +255,11 @@ export default function OrderEntryScreen() {
     [cities]
   );
 
-  // Apply a detected fix to the UI: remember it, move the map center (zooming in close
-  // only the first time) and re-resolve its address. Used for both the initial fix and
-  // every progressive refinement as the GPS converges.
   const applyFix = useCallback(
     (lat: number, lon: number) => {
       detectedRef.current = { lat, lon };
+      hasRealPointRef.current = true;
+      setHasRealPoint(true);
       setCenter({ lat, lon });
       mapRef.current?.setCenter(lat, lon, zoomedRef.current ? undefined : DETECT_ZOOM);
       if (mapReadyRef.current) {
@@ -303,29 +270,34 @@ export default function OrderEntryScreen() {
     [resolveAddress]
   );
 
-  // Auto-detect the device location on mount (requests GPS permission).
   const detect = useCallback(async () => {
     detectingRef.current = true;
     setDetecting(true);
     zoomedRef.current = false;
+    userMovedRef.current = false;
     let gotFix = false;
     try {
       const result = await detectLocation({
-        timeoutMs: 8000,
+        timeoutMs: 10000,
         onUpdate: (fix) => {
+          if (userMovedRef.current) return;
           gotFix = true;
           detectingRef.current = false;
           setDetecting(false);
           applyFix(fix.lat, fix.lon);
         },
       });
-      if (result.status === 'success') {
+      if (result.status === 'success' && !userMovedRef.current) {
         gotFix = true;
         applyFix(result.lat, result.lon);
       } else if (!gotFix) {
-        // Fallback: try WebView HTML5 / Yandex geolocation before falling back to map center.
         const webFix = await mapRef.current?.geolocate().catch(() => null);
-        if (webFix && Number.isFinite(webFix.lat) && Number.isFinite(webFix.lon)) {
+        if (
+          webFix &&
+          Number.isFinite(webFix.lat) &&
+          Number.isFinite(webFix.lon) &&
+          distanceMeters(webFix.lat, webFix.lon, LEGACY_LANGAR_LAT, LEGACY_LANGAR_LON) > 150
+        ) {
           gotFix = true;
           applyFix(webFix.lat, webFix.lon);
           return;
@@ -358,7 +330,16 @@ export default function OrderEntryScreen() {
           );
         }
 
-        resolveAddress(centerRef.current.lat, centerRef.current.lon);
+        // CRITICAL: Never resolve the default fallback center (which used to resolve
+        // "Termiz, Langar ko'chasi, 20" when GPS failed). Only resolve if we already
+        // have a genuine user/GPS coordinate.
+        if (hasRealPointRef.current) {
+          resolveAddress(centerRef.current.lat, centerRef.current.lon);
+        } else {
+          setFullAddress('');
+          setAddress('');
+          setResolving(false);
+        }
       }
     } finally {
       detectingRef.current = false;
@@ -370,7 +351,49 @@ export default function OrderEntryScreen() {
   useEffect(() => {
     listCities().then(setCities).catch(() => setCities([]));
     detect();
+
+    // Keep a continuous satellite GPS watcher running while the screen is open so if
+    // the phone's GPS chip locks on after a few seconds (or after the user turns GPS on),
+    // the map automatically centers on the user's real house as long as they haven't
+    // manually dragged the pin.
+    let watchSub: Location.LocationSubscription | null = null;
+    let bestWatchedAcc = Number.POSITIVE_INFINITY;
+    let unmounted = false;
+
+    (async () => {
+      try {
+        const perm = await Location.getForegroundPermissionsAsync();
+        if (perm.status !== 'granted' || unmounted) return;
+        const sub = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 1500,
+            distanceInterval: 3,
+          },
+          (pos) => {
+            if (unmounted || userMovedRef.current || !pos?.coords) return;
+            const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+            const acc = accuracy != null && accuracy > 0 ? accuracy : 100;
+            if (!detectedRef.current || acc < bestWatchedAcc || acc <= 25) {
+              bestWatchedAcc = acc;
+              applyFix(lat, lon);
+            }
+          }
+        );
+        if (unmounted) {
+          sub.remove();
+        } else {
+          watchSub = sub;
+        }
+      } catch {}
+    })();
+
     return () => {
+      unmounted = true;
+      if (watchSub) {
+        try { watchSub.remove(); } catch {}
+      }
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -398,6 +421,7 @@ export default function OrderEntryScreen() {
   const isAddressReady =
     !detecting &&
     !resolving &&
+    hasRealPoint &&
     Boolean(pinAddress) &&
     Boolean(fullAddress && fullAddress.trim()) &&
     pinAddress !== t('orderEntry.pointOnMap');
@@ -434,9 +458,6 @@ export default function OrderEntryScreen() {
       const created = await createAddress({
         label: labelText.trim() || undefined,
         address: pinAddress,
-        // Coordinates are the whole point: route-select feeds them straight into the order,
-        // so a saved address with a pin sends the driver to the exact spot rather than to
-        // whatever the city resolver guesses from the text.
         latitude: center.lat,
         longitude: center.lon,
       });
@@ -444,8 +465,6 @@ export default function OrderEntryScreen() {
       setSaveModalOpen(false);
       setSaveLabel('');
       if (isSaveMode) {
-        // Came here from "Mening manzillarim" purely to pick a point — go straight back;
-        // that screen refetches on focus.
         router.back();
         return;
       }
@@ -462,30 +481,21 @@ export default function OrderEntryScreen() {
     if (
       detectingRef.current &&
       !detectedRef.current &&
-      distanceMeters(lat, lon, DEFAULT_LAT, DEFAULT_LON) < 50
+      distanceMeters(lat, lon, DEFAULT_LAT, DEFAULT_LON) < 1000
     ) {
       return;
     }
+    userMovedRef.current = true;
+    hasRealPointRef.current = true;
+    setHasRealPoint(true);
     setCenter({ lat, lon });
     resolveAddress(lat, lon);
   };
 
-  /**
-   * A single tap has to MOVE THE PIN to the tapped point.
-   *
-   * The pin is a fixed overlay at the centre of the screen, so the only thing that makes
-   * it point anywhere is the map camera. Yandex's `click` event does not move the camera,
-   * so wiring taps straight into `handleCameraMove` left the pin sitting where it was
-   * while `center` -- the value savePickup()/saveDestination() store -- jumped to the
-   * tapped coordinate. The user saw a pin that had not moved and got an order carrying a
-   * point they never actually saw selected.
-   *
-   * Recentring makes the camera settle on the tap, which fires `boundschange` and runs
-   * handleCameraMove for the real centre. The optimistic call below just avoids waiting
-   * out the 500 ms pan animation before the address starts loading; resolveAddress is
-   * debounced and request-id guarded, so the duplicate is harmless.
-   */
   const handleMapPress = (lat: number, lon: number) => {
+    userMovedRef.current = true;
+    hasRealPointRef.current = true;
+    setHasRealPoint(true);
     mapRef.current?.setCenter(lat, lon);
     handleCameraMove(lat, lon);
   };
@@ -518,9 +528,20 @@ export default function OrderEntryScreen() {
   }, [isAddressReady, saveDestination, orderStore.serviceType]);
 
   const handleWhereTo = () => {
-    if (!isAddressReady) return;
-    savePickup();
-    router.push({ pathname: '/route-select', params: { mode: 'to' } });
+    if (detecting || resolving) return;
+    if (isAddressReady && hasRealPoint) {
+      savePickup();
+      router.push({ pathname: '/route-select', params: { mode: 'to' } });
+    } else {
+      // GPS was disabled/denied/timed out and the user did not manually pick a point on the map.
+      // Never inject a fake Termiz pickup: clear the pickup fields and open route-select in
+      // 'from' mode so the passenger chooses their real pickup district/address first.
+      orderStore.setField('fromCity', '');
+      orderStore.setField('fromAddress', '');
+      orderStore.setField('fromLat', null);
+      orderStore.setField('fromLon', null);
+      router.push({ pathname: '/route-select', params: { mode: 'from' } });
+    }
   };
 
   const isParcel = orderStore.serviceType === 'parcel';
@@ -562,7 +583,7 @@ export default function OrderEntryScreen() {
           ref={mapRef}
           initialLat={center.lat}
           initialLon={center.lon}
-          initialZoom={15}
+          initialZoom={hasInitialPoint ? 16 : OVERVIEW_ZOOM}
           onMapReady={handleMapReady}
           onCameraMove={handleCameraMove}
           onMapPress={handleMapPress}
@@ -579,8 +600,6 @@ export default function OrderEntryScreen() {
               : `${t('orderEntry.yourAddress')} ›`}
           </Text>
           {address ? (
-            // Keep the resolved address visible while a new lookup runs (e.g. when
-            // zooming/panning) — show only a small inline spinner, never blank it out.
             <View style={styles.row}>
               <Text style={[styles.topAddr, { flexShrink: 1 }]} numberOfLines={2}>
                 {address}
@@ -654,7 +673,6 @@ export default function OrderEntryScreen() {
 
         {isSaveMode ? (
           <>
-            {/* Save-only mode: no order involved, just name the picked point and store it. */}
             <View style={styles.destPreview}>
               <Icon name="pin" size={14} color={colors.textSecondary} style={styles.destPreviewIcon} />
               <Text style={styles.destPreviewText} numberOfLines={2}>
@@ -689,7 +707,6 @@ export default function OrderEntryScreen() {
           </>
         ) : isDest ? (
           <>
-            {/* Destination map mode: show the chosen address and a confirm button */}
             <View style={styles.destPreview}>
               <Icon name="flag" size={14} color={colors.textSecondary} style={styles.destPreviewIcon} />
               <Text style={styles.destPreviewText} numberOfLines={2}>
@@ -711,12 +728,12 @@ export default function OrderEntryScreen() {
         ) : (
           <>
             <TouchableOpacity
-              style={[styles.whereToBtn, !isAddressReady && styles.whereToBtnDisabled]}
+              style={[styles.whereToBtn, (detecting || resolving) && styles.whereToBtnDisabled]}
               onPress={handleWhereTo}
-              disabled={!isAddressReady}
+              disabled={detecting || resolving}
               activeOpacity={0.85}
             >
-              <Text style={[styles.whereToText, !isAddressReady && styles.whereToTextDisabled]}>
+              <Text style={[styles.whereToText, (detecting || resolving) && styles.whereToTextDisabled]}>
                 {isParcel ? t('orderEntry.whereToParcel') : t('orderEntry.whereTo')}
               </Text>
               <View style={styles.whereToArrow}>
@@ -726,7 +743,7 @@ export default function OrderEntryScreen() {
                   <Icon
                     name="arrowRight"
                     size={16}
-                    color={isAddressReady ? colors.textSecondary : colors.textMuted}
+                    color={colors.textSecondary}
                   />
                 )}
               </View>

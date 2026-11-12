@@ -249,6 +249,33 @@ async def create_order(request: web.Request) -> web.Response:
     if from_city == to_city:
         return web.json_response({"error": "Boshlang'ich va manzil bir xil"}, status=400)
 
+    raw_from_address = _s("from_address", "", 500)
+    raw_from_lat = _opt_float("from_lat", -90.0, 90.0)
+    raw_from_lon = _opt_float("from_lon", -180.0, 180.0)
+    is_legacy_langar_coord = (
+        raw_from_lat is not None
+        and raw_from_lon is not None
+        and abs(raw_from_lat - 37.224) < 0.0005
+        and abs(raw_from_lon - 67.278) < 0.0005
+    )
+    addr_low = raw_from_address.lower()
+    is_legacy_langar_addr = (
+        ("langar" in addr_low or "лангар" in addr_low)
+        and "20" in addr_low
+    )
+    if is_legacy_langar_addr or (is_legacy_langar_coord and raw_from_address):
+        return web.json_response(
+            {
+                "error": (
+                    "Joylashuvingiz aniqlanmadi («Termiz, Langar ko'chasi, 20» standart "
+                    "nuqtasi qolib ketgan). Iltimos, telefonda GPS-ni yoqing yoki "
+                    "«Qayerdan» qatorini bosib o'z tuman va manzilingizni tanlang."
+                ),
+                "code": "default_location_not_allowed",
+            },
+            status=400,
+        )
+
     # Validated here rather than clamped during pricing. _calc_price_and_commission used to
     # price `min(person_count, 10)` while the INSERT stored the RAW client value, so a
     # request for 50 passengers was charged for 10 and shown to the driver as 50. And a
