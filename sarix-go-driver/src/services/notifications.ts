@@ -387,6 +387,8 @@ export function newOrderBody(opts?: { from?: string; to?: string; price?: number
  * Pass `orderId` so the alert de-dupes against the parallel push channel (an
  * online driver receives the same order over both the WebSocket and a push).
  */
+let channelsInitialized = false;
+
 export async function playNewOrderAlert(opts?: { from?: string; to?: string; price?: number; orderId?: number }) {
   // De-dup: if this order was already alerted (e.g. the push arrived first),
   // don't alert again. Otherwise claim it so the push handler stays quiet.
@@ -395,6 +397,14 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
 
   const body = newOrderBody(opts);
 
+  if (!channelsInitialized) {
+    channelsInitialized = true;
+    try {
+      await setupNotificationChannels();
+    } catch {}
+  }
+
+  let notifScheduled = false;
   // 1) LOCAL NOTIFICATION with custom sound — this is the most reliable way
   //    to produce an audible alert on both foreground and background.
   try {
@@ -410,8 +420,27 @@ export async function playNewOrderAlert(opts?: { from?: string; to?: string; pri
       },
       trigger: null, // fire immediately
     });
+    notifScheduled = true;
   } catch (e) {
     console.warn('Failed to schedule notification:', e);
+  }
+
+  // When the app is in the background (driver is outside Sarix Driver) or local notification
+  // scheduling failed, also play new_order.wav on the media audio stream so OEM background
+  // notification-sound suppression or muted notification volume never silences a new order.
+  if (!notifScheduled || AppState.currentState !== 'active') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { createAudioPlayer } = require('expo-audio');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const player = createAudioPlayer(require('../../assets/sounds/new_order.wav'));
+      player.play();
+      setTimeout(() => {
+        try {
+          player.remove();
+        } catch {}
+      }, 4500);
+    } catch {}
   }
 
   // 2) VIBRATION — strong pattern, works even in silent mode on most devices.

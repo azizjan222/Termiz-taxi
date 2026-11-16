@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "sarixgodriver",
     "userInterfaceStyle": "light",
-    "runtimeVersion": "4",
+    "runtimeVersion": "3",
     "updates": {
       "fallbackToCacheTimeout": 0
     },

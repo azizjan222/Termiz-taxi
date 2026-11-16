@@ -232,6 +232,20 @@ let seenOrderIdsMemory: Set<number> | null = null;
  */
 export async function checkNewOrdersInBackground(): Promise<void> {
   try {
+    // Also ensure the realtime WebSocket stays connected while polling in background.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const rt = require('./realtime');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const drvStore = require('../store/driver');
+      const st = drvStore?.useDriverStore?.getState?.();
+      if (st?.isAuthenticated && st?.isOnline && st?.driver?.telegram_id && typeof rt?.isOpen === 'function') {
+        if (!rt.isOpen()) {
+          rt.connect(st.driver.telegram_id);
+        }
+      }
+    } catch {}
+
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const driverApi = require('../api/driver');
     if (typeof driverApi?.listAvailableOrders !== 'function') return;
@@ -281,7 +295,7 @@ export async function checkNewOrdersInBackground(): Promise<void> {
       if (!order || typeof order.id !== 'number') continue;
       const isSeen = seenOrderIdsMemory.has(order.id);
       const createdMs = order.created_at ? new Date(order.created_at).getTime() : 0;
-      const isRecent = createdMs > 0 && now - createdMs < 120000;
+      const isRecent = createdMs > 0 && now - createdMs < 180000;
 
       if (!isSeen) {
         seenOrderIdsMemory.add(order.id);
@@ -335,12 +349,20 @@ TaskManager.defineTask(DRIVER_LOCATION_TASK, async ({ data, error }) => {
     diagnostics.dropped += 1;
     diagnostics.lastError = String(error.message || error);
     await persistDiagnostics();
+    const errState = await readState();
+    if (errState?.orderId === ONLINE_WATCH_ID) {
+      await checkNewOrdersInBackground();
+    }
     return;
   }
   const locations = (data as { locations?: Location.LocationObject[] } | null)?.locations;
   if (!locations?.length) {
     diagnostics.dropped += 1;
     await persistDiagnostics();
+    const emptyState = await readState();
+    if (emptyState?.orderId === ONLINE_WATCH_ID) {
+      await checkNewOrdersInBackground();
+    }
     return;
   }
 
@@ -372,6 +394,10 @@ TaskManager.defineTask(DRIVER_LOCATION_TASK, async ({ data, error }) => {
     return;
   }
 
+  if (isOnlineWatch) {
+    await checkNewOrdersInBackground();
+  }
+
   const now = Date.now();
   if (now - lastSentAt < BACKEND_MIN_INTERVAL_MS) return;
 
@@ -382,9 +408,7 @@ TaskManager.defineTask(DRIVER_LOCATION_TASK, async ({ data, error }) => {
     diagnostics.lastSentAt = now;
     await persistDiagnostics();
 
-    if (isOnlineWatch) {
-      await checkNewOrdersInBackground();
-    } else if (result && result.active_orders === 0) {
+    if (!isOnlineWatch && result && result.active_orders === 0) {
       // The backend already computes the driver's active orders to decide which passengers to
       // broadcast to, so it can tell us for free whether tracking still has a purpose. Older
       // backends omit the field — `undefined` must mean "keep going", never "stop".
@@ -626,8 +650,9 @@ export async function startOnlineBackgroundWatch(options: {
       if (!(await osTaskRunning())) {
         try {
           await Location.startLocationUpdatesAsync(DRIVER_LOCATION_TASK, {
-            accuracy: Location.Accuracy.Balanced,
-            timeInterval: BACKEND_MIN_INTERVAL_MS,
+            accuracy: Location.Accuracy.High ?? Location.Accuracy.Balanced,
+            timeInterval: 5000,
+            fastestInterval: 3000,
             distanceInterval: 0,
             pausesUpdatesAutomatically: false,
             activityType: Location.ActivityType.AutomotiveNavigation,

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
-  TouchableOpacity, Alert, Switch, Modal,
+  TouchableOpacity, Alert, Switch, Modal, Linking, AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,6 +9,8 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
+import * as Location from 'expo-location';
 
 import {
   listAvailableOrders, acceptOrder, setOnline as apiSetOnline, listMyActive,
@@ -26,6 +28,7 @@ import {
   stopAlert,
   playDriverStatusChime,
   registerPushToken,
+  requestNotificationPermissions,
   playNewOrderAlert,
   wasOrderAlerted,
   newOrderBody,
@@ -98,6 +101,19 @@ export default function OrdersScreen() {
   // Prominent disclosure modal for Google Play compliance before requesting location permission
   const [disclosureVisible, setDisclosureVisible] = useState(false);
   const disclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
+  const [bgPermMissing, setBgPermMissing] = useState(false);
+
+  const checkBgPermissions = useCallback(async () => {
+    try {
+      const [notifPerm, locPerm] = await Promise.all([
+        Notifications.getPermissionsAsync(),
+        Location.getForegroundPermissionsAsync(),
+      ]);
+      setBgPermMissing(notifPerm.status !== 'granted' || locPerm.status !== 'granted');
+    } catch {
+      setBgPermMissing(false);
+    }
+  }, []);
 
   const answerDisclosure = (accepted: boolean) => {
     setDisclosureVisible(false);
@@ -125,6 +141,48 @@ export default function OrdersScreen() {
     []
   );
 
+  const handleEnableBgPermissions = useCallback(async () => {
+    try {
+      const notifPerm = await Notifications.getPermissionsAsync();
+      if (notifPerm.status !== 'granted') {
+        if (notifPerm.canAskAgain !== false) {
+          await requestNotificationPermissions(true);
+        } else {
+          await Linking.openSettings();
+          return;
+        }
+      }
+      registerPushToken(true).catch(() => {});
+
+      const locPerm = await Location.getForegroundPermissionsAsync();
+      if (locPerm.status !== 'granted') {
+        if (locPerm.canAskAgain !== false) {
+          await startOnlineBackgroundWatch({
+            labels: {
+              title: `Sarix Driver — ${t('home.online')}`,
+              body: t('home.noOrdersHint'),
+            },
+            confirm: confirmBackgroundTracking,
+          });
+        } else {
+          await Linking.openSettings();
+          return;
+        }
+      } else {
+        await startOnlineBackgroundWatch({
+          labels: {
+            title: `Sarix Driver — ${t('home.online')}`,
+            body: t('home.noOrdersHint'),
+          },
+          confirm: confirmBackgroundTracking,
+        });
+      }
+      await checkBgPermissions();
+    } catch {
+      Linking.openSettings().catch(() => {});
+    }
+  }, [t, confirmBackgroundTracking, checkBgPermissions]);
+
   useEffect(() => {
     incomingOrderRef.current = incomingOrder;
   }, [incomingOrder]);
@@ -145,9 +203,19 @@ export default function OrdersScreen() {
           body: t('home.noOrdersHint'),
         },
         confirm: confirmBackgroundTracking,
-      }).catch(() => {});
+      })
+        .then(() => checkBgPermissions())
+        .catch(() => checkBgPermissions());
+    } else {
+      setBgPermMissing(false);
     }
-  }, [onlineEnabled, t, confirmBackgroundTracking]);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && onlineEnabled) {
+        checkBgPermissions();
+      }
+    });
+    return () => sub.remove();
+  }, [onlineEnabled, t, confirmBackgroundTracking, checkBgPermissions]);
 
   // `silent` keeps the polled refresh invisible. `refreshing` drives BOTH the
   // RefreshControl spinner and the empty-state gate, so the poll made the spinner
@@ -766,6 +834,23 @@ export default function OrdersScreen() {
           </View>
         </View>
       </View>
+
+      {/* Background alert permission warning when Online */}
+      {onlineEnabled && bgPermMissing && (
+        <TouchableOpacity
+          style={[
+            styles.topupBanner,
+            { backgroundColor: '#FEF3C7', borderColor: '#F59E0B', marginBottom: spacing.xs, marginTop: 0 },
+          ]}
+          onPress={handleEnableBgPermissions}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.topupBannerText, { color: '#92400E', fontWeight: '600' }]}>
+            🔔 Ilovadan chiqqanda ham zakaslar ovozli kelishi uchun Bildirishnoma va Joylashuv ruxsatini yoqing
+          </Text>
+          <Text style={[styles.topupBannerBtn, { color: '#D97706' }]}>Yoqish →</Text>
+        </TouchableOpacity>
+      )}
 
       {/* New driver interactive guide banner */}
       {showGuideBanner && (

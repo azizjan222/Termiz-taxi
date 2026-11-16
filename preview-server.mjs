@@ -1117,8 +1117,49 @@ const HTML = `<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- Right: Summary of Changes -->
+    <!-- Right: Summary of Changes & Video Tutorials -->
     <div class="info-panel">
+      <div class="panel-card" style="border:2px solid #4F46E5;background:linear-gradient(180deg,#EEF2FF 0%,#FFFFFF 100%);">
+        <div class="kicker-text" style="color:#4F46E5;">🔊 SOF O'ZBEK NEYRON OVOZI (SARDOR & MADINA) · TELEFON RAQAMLAR 100% YASHIRILGAN</div>
+        <h1>Sarix Go va Sarix Driver — Sof O'zbek Ovozli Video Qo'llanmalar (MP4)</h1>
+        <p>Har bir qadamda <b>sof o'zbek tilidagi neyron diktor ovozi (<code>uz-UZ-SardorNeural</code> va <code>uz-UZ-MadinaNeural</code>)</b> aniq va ravon gapirib tushuntiradi, qaysi tugmani bosish (<code>▶ BOSING</code>) ko'rsatiladi hamda barcha telefon raqamlar (<code>+998 •• ••• •• ••</code>) yashirilgan:</p>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:16px;">
+          <!-- Video 1: Sarix Go -->
+          <div style="background:#0F172A;border-radius:16px;padding:12px;color:#fff;display:flex;flex-direction:column;gap:10px;border:1.5px solid #F59E0B;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+              <span style="background:#F59E0B;color:#0F172A;font-size:11px;font-weight:800;padding:4px 9px;border-radius:99px;">1 · YO'LOVCHI (MADINA OVOZI)</span>
+              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 13 qadam</span>
+            </div>
+            <div style="font-size:14px;font-weight:800;">Sarix Go — Zakas berish</div>
+            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-go-yolovchi.mp4?v=uzneural4"></video>
+            <a href="/videos/sarix-go-yolovchi.mp4?download=1&v=uzneural4" download="sarix-go-yolovchi.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F59E0B;color:#0F172A;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (Yo'lovchi)</a>
+          </div>
+
+          <!-- Video 2: Sarix Driver -->
+          <div style="background:#0F172A;border-radius:16px;padding:12px;color:#fff;display:flex;flex-direction:column;gap:10px;border:1.5px solid #3B82F6;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+              <span style="background:#3B82F6;color:#FFFFFF;font-size:11px;font-weight:800;padding:4px 9px;border-radius:99px;">2 · HAYDOVCHI (SARDOR OVOZI)</span>
+              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 20 qadam</span>
+            </div>
+            <div style="font-size:14px;font-weight:800;">Sarix Driver — Zakas olish</div>
+            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-driver-haydovchi.mp4?v=uzneural4"></video>
+            <a href="/videos/sarix-driver-haydovchi.mp4?download=1&v=uzneural4" download="sarix-driver-haydovchi.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#3B82F6;color:#FFFFFF;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (Haydovchi)</a>
+          </div>
+
+          <!-- Video 3: Combined Full -->
+          <div style="background:#0F172A;border-radius:16px;padding:12px;color:#fff;display:flex;flex-direction:column;gap:10px;border:1.5px solid #10B981;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+              <span style="background:#10B981;color:#0F172A;font-size:11px;font-weight:800;padding:4px 9px;border-radius:99px;">3 · IKKALA ILOVA (2 OVOZDA)</span>
+              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 33 qadam</span>
+            </div>
+            <div style="font-size:14px;font-weight:800;">To'liq jarayon (Go + Driver)</div>
+            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-toliq-qollanma.mp4?v=uzneural4"></video>
+            <a href="/videos/sarix-toliq-qollanma.mp4?download=1&v=uzneural4" download="sarix-toliq-qollanma.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#10B981;color:#0F172A;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (To'liq)</a>
+          </div>
+        </div>
+      </div>
+
       <div class="panel-card" style="border-color:#10B981;background:linear-gradient(180deg,#ECFDF5 0%,#FFFFFF 100%);">
         <div class="kicker-text">GOOGLE PLAY RAD ETISH MUAMMOSI BUTUNLAY TUZATILDI · v1.0.3 (versionCode 11)</div>
         <h1>«Недопустимое раскрытие информации» (Prominent Disclosure) — 100% Yechim</h1>
@@ -1372,14 +1413,67 @@ const ALLOWED_SOUNDS = new Set([
   'balance_bonus.wav',
 ]);
 
+const ALLOWED_VIDEOS = new Set([
+  'sarix-go-yolovchi.mp4',
+  'sarix-driver-haydovchi.mp4',
+  'sarix-toliq-qollanma.mp4',
+]);
+
 const server = http.createServer((req, res) => {
-  if (req.url === '/health' || req.url === '/ready') {
+  const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const pathname = parsedUrl.pathname;
+
+  if (pathname === '/health' || pathname === '/ready') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', service: 'Sarix Go Preview', version: '1.0.2' }));
+    res.end(JSON.stringify({ status: 'ok', service: 'Sarix Go Preview', version: '1.0.3' }));
     return;
   }
-  if (req.url && req.url.startsWith('/sounds/')) {
-    const name = path.basename(req.url);
+
+  if (pathname.startsWith('/videos/')) {
+    const name = path.basename(pathname);
+    if (ALLOWED_VIDEOS.has(name)) {
+      const mp4Path = path.join(process.cwd(), 'public', 'videos', name);
+      if (fs.existsSync(mp4Path)) {
+        const stat = fs.statSync(mp4Path);
+        const fileSize = stat.size;
+        const range = req.headers.range;
+        const isDownload = parsedUrl.searchParams.get('download') === '1';
+        const baseHeaders = {
+          'Content-Type': 'video/mp4',
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'no-cache',
+        };
+        if (isDownload) {
+          baseHeaders['Content-Disposition'] = `attachment; filename="${name}"`;
+        }
+        if (range) {
+          const parts = range.replace(/bytes=/, '').split('-');
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+          const chunksize = end - start + 1;
+          res.writeHead(206, {
+            ...baseHeaders,
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Content-Length': chunksize,
+          });
+          fs.createReadStream(mp4Path, { start, end }).pipe(res);
+          return;
+        }
+        res.writeHead(200, {
+          ...baseHeaders,
+          'Content-Length': fileSize,
+        });
+        fs.createReadStream(mp4Path).pipe(res);
+        return;
+      }
+    }
+    res.writeHead(404);
+    res.end('Video not found');
+    return;
+  }
+
+  if (pathname.startsWith('/sounds/')) {
+    const name = path.basename(pathname);
     if (ALLOWED_SOUNDS.has(name)) {
       const wavPath = path.join(process.cwd(), 'sarix-go-driver', 'assets', 'sounds', name);
       if (fs.existsSync(wavPath)) {
@@ -1397,6 +1491,7 @@ const server = http.createServer((req, res) => {
     res.end('Not found');
     return;
   }
+
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(HTML);
 });

@@ -48,6 +48,8 @@ const PING_INTERVAL_MS = 25000;
 const ACTIVITY_TIMEOUT_MS = 35000;
 let pingTimer: ReturnType<typeof setInterval> | null = null;
 let lastActivity = 0;
+let lastPingSentAt = 0;
+let lastBgOrderCheckAt = 0;
 
 function clearReconnectTimer() {
   if (reconnectTimer) {
@@ -66,19 +68,26 @@ function clearPingTimer() {
 function startKeepAlive() {
   clearPingTimer();
   lastActivity = Date.now();
+  lastPingSentAt = 0;
   pingTimer = setInterval(() => {
-    // If we haven't seen any traffic within the window, the socket is likely
-    // half-open/dead - force a close so the onclose handler reconnects.
-    if (Date.now() - lastActivity > ACTIVITY_TIMEOUT_MS) {
+    const now = Date.now();
+    // Only treat the socket as half-open if we actively sent a ping recently and received
+    // no traffic back. When Android pauses JS timers in the background for >35s, a huge
+    // gap since lastActivity just means the timer was suspended, NOT that the TCP socket died.
+    if (
+      lastPingSentAt > lastActivity &&
+      now - lastPingSentAt >= PING_INTERVAL_MS &&
+      now - lastPingSentAt < ACTIVITY_TIMEOUT_MS * 2 &&
+      now - lastActivity > ACTIVITY_TIMEOUT_MS
+    ) {
       try {
         socket?.close();
       } catch {}
-      // Stop this timer too: returning without clearing left it ticking against a
-      // socket we just gave up on, so it kept firing until the next startKeepAlive().
       clearPingTimer();
       return;
     }
     try {
+      lastPingSentAt = now;
       socket?.send('ping');
     } catch {}
   }, PING_INTERVAL_MS);
@@ -137,6 +146,23 @@ function handleMessage(data: any) {
     return;
   }
   if (!msg || typeof msg !== 'object') return;
+
+  if (msg.type === 'heartbeat') {
+    try {
+      socket?.send('ping');
+    } catch {}
+    if (useDriverStore.getState().isOnline && Date.now() - lastBgOrderCheckAt > 10000) {
+      lastBgOrderCheckAt = Date.now();
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const bgLoc = require('./backgroundLocation');
+        if (typeof bgLoc?.checkNewOrdersInBackground === 'function') {
+          bgLoc.checkNewOrdersInBackground().catch(() => {});
+        }
+      } catch {}
+    }
+    return;
+  }
 
   if (msg.type === 'error') {
     // The backend sends {"type":"error","error":"unauthorized"} and then closes when the

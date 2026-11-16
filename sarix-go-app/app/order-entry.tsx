@@ -190,10 +190,16 @@ export default function OrderEntryScreen() {
   const zoomedRef = useRef(false);
   const detectingRef = useRef(true);
 
-  const resolveAddress = useCallback((lat: number, lon: number) => {
+  const unmountedRef = useRef(false);
+  const watchSubRef = useRef<Location.LocationSubscription | null>(null);
+  const bestWatchedAccRef = useRef<number>(Number.POSITIVE_INFINITY);
+
+  const resolveAddress = useCallback((lat: number, lon: number, silent = false) => {
     lastCoordsRef.current = { lat, lon };
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    setResolving(true);
+    if (!silent) {
+      setResolving(true);
+    }
     debounceRef.current = setTimeout(async () => {
       const reqId = ++reqIdRef.current;
       try {
@@ -213,8 +219,8 @@ export default function OrderEntryScreen() {
             } catch {}
           }
         }
-        if (reqId !== reqIdRef.current) return;
-        const full = result || '';
+        if (reqId !== reqIdRef.current || unmountedRef.current) return;
+        const full = (result || '').trim();
         if (full) {
           addressCoordsRef.current = { lat, lon };
           setFullAddress(full);
@@ -230,9 +236,11 @@ export default function OrderEntryScreen() {
           }
         }
       } finally {
-        if (reqId === reqIdRef.current) setResolving(false);
+        if (reqId === reqIdRef.current && !unmountedRef.current) {
+          setResolving(false);
+        }
       }
-    }, 200);
+    }, 150);
   }, [t]);
 
   const handleMapReady = useCallback(() => {
@@ -241,7 +249,10 @@ export default function OrderEntryScreen() {
     if (detected) {
       mapRef.current?.setCenter(detected.lat, detected.lon, zoomedRef.current ? undefined : DETECT_ZOOM);
       zoomedRef.current = true;
-      resolveAddress(detected.lat, detected.lon);
+      const alreadyResolvedHere =
+        addressCoordsRef.current &&
+        distanceMeters(addressCoordsRef.current.lat, addressCoordsRef.current.lon, detected.lat, detected.lon) < 10;
+      resolveAddress(detected.lat, detected.lon, Boolean(alreadyResolvedHere));
       return;
     }
     const c = lastCoordsRef.current;
@@ -257,6 +268,13 @@ export default function OrderEntryScreen() {
 
   const applyFix = useCallback(
     (lat: number, lon: number) => {
+      const prevDetected = detectedRef.current;
+      const movedLittle =
+        prevDetected != null && distanceMeters(prevDetected.lat, prevDetected.lon, lat, lon) < 6;
+      const alreadyResolvedNearby =
+        addressCoordsRef.current != null &&
+        distanceMeters(addressCoordsRef.current.lat, addressCoordsRef.current.lon, lat, lon) < 10;
+
       detectedRef.current = { lat, lon };
       hasRealPointRef.current = true;
       setHasRealPoint(true);
@@ -265,10 +283,45 @@ export default function OrderEntryScreen() {
       if (mapReadyRef.current) {
         zoomedRef.current = true;
       }
-      resolveAddress(lat, lon);
+      // If we already resolved a valid street address within 10m of this refined fix,
+      // refresh silently without locking the "Qayerga borasiz?" button again.
+      if (movedLittle && alreadyResolvedNearby) {
+        return;
+      }
+      resolveAddress(lat, lon, alreadyResolvedNearby);
     },
     [resolveAddress]
   );
+
+  const ensureContinuousWatcher = useCallback(async () => {
+    if (unmountedRef.current || watchSubRef.current) return;
+    try {
+      const perm = await Location.getForegroundPermissionsAsync();
+      if (perm.status !== 'granted' || unmountedRef.current || watchSubRef.current) return;
+      const sub = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: 1500,
+          distanceInterval: 3,
+        },
+        (pos) => {
+          if (unmountedRef.current || userMovedRef.current || !pos?.coords) return;
+          const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+          const acc = accuracy != null && accuracy > 0 ? accuracy : 100;
+          if (!detectedRef.current || acc < bestWatchedAccRef.current || acc <= 25) {
+            bestWatchedAccRef.current = acc;
+            applyFix(lat, lon);
+          }
+        }
+      );
+      if (unmountedRef.current) {
+        sub.remove();
+      } else {
+        watchSubRef.current = sub;
+      }
+    } catch {}
+  }, [applyFix]);
 
   const detect = useCallback(async () => {
     detectingRef.current = true;
@@ -278,15 +331,20 @@ export default function OrderEntryScreen() {
     let gotFix = false;
     try {
       const result = await detectLocation({
-        timeoutMs: 10000,
+        timeoutMs: 12000,
         onUpdate: (fix) => {
-          if (userMovedRef.current) return;
+          if (userMovedRef.current || unmountedRef.current) return;
           gotFix = true;
-          detectingRef.current = false;
           setDetecting(false);
           applyFix(fix.lat, fix.lon);
+          ensureContinuousWatcher();
         },
       });
+      if (unmountedRef.current) return;
+      // Start continuous watcher once detectLocation has finished (including when a
+      // first-time user just granted location permission inside detectLocation).
+      ensureContinuousWatcher();
+
       if (result.status === 'success' && !userMovedRef.current) {
         gotFix = true;
         applyFix(result.lat, result.lon);
@@ -342,57 +400,29 @@ export default function OrderEntryScreen() {
         }
       }
     } finally {
-      detectingRef.current = false;
-      setDetecting(false);
+      if (!unmountedRef.current) {
+        detectingRef.current = false;
+        setDetecting(false);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolveAddress, applyFix]);
+  }, [resolveAddress, applyFix, ensureContinuousWatcher]);
 
   useEffect(() => {
+    unmountedRef.current = false;
     listCities().then(setCities).catch(() => setCities([]));
+    if (hasInitialPoint) {
+      detectedRef.current = { lat: center.lat, lon: center.lon };
+      resolveAddress(center.lat, center.lon);
+    }
     detect();
-
-    // Keep a continuous satellite GPS watcher running while the screen is open so if
-    // the phone's GPS chip locks on after a few seconds (or after the user turns GPS on),
-    // the map automatically centers on the user's real house as long as they haven't
-    // manually dragged the pin.
-    let watchSub: Location.LocationSubscription | null = null;
-    let bestWatchedAcc = Number.POSITIVE_INFINITY;
-    let unmounted = false;
-
-    (async () => {
-      try {
-        const perm = await Location.getForegroundPermissionsAsync();
-        if (perm.status !== 'granted' || unmounted) return;
-        const sub = await Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.BestForNavigation,
-            timeInterval: 1500,
-            distanceInterval: 3,
-          },
-          (pos) => {
-            if (unmounted || userMovedRef.current || !pos?.coords) return;
-            const { latitude: lat, longitude: lon, accuracy } = pos.coords;
-            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-            const acc = accuracy != null && accuracy > 0 ? accuracy : 100;
-            if (!detectedRef.current || acc < bestWatchedAcc || acc <= 25) {
-              bestWatchedAcc = acc;
-              applyFix(lat, lon);
-            }
-          }
-        );
-        if (unmounted) {
-          sub.remove();
-        } else {
-          watchSub = sub;
-        }
-      } catch {}
-    })();
+    ensureContinuousWatcher();
 
     return () => {
-      unmounted = true;
-      if (watchSub) {
-        try { watchSub.remove(); } catch {}
+      unmountedRef.current = true;
+      if (watchSubRef.current) {
+        try { watchSubRef.current.remove(); } catch {}
+        watchSubRef.current = null;
       }
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -482,6 +512,12 @@ export default function OrderEntryScreen() {
       detectingRef.current &&
       !detectedRef.current &&
       distanceMeters(lat, lon, DEFAULT_LAT, DEFAULT_LON) < 1000
+    ) {
+      return;
+    }
+    if (
+      detectedRef.current &&
+      distanceMeters(lat, lon, detectedRef.current.lat, detectedRef.current.lon) < 10
     ) {
       return;
     }

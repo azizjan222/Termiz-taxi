@@ -1,4 +1,5 @@
 """WebSocket manager for real-time order updates."""
+import asyncio
 import json
 import logging
 from typing import Dict, Set
@@ -183,6 +184,20 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         ws_manager.add_passenger(client_id, ws)
         await ws.send_json({"type": "connected", "role": "passenger"})
 
+    async def _driver_heartbeat():
+        try:
+            while not ws.closed:
+                await asyncio.sleep(15)
+                if ws.closed:
+                    break
+                await ws.send_json({"type": "heartbeat"})
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass
+
+    hb_task = asyncio.create_task(_driver_heartbeat()) if role == "driver" else None
+
     try:
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
@@ -193,6 +208,8 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                 logger.warning(f"WS error: {ws.exception()}")
                 break
     finally:
+        if hb_task is not None:
+            hb_task.cancel()
         ws_manager.remove(ws)
 
     return ws

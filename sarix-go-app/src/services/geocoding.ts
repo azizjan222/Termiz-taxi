@@ -58,7 +58,6 @@ export interface GeoResult {
  */
 export async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
   const keys = Array.from(new Set([GEOCODER_KEY, SDK_API_KEY, JS_API_KEY].filter(Boolean)));
-  if (keys.length === 0) return null;
   for (const key of keys) {
     try {
       const url =
@@ -76,6 +75,51 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string |
       // try the next key
     }
   }
+
+  // Fallback: OpenStreetMap Nominatim reverse geocoder so first-time users still get
+  // an immediate street/mahalla/district name even if Yandex HTTP keys return 403 or
+  // while the Yandex WebView JS API is still downloading on first launch.
+  try {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 4500) : null;
+    const url =
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2` +
+      `&lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lon))}` +
+      `&accept-language=uz,ru&addressdetails=1`;
+    const resp = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'SarixGoPassenger/1.0.4',
+      },
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    if (timeoutId) clearTimeout(timeoutId);
+    if (resp.ok) {
+      const data = await resp.json();
+      const addr = data?.address;
+      if (addr && typeof addr === 'object') {
+        const district =
+          addr.county || addr.city || addr.town || addr.municipality || addr.state_district || '';
+        const locality =
+          addr.village || addr.hamlet || addr.suburb || addr.neighbourhood || addr.quarter || '';
+        const road = addr.road || addr.pedestrian || addr.residential || '';
+        const house = addr.house_number || '';
+        const streetPart = [road, house].filter(Boolean).join(' ');
+        const parts = [district, locality, streetPart || data?.name || '']
+          .map((s) => String(s || '').trim())
+          .filter(Boolean);
+        if (parts.length > 0) {
+          return parts.join(', ');
+        }
+      }
+      if (data?.display_name && typeof data.display_name === 'string') {
+        return data.display_name;
+      }
+    }
+  } catch {
+    // ignore fallback error
+  }
+
   return null;
 }
 

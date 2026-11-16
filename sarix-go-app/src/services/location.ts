@@ -44,7 +44,7 @@ export interface DetectOptions {
 }
 
 /** Default Detection_Timeout, in milliseconds. */
-const DEFAULT_TIMEOUT_MS = 10000;
+const DEFAULT_TIMEOUT_MS = 12000;
 
 /**
  * Target horizontal accuracy (meters). Once a live fix at or below this radius
@@ -57,29 +57,36 @@ const TARGET_ACCURACY_M = 20;
  * How long to wait for tighter satellite fixes after a usable fused/network fix
  * has already been delivered to the UI.
  */
-const REFINEMENT_WINDOW_MS = 2200;
+const REFINEMENT_WINDOW_MS = 2000;
 
 /** Maximum age (ms) for `getLastKnownPositionAsync` to be used as an initial seed. */
-const MAX_LAST_KNOWN_AGE_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_LAST_KNOWN_AGE_MS = 60 * 60 * 1000; // 60 minutes
 
 export async function detectLocation(opts?: DetectOptions): Promise<DetectResult> {
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let refineTimer: ReturnType<typeof setTimeout> | undefined;
+  let retryTimer: ReturnType<typeof setInterval> | undefined;
 
   try {
     // 1. Check and request foreground location permission.
     const current = await Location.getForegroundPermissionsAsync();
-    if (current.status !== 'granted') {
+    const wasJustGranted = current.status !== 'granted';
+    if (wasJustGranted) {
       const requested = await Location.requestForegroundPermissionsAsync();
       if (requested.status !== 'granted') {
         return { status: 'permission-denied' };
       }
+      // Give Android's FusedLocationProviderClient a brief moment to bind the newly
+      // granted runtime permission for a first-time user before firing position requests.
+      if (Platform.OS === 'android') {
+        await new Promise((r) => setTimeout(r, 150));
+      }
     }
 
-    // 2. Ensure device location services are enabled. Only prompt enableNetworkProviderAsync
-    // synchronously if services are currently disabled; otherwise trigger it non-blockingly
-    // so an Android system modal never stalls location acquisition.
+    // 2. Ensure device location services are enabled. Only call enableNetworkProviderAsync
+    // when services are disabled (or later if no fix arrives), so Play Services settings
+    // checks never interrupt initial fused position requests.
     let servicesEnabled = await Location.hasServicesEnabledAsync();
     if (!servicesEnabled && Platform.OS === 'android') {
       await Location.enableNetworkProviderAsync().catch(() => {});
@@ -88,14 +95,12 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
     if (!servicesEnabled) {
       return { status: 'services-disabled' };
     }
-    if (Platform.OS === 'android') {
-      Location.enableNetworkProviderAsync().catch(() => {});
-    }
 
     // 3. Multi-tier acquisition:
     //    - Tier A: `getLastKnownPositionAsync` for an instant (<50ms) initial pin jump.
-    //    - Tier B: `getCurrentPositionAsync(Low + Balanced + High)` so indoor users on
-    //      Wi-Fi / 4G in Surxondaryo get a fast fused fix even when roof blocks GPS.
+    //    - Tier B: `getCurrentPositionAsync(Low + Balanced + High)` with automatic retry
+    //      pulses every 1.2s so first-time users whose OS location provider is warming up
+    //      after granting permission always lock onto a fix.
     //    - Tier C: `watchPositionAsync(High + BestForNavigation)` to converge to
     //      street/house-level accuracy.
     const best = await new Promise<DetectSuccess | 'timeout'>((resolve) => {
@@ -103,6 +108,7 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
       let bestSeed: DetectSuccess | null = null;
       const watchers: Location.LocationSubscription[] = [];
       let settled = false;
+      let retryCount = 0;
 
       const finish = (value: DetectSuccess | 'timeout') => {
         if (settled) return;
@@ -110,6 +116,10 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
         if (refineTimer !== undefined) {
           clearTimeout(refineTimer);
           refineTimer = undefined;
+        }
+        if (retryTimer !== undefined) {
+          clearInterval(retryTimer);
+          retryTimer = undefined;
         }
         while (watchers.length > 0) {
           const sub = watchers.pop();
@@ -130,6 +140,18 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
           lon,
           accuracy: accuracy != null && Number.isFinite(accuracy) ? accuracy : null,
         };
+      };
+
+      const recordSeed = (pos: Location.LocationObject | null | undefined) => {
+        if (settled) return;
+        const fix = toFix(pos);
+        if (!fix) return;
+        bestSeed = fix;
+        if (!bestLive) {
+          try {
+            opts?.onUpdate?.(fix);
+          } catch {}
+        }
       };
 
       const recordLive = (pos: Location.LocationObject | null | undefined) => {
@@ -158,10 +180,10 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
           return;
         }
 
-        // Once we have a usable live fix (<= 1500m, covering indoor Wi-Fi/4G cell fixes in
+        // Once we have a usable live fix (<= 2500m, covering indoor Wi-Fi/4G cell fixes in
         // Surxondaryo districts), start a short refinement window so satellite GPS can
         // tighten it without blocking the UI for the full timeout.
-        if (acc <= 1500 && refineTimer === undefined) {
+        if (acc <= 2500 && refineTimer === undefined) {
           refineTimer = setTimeout(() => {
             if (bestLive) finish(bestLive);
           }, REFINEMENT_WINDOW_MS);
@@ -172,38 +194,63 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
         finish(bestLive ?? bestSeed ?? 'timeout');
       }, timeoutMs);
 
-      // Tier A: Instant last-known position seed.
+      const fireOneShotRequests = () => {
+        if (settled) return;
+        // Tier B0: Ultra-fast coarse network fix (cell tower / Wi-Fi) for deep indoors.
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low })
+          .then((pos) => recordLive(pos))
+          .catch(() => {});
+
+        // Tier B1: Fast Fused Location (Wi-Fi + Cell + GPS, works reliably indoors).
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+          .then((pos) => recordLive(pos))
+          .catch(() => {});
+
+        // Tier B2: High-accuracy current position.
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
+          .then((pos) => recordLive(pos))
+          .catch(() => {});
+      };
+
+      // Tier A: Instant last-known position seed (with fallback to unfiltered last-known).
       Location.getLastKnownPositionAsync({
         maxAge: MAX_LAST_KNOWN_AGE_MS,
-        requiredAccuracy: 2000,
+        requiredAccuracy: 3000,
       })
         .then((pos) => {
-          if (settled) return;
-          const fix = toFix(pos);
-          if (!fix) return;
-          bestSeed = fix;
-          if (!bestLive) {
-            try {
-              opts?.onUpdate?.(fix);
-            } catch {}
+          if (pos) {
+            recordSeed(pos);
+          } else {
+            return Location.getLastKnownPositionAsync().then((fallbackPos) => {
+              recordSeed(fallbackPos);
+            });
           }
         })
         .catch(() => {});
 
-      // Tier B0: Ultra-fast coarse network fix (cell tower / Wi-Fi) for deep indoors.
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low })
-        .then((pos) => recordLive(pos))
-        .catch(() => {});
+      // Initial burst of one-shot position requests.
+      fireOneShotRequests();
 
-      // Tier B1: Fast Fused Location (Wi-Fi + Cell + GPS, works reliably indoors).
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-        .then((pos) => recordLive(pos))
-        .catch(() => {});
-
-      // Tier B2: High-accuracy current position.
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
-        .then((pos) => recordLive(pos))
-        .catch(() => {});
+      // Retry pulse: on a first-time install right after granting permission, Android's
+      // FusedLocationProviderClient may reject or drop the t=0ms request while binding.
+      // Re-firing every 1.2s until a live fix arrives guarantees automatic lock-on.
+      retryTimer = setInterval(() => {
+        if (settled || bestLive) {
+          if (retryTimer !== undefined) {
+            clearInterval(retryTimer);
+            retryTimer = undefined;
+          }
+          return;
+        }
+        retryCount += 1;
+        if (retryCount === 2 && Platform.OS === 'android') {
+          Location.enableNetworkProviderAsync().catch(() => {});
+        }
+        Location.getLastKnownPositionAsync()
+          .then((pos) => recordSeed(pos))
+          .catch(() => {});
+        fireOneShotRequests();
+      }, 1200);
 
       // Tier C1: Continuous High-accuracy watcher.
       Location.watchPositionAsync(
@@ -255,6 +302,9 @@ export async function detectLocation(opts?: DetectOptions): Promise<DetectResult
     }
     if (refineTimer !== undefined) {
       clearTimeout(refineTimer);
+    }
+    if (retryTimer !== undefined) {
+      clearInterval(retryTimer);
     }
   }
 }

@@ -88,7 +88,8 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
   const source = useMemo(() => ({ html, baseUrl: 'https://yandex.com/' }), [html]);
 
   const sendCommand = (cmd: object) => {
-    const js = `(function(){window.handleCommand && window.handleCommand(${JSON.stringify(cmd)});})();true;`;
+    const payload = JSON.stringify(cmd);
+    const js = `(function(){if(window.handleCommand){window.handleCommand(${payload});}else{window.__cmdQueue=window.__cmdQueue||[];window.__cmdQueue.push(${payload});}})();true;`;
     webViewRef.current?.injectJavaScript(js);
   };
 
@@ -334,6 +335,9 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   var routeLine = null;
   var pendingCenter = null;
   var programmaticMoveCount = 0;
+  var userInteracted = false;
+  var lastProgrammaticCenter = [${initialLat}, ${initialLon}];
+  window.__cmdQueue = window.__cmdQueue || [];
 
   function send(data) {
     if (window.ReactNativeWebView) {
@@ -345,11 +349,35 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     send({ type: 'apiError', message: msg });
   };
 
+  (function attachInteractionListeners() {
+    var mapEl = document.getElementById('map');
+    if (!mapEl) return;
+    var markUser = function() {
+      userInteracted = true;
+    };
+    mapEl.addEventListener('touchstart', markUser, { passive: true });
+    mapEl.addEventListener('pointerdown', markUser, { passive: true });
+    mapEl.addEventListener('mousedown', markUser, { passive: true });
+  })();
+
+  function approxDistMeters(aLat, aLon, bLat, bLon) {
+    var R = 6371000;
+    var toRad = function(d) { return (d * Math.PI) / 180; };
+    var dLat = toRad(bLat - aLat);
+    var dLon = toRad(bLon - aLon);
+    var h =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
   function init() {
     var startLat = pendingCenter ? pendingCenter.lat : ${initialLat};
     var startLon = pendingCenter ? pendingCenter.lon : ${initialLon};
     var startZoom = (pendingCenter && typeof pendingCenter.zoom === 'number') ? pendingCenter.zoom : ${initialZoom};
     pendingCenter = null;
+    lastProgrammaticCenter = [startLat, startLon];
+    userInteracted = false;
 
     programmaticMoveCount++;
     map = new ymaps.Map('map', {
@@ -361,19 +389,29 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     });
     setTimeout(function() {
       programmaticMoveCount = Math.max(0, programmaticMoveCount - 1);
-    }, 250);
+    }, 600);
 
     map.events.add('click', function(e) {
       var coords = e.get('coords');
       send({ type: 'mapPress', lat: coords[0], lon: coords[1] });
     });
 
+    map.events.add(['multitouchbegin', 'mousedown'], function() {
+      userInteracted = true;
+    });
+
     map.events.add('boundschange', function(e) {
-      if (programmaticMoveCount > 0) {
+      if (programmaticMoveCount > 0 || !userInteracted) {
         return;
       }
       var center = (e && e.get && e.get('newCenter')) || map.getCenter();
       var zoom = (e && e.get && e.get('newZoom')) || map.getZoom();
+      if (
+        lastProgrammaticCenter &&
+        approxDistMeters(center[0], center[1], lastProgrammaticCenter[0], lastProgrammaticCenter[1]) < 8
+      ) {
+        return;
+      }
       send({
         type: 'cameraMove',
         lat: center[0],
@@ -383,6 +421,17 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     });
 
     setMarkers(${JSON.stringify(markers)});
+
+    if (window.__cmdQueue && window.__cmdQueue.length > 0) {
+      var q = window.__cmdQueue.slice();
+      window.__cmdQueue = [];
+      for (var i = 0; i < q.length; i++) {
+        try {
+          window.handleCommand(q[i]);
+        } catch (err) {}
+      }
+    }
+
     send({ type: 'ready' });
   }
 
@@ -411,6 +460,8 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   }
 
   function setCenter(lat, lon, zoom) {
+    lastProgrammaticCenter = [lat, lon];
+    userInteracted = false;
     if (!map) {
       pendingCenter = { lat: lat, lon: lon, zoom: zoom };
       return;
@@ -424,18 +475,18 @@ function generateMapHtml(opts: MapHtmlOptions): string {
           function() {
             setTimeout(function() {
               programmaticMoveCount = Math.max(0, programmaticMoveCount - 1);
-            }, 80);
+            }, 450);
           },
           function() {
             setTimeout(function() {
               programmaticMoveCount = Math.max(0, programmaticMoveCount - 1);
-            }, 80);
+            }, 450);
           }
         );
       } else {
         setTimeout(function() {
           programmaticMoveCount = Math.max(0, programmaticMoveCount - 1);
-        }, 120);
+        }, 500);
       }
     } catch (e) {
       programmaticMoveCount = Math.max(0, programmaticMoveCount - 1);
@@ -471,6 +522,11 @@ function generateMapHtml(opts: MapHtmlOptions): string {
 
   // Reverse-geocode using the in-map JS API (same working key + uz_UZ locale).
   function reverseGeocode(reqId, lat, lon) {
+    if (typeof ymaps === 'undefined' || !ymaps.geocode) {
+      window.__cmdQueue = window.__cmdQueue || [];
+      window.__cmdQueue.push({ type: 'geocode', reqId: reqId, lat: lat, lon: lon });
+      return;
+    }
     try {
       ymaps.geocode([lat, lon], { results: 1 }).then(function(res) {
         var obj = res.geoObjects.get(0);
@@ -503,7 +559,7 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     if (navigator && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         function(pos) {
-          if (pos && pos.coords && pos.coords.accuracy <= 1500) {
+          if (pos && pos.coords && pos.coords.accuracy <= 2500) {
             finish(pos.coords.latitude, pos.coords.longitude);
           } else {
             finish(null, null);
@@ -521,6 +577,12 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   }
 
   window.handleCommand = function(cmd) {
+    if (!cmd || !cmd.type) return;
+    if (!map && cmd.type !== 'setCenter' && cmd.type !== 'geolocate') {
+      window.__cmdQueue = window.__cmdQueue || [];
+      window.__cmdQueue.push(cmd);
+      return;
+    }
     switch (cmd.type) {
       case 'setCenter': setCenter(cmd.lat, cmd.lon, cmd.zoom); break;
       case 'setMarkers': setMarkers(cmd.markers || []); break;

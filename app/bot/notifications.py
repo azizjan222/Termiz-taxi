@@ -648,7 +648,7 @@ async def notify_group_new_order(bot, order) -> None:
 
 
 async def notify_online_drivers_telegram_order(bot, order, drivers: list) -> None:
-    """Send direct Telegram notification to all online drivers with a telegram_id.
+    """Send direct Telegram notification to all online drivers with a valid Telegram chat ID.
 
     Even when a driver has a mobile push_token stored in the database, OEM battery savers,
     background restrictions, or FCM credential mismatches can prevent remote push delivery
@@ -658,12 +658,53 @@ async def notify_online_drivers_telegram_order(bot, order, drivers: list) -> Non
     _save_group_order_messages so they are automatically deleted when the order is
     accepted, cancelled, or expires.
     """
-    targets = [
-        d for d in drivers
-        if getattr(d, "is_online", False)
-        and getattr(d, "telegram_id", None)
-    ]
-    if not targets:
+    online_drivers = [d for d in drivers if getattr(d, "is_online", False)]
+    if not online_drivers:
+        return
+
+    chat_ids: list[int] = []
+    missing_tg_phones: list[str] = []
+    for d in online_drivers:
+        tg = getattr(d, "telegram_id", None)
+        try:
+            tg_int = int(tg) if tg is not None else 0
+        except (TypeError, ValueError):
+            tg_int = 0
+        if tg_int > 0:
+            if tg_int not in chat_ids:
+                chat_ids.append(tg_int)
+        else:
+            ph = str(getattr(d, "phone", "") or "").strip()
+            if ph and not ph.startswith("google:"):
+                digits = "".join(ch for ch in ph if ch.isdigit())
+                if digits:
+                    missing_tg_phones.extend([f"+{digits}", digits])
+
+    if missing_tg_phones:
+        try:
+            from app.database import get_session
+            from app.models import User
+
+            session = get_session()
+            try:
+                rows = (
+                    session.query(User.telegram_id)
+                    .filter(
+                        User.phone.in_(list(dict.fromkeys(missing_tg_phones))),
+                        User.telegram_id.isnot(None),
+                        User.telegram_id > 0,
+                    )
+                    .all()
+                )
+                for (u_tg,) in rows:
+                    if u_tg and int(u_tg) > 0 and int(u_tg) not in chat_ids:
+                        chat_ids.append(int(u_tg))
+            finally:
+                session.close()
+        except Exception:
+            pass
+
+    if not chat_ids:
         return
 
     text, markup = format_group_order_vitrina(order)
@@ -678,19 +719,19 @@ async def notify_online_drivers_telegram_order(bot, order, drivers: list) -> Non
     try:
         if own_bot:
             await bot.initialize()
-        for d in targets:
+        for cid in chat_ids:
             try:
                 sent_msg = await bot.send_message(
-                    chat_id=int(d.telegram_id),
+                    chat_id=cid,
                     text=text,
                     parse_mode="HTML",
                     reply_markup=markup,
                     disable_web_page_preview=True,
                 )
                 if sent_msg and getattr(sent_msg, "message_id", None):
-                    sent_pairs.append((int(d.telegram_id), int(sent_msg.message_id)))
+                    sent_pairs.append((cid, int(sent_msg.message_id)))
             except Exception as e:
-                logger.debug("Telegram fallback to online driver %s failed: %s", d.telegram_id, e)
+                logger.debug("Telegram fallback to online driver %s failed: %s", cid, e)
     finally:
         if own_bot:
             try:

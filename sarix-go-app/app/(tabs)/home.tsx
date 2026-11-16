@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Location from 'expo-location';
 
 import { Icon, type IconName } from '../../src/components/Icon';
 import { getUnreadCount } from '../../src/services/notificationHistory';
@@ -75,15 +76,51 @@ export default function HomeScreen() {
           if (active) setUnread(n);
         })
         .catch(() => {});
+
+      // Pre-warm location permission and OS FusedLocationProvider cache on HomeScreen
+      // so when a first-time user taps "Taksi chaqirish", the GPS chip is already warm.
+      (async () => {
+        try {
+          const perm = await Location.getForegroundPermissionsAsync();
+          const status =
+            perm.status === 'granted'
+              ? 'granted'
+              : (await Location.requestForegroundPermissionsAsync()).status;
+          if (status === 'granted') {
+            Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            }).catch(() => {});
+          }
+        } catch {}
+      })();
+
       return () => {
         active = false;
       };
     }, [])
   );
 
-  const startOrder = (type: 'taxi' | 'parcel') => {
+  const startOrder = async (type: 'taxi' | 'parcel') => {
     resetOrder();
     setOrderField('serviceType', type);
+    try {
+      const perm = await Location.getForegroundPermissionsAsync();
+      if (perm.status !== 'granted') {
+        await Location.requestForegroundPermissionsAsync();
+      }
+      const lastKnown = await Location.getLastKnownPositionAsync({
+        maxAge: 15 * 60 * 1000,
+        requiredAccuracy: 2000,
+      }).catch(() => null);
+      if (
+        lastKnown?.coords &&
+        Number.isFinite(lastKnown.coords.latitude) &&
+        Number.isFinite(lastKnown.coords.longitude)
+      ) {
+        setOrderField('fromLat', lastKnown.coords.latitude);
+        setOrderField('fromLon', lastKnown.coords.longitude);
+      }
+    } catch {}
     router.push('/order-entry');
   };
 
