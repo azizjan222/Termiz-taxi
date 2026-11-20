@@ -654,8 +654,12 @@ def _get_known_group_ids() -> list[int]:
     return known
 
 
+_group_lock_notice_ts: dict[int, float] = {}
+
+
 async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Smart group listener: deletes unauthorized links and replies once every 10 group messages."""
+    """Smart group listener: blocks writing while a new order is unaccepted, deletes unauthorized links,
+    and replies once every 10 group messages."""
     message = update.effective_message
     user = update.effective_user
     if not message or not message.chat or message.chat.type not in ("group", "supergroup"):
@@ -664,12 +668,57 @@ async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Remember active group for periodic promo posts and /guruh_post
     _remember_active_group(message.chat_id)
 
+    # Ignore bot messages and Telegram service notifications (e.g., pinned_message, member join/leave)
+    if (user and user.is_bot) or getattr(message, "pinned_message", None) is not None:
+        return
+    if getattr(message, "new_chat_members", None) or getattr(message, "left_chat_member", None):
+        return
+
     raw_text = (message.text or message.caption or "").strip()
 
     # Support "/guruh_post" even if triggered without standard command entity or by anonymous admin
     if raw_text.lower().startswith("/guruh_post"):
         await cmd_group_post(update, context)
         return
+
+    # 0. Active unaccepted order lock: while a new order is waiting in the group, nobody can write
+    try:
+        from app.bot.notifications import _set_group_write_lock, has_pending_group_orders
+
+        if has_pending_group_orders(chat_id=message.chat_id):
+            try:
+                await message.delete()
+            except Exception as del_err:
+                logger.debug("Could not delete message during active order lock in %s: %s", message.chat_id, del_err)
+            await _set_group_write_lock(context.bot, message.chat_id, locked=True)
+
+            import time
+            now_ts = time.monotonic()
+            if now_ts - _group_lock_notice_ts.get(message.chat_id, 0.0) >= 15.0:
+                _group_lock_notice_ts[message.chat_id] = now_ts
+                try:
+                    warn_msg = await context.bot.send_message(
+                        chat_id=message.chat_id,
+                        text=(
+                            "🔒 <b>Guruhda yangi zakas bor!</b>\n"
+                            "Zakas qabul qilinmaguncha guruhga xabar yozish vaqtincha yopilgan."
+                        ),
+                        parse_mode="HTML",
+                    )
+
+                    async def _del_warn(cid: int, mid: int):
+                        await asyncio.sleep(6)
+                        try:
+                            await context.bot.delete_message(chat_id=cid, message_id=mid)
+                        except Exception:
+                            pass
+
+                    asyncio.create_task(_del_warn(warn_msg.chat_id, warn_msg.message_id))
+                except Exception:
+                    pass
+            return
+    except Exception as lock_chk_err:
+        logger.debug("Active order lock check error: %s", lock_chk_err)
 
     is_admin_sender = await _is_group_or_bot_admin(update, context)
 
@@ -790,9 +839,13 @@ async def group_reminder(context: ContextTypes.DEFAULT_TYPE):
     targets = _get_known_group_ids()
     if not targets:
         return
+    from app.bot.notifications import has_pending_group_orders
+
     bot_username = getattr(context.bot, "username", None) or config.BOT_USERNAME
     text, markup = build_group_promo_post(bot_username)
     for chat_id in targets:
+        if has_pending_group_orders(chat_id=chat_id):
+            continue
         try:
             await context.bot.send_message(
                 chat_id=chat_id,

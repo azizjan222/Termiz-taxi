@@ -955,7 +955,7 @@ const HTML = `<!DOCTYPE html>
               </div>
               <div>
                 <small>Yo'lovchilarga ko'rinadigan raqam</small>
-                <strong>+998 90 123 45 67</strong>
+                <strong>+998 •• ••• •• ••</strong>
               </div>
             </div>
             <button type="button" onclick="showToast('Raqamni o\\'zgartirish oynasi ochiladi')">O'zgartirish</button>
@@ -1132,30 +1132,30 @@ const HTML = `<!DOCTYPE html>
               <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 13 qadam</span>
             </div>
             <div style="font-size:14px;font-weight:800;">Sarix Go — Zakas berish</div>
-            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-go-yolovchi.mp4?v=uzneural4"></video>
-            <a href="/videos/sarix-go-yolovchi.mp4?download=1&v=uzneural4" download="sarix-go-yolovchi.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F59E0B;color:#0F172A;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (Yo'lovchi)</a>
+            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-go-yolovchi.mp4?v=uzneural5"></video>
+            <a href="/videos/sarix-go-yolovchi.mp4?download=1&v=uzneural5" download="sarix-go-yolovchi.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F59E0B;color:#0F172A;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (Yo'lovchi)</a>
           </div>
 
           <!-- Video 2: Sarix Driver -->
           <div style="background:#0F172A;border-radius:16px;padding:12px;color:#fff;display:flex;flex-direction:column;gap:10px;border:1.5px solid #3B82F6;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
               <span style="background:#3B82F6;color:#FFFFFF;font-size:11px;font-weight:800;padding:4px 9px;border-radius:99px;">2 · HAYDOVCHI (SARDOR OVOZI)</span>
-              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 20 qadam</span>
+              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 22 qadam</span>
             </div>
             <div style="font-size:14px;font-weight:800;">Sarix Driver — Zakas olish</div>
-            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-driver-haydovchi.mp4?v=uzneural4"></video>
-            <a href="/videos/sarix-driver-haydovchi.mp4?download=1&v=uzneural4" download="sarix-driver-haydovchi.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#3B82F6;color:#FFFFFF;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (Haydovchi)</a>
+            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-driver-haydovchi.mp4?v=uzneural5"></video>
+            <a href="/videos/sarix-driver-haydovchi.mp4?download=1&v=uzneural5" download="sarix-driver-haydovchi.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#3B82F6;color:#FFFFFF;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (Haydovchi)</a>
           </div>
 
           <!-- Video 3: Combined Full -->
           <div style="background:#0F172A;border-radius:16px;padding:12px;color:#fff;display:flex;flex-direction:column;gap:10px;border:1.5px solid #10B981;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
               <span style="background:#10B981;color:#0F172A;font-size:11px;font-weight:800;padding:4px 9px;border-radius:99px;">3 · IKKALA ILOVA (2 OVOZDA)</span>
-              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 33 qadam</span>
+              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 35 qadam</span>
             </div>
             <div style="font-size:14px;font-weight:800;">To'liq jarayon (Go + Driver)</div>
-            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-toliq-qollanma.mp4?v=uzneural4"></video>
-            <a href="/videos/sarix-toliq-qollanma.mp4?download=1&v=uzneural4" download="sarix-toliq-qollanma.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#10B981;color:#0F172A;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (To'liq)</a>
+            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-toliq-qollanma.mp4?v=uzneural5"></video>
+            <a href="/videos/sarix-toliq-qollanma.mp4?download=1&v=uzneural5" download="sarix-toliq-qollanma.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#10B981;color:#0F172A;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (To'liq)</a>
           </div>
         </div>
       </div>

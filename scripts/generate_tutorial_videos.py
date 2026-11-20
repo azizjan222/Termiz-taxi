@@ -360,11 +360,27 @@ DRIVER_STEPS = [
         "tap": (0.50, 0.66),
     },
     {
+        "file": "Screenshot_20261116-211052_Yandex_Browser_6aab0b02.jpg",
+        "app": "driver",
+        "title": "Avtomobil ma'lumotlarini kiriting",
+        "sub": "Ism-familiya, mashina rusumi, davlat raqami va yilini kiriting",
+        "speech": "To'qqizinchi qadam: Hujjatlarni yuklash oynasida ism-familiyangiz, mashina markasi, davlat raqami va yilini kiriting.",
+        "tap": (0.50, 0.44),
+    },
+    {
+        "file": "Screenshot_20261116-211114_Yandex_Browser_e62cbd38.jpg",
+        "app": "driver",
+        "title": "Guvohnoma va Texpasportni yuklang",
+        "sub": "Prava va texpasportning old-orqa rasmini yuklab, «Tasdiqlash» ni bosing",
+        "speech": "O'ninchi qadam: Haydovchilik guvohnomasi hamda texnik pasportning old va orqa tomonini suratga olib yuklang va Tasdiqlash tugmasini bosing.",
+        "tap": (0.50, 0.89),
+    },
+    {
         "file": "Screenshot_20261116-122757_Sarix_Driver_e5f6ce45.jpg",
         "app": "driver",
         "title": "Joylashuv (GPS) ruxsatini tasdiqlang",
         "sub": "Yaqin zakaslarni olish uchun «Roziman» tugmasini bosing",
-        "speech": "To'qqizinchi qadam: Yaqin atrofdagi zakaslarni qabul qilish uchun joylashuv oynasida Roziman tugmasini bosing.",
+        "speech": "O'n birinchi qadam: Yaqin atrofdagi zakaslarni qabul qilish uchun joylashuv oynasida Roziman tugmasini bosing.",
         "tap": (0.50, 0.72),
     },
     {
@@ -372,7 +388,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Aniq joylashuvga ruxsat bering",
         "sub": "«Bu ilova ishlayotganida» bandini tanlang",
-        "speech": "O'ninchi qadam: Telefon ruxsat oynasida Bu ilova ishlayotganida tugmasini tanlang.",
+        "speech": "O'n ikkinchi qadam: Telefon ruxsat oynasida Bu ilova ishlayotganida tugmasini tanlang.",
         "tap": (0.50, 0.79),
     },
     {
@@ -380,7 +396,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "«Onlayn» rejimni yoqing",
         "sub": "Yuqori o'ng burchakdagi «Oflayn» tugmasini bosib Onlaynga o'ting",
-        "speech": "O'n birinchi qadam: Zakaslar kelishi uchun yuqori o'ng burchakdagi Oflayn tugmasini bosib, Onlayn rejimni yoqing.",
+        "speech": "O'n uchinchi qadam: Zakaslar kelishi uchun yuqori o'ng burchakdagi Oflayn tugmasini bosib, Onlayn rejimni yoqing.",
         "tap": (0.76, 0.095),
     },
     {
@@ -388,7 +404,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Siz Onlaynsiz — Zakasga tayyor!",
         "sub": "Ilova yopiq bo'lsa ham yangi zakaslar ovozli bildirishnoma bilan keladi",
-        "speech": "O'n ikkinchi qadam: Endi siz Onlayn rejimdasiz! Ilova yopiq bo'lsa ham yangi zakaslar ovozli xabar bilan keladi.",
+        "speech": "O'n to'rtinchi qadam: Endi siz Onlayn rejimdasiz! Ilova yopiq bo'lsa ham yangi zakaslar ovozli xabar bilan keladi.",
         "tap": (0.76, 0.095),
     },
     {
@@ -396,7 +412,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Yangi zakasni qabul qiling",
         "sub": "Yo'nalish va narxni ko'rib, sariq «Qabul qilish» tugmasini bosing",
-        "speech": "O'n uchinchi qadam: Yangi zakas tushganda manzil va narxni ko'rib, sariq rangli Qabul qilish tugmasini bosing.",
+        "speech": "O'n beshinchi qadam: Yangi zakas tushganda manzil va narxni ko'rib, sariq rangli Qabul qilish tugmasini bosing.",
         "tap": (0.72, 0.64),
     },
     {
@@ -404,7 +420,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Yo'lovchi bilan bog'laning",
         "sub": "Xaritada yo'lovchi manzilini ko'ring, qo'ng'iroq qiling yoki xabar yozing",
-        "speech": "O'n to'rtinchi qadam: Xaritada yo'lovchiga borish yo'lini ko'ring, Xabar yozish yoki Qo'ng'iroq tugmasi orqali bog'laning.",
+        "speech": "O'n oltinchi qadam: Xaritada yo'lovchiga borish yo'lini ko'ring, Xabar yozish yoki Qo'ng'iroq tugmasi orqali bog'laning.",
         "tap": (0.28, 0.61),
     },
     {
@@ -412,7 +428,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Yo'lovchiga tezkor xabar yuboring",
         "sub": "1 bosishda «Yetib keldim, kutyapman» xabarini yuboring",
-        "speech": "O'n beshinchi qadam: Yo'lovchi oldiga yetib borgach, chatda Yetib keldim, kutyapman xabarini bir bosishda yuboring.",
+        "speech": "O'n yettinchi qadam: Yo'lovchi oldiga yetib borgach, chatda Yetib keldim, kutyapman xabarini bir bosishda yuboring.",
         "tap": (0.66, 0.59),
     },
     {
@@ -420,7 +436,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Yo'lovchini olganingizni tasdiqlang",
         "sub": "«Yo'lovchini oldim» tugmasini bosib, «HA, OLDIM» ni tanlang",
-        "speech": "O'n oltinchi qadam: Yo'lovchi mashinaga o'tirgach, Yo'lovchini oldim tugmasini bosing va Ha, oldim deb tasdiqlang.",
+        "speech": "O'n sakkizinchi qadam: Yo'lovchi mashinaga o'tirgach, Yo'lovchini oldim tugmasini bosing va Ha, oldim deb tasdiqlang.",
         "tap": (0.77, 0.56),
     },
     {
@@ -428,7 +444,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Manzilga yetkazib, zakasni yoping",
         "sub": "Manzilga yetib borgach, pastdagi yashil «Yopildi» tugmasini bosing",
-        "speech": "O'n yettinchi qadam: Yo'lovchini manzilga yetkazib qo'ygach, pastdagi yashil rangli Yopildi tugmasini bosing.",
+        "speech": "O'n to'qqizinchi qadam: Yo'lovchini manzilga yetkazib qo'ygach, pastdagi yashil rangli Yopildi tugmasini bosing.",
         "tap": (0.72, 0.94),
     },
     {
@@ -436,7 +452,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Buyurtma yopilganini tasdiqlang",
         "sub": "Tasdiqlash oynasida «HA» tugmasini bosing",
-        "speech": "O'n sakkizinchi qadam: Buyurtma yopildimi degan tasdiqlash oynasida Ha tugmasini bosing.",
+        "speech": "Yigirmanchi qadam: Buyurtma yopildimi degan tasdiqlash oynasida Ha tugmasini bosing.",
         "tap": (0.81, 0.56),
     },
     {
@@ -444,7 +460,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Safar muvaffaqiyatli yakunlandi!",
         "sub": "«BAHOLASH» tugmasini bosing va keyingi zakaslarni qabul qiling",
-        "speech": "O'n to'qqizinchi qadam: Safar muvaffaqiyatli yakunlandi! Endi Baholash tugmasini bosing.",
+        "speech": "Yigirma birinchi qadam: Safar muvaffaqiyatli yakunlandi! Endi Baholash tugmasini bosing.",
         "tap": (0.76, 0.57),
     },
     {
@@ -452,17 +468,17 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Yo'lovchini baholang",
         "sub": "5 yulduz belgilab, «Yuborish» tugmasini bosing",
-        "speech": "Yigirmanchi qadam: Yo'lovchini besh yulduz bilan baholab, Yuborish tugmasini bosing. Safaringiz bexatar bo'lsin!",
+        "speech": "Yigirma ikkinchi qadam: Yo'lovchini besh yulduz bilan baholab, Yuborish tugmasini bosing. Safaringiz bexatar bo'lsin!",
         "tap": (0.50, 0.81),
     },
 ]
 
 COMBINED_STEPS = (
-    DRIVER_STEPS[:12]
+    DRIVER_STEPS[:14]
     + PASSENGER_STEPS[:11]
-    + DRIVER_STEPS[12:16]
+    + DRIVER_STEPS[14:18]
     + [PASSENGER_STEPS[11]]
-    + DRIVER_STEPS[16:]
+    + DRIVER_STEPS[18:]
     + [PASSENGER_STEPS[12]]
 )
 

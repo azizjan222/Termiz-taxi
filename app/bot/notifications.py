@@ -437,6 +437,7 @@ def format_group_order_vitrina(order) -> tuple[str, InlineKeyboardMarkup]:
         "",
         "📲 <i>Zakasni qabul qilish va mijoz raqamini ko'rish uchun <b>Sarix Driver</b> ilovasiga kiring "
         "(Yangi haydovchilarga <b>30 kun komissiya 0%</b>!):</i>",
+        "🔒 <i>Zakas qabul qilinmaguncha guruhga yozish vaqtincha yopilgan.</i>",
     ])
 
     bot_username = (getattr(config, "BOT_USERNAME", "") or "termizsariosiyotaxi_bot").lstrip("@")
@@ -460,6 +461,123 @@ def format_group_order_vitrina(order) -> tuple[str, InlineKeyboardMarkup]:
 
 
 _GROUP_ORDER_MSGS_KEY = "group_order_msgs"
+
+
+def _build_group_chat_permissions(can_write: bool) -> ChatPermissions:
+    """Build Telegram ChatPermissions for locking (can_write=False) or unlocking (can_write=True) a group."""
+    if not can_write and hasattr(ChatPermissions, "no_permissions"):
+        return ChatPermissions.no_permissions()
+    try:
+        return ChatPermissions(
+            can_send_messages=can_write,
+            can_send_audios=can_write,
+            can_send_documents=can_write,
+            can_send_photos=can_write,
+            can_send_videos=can_write,
+            can_send_video_notes=can_write,
+            can_send_voice_notes=can_write,
+            can_send_polls=can_write,
+            can_send_other_messages=can_write,
+            can_add_web_page_previews=False,
+        )
+    except TypeError:
+        return ChatPermissions(can_send_messages=can_write)
+
+
+async def _set_group_write_lock(bot, chat_id: int, *, locked: bool) -> None:
+    """Lock or unlock member messaging in a Telegram group/supergroup."""
+    if not chat_id or int(chat_id) >= 0:
+        return
+    try:
+        await bot.set_chat_permissions(
+            chat_id=int(chat_id),
+            permissions=_build_group_chat_permissions(can_write=not locked),
+        )
+    except Exception as e:
+        logger.debug(
+            "Could not %s group %s chat permissions: %s",
+            "lock" if locked else "unlock",
+            chat_id,
+            e,
+        )
+
+
+def has_pending_group_orders(
+    chat_id: int | None = None,
+    *,
+    exclude_order_id: int | None = None,
+) -> bool:
+    """Return True if there is at least one unaccepted ('new') order currently posted in the group."""
+    import json
+    from app.database import get_session
+    from app.models import Order, Setting
+
+    session = get_session()
+    try:
+        row = session.query(Setting).filter_by(key=_GROUP_ORDER_MSGS_KEY).first()
+        if not row or not row.value:
+            return False
+        try:
+            mapping = json.loads(row.value)
+        except Exception:
+            return False
+        if not isinstance(mapping, dict) or not mapping:
+            return False
+
+        all_tracked_ids: set[int] = set()
+        candidate_ids: set[int] = set()
+        for k, pairs in list(mapping.items()):
+            try:
+                oid = int(k)
+            except (TypeError, ValueError):
+                continue
+            all_tracked_ids.add(oid)
+            if exclude_order_id is not None and oid == int(exclude_order_id):
+                continue
+            if not isinstance(pairs, list):
+                continue
+            has_group_pair = False
+            for item in pairs:
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    try:
+                        cid = int(item[0])
+                    except (TypeError, ValueError):
+                        continue
+                    if cid < 0 and (chat_id is None or cid == int(chat_id)):
+                        has_group_pair = True
+                        break
+            if has_group_pair:
+                candidate_ids.add(oid)
+
+        if not all_tracked_ids:
+            return False
+
+        active_new_ids = {
+            int(r[0])
+            for r in session.query(Order.id)
+            .filter(Order.id.in_(list(all_tracked_ids)), Order.status == "new")
+            .all()
+        }
+
+        # Self-heal: prune any tracked order IDs that are no longer in 'new' status
+        stale_keys = [
+            str(oid)
+            for oid in all_tracked_ids
+            if oid not in active_new_ids and (exclude_order_id is None or oid != int(exclude_order_id))
+        ]
+        if stale_keys:
+            for sk in stale_keys:
+                mapping.pop(sk, None)
+            row.value = json.dumps(mapping)
+            session.commit()
+
+        return bool(candidate_ids & active_new_ids)
+    except Exception as e:
+        session.rollback()
+        logger.debug("has_pending_group_orders check failed: %s", e)
+        return False
+    finally:
+        session.close()
 
 
 def _save_group_order_messages(order_id: int, sent_pairs: list[tuple[int, int]]) -> None:
@@ -545,9 +663,25 @@ def _pop_group_order_messages(order_id: int) -> list[tuple[int, int]]:
 
 
 async def delete_group_order_messages(bot, order_id: int) -> None:
-    """Delete (and unpin) the group vitrina message(s) for an order once it is accepted, cancelled, or expired."""
+    """Delete (and unpin) the group vitrina message(s) for an order once it is accepted, cancelled, or expired,
+    and re-open group writing permissions if no other unaccepted orders remain."""
     pairs = _pop_group_order_messages(order_id)
-    if not pairs:
+
+    group_ids: list[int] = []
+    for cid, _ in pairs:
+        if int(cid) < 0 and int(cid) not in group_ids:
+            group_ids.append(int(cid))
+    try:
+        from app.bot.handlers.admin_actions import _get_known_group_ids
+        for gid in _get_known_group_ids():
+            if gid and int(gid) < 0 and int(gid) not in group_ids:
+                group_ids.append(int(gid))
+    except Exception:
+        pass
+    if config.DRIVERS_GROUP_ID and int(config.DRIVERS_GROUP_ID) < 0 and int(config.DRIVERS_GROUP_ID) not in group_ids:
+        group_ids.append(int(config.DRIVERS_GROUP_ID))
+
+    if not pairs and not group_ids:
         return
 
     own_bot = False
@@ -573,6 +707,9 @@ async def delete_group_order_messages(bot, order_id: int) -> None:
                     "Could not delete group message %s in chat %s for order #%s: %s",
                     message_id, chat_id, order_id, e,
                 )
+        for gid in group_ids:
+            if not has_pending_group_orders(chat_id=gid, exclude_order_id=order_id):
+                await _set_group_write_lock(bot, gid, locked=False)
     finally:
         if own_bot:
             try:
@@ -582,7 +719,8 @@ async def delete_group_order_messages(bot, order_id: int) -> None:
 
 
 async def notify_group_new_order(bot, order) -> None:
-    """Post a masked order card ('vitrina') to known active Telegram group(s), pin it, and save message_id."""
+    """Post a masked order card ('vitrina') to known active Telegram group(s), pin it,
+    lock group writing until the order is accepted, and save message_id."""
     target_groups: list[int] = []
     try:
         from app.bot.handlers.admin_actions import _get_known_group_ids
@@ -631,6 +769,8 @@ async def notify_group_new_order(bot, order) -> None:
                             "Could not pin order #%s message %s in group %s: %s",
                             getattr(order, "id", "?"), sent_msg.message_id, gid, pin_err,
                         )
+                    if int(gid) < 0:
+                        await _set_group_write_lock(bot, int(gid), locked=True)
             except Exception as e:
                 logger.warning(
                     "Failed to post new order #%s to group %s: %s",
