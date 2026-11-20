@@ -8,7 +8,7 @@ import time
 from collections import Counter
 from html import escape
 
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Bot, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Forbidden, RetryAfter
 
 from app import config
