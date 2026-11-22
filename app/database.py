@@ -116,8 +116,16 @@ SessionLocal = sessionmaker(
 
 
 def init_db():
-    """Create all tables."""
+    """Create all tables and synchronize persistent auth secrets with the database."""
     Base.metadata.create_all(bind=engine)
+    session = SessionLocal()
+    try:
+        config.sync_persistent_secrets_with_db(session)
+    except Exception as e:
+        session.rollback()
+        logger.warning("Could not sync persistent secrets with DB: %s", e)
+    finally:
+        session.close()
 
 
 def get_session() -> Session:

@@ -329,9 +329,14 @@ def _decode_driver_token(token: str) -> dict | None:
             # Older PyJWT without verify_sub option.
             payload = jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
         if payload.get("role") != "driver":
+            logger.warning("Driver JWT rejected: unexpected role=%r", payload.get("role"))
             return None
         return payload
-    except Exception:
+    except jwt.ExpiredSignatureError:
+        logger.warning("Driver JWT rejected: token expired")
+        return None
+    except Exception as e:
+        logger.warning("Driver JWT rejected: %s", type(e).__name__)
         return None
 
 
@@ -353,6 +358,10 @@ def _get_driver_from_request(request: web.Request) -> Driver | None:
         driver = session.query(Driver).filter_by(id=driver_id).first()
         if driver and not driver.is_blocked:
             return driver
+        logger.warning(
+            "Driver auth rejected for id=%s (exists=%s blocked=%s path=%s)",
+            driver_id, bool(driver), bool(driver and driver.is_blocked), request.path,
+        )
     finally:
         session.close()
     return None

@@ -79,76 +79,93 @@ class WebSocketManager:
 ws_manager = WebSocketManager()
 
 
-def _account_active(model, id_field: str, value: int) -> bool:
-    """True if the row exists and is not blocked.
+def _account_status(model, id_field: str, value: int) -> str:
+    """Return 'ok', 'unauthorized', or 'transient_error' for the account lookup.
 
-    Fails CLOSED on a database error: an unverifiable identity must not be handed a live
-    event stream carrying phone numbers and GPS.
+    Crucially separates genuine missing/blocked accounts from transient DB/pool hiccups:
+    returning 'unauthorized' on a DB blip would wipe the mobile app's token and force
+    an active driver out to the login screen mid-shift.
     """
     from app.database import get_session
 
     session = get_session()
     try:
         row = session.query(model).filter_by(**{id_field: value}).first()
-        return bool(row) and not row.is_blocked
+        return "ok" if (bool(row) and not row.is_blocked) else "unauthorized"
     except Exception as e:  # pragma: no cover - defensive
-        logger.warning("WS identity lookup failed (%s=%s): %s", id_field, value, e)
-        return False
+        logger.warning("WS identity lookup transient error (%s=%s): %s", id_field, value, e)
+        return "transient_error"
     finally:
         session.close()
 
 
-def _verify_ws_identity(role: str, client_id: int, token: str) -> bool:
+def _verify_driver_ws_account(driver_id: int | None, token_tg_id: int | None, client_id: int) -> str:
+    """Verify driver WS identity using immutable Driver.id first, tolerating telegram_id links."""
+    from app.database import get_session
+
+    session = get_session()
+    try:
+        driver = None
+        if driver_id is not None:
+            driver = session.query(Driver).filter_by(id=driver_id).first()
+        if driver is None:
+            driver = session.query(Driver).filter_by(telegram_id=client_id).first()
+        if not driver or driver.is_blocked:
+            return "unauthorized"
+        # Accept when either the DB row's current telegram_id OR the token's telegram_id matches
+        # the connecting id — so linking/updating telegram_id never kicks out an active driver.
+        if driver.telegram_id == client_id or (token_tg_id is not None and token_tg_id == client_id):
+            return "ok"
+        return "unauthorized"
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("WS driver lookup transient error (driver_id=%s, client_id=%s): %s", driver_id, client_id, e)
+        return "transient_error"
+    finally:
+        session.close()
+
+
+def _verify_ws_identity(role: str, client_id: int, token: str) -> str:
     """Verify the JWT token actually belongs to the claimed role + id.
 
-    Without this any client could pass `role=passenger&id=<someone>` and receive
-    another user's real-time order events (phone number revealed on accept, the
-    driver's live GPS, etc.). We require a valid token whose subject matches the
-    connecting id.
-
-    - passenger: utils.auth token, `sub` (user id) must equal client_id
-    - driver:    drivers._decode_driver_token, `telegram_id` must equal client_id
-
-    A blocked account is rejected too. Both HTTP entry points (`get_current_user` and
-    `_get_driver_from_request`) refuse `is_blocked` accounts, but this path only checked
-    the signature — so banning someone did not disconnect them or stop new connections.
-    A blocked driver kept receiving every `new_order` broadcast, complete with the
-    passenger's phone number, until their token happened to expire.
+    Returns one of: 'ok', 'unauthorized', or 'transient_error'.
     """
     if not token:
-        return False
+        return "unauthorized"
     if role == "passenger":
         from app.utils.auth import decode_token
         payload = decode_token(token)
         if not payload:
-            return False
-        # Reject a token minted for a different audience. Driver tokens are signed with the
-        # SAME secret and carry `sub` = Driver.id, so without this a driver could connect as
-        # `role=passenger&id=<their Driver.id>` and stream the events of the User whose id
-        # happens to match -- including that passenger's phone number and the assigned
-        # driver's live GPS. get_current_user() has this check; decode_token() alone does
-        # not, and calling it directly here bypassed it.
+            return "unauthorized"
         if payload.get("role") not in (None, "passenger"):
-            return False
+            return "unauthorized"
         try:
             if int(payload.get("sub")) != client_id:
-                return False
+                return "unauthorized"
         except (TypeError, ValueError):
-            return False
-        return _account_active(User, "id", client_id)
+            return "unauthorized"
+        return _account_status(User, "id", client_id)
     if role == "driver":
         # Lazy import to avoid a circular import (drivers.py imports ws_manager).
         from app.api.drivers import _decode_driver_token
         payload = _decode_driver_token(token)
         if not payload:
-            return False
+            return "unauthorized"
+        driver_id: int | None = None
+        token_tg_id: int | None = None
         try:
-            if int(payload.get("telegram_id")) != client_id:
-                return False
+            if payload.get("sub") is not None:
+                driver_id = int(payload.get("sub"))
         except (TypeError, ValueError):
-            return False
-        return _account_active(Driver, "telegram_id", client_id)
-    return False
+            driver_id = None
+        try:
+            if payload.get("telegram_id") is not None:
+                token_tg_id = int(payload.get("telegram_id"))
+        except (TypeError, ValueError):
+            token_tg_id = None
+        if driver_id is None and token_tg_id != client_id:
+            return "unauthorized"
+        return _verify_driver_ws_account(driver_id, token_tg_id, client_id)
+    return "unauthorized"
 
 
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
@@ -172,7 +189,18 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         client_id = 0
 
     # Authenticate: the token must belong to the claimed role + id.
-    if role not in ("driver", "passenger") or not client_id or not _verify_ws_identity(role, client_id, token):
+    if role not in ("driver", "passenger") or not client_id:
+        await ws.send_json({"type": "error", "error": "unauthorized"})
+        await ws.close()
+        return ws
+
+    auth_result = _verify_ws_identity(role, client_id, token)
+    if auth_result == "transient_error":
+        await ws.send_json({"type": "error", "error": "server_busy"})
+        await ws.close(code=1013)
+        return ws
+    if auth_result != "ok":
+        logger.warning("WS auth rejected: role=%s id=%s has_token=%s", role, client_id, bool(token))
         await ws.send_json({"type": "error", "error": "unauthorized"})
         await ws.close()
         return ws

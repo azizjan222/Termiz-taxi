@@ -112,11 +112,23 @@ function scheduleReconnect() {
 function openWithFreshToken(id: string) {
   getAuthToken()
     .then((tok) => {
+      if (currentId !== id || socket || intentionalClose) return;
+      if (!tok) {
+        // Do NOT open the WebSocket with an empty token: the server would immediately reply
+        // {"type":"error","error":"unauthorized"}, which would falsely fire the "session
+        // expired" alert during logout or a transient SecureStore hiccup.
+        authToken = null;
+        useRealtimeStore.getState().setStatus('closed');
+        return;
+      }
       authToken = tok;
-      if (currentId === id && !socket && !intentionalClose) open(id);
+      open(id);
     })
     .catch(() => {
-      if (currentId === id && !socket && !intentionalClose) open(id);
+      // Transient storage error — retry later instead of connecting with an empty token.
+      if (currentId === id && !socket && !intentionalClose) {
+        scheduleReconnect();
+      }
     });
 }
 

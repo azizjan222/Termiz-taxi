@@ -1,10 +1,11 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { View, StyleSheet, type ColorValue } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '../../src/components/Icon';
+import { useDriverStore } from '../../src/store/driver';
 import { useThemeStore } from '../../src/store/theme';
 
 // `color` comes from tabBarActiveTintColor / tabBarInactiveTintColor. The emoji this
@@ -18,11 +19,18 @@ const TabIcon: React.FC<{ name: IconName; color: ColorValue }> = ({ name, color 
 export default function MainLayout() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
+  const isAuthenticated = useDriverStore((s) => s.isAuthenticated);
+  const isLoading = useDriverStore((s) => s.isLoading);
   // Android 15+ forces edge-to-edge, so the system navigation bar is drawn over
   // the app. React Navigation only adds the bottom inset for us when it controls
   // the tab bar height — supplying an explicit `height` opts out of that, which
   // would leave the labels tucked under the navigation bar. Add the inset here.
   const insets = useSafeAreaInsets();
+
+  if (!isLoading && !isAuthenticated) {
+    return <Redirect href="/language" />;
+  }
+
   return (
     <Tabs
       screenOptions={{

@@ -33,6 +33,7 @@ import {
   wasChatMessageAlerted,
 } from '../../src/services/notifications';
 import { API_URL } from '../../src/api/client';
+import { useDriverStore } from '../../src/store/driver';
 import { useRealtimeStore } from '../../src/store/realtime';
 import YandexMap, { type YandexMapHandle } from '../../src/components/YandexMap';
 import {
@@ -131,6 +132,7 @@ export default function OrderDetailScreen() {
   }, [chatVisible]);
 
   const loadMessages = async () => {
+    if (!useDriverStore.getState().isAuthenticated) return;
     try {
       const res = await listDriverOrderMessages(parseInt(String(id)));
       const list = res.messages || [];
@@ -223,7 +225,7 @@ export default function OrderDetailScreen() {
     let initialMissRetried = false;
 
     const load = async (forceFetch = false) => {
-      if (forceFetch || isAppForeground()) {
+      if ((forceFetch || isAppForeground()) && useDriverStore.getState().isAuthenticated) {
         try {
           const orders = await listMyActive();
           if (!cancelled) {
@@ -571,7 +573,9 @@ export default function OrderDetailScreen() {
       setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
     } catch (e: any) {
       if (!presetText) setChatInput(textToSend);
-      Alert.alert(t('common.error'), describeApiError(e, t));
+      if (e?.response?.status !== 401) {
+        Alert.alert(t('common.error'), describeApiError(e, t));
+      }
     } finally {
       setSendingChat(false);
     }
@@ -607,7 +611,9 @@ export default function OrderDetailScreen() {
               playDriverStatusChime('started');
               if (res?.order) setOrder(res.order);
             } catch (e: any) {
-              Alert.alert(t('common.error'), describeApiError(e, t));
+              if (e?.response?.status !== 401) {
+                Alert.alert(t('common.error'), describeApiError(e, t));
+              }
             } finally {
               startInFlightRef.current = false;
               setLoading(false);
@@ -651,7 +657,9 @@ export default function OrderDetailScreen() {
             );
           } catch (e: any) {
             completeInFlightRef.current = false;
-            Alert.alert(t('common.error'), describeApiError(e, t));
+            if (e?.response?.status !== 401) {
+              Alert.alert(t('common.error'), describeApiError(e, t));
+            }
             setLoading(false);
           }
         },

@@ -19,15 +19,6 @@ export const api: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach token to every request
-api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync(TOKEN_KEY);
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
 /**
  * Called once when the server rejects our token.
  *
@@ -54,6 +45,41 @@ export function notifyUnauthorized() {
   } catch {}
 }
 
+let cachedToken: string | null | undefined = undefined;
+
+export async function getAuthToken(): Promise<string | null> {
+  if (cachedToken !== undefined) return cachedToken;
+  try {
+    const tok = await SecureStore.getItemAsync(TOKEN_KEY);
+    cachedToken = tok ?? null;
+    return cachedToken;
+  } catch {
+    return null;
+  }
+}
+
+export async function setAuthToken(token: string) {
+  cachedToken = token;
+  unauthorizedFired = false;
+  await SecureStore.setItemAsync(TOKEN_KEY, token);
+}
+
+export async function clearAuthToken() {
+  cachedToken = null;
+  try {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  } catch {}
+}
+
+// Attach token to every request
+api.interceptors.request.use(async (config) => {
+  const token = await getAuthToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 const AUTH_ENDPOINTS = [
   '/api/auth/telegram/',
   '/api/auth/google',
@@ -76,15 +102,8 @@ api.interceptors.response.use(
       );
 
       if (!isAuthEndpoint && hadAuthHeader) {
-        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await clearAuthToken();
         if (!cfg?._skipUnauthorizedHandler) {
-          // Previously this only dropped the token and left the store believing the user was
-          // still signed in. Only `loadUser()` at cold start ever re-validated, so a token that
-          // expired while the app was open produced a zombie session: Home still greeted the
-          // user by name, History silently showed "no orders" (looking like data loss), placing
-          // an order failed with a generic network error, and live tracking died — with nothing
-          // anywhere telling them to sign in again. Worst case was a first-time user on the
-          // name screen, which has no back link: every retry 401'd and they were simply stuck.
           notifyUnauthorized();
         }
       }
@@ -92,18 +111,5 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-export async function setAuthToken(token: string) {
-  unauthorizedFired = false;
-  await SecureStore.setItemAsync(TOKEN_KEY, token);
-}
-
-export async function getAuthToken(): Promise<string | null> {
-  return await SecureStore.getItemAsync(TOKEN_KEY);
-}
-
-export async function clearAuthToken() {
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
-}
 
 export { API_URL };

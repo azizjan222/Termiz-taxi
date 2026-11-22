@@ -22,12 +22,6 @@ export const api: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync(TOKEN_KEY);
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
 /**
  * Called once when the server rejects our token.
  *
@@ -54,6 +48,42 @@ export function notifyUnauthorized() {
   } catch {}
 }
 
+// In-memory cache backed by SecureStore. Reading Android Keystore on every single
+// request can transiently fail or race during background wake-ups / deep links, which
+// previously sent requests without Authorization or opened WebSockets with an empty token.
+let cachedToken: string | null | undefined = undefined;
+
+export const getAuthToken = async (): Promise<string | null> => {
+  if (cachedToken !== undefined) return cachedToken;
+  try {
+    const tok = await SecureStore.getItemAsync(TOKEN_KEY);
+    cachedToken = tok ?? null;
+    return cachedToken;
+  } catch {
+    // Transient SecureStore read error: do not overwrite an unknown state permanently.
+    return null;
+  }
+};
+
+export const setAuthToken = async (t: string) => {
+  cachedToken = t;
+  unauthorizedFired = false;
+  await SecureStore.setItemAsync(TOKEN_KEY, t);
+};
+
+export const clearAuthToken = async () => {
+  cachedToken = null;
+  try {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  } catch {}
+};
+
+api.interceptors.request.use(async (config) => {
+  const token = await getAuthToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
 const AUTH_ENDPOINTS = [
   '/api/driver/telegram/',
   '/api/driver/google',
@@ -75,7 +105,7 @@ api.interceptors.response.use(
       );
 
       if (!isAuthEndpoint && hadAuthHeader) {
-        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await clearAuthToken();
         if (!cfg?._skipUnauthorizedHandler) {
           // Previously this only dropped the token and left the store believing the driver was
           // still signed in. Nothing re-validated afterwards, so the app kept showing "Onlayn"
@@ -88,12 +118,5 @@ api.interceptors.response.use(
     return Promise.reject(e);
   }
 );
-
-export const setAuthToken = async (t: string) => {
-  unauthorizedFired = false;
-  await SecureStore.setItemAsync(TOKEN_KEY, t);
-};
-export const getAuthToken = () => SecureStore.getItemAsync(TOKEN_KEY);
-export const clearAuthToken = () => SecureStore.deleteItemAsync(TOKEN_KEY);
 
 export { API_URL };

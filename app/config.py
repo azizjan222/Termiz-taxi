@@ -230,6 +230,9 @@ def _secrets_dir() -> str:
     return d
 
 
+_SECRET_SOURCES: dict[str, str] = {}
+
+
 def _persistent_secret(env_key: str, *, filename: str, label: str,
                        nbytes: int = 48) -> str:
     """Resolve a secret that MUST stay stable across restarts.
@@ -238,15 +241,13 @@ def _persistent_secret(env_key: str, *, filename: str, label: str,
       1. Use the env var if it is set to a non-insecure value (operator's choice wins).
       2. Else reuse a previously generated secret stored on the persistent volume.
       3. Else generate a strong random secret, persist it (chmod 600), and use it.
-
-    This removes the weak hardcoded defaults (which are visible in the public repo and
-    would let an attacker forge JWT tokens or admin sessions) while requiring ZERO
-    manual setup: the app just works and is secure by default. Because the secret is
-    persisted on the same volume as the DB, it stays stable across restarts, so users
-    are NOT logged out on every redeploy.
+         (When the DB initializes, `sync_persistent_secrets_with_db` also checks/persists
+         the secret in PostgreSQL `settings` so redeploys never rotate JWT_SECRET even if
+         the filesystem volume is absent or recreated.)
     """
     val = os.getenv(env_key, "").strip()
     if val and val not in INSECURE_VALUES:
+        _SECRET_SOURCES[env_key] = "env"
         return val
 
     path = os.path.join(_secrets_dir(), filename)
@@ -255,32 +256,77 @@ def _persistent_secret(env_key: str, *, filename: str, label: str,
             with open(path) as f:
                 saved = f.read().strip()
             if saved:
+                _SECRET_SOURCES[env_key] = "file"
                 return saved
     except OSError:
         pass
 
     generated = _secrets.token_urlsafe(nbytes)
+    _SECRET_SOURCES[env_key] = "generated"
     try:
         with open(path, "w") as f:
             f.write(generated)
         os.chmod(path, 0o600)
-        # The VALUE is never logged. The admin password used to be, so that a fresh
-        # deployment could be logged into straight from the platform console — which put
-        # the full-privilege credential for the money panel (balance top-ups, payment
-        # approvals, broadcasts) into the log stream permanently, where it is replicated
-        # to whatever the platform forwards logs to and readable by anyone with console
-        # access. The file below is the retrieval path instead: it is chmod 600 on the
-        # data volume, so it needs shell access to the container rather than log access.
         logger.warning(
             "🔐 Generated a persistent %s and stored it at %s (chmod 600). Read it there, "
             "or set the %s env var to choose your own. The value is not logged.",
             label, path, env_key,
         )
     except OSError:
-        logger.warning("⚠️ Could not persist %s (data volume not writable); using an "
-                       "in-memory value that changes on restart. Set the %s env var.",
+        logger.warning("⚠️ Could not persist %s (data volume not writable); will sync with "
+                       "database settings table on init. Set the %s env var to override.",
                        label, env_key)
     return generated
+
+
+def sync_persistent_secrets_with_db(session) -> None:
+    """Keep auto-generated JWT_SECRET / API_SECRET_KEY stable across deploys using the DB.
+
+    Production runs on PostgreSQL (durable across Railway redeploys), whereas `/data` may
+    be unmounted or ephemeral on some deployments. Priority preserves existing tokens:
+      1. Explicit env var -> untouched.
+      2. Loaded from an existing persistent-volume file -> kept AND backed up to DB.
+      3. Newly generated in-memory -> if DB already holds a saved secret, adopt it (so
+         previously issued mobile JWTs remain valid!); otherwise save the new secret to DB.
+    """
+    global API_SECRET_KEY, JWT_SECRET
+    from app.models import Setting
+
+    specs = (
+        ("API_SECRET_KEY", "api_secret_key", "_system_api_secret_key"),
+        ("JWT_SECRET", "jwt_secret", "_system_jwt_secret"),
+    )
+    changed = False
+    for attr_name, filename, db_key in specs:
+        source = _SECRET_SOURCES.get(attr_name)
+        if source == "env":
+            continue
+
+        current_val = globals().get(attr_name, "")
+        row = session.query(Setting).filter_by(key=db_key).first()
+        db_val = (row.value or "").strip() if row else ""
+
+        if source == "generated" and db_val and db_val not in INSECURE_VALUES:
+            # Reuse the durable secret from the database instead of rotating tokens.
+            globals()[attr_name] = db_val
+            _SECRET_SOURCES[attr_name] = "db"
+            try:
+                path = os.path.join(_secrets_dir(), filename)
+                with open(path, "w") as f:
+                    f.write(db_val)
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+            logger.info("🔐 Restored %s from database settings (tokens preserved across restart).", attr_name)
+        elif current_val and current_val not in INSECURE_VALUES and not db_val:
+            if row:
+                row.value = current_val
+            else:
+                session.add(Setting(key=db_key, value=current_val))
+            changed = True
+
+    if changed:
+        session.commit()
 
 
 # API

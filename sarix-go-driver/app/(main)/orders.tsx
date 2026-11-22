@@ -221,6 +221,7 @@ export default function OrdersScreen() {
   // RefreshControl spinner and the empty-state gate, so the poll made the spinner
   // appear unprompted and blanked "yangi zakaslar yo'q" four times a minute.
   const load = useCallback(async (silent = false) => {
+    if (!useDriverStore.getState().isAuthenticated) return;
     if (!silent) setRefreshing(true);
     try {
       const res = await listAvailableOrders({
@@ -500,11 +501,12 @@ export default function OrdersScreen() {
         }
       }
 
-      // Every failure used to be reported as `order.notFound` unless the server happened
-      // to send a prose `error` field — so a timeout or a 500 told the driver the order
-      // had been taken, which is a different decision than "try again".
-      Alert.alert(t('common.error'), describeApiError(e, t));
-      load();
+      // A 401 is already handled globally (session expired -> login), so don't
+      // raise a second alert or fire another unauthenticated load() on top of it.
+      if (e?.response?.status !== 401) {
+        Alert.alert(t('common.error'), describeApiError(e, t));
+        load();
+      }
     } finally {
       setAccepting(null);
       acceptInFlightRef.current = false;
