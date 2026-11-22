@@ -28,7 +28,7 @@ export default function MainLayout() {
   const insets = useSafeAreaInsets();
 
   if (!isLoading && !isAuthenticated) {
-    return <Redirect href="/language" />;
+    return <Redirect href="/login" />;
   }
 
   return (

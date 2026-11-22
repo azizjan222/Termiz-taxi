@@ -1,6 +1,6 @@
 """Driver-side API endpoints (used by driver mobile app)."""
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import jwt
 from aiohttp import web
@@ -304,16 +304,14 @@ def _grant_free_trial_if_eligible(session, driver: Driver) -> None:
 
 def _create_driver_token(driver: Driver) -> str:
     """Create JWT token for driver. `sub` MUST be a string (PyJWT >= 2.10)."""
+    now = datetime.now(timezone.utc)
     payload = {
         "sub": str(driver.id),
         "telegram_id": driver.telegram_id,
         "phone": driver.phone,
         "role": "driver",
-        # Pass datetimes and let PyJWT convert. datetime.utcnow() is naive, so calling
-        # .timestamp() on it read the value as LOCAL time, making the real token
-        # lifetime drift by the host's UTC offset (longer west of UTC, shorter east).
-        "iat": datetime.utcnow(),
-        "exp": datetime.utcnow() + timedelta(days=config.JWT_EXPIRES_DAYS),
+        "iat": now,
+        "exp": now + timedelta(days=config.JWT_EXPIRES_DAYS),
     }
     return jwt.encode(payload, config.JWT_SECRET, algorithm=config.JWT_ALGORITHM)
 
@@ -323,11 +321,14 @@ def _decode_driver_token(token: str) -> dict | None:
         try:
             payload = jwt.decode(
                 token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM],
+                leeway=60,
                 options={"verify_sub": False},
             )
         except TypeError:
             # Older PyJWT without verify_sub option.
-            payload = jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
+            payload = jwt.decode(
+                token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM], leeway=60
+            )
         if payload.get("role") != "driver":
             logger.warning("Driver JWT rejected: unexpected role=%r", payload.get("role"))
             return None
@@ -343,6 +344,7 @@ def _decode_driver_token(token: str) -> dict | None:
 def _get_driver_from_request(request: web.Request) -> Driver | None:
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
+        logger.warning("Driver auth missing Bearer header (path=%s)", request.path)
         return None
     payload = _decode_driver_token(auth[7:])
     if not payload:

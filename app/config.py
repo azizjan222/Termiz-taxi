@@ -216,10 +216,10 @@ UPLOAD_DIR = _resolve_upload_dir()
 def _secrets_dir() -> str:
     """Directory on the persistent volume where auto-generated secrets are stored."""
     mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
-    if persistent_data_dir_available():
-        base = PERSISTENT_DATA_DIR
-    elif mount and os.path.isdir(mount):
+    if mount and os.path.isdir(mount):
         base = mount
+    elif persistent_data_dir_available():
+        base = PERSISTENT_DATA_DIR
     else:
         base = "./data"
     d = os.path.join(base, ".secrets")

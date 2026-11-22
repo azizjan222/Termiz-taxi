@@ -55,14 +55,19 @@ let cachedToken: string | null | undefined = undefined;
 
 export const getAuthToken = async (): Promise<string | null> => {
   if (cachedToken !== undefined) return cachedToken;
-  try {
-    const tok = await SecureStore.getItemAsync(TOKEN_KEY);
-    cachedToken = tok ?? null;
-    return cachedToken;
-  } catch {
-    // Transient SecureStore read error: do not overwrite an unknown state permanently.
-    return null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const tok = await SecureStore.getItemAsync(TOKEN_KEY);
+      cachedToken = tok ?? null;
+      return cachedToken;
+    } catch {
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+      }
+    }
   }
+  // Transient SecureStore read error: do not overwrite an unknown state permanently.
+  return null;
 };
 
 export const setAuthToken = async (t: string) => {
@@ -91,6 +96,16 @@ const AUTH_ENDPOINTS = [
   '/api/driver/request-otp',
 ];
 
+function extractBearerToken(headers: any): string | null {
+  if (!headers) return null;
+  const raw =
+    headers.Authorization ||
+    headers.authorization ||
+    (typeof headers.get === 'function' ? headers.get('Authorization') : null);
+  if (typeof raw !== 'string' || !raw.startsWith('Bearer ')) return null;
+  return raw.slice(7).trim() || null;
+}
+
 api.interceptors.response.use(
   (r) => r,
   async (e: AxiosError) => {
@@ -98,13 +113,11 @@ api.interceptors.response.use(
       const cfg = e.config as (typeof e.config & { _skipUnauthorizedHandler?: boolean }) | undefined;
       const url = cfg?.url || '';
       const isAuthEndpoint = AUTH_ENDPOINTS.some((p) => url.includes(p));
-      const hadAuthHeader = Boolean(
-        cfg?.headers &&
-          ((cfg.headers as any).Authorization ||
-            (typeof (cfg.headers as any).get === 'function' && (cfg.headers as any).get('Authorization')))
-      );
+      const reqToken = extractBearerToken(cfg?.headers);
+      // Ignore a 401 from an older in-flight request if the user has already signed in with a new token.
+      const matchesCurrentToken = !cachedToken || !reqToken || reqToken === cachedToken;
 
-      if (!isAuthEndpoint && hadAuthHeader) {
+      if (!isAuthEndpoint && reqToken && matchesCurrentToken) {
         await clearAuthToken();
         if (!cfg?._skipUnauthorizedHandler) {
           // Previously this only dropped the token and left the store believing the driver was

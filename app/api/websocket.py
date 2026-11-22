@@ -191,7 +191,17 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     # Authenticate: the token must belong to the claimed role + id.
     if role not in ("driver", "passenger") or not client_id:
         await ws.send_json({"type": "error", "error": "unauthorized"})
-        await ws.close()
+        await ws.close(code=1008)
+        return ws
+
+    if not token:
+        # Still immediately reject & close the socket (no access granted), but avoid
+        # sending error="unauthorized" for an empty token: older mobile APKs can send an
+        # empty token transiently when Android Keystore fails on background wake-up, and
+        # treating that as "unauthorized" caused them to wipe a valid session and log out.
+        logger.warning("WS rejected: missing token (role=%s id=%s)", role, client_id)
+        await ws.send_json({"type": "error", "error": "missing_token"})
+        await ws.close(code=1008)
         return ws
 
     auth_result = _verify_ws_identity(role, client_id, token)
@@ -202,7 +212,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     if auth_result != "ok":
         logger.warning("WS auth rejected: role=%s id=%s has_token=%s", role, client_id, bool(token))
         await ws.send_json({"type": "error", "error": "unauthorized"})
-        await ws.close()
+        await ws.close(code=1008)
         return ws
 
     if role == "driver":

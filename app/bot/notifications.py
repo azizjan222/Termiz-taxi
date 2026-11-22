@@ -464,9 +464,11 @@ _GROUP_ORDER_MSGS_KEY = "group_order_msgs"
 
 
 def _build_group_chat_permissions(can_write: bool) -> ChatPermissions:
-    """Build Telegram ChatPermissions for locking (can_write=False) or unlocking (can_write=True) a group."""
-    if not can_write and hasattr(ChatPermissions, "no_permissions"):
-        return ChatPermissions.no_permissions()
+    """Build Telegram ChatPermissions for locking (can_write=False) or unlocking (can_write=True) a group.
+
+    Always keeps `can_invite_users=True` so members can still add people to the group even
+    while messaging is temporarily locked until a new order is accepted.
+    """
     try:
         return ChatPermissions(
             can_send_messages=can_write,
@@ -479,9 +481,13 @@ def _build_group_chat_permissions(can_write: bool) -> ChatPermissions:
             can_send_polls=can_write,
             can_send_other_messages=can_write,
             can_add_web_page_previews=False,
+            can_invite_users=True,
         )
     except TypeError:
-        return ChatPermissions(can_send_messages=can_write)
+        return ChatPermissions(
+            can_send_messages=can_write,
+            can_invite_users=True,
+        )
 
 
 async def _set_group_write_lock(bot, chat_id: int, *, locked: bool) -> None:

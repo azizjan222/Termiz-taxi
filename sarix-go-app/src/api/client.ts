@@ -49,13 +49,18 @@ let cachedToken: string | null | undefined = undefined;
 
 export async function getAuthToken(): Promise<string | null> {
   if (cachedToken !== undefined) return cachedToken;
-  try {
-    const tok = await SecureStore.getItemAsync(TOKEN_KEY);
-    cachedToken = tok ?? null;
-    return cachedToken;
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const tok = await SecureStore.getItemAsync(TOKEN_KEY);
+      cachedToken = tok ?? null;
+      return cachedToken;
+    } catch {
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+      }
+    }
   }
+  return null;
 }
 
 export async function setAuthToken(token: string) {
@@ -87,6 +92,16 @@ const AUTH_ENDPOINTS = [
   '/api/auth/request-otp',
 ];
 
+function extractBearerToken(headers: any): string | null {
+  if (!headers) return null;
+  const raw =
+    headers.Authorization ||
+    headers.authorization ||
+    (typeof headers.get === 'function' ? headers.get('Authorization') : null);
+  if (typeof raw !== 'string' || !raw.startsWith('Bearer ')) return null;
+  return raw.slice(7).trim() || null;
+}
+
 // Handle 401 errors globally
 api.interceptors.response.use(
   (response) => response,
@@ -95,13 +110,10 @@ api.interceptors.response.use(
       const cfg = error.config as (typeof error.config & { _skipUnauthorizedHandler?: boolean }) | undefined;
       const url = cfg?.url || '';
       const isAuthEndpoint = AUTH_ENDPOINTS.some((p) => url.includes(p));
-      const hadAuthHeader = Boolean(
-        cfg?.headers &&
-          ((cfg.headers as any).Authorization ||
-            (typeof (cfg.headers as any).get === 'function' && (cfg.headers as any).get('Authorization')))
-      );
+      const reqToken = extractBearerToken(cfg?.headers);
+      const matchesCurrentToken = !cachedToken || !reqToken || reqToken === cachedToken;
 
-      if (!isAuthEndpoint && hadAuthHeader) {
+      if (!isAuthEndpoint && reqToken && matchesCurrentToken) {
         await clearAuthToken();
         if (!cfg?._skipUnauthorizedHandler) {
           notifyUnauthorized();

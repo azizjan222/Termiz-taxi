@@ -1,5 +1,5 @@
 """JWT token helpers and request authentication."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
@@ -17,6 +17,7 @@ def create_token(user_id: int, phone: str) -> str:
     is not a string, which previously caused every authenticated request to 401
     ("Avtorizatsiya talab qilinadi").
     """
+    now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
         "phone": phone,
@@ -24,8 +25,8 @@ def create_token(user_id: int, phone: str) -> str:
         # carry role="driver"; without this claim being issued and checked, a driver
         # token resolves here as the *unrelated* User whose id equals the driver id.
         "role": "passenger",
-        "iat": datetime.utcnow(),
-        "exp": datetime.utcnow() + timedelta(days=config.JWT_EXPIRES_DAYS),
+        "iat": now,
+        "exp": now + timedelta(days=config.JWT_EXPIRES_DAYS),
     }
     return jwt.encode(payload, config.JWT_SECRET, algorithm=config.JWT_ALGORITHM)
 
@@ -41,12 +42,15 @@ def decode_token(token: str) -> Optional[dict]:
             token,
             config.JWT_SECRET,
             algorithms=[config.JWT_ALGORITHM],
+            leeway=60,
             options={"verify_sub": False},
         )
     except TypeError:
         # Older PyJWT versions don't support the verify_sub option.
         try:
-            return jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
+            return jwt.decode(
+                token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM], leeway=60
+            )
         except jwt.InvalidTokenError:
             return None
     except jwt.ExpiredSignatureError:
