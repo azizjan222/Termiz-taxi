@@ -133,10 +133,17 @@ export default function RootLayout() {
   // and nothing on screen said why.
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      const wasAuthenticated = useDriverStore.getState().isAuthenticated;
       realtime.disconnect();
+      stopOnlineBackgroundWatch().catch(() => {});
       useDriverStore.getState().expireSession();
-      Alert.alert(i18n.t('common.error'), i18n.t('more.sessionExpired'));
-      router.replace('/language');
+      // Only show the "session expired" alert if the driver was already signed in and
+      // actively using the app. Cold-start token checks or stray requests on /language
+      // or /login should silently clear the stale token without interrupting onboarding.
+      if (wasAuthenticated) {
+        router.replace('/login');
+        Alert.alert(i18n.t('common.error'), i18n.t('more.sessionExpired'));
+      }
     });
     return () => setUnauthorizedHandler(null);
   }, []);

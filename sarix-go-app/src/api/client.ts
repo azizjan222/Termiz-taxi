@@ -54,26 +54,47 @@ export function notifyUnauthorized() {
   } catch {}
 }
 
+const AUTH_ENDPOINTS = [
+  '/api/auth/telegram/',
+  '/api/auth/google',
+  '/api/auth/verify-otp',
+  '/api/auth/request-otp',
+];
+
 // Handle 401 errors globally
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     if (error.response?.status === 401) {
-      await SecureStore.deleteItemAsync(TOKEN_KEY);
-      // Previously this only dropped the token and left the store believing the user was
-      // still signed in. Only `loadUser()` at cold start ever re-validated, so a token that
-      // expired while the app was open produced a zombie session: Home still greeted the
-      // user by name, History silently showed "no orders" (looking like data loss), placing
-      // an order failed with a generic network error, and live tracking died — with nothing
-      // anywhere telling them to sign in again. Worst case was a first-time user on the
-      // name screen, which has no back link: every retry 401'd and they were simply stuck.
-      notifyUnauthorized();
+      const cfg = error.config as (typeof error.config & { _skipUnauthorizedHandler?: boolean }) | undefined;
+      const url = cfg?.url || '';
+      const isAuthEndpoint = AUTH_ENDPOINTS.some((p) => url.includes(p));
+      const hadAuthHeader = Boolean(
+        cfg?.headers &&
+          ((cfg.headers as any).Authorization ||
+            (typeof (cfg.headers as any).get === 'function' && (cfg.headers as any).get('Authorization')))
+      );
+
+      if (!isAuthEndpoint && hadAuthHeader) {
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        if (!cfg?._skipUnauthorizedHandler) {
+          // Previously this only dropped the token and left the store believing the user was
+          // still signed in. Only `loadUser()` at cold start ever re-validated, so a token that
+          // expired while the app was open produced a zombie session: Home still greeted the
+          // user by name, History silently showed "no orders" (looking like data loss), placing
+          // an order failed with a generic network error, and live tracking died — with nothing
+          // anywhere telling them to sign in again. Worst case was a first-time user on the
+          // name screen, which has no back link: every retry 401'd and they were simply stuck.
+          notifyUnauthorized();
+        }
+      }
     }
     return Promise.reject(error);
   }
 );
 
 export async function setAuthToken(token: string) {
+  unauthorizedFired = false;
   await SecureStore.setItemAsync(TOKEN_KEY, token);
 }
 

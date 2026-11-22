@@ -54,22 +54,45 @@ export function notifyUnauthorized() {
   } catch {}
 }
 
+const AUTH_ENDPOINTS = [
+  '/api/driver/telegram/',
+  '/api/driver/google',
+  '/api/driver/verify-otp',
+  '/api/driver/request-otp',
+];
+
 api.interceptors.response.use(
   (r) => r,
   async (e: AxiosError) => {
     if (e.response?.status === 401) {
-      await SecureStore.deleteItemAsync(TOKEN_KEY);
-      // Previously this only dropped the token and left the store believing the driver was
-      // still signed in. Nothing re-validated afterwards, so the app kept showing "Onlayn"
-      // while every request and the realtime socket failed — the driver silently received
-      // no orders at all until they reinstalled.
-      notifyUnauthorized();
+      const cfg = e.config as (typeof e.config & { _skipUnauthorizedHandler?: boolean }) | undefined;
+      const url = cfg?.url || '';
+      const isAuthEndpoint = AUTH_ENDPOINTS.some((p) => url.includes(p));
+      const hadAuthHeader = Boolean(
+        cfg?.headers &&
+          ((cfg.headers as any).Authorization ||
+            (typeof (cfg.headers as any).get === 'function' && (cfg.headers as any).get('Authorization')))
+      );
+
+      if (!isAuthEndpoint && hadAuthHeader) {
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        if (!cfg?._skipUnauthorizedHandler) {
+          // Previously this only dropped the token and left the store believing the driver was
+          // still signed in. Nothing re-validated afterwards, so the app kept showing "Onlayn"
+          // while every request and the realtime socket failed — the driver silently received
+          // no orders at all until they reinstalled.
+          notifyUnauthorized();
+        }
+      }
     }
     return Promise.reject(e);
   }
 );
 
-export const setAuthToken = (t: string) => SecureStore.setItemAsync(TOKEN_KEY, t);
+export const setAuthToken = async (t: string) => {
+  unauthorizedFired = false;
+  await SecureStore.setItemAsync(TOKEN_KEY, t);
+};
 export const getAuthToken = () => SecureStore.getItemAsync(TOKEN_KEY);
 export const clearAuthToken = () => SecureStore.deleteItemAsync(TOKEN_KEY);
 

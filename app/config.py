@@ -215,7 +215,13 @@ UPLOAD_DIR = _resolve_upload_dir()
 
 def _secrets_dir() -> str:
     """Directory on the persistent volume where auto-generated secrets are stored."""
-    base = PERSISTENT_DATA_DIR if persistent_data_dir_available() else "./data"
+    mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+    if persistent_data_dir_available():
+        base = PERSISTENT_DATA_DIR
+    elif mount and os.path.isdir(mount):
+        base = mount
+    else:
+        base = "./data"
     d = os.path.join(base, ".secrets")
     try:
         os.makedirs(d, exist_ok=True)
@@ -288,7 +294,7 @@ API_SECRET_KEY = _persistent_secret("API_SECRET_KEY", filename="api_secret_key",
 # MUST be strong and STABLE (if it changes, everyone is logged out).
 JWT_SECRET = _persistent_secret("JWT_SECRET", filename="jwt_secret", label="JWT secret")
 JWT_ALGORITHM = _get("JWT_ALGORITHM", "HS256")
-JWT_EXPIRES_DAYS = _get_int("JWT_EXPIRES_DAYS", 30)
+JWT_EXPIRES_DAYS = _get_int("JWT_EXPIRES_DAYS", 365)
 
 # CORS — comma-separated list of browser origins allowed to call the API, or "*" for
 # any (default, unchanged behavior). Native mobile apps do NOT enforce CORS, so

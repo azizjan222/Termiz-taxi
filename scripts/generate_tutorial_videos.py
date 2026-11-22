@@ -360,27 +360,67 @@ DRIVER_STEPS = [
         "tap": (0.50, 0.66),
     },
     {
-        "file": "Screenshot_20261116-211052_Yandex_Browser_6aab0b02.jpg",
+        "file": "Screenshot_20261120-093243_Sarix_Driver_fc6ce243.jpg",
         "app": "driver",
-        "title": "Avtomobil ma'lumotlarini kiriting",
-        "sub": "Ism-familiya, mashina rusumi, davlat raqami va yilini kiriting",
-        "speech": "To'qqizinchi qadam: Hujjatlarni yuklash oynasida ism-familiyangiz, mashina markasi, davlat raqami va yilini kiriting.",
-        "tap": (0.50, 0.44),
+        "title": "Ism-familiya va mashinani tanlang",
+        "sub": "Ism-familiyangizni yozib, mashina markasini ro'yxatdan tanlang",
+        "speech": "To'qqizinchi qadam: Hujjatlarni yuklash oynasida ism va familiyangizni yozib, mashina markasini tanlang.",
+        "tap": (0.50, 0.58),
     },
     {
-        "file": "Screenshot_20261116-211114_Yandex_Browser_e62cbd38.jpg",
+        "file": "Screenshot_20261120-093323_Sarix_Driver_bfc5e368.jpg",
         "app": "driver",
-        "title": "Guvohnoma va Texpasportni yuklang",
-        "sub": "Prava va texpasportning old-orqa rasmini yuklab, «Tasdiqlash» ni bosing",
-        "speech": "O'ninchi qadam: Haydovchilik guvohnomasi hamda texnik pasportning old va orqa tomonini suratga olib yuklang va Tasdiqlash tugmasini bosing.",
-        "tap": (0.50, 0.89),
+        "title": "Davlat raqami va yilini kiriting",
+        "sub": "Mashina davlat raqami hamda ishlab chiqarilgan yilini yozing",
+        "speech": "O'ninchi qadam: Mashinangizning davlat raqami hamda ishlab chiqarilgan yilini kiriting.",
+        "tap": (0.33, 0.73),
+    },
+    {
+        "file": "Screenshot_20261120-093334_Sarix_Driver_997fb5bd.jpg",
+        "app": "driver",
+        "title": "Mashina rangi va bog'lanish raqami",
+        "sub": "Mashina rangini belgilang va bog'lanish raqamingizni tekshiring",
+        "speech": "O'n birinchi qadam: Mashina rangini tanlang va yo'lovchilar bog'lanishi uchun telefon raqamingizni tekshiring.",
+        "tap": (0.16, 0.39),
+    },
+    {
+        "file": "Screenshot_20261120-093343_Sarix_Driver_c8f642a0.jpg",
+        "app": "driver",
+        "title": "Guvohnoma va Texpasportni suratga oling",
+        "sub": "«Suratga olish» tugmasini bosib, old va orqa tomonini yuklang",
+        "speech": "O'n ikkinchi qadam: Haydovchilik guvohnomasi va texnik pasportning old hamda orqa tomonini suratga olish tugmasini bosib yuklang.",
+        "tap": (0.28, 0.64),
+    },
+    {
+        "file": "Screenshot_20261120-093511_Sarix_Driver_031c79a8.jpg",
+        "app": "driver",
+        "title": "4 ta hujjat rasmini tasdiqlang",
+        "sub": "Barcha 4 ta rasm yuklangach, yashil «Tasdiqlash» tugmasini bosing",
+        "speech": "O'n uchinchi qadam: To'rttala hujjat rasmi to'liq yuklangach, pastdagi yashil Tasdiqlash tugmasini bosing.",
+        "tap": (0.50, 0.88),
+    },
+    {
+        "file": "Screenshot_20261120-093517_Sarix_Driver_12a27ad2.jpg",
+        "app": "driver",
+        "title": "Hujjatlaringiz qabul qilindi",
+        "sub": "Chiqib kelgan oynada «DAVOM ETISH» tugmasini bosing",
+        "speech": "O'n to'rtinchi qadam: Hujjatlaringiz muvaffaqiyatli qabul qilindi. Oynadagi Davom etish tugmasini bosing.",
+        "tap": (0.75, 0.565),
+    },
+    {
+        "file": "Screenshot_20261120-093524_Sarix_Driver_8f378018.jpg",
+        "app": "driver",
+        "title": "Hujjatlar administrator tekshiruvida",
+        "sub": "Admin tasdiqlagach va balans to'ldirilgach zakaslar ko'rinadi",
+        "speech": "O'n beshinchi qadam: Hujjatlaringiz administrator tekshiruviga yuborildi. Tasdiqlangach, yangi zakaslarni qabul qilishingiz mumkin.",
+        "tap": (0.76, 0.23),
     },
     {
         "file": "Screenshot_20261116-122757_Sarix_Driver_e5f6ce45.jpg",
         "app": "driver",
         "title": "Joylashuv (GPS) ruxsatini tasdiqlang",
         "sub": "Yaqin zakaslarni olish uchun «Roziman» tugmasini bosing",
-        "speech": "O'n birinchi qadam: Yaqin atrofdagi zakaslarni qabul qilish uchun joylashuv oynasida Roziman tugmasini bosing.",
+        "speech": "O'n oltinchi qadam: Yaqin atrofdagi zakaslarni qabul qilish uchun joylashuv oynasida Roziman tugmasini bosing.",
         "tap": (0.50, 0.72),
     },
     {
@@ -388,7 +428,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Aniq joylashuvga ruxsat bering",
         "sub": "«Bu ilova ishlayotganida» bandini tanlang",
-        "speech": "O'n ikkinchi qadam: Telefon ruxsat oynasida Bu ilova ishlayotganida tugmasini tanlang.",
+        "speech": "O'n yettinchi qadam: Telefon ruxsat oynasida Bu ilova ishlayotganida tugmasini tanlang.",
         "tap": (0.50, 0.79),
     },
     {
@@ -396,7 +436,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "«Onlayn» rejimni yoqing",
         "sub": "Yuqori o'ng burchakdagi «Oflayn» tugmasini bosib Onlaynga o'ting",
-        "speech": "O'n uchinchi qadam: Zakaslar kelishi uchun yuqori o'ng burchakdagi Oflayn tugmasini bosib, Onlayn rejimni yoqing.",
+        "speech": "O'n sakkizinchi qadam: Zakaslar kelishi uchun yuqori o'ng burchakdagi Oflayn tugmasini bosib, Onlayn rejimni yoqing.",
         "tap": (0.76, 0.095),
     },
     {
@@ -404,7 +444,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Siz Onlaynsiz — Zakasga tayyor!",
         "sub": "Ilova yopiq bo'lsa ham yangi zakaslar ovozli bildirishnoma bilan keladi",
-        "speech": "O'n to'rtinchi qadam: Endi siz Onlayn rejimdasiz! Ilova yopiq bo'lsa ham yangi zakaslar ovozli xabar bilan keladi.",
+        "speech": "O'n to'qqizinchi qadam: Endi siz Onlayn rejimdasiz! Ilova yopiq bo'lsa ham yangi zakaslar ovozli xabar bilan keladi.",
         "tap": (0.76, 0.095),
     },
     {
@@ -412,7 +452,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Yangi zakasni qabul qiling",
         "sub": "Yo'nalish va narxni ko'rib, sariq «Qabul qilish» tugmasini bosing",
-        "speech": "O'n beshinchi qadam: Yangi zakas tushganda manzil va narxni ko'rib, sariq rangli Qabul qilish tugmasini bosing.",
+        "speech": "Yigirmanchi qadam: Yangi zakas tushganda manzil va narxni ko'rib, sariq rangli Qabul qilish tugmasini bosing.",
         "tap": (0.72, 0.64),
     },
     {
@@ -420,7 +460,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Yo'lovchi bilan bog'laning",
         "sub": "Xaritada yo'lovchi manzilini ko'ring, qo'ng'iroq qiling yoki xabar yozing",
-        "speech": "O'n oltinchi qadam: Xaritada yo'lovchiga borish yo'lini ko'ring, Xabar yozish yoki Qo'ng'iroq tugmasi orqali bog'laning.",
+        "speech": "Yigirma birinchi qadam: Xaritada yo'lovchiga borish yo'lini ko'ring, Xabar yozish yoki Qo'ng'iroq tugmasi orqali bog'laning.",
         "tap": (0.28, 0.61),
     },
     {
@@ -428,7 +468,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Yo'lovchiga tezkor xabar yuboring",
         "sub": "1 bosishda «Yetib keldim, kutyapman» xabarini yuboring",
-        "speech": "O'n yettinchi qadam: Yo'lovchi oldiga yetib borgach, chatda Yetib keldim, kutyapman xabarini bir bosishda yuboring.",
+        "speech": "Yigirma ikkinchi qadam: Yo'lovchi oldiga yetib borgach, chatda Yetib keldim, kutyapman xabarini bir bosishda yuboring.",
         "tap": (0.66, 0.59),
     },
     {
@@ -436,7 +476,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Yo'lovchini olganingizni tasdiqlang",
         "sub": "«Yo'lovchini oldim» tugmasini bosib, «HA, OLDIM» ni tanlang",
-        "speech": "O'n sakkizinchi qadam: Yo'lovchi mashinaga o'tirgach, Yo'lovchini oldim tugmasini bosing va Ha, oldim deb tasdiqlang.",
+        "speech": "Yigirma uchinchi qadam: Yo'lovchi mashinaga o'tirgach, Yo'lovchini oldim tugmasini bosing va Ha, oldim deb tasdiqlang.",
         "tap": (0.77, 0.56),
     },
     {
@@ -444,7 +484,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Manzilga yetkazib, zakasni yoping",
         "sub": "Manzilga yetib borgach, pastdagi yashil «Yopildi» tugmasini bosing",
-        "speech": "O'n to'qqizinchi qadam: Yo'lovchini manzilga yetkazib qo'ygach, pastdagi yashil rangli Yopildi tugmasini bosing.",
+        "speech": "Yigirma to'rtinchi qadam: Yo'lovchini manzilga yetkazib qo'ygach, pastdagi yashil rangli Yopildi tugmasini bosing.",
         "tap": (0.72, 0.94),
     },
     {
@@ -452,7 +492,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Buyurtma yopilganini tasdiqlang",
         "sub": "Tasdiqlash oynasida «HA» tugmasini bosing",
-        "speech": "Yigirmanchi qadam: Buyurtma yopildimi degan tasdiqlash oynasida Ha tugmasini bosing.",
+        "speech": "Yigirma beshinchi qadam: Buyurtma yopildimi degan tasdiqlash oynasida Ha tugmasini bosing.",
         "tap": (0.81, 0.56),
     },
     {
@@ -460,7 +500,7 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Safar muvaffaqiyatli yakunlandi!",
         "sub": "«BAHOLASH» tugmasini bosing va keyingi zakaslarni qabul qiling",
-        "speech": "Yigirma birinchi qadam: Safar muvaffaqiyatli yakunlandi! Endi Baholash tugmasini bosing.",
+        "speech": "Yigirma oltinchi qadam: Safar muvaffaqiyatli yakunlandi! Endi Baholash tugmasini bosing.",
         "tap": (0.76, 0.57),
     },
     {
@@ -468,31 +508,27 @@ DRIVER_STEPS = [
         "app": "driver",
         "title": "Yo'lovchini baholang",
         "sub": "5 yulduz belgilab, «Yuborish» tugmasini bosing",
-        "speech": "Yigirma ikkinchi qadam: Yo'lovchini besh yulduz bilan baholab, Yuborish tugmasini bosing. Safaringiz bexatar bo'lsin!",
+        "speech": "Yigirma yettinchi qadam: Yo'lovchini besh yulduz bilan baholab, Yuborish tugmasini bosing. Safaringiz bexatar bo'lsin!",
         "tap": (0.50, 0.81),
     },
 ]
 
 COMBINED_STEPS = (
-    DRIVER_STEPS[:14]
+    DRIVER_STEPS[:19]
     + PASSENGER_STEPS[:11]
-    + DRIVER_STEPS[14:18]
+    + DRIVER_STEPS[19:23]
     + [PASSENGER_STEPS[11]]
-    + DRIVER_STEPS[18:]
+    + DRIVER_STEPS[23:]
     + [PASSENGER_STEPS[12]]
 )
 
 
-def synthesize_uzbek_speech_wav(uz_text: str, out_wav: str, voice: str = "uz-UZ-SardorNeural") -> float:
-    """
-    Synthesizes native Uzbek neural speech for `uz_text`, writes a 24kHz mono WAV to `out_wav`,
-    and returns its duration in seconds.
-    """
+def ensure_tts_cached(uz_text: str, voice: str = "uz-UZ-SardorNeural") -> str:
     key = hashlib.md5(f"{voice}:{uz_text}".encode("utf-8")).hexdigest()
     cached_mp3 = os.path.join(TTS_CACHE_DIR, f"{key}.mp3")
 
     if not os.path.exists(cached_mp3) or os.path.getsize(cached_mp3) < 500:
-        for attempt in range(3):
+        for attempt in range(5):
             try:
                 mp3_bytes = synthesize_edge_uzbek_mp3(uz_text, voice=voice)
                 if len(mp3_bytes) > 500:
@@ -500,8 +536,18 @@ def synthesize_uzbek_speech_wav(uz_text: str, out_wav: str, voice: str = "uz-UZ-
                         f.write(mp3_bytes)
                     break
             except Exception as err:
-                if attempt == 2:
+                time.sleep(0.6 * (attempt + 1))
+                if attempt == 4:
                     raise RuntimeError(f"Edge Uzbek TTS failed for '{uz_text[:30]}': {err}") from err
+    return cached_mp3
+
+
+def synthesize_uzbek_speech_wav(uz_text: str, out_wav: str, voice: str = "uz-UZ-SardorNeural") -> float:
+    """
+    Synthesizes native Uzbek neural speech for `uz_text`, writes a 24kHz mono WAV to `out_wav`,
+    and returns its duration in seconds.
+    """
+    cached_mp3 = ensure_tts_cached(uz_text, voice=voice)
 
     cmd = [
         "ffmpeg",
@@ -603,8 +649,8 @@ def render_intro_outro_png(title: str, subtitle: str, badge: str, theme: str, ou
       {t_svg}
       <rect x="130" y="810" width="460" height="44" rx="22" fill="#1E3A8A" stroke="#60A5FA" stroke-width="1.5"/>
       <text x="360" y="838" text-anchor="middle" fill="#DBEAFE" font-family="DejaVu Sans" font-weight="bold" font-size="16">🔊 Sof o'zbek tilida ovozli tushuntirish bilan</text>
-      <rect x="110" y="870" width="500" height="46" rx="23" fill="#064E3B" stroke="#10B981" stroke-width="1.5"/>
-      <text x="360" y="899" text-anchor="middle" fill="#6EE7B7" font-family="DejaVu Sans" font-weight="bold" font-size="16">🔒 Telefon raqamlar yashirilgan (+998 •• •••)</text>
+      <rect x="95" y="870" width="530" height="46" rx="23" fill="#064E3B" stroke="#10B981" stroke-width="1.5"/>
+      <text x="360" y="899" text-anchor="middle" fill="#6EE7B7" font-family="DejaVu Sans" font-weight="bold" font-size="16">🔒 Telefon raqamlar va shaxsiy hujjatlar yashirilgan</text>
     </svg>"""
     svg_to_image(svg, out_png)
 
@@ -725,7 +771,10 @@ def build_video(
         half_sec = 0.5
         total_duration = intro_dur
 
-        for i, st in enumerate(steps):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _process_one_step(args):
+            i, st = args
             raw_wav = os.path.join(tmpdir, f"step_{i:02d}_raw.wav")
             spoken_text = st.get("speech") or f"{st['title']}. {st['sub']}"
             step_voice = st.get("voice", default_voice)
@@ -743,18 +792,22 @@ def build_video(
                 ],
                 check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
             )
-            audio_concat_lines.append(f"file '{step_wav}'")
 
             p0 = os.path.join(tmpdir, f"step_{i:02d}_0.png")
             p1 = os.path.join(tmpdir, f"step_{i:02d}_1.png")
             render_step_png(st, i, len(steps), 0, p0)
             render_step_png(st, i, len(steps), 1, p1)
+            return i, step_wav, p0, p1, pulses, step_dur
 
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            results = list(pool.map(_process_one_step, enumerate(steps)))
+
+        for i, step_wav, p0, p1, pulses, step_dur in sorted(results, key=lambda r: r[0]):
+            audio_concat_lines.append(f"file '{step_wav}'")
             for p_idx in range(pulses):
                 chosen = p0 if p_idx % 2 == 0 else p1
                 video_concat_lines.append(f"file '{chosen}'")
                 video_concat_lines.append(f"duration {half_sec:.2f}")
-
             total_duration += step_dur
 
         outro_wav = os.path.join(tmpdir, "outro.wav")
@@ -819,25 +872,12 @@ def build_video(
 def main():
     prepare_redacted_screenshots()
 
-    # 1. Passenger video with native Uzbek voice (uz-UZ-MadinaNeural)
-    build_video(
-        output_filename="sarix-go-yolovchi.mp4",
-        steps=PASSENGER_STEPS,
-        intro_title="Sarix Go — Yo'lovchi Ilovasi",
-        intro_sub="Taksi chaqirish, manzil tanlash va haydovchi bilan bog'lanish bo'yicha ovozli video qo'llanma",
-        intro_badge="YO'LOVCHILAR UCHUN",
-        intro_speech="Assalomu alaykum! Sarix Go yo'lovchi ilovasidan foydalanish bo'yicha ovozli video qo'llanmaga xush kelibsiz.",
-        outro_speech="Qo'llanma yakunlandi! Sarix Go ilovasidan qulay va xavfsiz foydalaning. Oq yo'l tilaymiz!",
-        theme="go",
-        default_voice="uz-UZ-MadinaNeural",
-    )
-
-    # 2. Driver video with native Uzbek voice (uz-UZ-SardorNeural)
+    # 1. Driver video with native Uzbek voice (uz-UZ-SardorNeural)
     build_video(
         output_filename="sarix-driver-haydovchi.mp4",
         steps=DRIVER_STEPS,
         intro_title="Sarix Driver — Haydovchi Ilovasi",
-        intro_sub="Ro'yxatdan o'tish, Onlayn rejimni yoqish va zakaslarni qabul qilish bo'yicha ovozli video qo'llanma",
+        intro_sub="Ro'yxatdan o'tish, hujjatlarni yuklash, Onlayn rejimni yoqish va zakaslarni qabul qilish bo'yicha ovozli video qo'llanma",
         intro_badge="HAYDOVCHILAR UCHUN",
         intro_speech="Assalomu alaykum! Sarix Driver haydovchi ilovasida ishlash va yangi zakaslarni qabul qilish bo'yicha ovozli qo'llanmani boshlaymiz.",
         outro_speech="Qo'llanma yakunlandi! Sarix Driver ilovasida doimo Onlayn bo'ling va yangi zakaslarni qabul qiling. Safaringiz bexatar bo'lsin!",
@@ -845,7 +885,7 @@ def main():
         default_voice="uz-UZ-SardorNeural",
     )
 
-    # 3. Combined Full video: Sardor speaks for Driver steps, Madina speaks for Passenger steps!
+    # 2. Combined Full video: Sardor speaks for Driver steps, Madina speaks for Passenger steps!
     combined_with_speech = []
     for st in COMBINED_STEPS:
         copy_st = dict(st)
@@ -871,6 +911,21 @@ def main():
         theme="driver",
         default_voice="uz-UZ-SardorNeural",
     )
+
+    # 3. Passenger video with native Uzbek voice (uz-UZ-MadinaNeural)
+    go_out = os.path.join(VIDEOS_DIR, "sarix-go-yolovchi.mp4")
+    if not os.path.exists(go_out) or os.path.getsize(go_out) < 100000:
+        build_video(
+            output_filename="sarix-go-yolovchi.mp4",
+            steps=PASSENGER_STEPS,
+            intro_title="Sarix Go — Yo'lovchi Ilovasi",
+            intro_sub="Taksi chaqirish, manzil tanlash va haydovchi bilan bog'lanish bo'yicha ovozli video qo'llanma",
+            intro_badge="YO'LOVCHILAR UCHUN",
+            intro_speech="Assalomu alaykum! Sarix Go yo'lovchi ilovasidan foydalanish bo'yicha ovozli video qo'llanmaga xush kelibsiz.",
+            outro_speech="Qo'llanma yakunlandi! Sarix Go ilovasidan qulay va xavfsiz foydalaning. Oq yo'l tilaymiz!",
+            theme="go",
+            default_voice="uz-UZ-MadinaNeural",
+        )
 
 
 if __name__ == "__main__":

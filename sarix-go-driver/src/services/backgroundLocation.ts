@@ -232,6 +232,23 @@ let seenOrderIdsMemory: Set<number> | null = null;
  */
 export async function checkNewOrdersInBackground(): Promise<void> {
   try {
+    // Never hit the authenticated orders endpoint without a token (e.g. if a stale OS
+    // foreground service wakes up after logout or session expiry).
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const apiClient = require('../api/client');
+      if (typeof apiClient?.getAuthToken === 'function') {
+        const token = await apiClient.getAuthToken();
+        if (!token) {
+          const state = await readState();
+          if (state?.orderId === ONLINE_WATCH_ID) {
+            await selfStop('no-token');
+          }
+          return;
+        }
+      }
+    } catch {}
+
     // Also ensure the realtime WebSocket stays connected while polling in background.
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -336,7 +353,13 @@ export async function checkNewOrdersInBackground(): Promise<void> {
       const compact = Array.from(seenOrderIdsMemory).slice(-100);
       await AsyncStorage.setItem(SEEN_ORDERS_KEY, JSON.stringify(compact)).catch(() => {});
     }
-  } catch {
+  } catch (e: any) {
+    if (e?.response?.status === 401) {
+      const state = await readState();
+      if (state?.orderId === ONLINE_WATCH_ID) {
+        await selfStop('unauthorized');
+      }
+    }
     // Never let background order poll errors crash the location task
   }
 }
@@ -396,6 +419,9 @@ TaskManager.defineTask(DRIVER_LOCATION_TASK, async ({ data, error }) => {
 
   if (isOnlineWatch) {
     await checkNewOrdersInBackground();
+    // If checkNewOrdersInBackground() stopped the watcher (no token / 401 / offline),
+    // skip the location POST immediately instead of sending an unauthenticated request.
+    if (!(await readState())) return;
   }
 
   const now = Date.now();

@@ -1120,9 +1120,9 @@ const HTML = `<!DOCTYPE html>
     <!-- Right: Summary of Changes & Video Tutorials -->
     <div class="info-panel">
       <div class="panel-card" style="border:2px solid #4F46E5;background:linear-gradient(180deg,#EEF2FF 0%,#FFFFFF 100%);">
-        <div class="kicker-text" style="color:#4F46E5;">🔊 SOF O'ZBEK NEYRON OVOZI (SARDOR & MADINA) · TELEFON RAQAMLAR 100% YASHIRILGAN</div>
+        <div class="kicker-text" style="color:#4F46E5;">🔊 SOF O'ZBEK NEYRON OVOZI (SARDOR & MADINA) · TELEFON RAQAMLAR VA HUJJATLAR 100% YASHIRILGAN</div>
         <h1>Sarix Go va Sarix Driver — Sof O'zbek Ovozli Video Qo'llanmalar (MP4)</h1>
-        <p>Har bir qadamda <b>sof o'zbek tilidagi neyron diktor ovozi (<code>uz-UZ-SardorNeural</code> va <code>uz-UZ-MadinaNeural</code>)</b> aniq va ravon gapirib tushuntiradi, qaysi tugmani bosish (<code>▶ BOSING</code>) ko'rsatiladi hamda barcha telefon raqamlar (<code>+998 •• ••• •• ••</code>) yashirilgan:</p>
+        <p>Har bir qadamda <b>sof o'zbek tilidagi neyron diktor ovozi (<code>uz-UZ-SardorNeural</code> va <code>uz-UZ-MadinaNeural</code>)</b> aniq va ravon gapirib tushuntiradi, qaysi tugmani bosish (<code>▶ BOSING</code>) ko'rsatiladi hamda barcha telefon raqamlar (<code>+998 •• ••• •• ••</code>) va shaxsiy hujjat rasmlari (Guvohnoma va Texpasport) yashirilgan:</p>
 
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:16px;">
           <!-- Video 1: Sarix Go -->
@@ -1132,30 +1132,65 @@ const HTML = `<!DOCTYPE html>
               <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 13 qadam</span>
             </div>
             <div style="font-size:14px;font-weight:800;">Sarix Go — Zakas berish</div>
-            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-go-yolovchi.mp4?v=uzneural5"></video>
-            <a href="/videos/sarix-go-yolovchi.mp4?download=1&v=uzneural5" download="sarix-go-yolovchi.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F59E0B;color:#0F172A;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (Yo'lovchi)</a>
+            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-go-yolovchi.mp4?v=uzneural7"></video>
+            <a href="/videos/sarix-go-yolovchi.mp4?download=1&v=uzneural7" download="sarix-go-yolovchi.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#F59E0B;color:#0F172A;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (Yo'lovchi)</a>
           </div>
 
           <!-- Video 2: Sarix Driver -->
           <div style="background:#0F172A;border-radius:16px;padding:12px;color:#fff;display:flex;flex-direction:column;gap:10px;border:1.5px solid #3B82F6;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
               <span style="background:#3B82F6;color:#FFFFFF;font-size:11px;font-weight:800;padding:4px 9px;border-radius:99px;">2 · HAYDOVCHI (SARDOR OVOZI)</span>
-              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 22 qadam</span>
+              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 27 qadam</span>
             </div>
-            <div style="font-size:14px;font-weight:800;">Sarix Driver — Zakas olish</div>
-            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-driver-haydovchi.mp4?v=uzneural5"></video>
-            <a href="/videos/sarix-driver-haydovchi.mp4?download=1&v=uzneural5" download="sarix-driver-haydovchi.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#3B82F6;color:#FFFFFF;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (Haydovchi)</a>
+            <div style="font-size:14px;font-weight:800;">Sarix Driver — Hujjat & Zakas</div>
+            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-driver-haydovchi.mp4?v=uzneural7"></video>
+            <a href="/videos/sarix-driver-haydovchi.mp4?download=1&v=uzneural7" download="sarix-driver-haydovchi.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#3B82F6;color:#FFFFFF;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (Haydovchi)</a>
           </div>
 
           <!-- Video 3: Combined Full -->
           <div style="background:#0F172A;border-radius:16px;padding:12px;color:#fff;display:flex;flex-direction:column;gap:10px;border:1.5px solid #10B981;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
               <span style="background:#10B981;color:#0F172A;font-size:11px;font-weight:800;padding:4px 9px;border-radius:99px;">3 · IKKALA ILOVA (2 OVOZDA)</span>
-              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 35 qadam</span>
+              <span style="font-size:11px;color:#94A3B8;font-weight:700;">🔊 40 qadam</span>
             </div>
             <div style="font-size:14px;font-weight:800;">To'liq jarayon (Go + Driver)</div>
-            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-toliq-qollanma.mp4?v=uzneural5"></video>
-            <a href="/videos/sarix-toliq-qollanma.mp4?download=1&v=uzneural5" download="sarix-toliq-qollanma.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#10B981;color:#0F172A;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (To'liq)</a>
+            <video controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#020617;max-height:340px;" src="/videos/sarix-toliq-qollanma.mp4?v=uzneural7"></video>
+            <a href="/videos/sarix-toliq-qollanma.mp4?download=1&v=uzneural7" download="sarix-toliq-qollanma.mp4" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#10B981;color:#0F172A;text-decoration:none;font-weight:800;font-size:12.5px;padding:10px;border-radius:10px;">⬇ MP4 Yuklab olish (To'liq)</a>
+          </div>
+        </div>
+
+        <!-- 7 New Redacted Driver Document Screenshots Preview -->
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid #CBD5E1;">
+          <div style="font-size:13px;font-weight:800;color:#1E293B;margin-bottom:10px;">🔒 Haydovchi video qo'llanmasiga qo'shilgan 7 ta yangi skrinshot (telefon raqam va hujjat rasmlari yashirilgan):</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(95px,1fr));gap:8px;">
+            <div style="background:#0F172A;padding:6px;border-radius:10px;text-align:center;">
+              <img src="/assets/redacted/Screenshot_20261120-093243_Sarix_Driver_fc6ce243.jpg?v=uz6" style="width:100%;border-radius:6px;display:block;" alt="9-qadam" />
+              <span style="font-size:10px;color:#E2E8F0;font-weight:700;">9. Ism & Model</span>
+            </div>
+            <div style="background:#0F172A;padding:6px;border-radius:10px;text-align:center;">
+              <img src="/assets/redacted/Screenshot_20261120-093323_Sarix_Driver_bfc5e368.jpg?v=uz6" style="width:100%;border-radius:6px;display:block;" alt="10-qadam" />
+              <span style="font-size:10px;color:#E2E8F0;font-weight:700;">10. Raqam & Yil</span>
+            </div>
+            <div style="background:#0F172A;padding:6px;border-radius:10px;text-align:center;border:1.5px solid #3B82F6;">
+              <img src="/assets/redacted/Screenshot_20261120-093334_Sarix_Driver_997fb5bd.jpg?v=uz6" style="width:100%;border-radius:6px;display:block;" alt="11-qadam" />
+              <span style="font-size:10px;color:#93C5FD;font-weight:700;">11. Tel yashirildi</span>
+            </div>
+            <div style="background:#0F172A;padding:6px;border-radius:10px;text-align:center;">
+              <img src="/assets/redacted/Screenshot_20261120-093343_Sarix_Driver_c8f642a0.jpg?v=uz6" style="width:100%;border-radius:6px;display:block;" alt="12-qadam" />
+              <span style="font-size:10px;color:#E2E8F0;font-weight:700;">12. Suratga olish</span>
+            </div>
+            <div style="background:#0F172A;padding:6px;border-radius:10px;text-align:center;border:1.5px solid #10B981;">
+              <img src="/assets/redacted/Screenshot_20261120-093511_Sarix_Driver_031c79a8.jpg?v=uz6" style="width:100%;border-radius:6px;display:block;" alt="13-qadam" />
+              <span style="font-size:10px;color:#6EE7B7;font-weight:700;">13. Hujjat yashirildi</span>
+            </div>
+            <div style="background:#0F172A;padding:6px;border-radius:10px;text-align:center;border:1.5px solid #10B981;">
+              <img src="/assets/redacted/Screenshot_20261120-093517_Sarix_Driver_12a27ad2.jpg?v=uz6" style="width:100%;border-radius:6px;display:block;" alt="14-qadam" />
+              <span style="font-size:10px;color:#6EE7B7;font-weight:700;">14. Qabul qilindi</span>
+            </div>
+            <div style="background:#0F172A;padding:6px;border-radius:10px;text-align:center;">
+              <img src="/assets/redacted/Screenshot_20261120-093524_Sarix_Driver_8f378018.jpg?v=uz6" style="width:100%;border-radius:6px;display:block;" alt="15-qadam" />
+              <span style="font-size:10px;color:#E2E8F0;font-weight:700;">15. Tekshiruvda</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1441,7 +1476,7 @@ const server = http.createServer((req, res) => {
         const baseHeaders = {
           'Content-Type': 'video/mp4',
           'Accept-Ranges': 'bytes',
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
         };
         if (isDownload) {
           baseHeaders['Content-Disposition'] = `attachment; filename="${name}"`;
@@ -1472,6 +1507,26 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (pathname.startsWith('/assets/redacted/')) {
+    const name = path.basename(pathname);
+    if (/^[A-Za-z0-9_.-]+\.(jpg|jpeg|png)$/i.test(name)) {
+      const imgPath = path.join(process.cwd(), 'public', 'assets', 'redacted', name);
+      if (fs.existsSync(imgPath)) {
+        const buf = fs.readFileSync(imgPath);
+        res.writeHead(200, {
+          'Content-Type': name.endsWith('.png') ? 'image/png' : 'image/jpeg',
+          'Content-Length': buf.length,
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        });
+        res.end(buf);
+        return;
+      }
+    }
+    res.writeHead(404);
+    res.end('Image not found');
+    return;
+  }
+
   if (pathname.startsWith('/sounds/')) {
     const name = path.basename(pathname);
     if (ALLOWED_SOUNDS.has(name)) {
@@ -1492,7 +1547,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+  });
   res.end(HTML);
 });
 

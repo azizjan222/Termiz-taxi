@@ -68,9 +68,12 @@ export default function RootLayout() {
   // the user by name, History showing "no orders") while every request failed.
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      const wasAuthenticated = useAuthStore.getState().isAuthenticated;
       useAuthStore.getState().expireSession();
-      Alert.alert(i18n.t('common.error'), i18n.t('errors.sessionExpired'));
-      router.replace('/(auth)/language');
+      if (wasAuthenticated) {
+        router.replace('/(auth)/login');
+        Alert.alert(i18n.t('common.error'), i18n.t('errors.sessionExpired'));
+      }
     });
     return () => setUnauthorizedHandler(null);
   }, []);

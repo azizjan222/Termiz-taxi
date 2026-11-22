@@ -46,7 +46,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     // Retry a few times to tolerate transient network/server hiccups.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const user = await getMe();
+        const user = await getMe({ skipUnauthorizedHandler: true });
         await SecureStore.setItemAsync(USER_CACHE_KEY, JSON.stringify(user)).catch(() => {});
         set({ user, isAuthenticated: true, isLoading: false });
         return;

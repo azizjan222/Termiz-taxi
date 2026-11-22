@@ -54,7 +54,7 @@ export const useDriverStore = create<DriverState>((set) => ({
     // Retry a few times to tolerate transient network/server hiccups.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const driver = await getMe();
+        const driver = await getMe({ skipUnauthorizedHandler: true });
         await SecureStore.setItemAsync(DRIVER_CACHE_KEY, JSON.stringify(driver)).catch(() => {});
         set({
           driver,
@@ -67,7 +67,10 @@ export const useDriverStore = create<DriverState>((set) => ({
         if (e?.response?.status === 401) {
           await clearAuthToken();
           await SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
-          set({ driver: null, isAuthenticated: false, isLoading: false });
+          import('../services/backgroundLocation')
+            .then((m) => m.stopBackgroundLocation())
+            .catch(() => {});
+          set({ driver: null, isAuthenticated: false, isOnline: false, isLoading: false });
           return;
         }
         await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
@@ -91,6 +94,9 @@ export const useDriverStore = create<DriverState>((set) => ({
     set({ driver: null, isAuthenticated: false, isOnline: false, isLoading: false });
     clearAuthToken().catch(() => {});
     SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
+    import('../services/backgroundLocation')
+      .then((m) => m.stopBackgroundLocation())
+      .catch(() => {});
   },
 
   logout: async () => {

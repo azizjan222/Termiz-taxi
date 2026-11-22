@@ -135,8 +135,10 @@ export async function verifyDriverOtp(phone: string, code: string): Promise<{ dr
   return response.data;
 }
 
-export async function getMe(): Promise<Driver> {
-  const response = await api.get<Driver>('/api/driver/me');
+export async function getMe(options?: { skipUnauthorizedHandler?: boolean }): Promise<Driver> {
+  const response = await api.get<Driver>('/api/driver/me', {
+    _skipUnauthorizedHandler: options?.skipUnauthorizedHandler,
+  } as any);
   return response.data;
 }
 

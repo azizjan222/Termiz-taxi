@@ -48,8 +48,10 @@ export async function verifyOtp(
   return response.data;
 }
 
-export async function getMe(): Promise<User> {
-  const response = await api.get<User>('/api/auth/me');
+export async function getMe(options?: { skipUnauthorizedHandler?: boolean }): Promise<User> {
+  const response = await api.get<User>('/api/auth/me', {
+    _skipUnauthorizedHandler: options?.skipUnauthorizedHandler,
+  } as any);
   return response.data;
 }
 
