@@ -428,18 +428,6 @@ TaskManager.defineTask(DRIVER_LOCATION_TASK, async ({ data, error }) => {
   if (now - lastSentAt < BACKEND_MIN_INTERVAL_MS) return;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const apiClient = require('../api/client');
-    if (typeof apiClient?.getAuthToken === 'function') {
-      const token = await apiClient.getAuthToken();
-      if (!token) {
-        await selfStop('no-token');
-        return;
-      }
-    }
-  } catch {}
-
-  try {
     const result = await updateDriverLocation(latitude, longitude);
     lastSentAt = now;
     diagnostics.sent += 1;
@@ -690,7 +678,6 @@ export async function startOnlineBackgroundWatch(options: {
           await Location.startLocationUpdatesAsync(DRIVER_LOCATION_TASK, {
             accuracy: Location.Accuracy.High ?? Location.Accuracy.Balanced,
             timeInterval: 5000,
-            fastestInterval: 3000,
             distanceInterval: 0,
             pausesUpdatesAutomatically: false,
             activityType: Location.ActivityType.AutomotiveNavigation,
