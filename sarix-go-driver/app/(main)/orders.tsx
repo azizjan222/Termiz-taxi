@@ -122,8 +122,11 @@ export default function OrdersScreen() {
     if (resolve) resolve(accepted);
   };
 
+  const aliveRef = useRef(true);
   useEffect(() => {
+    aliveRef.current = true;
     return () => {
+      aliveRef.current = false;
       if (disclosureResolverRef.current) {
         const resolve = disclosureResolverRef.current;
         disclosureResolverRef.current = null;
@@ -408,20 +411,24 @@ export default function OrdersScreen() {
     try {
       await apiSetOnline(val);
       // Keep the driver object in sync so other screens see the change.
-      if (driver) {
-        useDriverStore.getState().setDriver({ ...driver, is_online: val });
+      const currentDriver = useDriverStore.getState().driver;
+      if (currentDriver) {
+        useDriverStore.getState().setDriver({ ...currentDriver, is_online: val });
       }
     } catch (e: any) {
+      if (val) {
+        stopOnlineBackgroundWatch().catch(() => {});
+      }
       setOnlineLocal(!val);
       isOnlineRef.current = !val;
       // A 401 is already handled globally (session expired -> login), so don't also
       // raise a second alert on top of it.
-      if (e?.response?.status !== 401) {
+      if (e?.response?.status !== 401 && aliveRef.current) {
         Alert.alert(t('common.error'), t('more.statusChangeFailed'));
       }
     } finally {
       onlineInFlightRef.current = false;
-      setTogglingOnline(false);
+      if (aliveRef.current) setTogglingOnline(false);
     }
   };
 
@@ -513,7 +520,8 @@ export default function OrdersScreen() {
     }
   };
 
-  const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const formatPrice = (p: number | null | undefined) =>
+    (typeof p === 'number' && Number.isFinite(p) ? p : 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
   const formatTimeAgo = (iso: string) => {
     if (!iso) return '';

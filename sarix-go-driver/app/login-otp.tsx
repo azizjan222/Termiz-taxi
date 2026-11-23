@@ -44,7 +44,8 @@ export default function LoginOtpScreen() {
   }, []);
 
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 100);
+    const timer = setTimeout(() => inputRef.current?.focus(), 100);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleVerify = async (verifyCode?: string) => {
@@ -70,7 +71,6 @@ export default function LoginOtpScreen() {
     } catch (e: any) {
       const msg = e?.response?.data?.error || t('auth.errBadCode');
       setError(msg);
-    } finally {
       verifyInFlightRef.current = false;
       setLoading(false);
     }

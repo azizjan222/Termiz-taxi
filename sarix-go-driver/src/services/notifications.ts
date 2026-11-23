@@ -3,7 +3,8 @@ import * as Device from 'expo-device';
 import { Platform, AppState, Vibration } from 'react-native';
 import Constants from 'expo-constants';
 
-import { api } from '../api/client';
+import { api, getAuthToken } from '../api/client';
+import { useDriverStore } from '../store/driver';
 import i18n from '../i18n';
 
 // ---------------------------------------------------------------------------
@@ -281,6 +282,17 @@ export function isPushRegistered(): boolean {
 export async function registerPushToken(forcePrompt = true): Promise<boolean> {
   try {
     await setupNotificationChannels();
+    // Never POST to the authenticated push-token endpoint before sign-in (e.g., when
+    // changeLanguage() runs on /language or /login).
+    if (!useDriverStore.getState().isAuthenticated) {
+      pushRegistered = false;
+      return false;
+    }
+    const authToken = await getAuthToken();
+    if (!authToken) {
+      pushRegistered = false;
+      return false;
+    }
     for (let attempt = 0; attempt < 2; attempt++) {
       const token = await getExpoPushToken(forcePrompt);
       if (!token) {
@@ -293,10 +305,14 @@ export async function registerPushToken(forcePrompt = true): Promise<boolean> {
           lastPushTokenError
         );
         try {
-          await api.post('/api/notifications/register-token', {
-            client_error: lastPushTokenError || 'unknown_token_error',
-            language: i18n.language,
-          });
+          await api.post(
+            '/api/notifications/register-token',
+            {
+              client_error: lastPushTokenError || 'unknown_token_error',
+              language: i18n.language,
+            },
+            { _skipUnauthorizedHandler: true } as any
+          );
         } catch {}
         pushRegistered = false;
         return false;
@@ -317,7 +333,9 @@ export async function registerPushToken(forcePrompt = true): Promise<boolean> {
 export async function unregisterPushToken(): Promise<void> {
   pushRegistered = false;
   try {
-    await api.post('/api/notifications/remove-token');
+    await api.post('/api/notifications/remove-token', undefined, {
+      _skipUnauthorizedHandler: true,
+    } as any);
   } catch {}
 }
 
@@ -372,11 +390,12 @@ const ALERT_VIBRATION = [0, 700, 300, 700, 300, 700, 300, 700];
  */
 export function newOrderBody(opts?: { from?: string; to?: string; price?: number }): string {
   if (!opts?.from || !opts?.to) return i18n.t('notifications.newOrderShort');
-  if (!opts.price) return `${opts.from} → ${opts.to}`;
+  const priceNum = typeof opts.price === 'number' && Number.isFinite(opts.price) ? opts.price : 0;
+  if (!priceNum) return `${opts.from} → ${opts.to}`;
   return i18n.t('notifications.newOrderBody', {
     from: opts.from,
     to: opts.to,
-    price: opts.price.toLocaleString(),
+    price: priceNum.toLocaleString(),
   });
 }
 

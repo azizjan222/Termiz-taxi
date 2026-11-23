@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
+import Constants from 'expo-constants';
 
 import { Icon } from '../../src/components/Icon';
 import { LogoutConfirmModal } from '../../src/components/LogoutConfirmModal';
@@ -146,7 +147,7 @@ export default function ProfileScreen() {
     try {
       await logout();
       setLogoutVisible(false);
-      router.replace('/language');
+      router.replace('/login');
     } finally {
       if (aliveRef.current) setLoggingOut(false);
     }
@@ -451,7 +452,7 @@ export default function ProfileScreen() {
             <Text style={styles.logoutText}>{t('profile.logout')}</Text>
           </TouchableOpacity>
 
-          <Text style={styles.version}>{t('more.version')} 1.0.0</Text>
+          <Text style={styles.version}>{t('more.version')} {Constants.expoConfig?.version || '1.0.4'}</Text>
         </View>
       </ScrollView>
 

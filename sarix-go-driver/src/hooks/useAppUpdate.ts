@@ -61,7 +61,7 @@ export function useAppUpdate(enabled = true): UseAppUpdateResult {
 
     const promise = (async () => {
       const cfg = await getDriverAppConfig();
-      const currentVersion = Constants.expoConfig?.version || '1.0.0';
+      const currentVersion = Constants.expoConfig?.version || '1.0.4';
       const minVersion = cfg?.min_version || '1.0.0';
       const needsUpdate =
         Boolean(cfg?.force_update) || compareVersions(currentVersion, minVersion) < 0;

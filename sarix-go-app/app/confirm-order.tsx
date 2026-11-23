@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -48,14 +50,18 @@ export default function ConfirmOrderScreen() {
   const [note, setNote] = useState(orderStore.note || '');
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
+  const [quoteError, setQuoteError] = useState(false);
+  const [quoteReloadKey, setQuoteReloadKey] = useState(0);
   const submitInFlightRef = useRef(false);
   // Bonus wallet. Fetched here rather than held in a store because it changes server-side
   // (every completed ride can credit it) and a stale figure would misrepresent a discount.
   const [bonusBalance, setBonusBalance] = useState(0);
   const [useBonus, setUseBonus] = useState(false);
 
-  const formatPrice = (p: number) =>
-    p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const formatPrice = (p: number | null | undefined) =>
+    (typeof p === 'number' && Number.isFinite(p) ? p : 0)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
   useEffect(() => {
     if (!BONUS_UI_ENABLED) return;
@@ -79,6 +85,7 @@ export default function ConfirmOrderScreen() {
         return;
       }
       setQuoteLoading(true);
+      setQuoteError(false);
       try {
         const q = await getPriceQuote(
           orderStore.fromCity,
@@ -86,9 +93,15 @@ export default function ConfirmOrderScreen() {
           orderStore.serviceType,
           orderStore.personCount
         );
-        if (active) setQuote(q);
+        if (active) {
+          setQuote(q);
+          setQuoteError(false);
+        }
       } catch {
-        if (active) setQuote(null);
+        if (active) {
+          setQuote(null);
+          setQuoteError(true);
+        }
       } finally {
         if (active) setQuoteLoading(false);
       }
@@ -97,7 +110,7 @@ export default function ConfirmOrderScreen() {
     return () => {
       active = false;
     };
-  }, [orderStore.fromCity, orderStore.toCity, orderStore.serviceType, orderStore.personCount]);
+  }, [orderStore.fromCity, orderStore.toCity, orderStore.serviceType, orderStore.personCount, quoteReloadKey]);
 
   const isParcel = orderStore.serviceType === 'parcel';
 
@@ -201,7 +214,11 @@ export default function ConfirmOrderScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Route summary (compact single-glance header) */}
         <View style={styles.card}>
           <View style={styles.row}>
@@ -502,6 +519,17 @@ export default function ConfirmOrderScreen() {
             {isParcel && (
               <Text style={styles.negotiableHint}>{t('order.parcelNegotiableHint')}</Text>
             )}
+            {quoteError && !quoteLoading && (
+              <TouchableOpacity
+                onPress={() => setQuoteReloadKey((k) => k + 1)}
+                activeOpacity={0.75}
+                style={{ marginTop: 4 }}
+              >
+                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
+                  ↻ {t('common.retry')}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
           <Text style={styles.footerPrice}>
             {priceText}
@@ -514,6 +542,7 @@ export default function ConfirmOrderScreen() {
           disabled={quoteLoading || !(isParcel ? quote : quote && quote.price > 0)}
         />
       </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

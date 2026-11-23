@@ -3,18 +3,20 @@ import {
   View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Icon, IconText } from '../../src/components/Icon';
 import { listMyActive, type DriverOrder } from '../../src/api/driver';
+import { useDriverStore } from '../../src/store/driver';
 import { useThemeStore } from '../../src/store/theme';
 import { isAppForeground } from '../../src/utils/appForeground';
 import { typography, spacing, radius } from '../../src/theme';
 import type { ThemeColors } from '../../src/theme/colors-themed';
 
 /** Thousands-separated so'm, matching the other driver screens. */
-const formatPrice = (n: number) => (n ?? 0).toLocaleString().replace(/,/g, ' ');
+const formatPrice = (n: number | null | undefined) =>
+  (typeof n === 'number' && Number.isFinite(n) ? n : 0).toLocaleString().replace(/,/g, ' ');
 
 /**
  * Whether the passenger's fare was discounted, so the cash to collect is NOT `price`.
@@ -39,6 +41,7 @@ export default function ActiveOrdersScreen() {
   // pull-to-refresh spinner appeared by itself four times a minute. The orders tab already
   // solved this the same way.
   const load = useCallback(async (silent = false) => {
+    if (!useDriverStore.getState().isAuthenticated) return;
     if (!silent) setRefreshing(true);
     try {
       const list = await listMyActive();
@@ -50,6 +53,12 @@ export default function ActiveOrdersScreen() {
       setRefreshing(false);
     }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load(true);
+    }, [load])
+  );
 
   useEffect(() => {
     load();

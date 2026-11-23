@@ -19,6 +19,7 @@ export default {
     name: 'Name',
     phone: 'Phone',
     driver: 'Driver',
+    car: 'Car',
     currency: 'UZS',
     sending: 'Sending...',
     comingSoon: 'Coming soon',
@@ -511,6 +512,8 @@ export default {
     currentLocation: 'Current location',
     selectedAddress: 'Selected address',
     kmAway: '{{km}} km',
+    locationPermissionDenied: 'Location permission denied. You can still pick an address on the map.',
+    locationServicesDisabled: 'Location services (GPS) are disabled. Enable them or pick an address on the map.',
   },
   routeSelect: {
     fromTaxi: 'Passenger pickup point',

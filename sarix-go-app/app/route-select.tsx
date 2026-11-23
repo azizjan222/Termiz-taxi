@@ -296,7 +296,7 @@ export default function RouteSelectScreen() {
           onPress={() => fromInputRef.current?.focus()}
           activeOpacity={0.9}
         >
-          <View style={[styles.fieldIconTile, { backgroundColor: '#E0E7FF' }]}>
+          <View style={[styles.fieldIconTile, { backgroundColor: colors.primary50 }]}>
             <Icon name="run" size={16} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
@@ -329,7 +329,7 @@ export default function RouteSelectScreen() {
           onPress={() => toInputRef.current?.focus()}
           activeOpacity={0.9}
         >
-          <View style={[styles.fieldIconTile, { backgroundColor: '#E0E7FF' }]}>
+          <View style={[styles.fieldIconTile, { backgroundColor: colors.primary50 }]}>
             <Icon name="flag" size={16} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
@@ -541,7 +541,7 @@ async function suggestAddressRich(query: string): Promise<{ title: string; subti
   for (const key of keys) {
     try {
       const url =
-        `https://suggest-maps.yandex.ru/v1/suggest?apikey=${key}` +
+        `https://suggest-maps.yandex.ru/v1/suggest?apikey=${encodeURIComponent(key)}` +
         `&text=${encodeURIComponent(query)}&lang=${suggestLang()}&results=7` +
         `&ll=67.6,37.9&spn=1.8,1.6`;
       const resp = await fetch(url);
@@ -604,7 +604,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.xs,
     borderRadius: radius.md,
   },
-  fieldRowActive: { backgroundColor: '#F8F6FF' },
+  fieldRowActive: { backgroundColor: colors.primary50 },
   fieldIconTile: {
     width: 44,
     height: 44,
@@ -694,7 +694,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#F0EEFF',
+    backgroundColor: colors.primary50,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,

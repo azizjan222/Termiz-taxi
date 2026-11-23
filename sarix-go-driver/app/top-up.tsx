@@ -145,7 +145,9 @@ export default function TopUpScreen() {
       Alert.alert(t('topUp.noCardTitle'), t('topUp.noCardBody'));
       return;
     }
-    Clipboard.setString(cardMethod.card_number);
+    try {
+      Clipboard?.setString?.(cardMethod.card_number);
+    } catch {}
     Alert.alert(t('topUp.copied'));
   };
 
@@ -236,7 +238,8 @@ export default function TopUpScreen() {
         const result = await createAtmosPayment(amt);
         lastAtmosPaymentIdRef.current = result.payment_id;
 
-        const supported = await Linking.canOpenURL(result.url);
+        const isSafePaymentUrl = typeof result.url === 'string' && /^https?:\/\//i.test(result.url);
+        const supported = isSafePaymentUrl && (await Linking.canOpenURL(result.url));
         if (supported) {
           await Linking.openURL(result.url);
           if (!focusedRef.current) return;

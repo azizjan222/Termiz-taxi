@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { Icon, type IconName } from '../../src/components/Icon';
+import { useAuthStore } from '../../src/store/auth';
 import { useThemeStore } from '../../src/store/theme';
 import { radius } from '../../src/theme';
 import { TAB_BAR_HEIGHT } from '../../src/theme/tabBar';
@@ -117,6 +118,11 @@ function AppTabBar({ state, descriptors, navigation, insets }: AppTabBarProps) {
 
 export default function TabsLayout() {
   const { t } = useTranslation();
+  const isAuth = useAuthStore((s) => s.isAuthenticated);
+
+  if (!isAuth) {
+    return <Redirect href="/(auth)/telegram-login" />;
+  }
 
   return (
     <Tabs

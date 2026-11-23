@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -67,6 +67,7 @@ export default function HomeScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [unread, setUnread] = useState(0);
+  const locationPromptedRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -79,13 +80,15 @@ export default function HomeScreen() {
 
       // Pre-warm location permission and OS FusedLocationProvider cache on HomeScreen
       // so when a first-time user taps "Taksi chaqirish", the GPS chip is already warm.
+      // Only prompt once per session if denied so we never nag the user on every focus.
       (async () => {
         try {
           const perm = await Location.getForegroundPermissionsAsync();
-          const status =
-            perm.status === 'granted'
-              ? 'granted'
-              : (await Location.requestForegroundPermissionsAsync()).status;
+          let status = perm.status;
+          if (status !== 'granted' && perm.canAskAgain !== false && !locationPromptedRef.current) {
+            locationPromptedRef.current = true;
+            status = (await Location.requestForegroundPermissionsAsync()).status;
+          }
           if (status === 'granted') {
             Location.getCurrentPositionAsync({
               accuracy: Location.Accuracy.Balanced,

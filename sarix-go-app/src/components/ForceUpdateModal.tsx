@@ -57,7 +57,11 @@ export const ForceUpdateModal: React.FC<Props> = ({
           </Text>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => Linking.openURL(playUrl)}
+            onPress={() => {
+              if (/^(https?:|market:)/i.test(playUrl)) {
+                Linking.openURL(playUrl).catch(() => {});
+              }
+            }}
             activeOpacity={0.85}
           >
             <IconText

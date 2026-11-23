@@ -12,19 +12,24 @@ const ONBOARDING_KEY = '@sarixgo/onboarded';
  */
 export default function Index() {
   const isAuth = useAuthStore((s) => s.isAuthenticated);
+  const isLoading = useAuthStore((s) => s.isLoading);
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(ONBOARDING_KEY).then((value) =>
-      setOnboarded(value === 'true')
-    );
+    AsyncStorage.getItem(ONBOARDING_KEY)
+      .then((value) => setOnboarded(value === 'true'))
+      .catch(() => setOnboarded(false));
   }, []);
 
-  if (onboarded === null) return null;
+  if (isLoading || onboarded === null) return null;
 
-  if (!onboarded || !isAuth) {
+  if (isAuth) {
+    return <Redirect href="/(tabs)/home" />;
+  }
+
+  if (!onboarded) {
     return <Redirect href="/(auth)/language" />;
   }
 
-  return <Redirect href="/(tabs)/home" />;
+  return <Redirect href="/(auth)/telegram-login" />;
 }

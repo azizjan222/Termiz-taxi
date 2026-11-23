@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
+import Constants from 'expo-constants';
 
 import { Icon, type IconName } from '../../src/components/Icon';
 import { LogoutConfirmModal } from '../../src/components/LogoutConfirmModal';
@@ -337,7 +338,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         <Text style={styles.version}>
-          {t('profile.version', { version: '1.0.0' })}
+          {t('profile.version', { version: Constants.expoConfig?.version || '1.0.4' })}
         </Text>
       </ScrollView>
 

@@ -121,7 +121,9 @@ export default function AiChatScreen() {
   };
 
   const openSupport = () => {
-    Linking.openURL(supportUrl);
+    if (supportUrl && /^(https?:|tg:)/i.test(supportUrl)) {
+      Linking.openURL(supportUrl).catch(() => {});
+    }
   };
 
   // Guarded: a blind `as string[]` followed by .map() crashes the whole screen if a locale

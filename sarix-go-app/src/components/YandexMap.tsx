@@ -88,7 +88,7 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
   const source = useMemo(() => ({ html, baseUrl: 'https://yandex.com/' }), [html]);
 
   const sendCommand = (cmd: object) => {
-    const payload = JSON.stringify(cmd);
+    const payload = JSON.stringify(cmd).replace(/</g, '\\u003c');
     const js = `(function(){if(window.handleCommand){window.handleCommand(${payload});}else{window.__cmdQueue=window.__cmdQueue||[];window.__cmdQueue.push(${payload});}})();true;`;
     webViewRef.current?.injectJavaScript(js);
   };
@@ -294,9 +294,9 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     apiKey, initialLat, initialLon, initialZoom, markers, isDark,
     msgApiFailed, msgInitFailed, msgApiTimeout,
   } = opts;
-  const js = (v: string) => JSON.stringify(v);
+  const js = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
   const apiUrl = apiKey
-    ? `https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=${mapLang()}`
+    ? `https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(apiKey)}&lang=${mapLang()}`
     : `https://api-maps.yandex.ru/2.1/?lang=${mapLang()}`;
 
   return `<!DOCTYPE html>

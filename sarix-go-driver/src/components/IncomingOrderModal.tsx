@@ -35,7 +35,8 @@ interface Props {
   onDismiss: () => void;
 }
 
-const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const formatPrice = (p: number | null | undefined) =>
+  (typeof p === 'number' && Number.isFinite(p) ? p : 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
 const serviceIcon = (type: string): IconName =>
   type === 'parcel' ? 'parcel' : type === 'full_car' ? 'car' : 'taxi';

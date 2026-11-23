@@ -108,7 +108,11 @@ export default function AiChatScreen() {
     }
   };
 
-  const openSupport = () => Linking.openURL(supportUrl);
+  const openSupport = () => {
+    if (/^(https?:|tg:)/i.test(supportUrl)) {
+      Linking.openURL(supportUrl).catch(() => {});
+    }
+  };
 
   // Guarded: a blind `as string[]` followed by .map() crashes the whole screen if a locale
   // ever defines ai.suggestions as a string. The locale parity test would NOT catch that —

@@ -66,8 +66,8 @@ export default function NameScreen() {
     !!name.trim() && mode === 'confirmed' && isValidPhone(displayNumber);
 
   const confirmRegistered = () => {
-    // Guard: only confirm when there is a valid number to confirm.
-    if (!isValidPhone(displayNumber)) return;
+    // Guard: only confirm when there is a valid number to confirm, and never wipe a newly entered number.
+    if (mode === 'confirmed' || !isValidPhone(displayNumber)) return;
     setContactToSave(null);
     setMode('confirmed');
   };

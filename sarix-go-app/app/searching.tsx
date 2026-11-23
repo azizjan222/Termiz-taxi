@@ -33,25 +33,28 @@ const { width: SCREEN_W } = Dimensions.get('window');
 
 // Promo / info banners shown while the passenger waits. They auto-rotate
 // (right -> left) every 7s and can also be swiped manually.
-type Banner = { icon: IconName; titleKey: string; textKey: string; bg: string };
+type Banner = { icon: IconName; titleKey: string; textKey: string; bg: string; darkBg: string };
 const BANNERS: Banner[] = [
   {
     icon: 'taxi',
     titleKey: 'searching.banner1Title',
     textKey: 'searching.banner1Text',
     bg: '#EEF2FF',
+    darkBg: '#1E294B',
   },
   {
     icon: 'sun',
     titleKey: 'searching.banner2Title',
     textKey: 'searching.banner2Text',
     bg: '#E0F2FE',
+    darkBg: '#162C46',
   },
   {
     icon: 'card',
     titleKey: 'searching.banner3Title',
     textKey: 'searching.banner3Text',
     bg: '#ECFDF5',
+    darkBg: '#13322A',
   },
 ];
 
@@ -62,6 +65,7 @@ const POLL_FAILURES_BEFORE_WARNING = 3;
 export default function SearchingScreen() {
   const { t } = useTranslation();
   const colors = useThemeStore((s) => s.colors);
+  const isDark = useThemeStore((s) => s.isDark);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const user = useAuthStore((s) => s.user);
@@ -79,8 +83,10 @@ export default function SearchingScreen() {
   // observe the acceptance — this guard prevents a duplicate alert).
   const notifiedRef = useRef(false);
 
-  const formatPrice = (p: number) =>
-    p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const formatPrice = (p: number | null | undefined) =>
+    (typeof p === 'number' && Number.isFinite(p) ? p : 0)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
   // Notify the passenger that a driver accepted: a visible+audible local
   // notification, a vibration, and an entry in the in-app notification history.
@@ -157,16 +163,46 @@ export default function SearchingScreen() {
     []
   );
 
+  const terminalHandledRef = useRef(false);
+  const handleTerminalStatus = useCallback(
+    (kind: 'cancelled' | 'expired', numericId: number) => {
+      if (terminalHandledRef.current) return;
+      terminalHandledRef.current = true;
+      const cancelTitle = t(
+        kind === 'expired' ? 'searching.expiredTitle' : 'searching.cancelledTitle'
+      );
+      const cancelBody = t(
+        kind === 'expired' ? 'searching.expiredBody' : 'searching.cancelledBody'
+      );
+      presentLocalNotification(cancelTitle, cancelBody, {
+        type: kind === 'expired' ? 'order_expired' : 'order_cancelled',
+        order_id: numericId,
+      });
+      Alert.alert(
+        cancelTitle,
+        cancelBody,
+        [{ text: t('common.ok'), onPress: () => router.replace('/(tabs)/home') }]
+      );
+    },
+    [t]
+  );
+
   // Connect to WebSocket — on accept, show the "driver found" status and then
   // move to the live order screen after a short pause (so the message is seen).
   useEffect(() => {
     if (!user) return;
+    const numericId = parseInt(orderId);
     const handle = connectPassengerSocket({
       userId: user.id,
       onMessage: (msg) => {
-        if (msg.type === 'order_accepted' && msg.order_id?.toString() === orderId) {
+        if (msg.order_id?.toString() !== orderId) return;
+        if (msg.type === 'order_accepted') {
           notifyDriverFound();
           setStatus('accepted');
+        } else if (msg.type === 'order_cancelled') {
+          handleTerminalStatus('cancelled', numericId);
+        } else if (msg.type === 'order_expired') {
+          handleTerminalStatus('expired', numericId);
         }
       },
     });
@@ -182,12 +218,14 @@ export default function SearchingScreen() {
       router.replace('/(tabs)/home');
       return;
     }
-    let alerted = false;
+    let alive = true;
     let failures = 0;
     const poll = async () => {
-      if (!isAppForeground()) return;
+      if (!alive || !isAppForeground() || !useAuthStore.getState().isAuthenticated) return;
+      if (terminalHandledRef.current) return;
       try {
         const order = await getOrder(id);
+        if (!alive) return;
         setOrderData(order);
         failures = 0;
         setConnectionLost(false);
@@ -195,38 +233,26 @@ export default function SearchingScreen() {
           notifyDriverFound();
           setStatus('accepted');
         } else if (order.status === 'completed') {
-          if (alerted) return;
-          alerted = true;
+          if (terminalHandledRef.current) return;
+          terminalHandledRef.current = true;
           clearInterval(interval);
           router.replace(`/order/${id}`);
         } else if (order.status === 'cancelled' || order.status === 'expired') {
-          if (alerted) return;
-          alerted = true;
           clearInterval(interval);
-          const cancelTitle = t(
-            order.status === 'expired' ? 'searching.expiredTitle' : 'searching.cancelledTitle'
-          );
-          const cancelBody = t(
-            order.status === 'expired' ? 'searching.expiredBody' : 'searching.cancelledBody'
-          );
-          presentLocalNotification(cancelTitle, cancelBody, {
-            type: order.status === 'expired' ? 'order_expired' : 'order_cancelled',
-            order_id: id,
-          });
-          Alert.alert(
-            cancelTitle,
-            cancelBody,
-            [{ text: t('common.ok'), onPress: () => router.replace('/(tabs)/home') }]
-          );
+          handleTerminalStatus(order.status, id);
         }
       } catch {
+        if (!alive) return;
         failures += 1;
         if (failures >= POLL_FAILURES_BEFORE_WARNING) setConnectionLost(true);
       }
     };
     poll();
     const interval = setInterval(poll, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
@@ -355,7 +381,7 @@ export default function SearchingScreen() {
         >
           {BANNERS.map((b, i) => (
             <View key={i} style={styles.bannerPage}>
-              <View style={[styles.banner, { backgroundColor: b.bg }]}>
+              <View style={[styles.banner, { backgroundColor: isDark ? b.darkBg : b.bg }]}>
                 <Icon name={b.icon} size={36} color={colors.primary} style={styles.bannerEmoji} />
                 <Text style={styles.bannerTitle}>{t(b.titleKey)}</Text>
                 <Text style={styles.bannerText}>{t(b.textKey)}</Text>

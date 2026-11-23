@@ -19,6 +19,7 @@ export default {
     name: 'Исм',
     phone: 'Телефон',
     driver: 'Ҳайдовчи',
+    car: 'Автомобиль',
     currency: 'сўм',
     sending: 'Юборилмоқда...',
     comingSoon: 'Тез орада',
@@ -511,6 +512,8 @@ export default {
     currentLocation: 'Жорий жойлашув',
     selectedAddress: 'Танланган манзил',
     kmAway: '{{km}} км',
+    locationPermissionDenied: 'Жойлашувга рухсат берилмаган. Харитадан манзилни қўлда танлашингиз мумкин.',
+    locationServicesDisabled: 'GPS (жойлашув хизмати) ўчирилган. Уни ёқинг ёки харитадан танланг.',
   },
   routeSelect: {
     fromTaxi: 'Йўловчини олиш нуқтаси',

@@ -38,6 +38,7 @@ export default function LoginScreen() {
   // `tgWaiting` means "Telegram bot opened, waiting for the driver to type the 6-digit code".
   const [tgWaiting, setTgWaiting] = useState(false);
   const [tgToken, setTgToken] = useState<string | null>(null);
+  const [tgDeepLink, setTgDeepLink] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [verifying, setVerifying] = useState(false);
 
@@ -101,11 +102,14 @@ export default function LoginScreen() {
     try {
       const res = await telegramStart();
       setTgToken(res.token);
+      setTgDeepLink(res.deep_link || null);
       // Transition to the 6-digit code input BEFORE opening the external link so that
       // devices without the Telegram app installed still reach the code-entry state.
       setTgWaiting(true);
       try {
-        await Linking.openURL(res.deep_link);
+        if (res.deep_link && /^(https?:|tg:)/i.test(res.deep_link)) {
+          await Linking.openURL(res.deep_link);
+        }
       } catch {}
     } catch {
       setError(t('auth.errRetry'));
@@ -132,12 +136,14 @@ export default function LoginScreen() {
         setError(t('auth.errTooManyAttempts'));
         setTgWaiting(false);
         setTgToken(null);
+        setTgDeepLink(null);
       } else if (status === 'pending') {
         setError(t('auth.errPendingContact'));
       } else if (status === 'expired' || status === 'not_found') {
         setError(t('auth.errExpired'));
         setTgWaiting(false);
         setTgToken(null);
+        setTgDeepLink(null);
       } else {
         setError(t('auth.errRetry'));
       }
@@ -209,8 +215,10 @@ export default function LoginScreen() {
                   {error ? <Text style={styles.errorText}>{error}</Text> : null}
                   <TouchableOpacity
                     onPress={() => {
-                      if (tgToken) {
-                        Linking.openURL(`https://t.me/${BOT_USERNAME}?start=auth_${tgToken}`).catch(() => {});
+                      const url =
+                        tgDeepLink || (tgToken ? `https://t.me/${BOT_USERNAME}?start=auth_${tgToken}` : '');
+                      if (url && /^(https?:|tg:)/i.test(url)) {
+                        Linking.openURL(url).catch(() => {});
                       }
                     }}
                   >
@@ -220,6 +228,7 @@ export default function LoginScreen() {
                     onPress={() => {
                       setTgWaiting(false);
                       setTgToken(null);
+                      setTgDeepLink(null);
                       setCode('');
                       setError('');
                     }}

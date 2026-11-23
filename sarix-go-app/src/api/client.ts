@@ -111,9 +111,9 @@ api.interceptors.response.use(
       const url = cfg?.url || '';
       const isAuthEndpoint = AUTH_ENDPOINTS.some((p) => url.includes(p));
       const reqToken = extractBearerToken(cfg?.headers);
-      const matchesCurrentToken = !cachedToken || !reqToken || reqToken === cachedToken;
+      const matchesCurrentToken = Boolean(cachedToken && reqToken && reqToken === cachedToken);
 
-      if (!isAuthEndpoint && reqToken && matchesCurrentToken) {
+      if (!isAuthEndpoint && matchesCurrentToken) {
         await clearAuthToken();
         if (!cfg?._skipUnauthorizedHandler) {
           notifyUnauthorized();

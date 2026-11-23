@@ -99,9 +99,13 @@ export function connectPassengerSocket(
       token = await getAuthToken();
     } catch {}
     if (closed) return;
+    if (!token) {
+      onStatusChange?.(false);
+      return;
+    }
 
     const ws = new WebSocket(
-      `${WS_URL}?role=passenger&id=${userId}&token=${encodeURIComponent(token || '')}`
+      `${WS_URL}?role=passenger&id=${userId}&token=${encodeURIComponent(token)}`
     );
     socket = ws;
 

@@ -19,6 +19,7 @@ export default {
     name: 'Имя',
     phone: 'Телефон',
     driver: 'Водитель',
+    car: 'Автомобиль',
     currency: 'сум',
     sending: 'Отправка...',
     comingSoon: 'Скоро',
@@ -511,6 +512,8 @@ export default {
     currentLocation: 'Текущее местоположение',
     selectedAddress: 'Выбранный адрес',
     kmAway: '{{km}} км',
+    locationPermissionDenied: 'Доступ к геолокации запрещён. Вы можете выбрать адрес на карте вручную.',
+    locationServicesDisabled: 'Служба геолокации (GPS) отключена. Включите её или выберите адрес на карте.',
   },
   routeSelect: {
     fromTaxi: 'Место посадки пассажира',

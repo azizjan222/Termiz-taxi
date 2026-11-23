@@ -49,7 +49,11 @@ export const ForceUpdateModal: React.FC<Props> = ({ visible, updateUrl, onRetry 
           <Text style={styles.message}>{t('forceUpdate.message')}</Text>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => Linking.openURL(updateUrl)}
+            onPress={() => {
+              if (updateUrl && /^(https?:|market:)/i.test(updateUrl)) {
+                Linking.openURL(updateUrl).catch(() => {});
+              }
+            }}
             activeOpacity={0.85}
           >
             <Text style={styles.buttonText}>{t('forceUpdate.button')}</Text>

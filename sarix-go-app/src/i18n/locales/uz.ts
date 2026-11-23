@@ -19,6 +19,7 @@ export default {
     name: 'Ism',
     phone: 'Telefon',
     driver: 'Haydovchi',
+    car: 'Avtomobil',
     currency: "so'm",
     sending: 'Yuborilmoqda...',
     comingSoon: 'Tez orada',
@@ -525,6 +526,8 @@ export default {
     currentLocation: 'Joriy joylashuv',
     selectedAddress: 'Tanlangan manzil',
     kmAway: '{{km}} km',
+    locationPermissionDenied: "Joylashuvga ruxsat berilmagan. Xaritadan manzilni qo'lda tanlashingiz mumkin.",
+    locationServicesDisabled: "GPS (joylashuv xizmati) o'chirilgan. Uni yoqing yoki xaritadan tanlang.",
   },
   routeSelect: {
     fromTaxi: "Yo'lovchini olish nuqtasi",

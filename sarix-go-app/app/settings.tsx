@@ -43,7 +43,11 @@ export default function SettingsScreen() {
     setCurrentLang(code);
   };
 
-  const openSupport = () => Linking.openURL(supportUrl);
+  const openSupport = () => {
+    if (/^(https?:|tg:)/i.test(supportUrl)) {
+      Linking.openURL(supportUrl).catch(() => {});
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

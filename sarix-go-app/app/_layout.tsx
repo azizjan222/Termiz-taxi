@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -17,6 +17,7 @@ import {
   registerPushToken,
   addNotificationReceivedListener,
   addNotificationResponseListener,
+  getLastNotificationResponseAsync,
   presentLocalNotification,
   wasChatMessageAlerted,
 } from '../src/services/notifications';
@@ -37,6 +38,10 @@ export { CrashScreen as ErrorBoundary };
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
+  const splashDoneRef = useRef(false);
+  useEffect(() => {
+    splashDoneRef.current = splashDone;
+  }, [splashDone]);
   const {
     forceUpdate,
     maintenance,
@@ -69,38 +74,54 @@ export default function RootLayout() {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       const wasAuthenticated = useAuthStore.getState().isAuthenticated;
+      const uiMounted = splashDoneRef.current;
       useAuthStore.getState().expireSession();
-      if (wasAuthenticated) {
-        router.replace('/(auth)/login');
+      if (wasAuthenticated && uiMounted) {
+        router.replace('/(auth)/telegram-login');
         Alert.alert(i18n.t('common.error'), i18n.t('errors.sessionExpired'));
       }
     });
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  // Register push token after auth
+  // Register push token after auth, with foreground retry if initial registration failed.
+  const pushRegisteredRef = useRef(false);
   useEffect(() => {
-    if (isAuth && ready) {
-      registerPushToken().catch(() => {});
+    if (!isAuth || !ready || !splashDone) {
+      pushRegisteredRef.current = false;
+      return;
     }
-  }, [isAuth, ready]);
+    const ensurePush = () => {
+      if (pushRegisteredRef.current) return;
+      registerPushToken()
+        .then((ok) => {
+          if (ok) pushRegisteredRef.current = true;
+        })
+        .catch(() => {});
+    };
+    ensurePush();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') ensurePush();
+    });
+    return () => sub.remove();
+  }, [isAuth, ready, splashDone]);
 
   // Pull admin announcements once signed in, and again whenever the app is brought back
   // to the foreground. Push is not a reliable delivery channel — it needs a registered
   // token on a real device — so this sync is what actually makes a broadcast arrive.
   useEffect(() => {
-    if (!isAuth || !ready) return;
+    if (!isAuth || !ready || !splashDone) return;
     syncAnnouncements().catch(() => {});
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') syncAnnouncements().catch(() => {});
     });
     return () => sub.remove();
-  }, [isAuth, ready]);
+  }, [isAuth, ready, splashDone]);
 
   // Global passenger WebSocket so chat messages from the driver alert the passenger
   // even when they are on the Home, History, or Profile tab (not only on /order/[id]).
   useEffect(() => {
-    if (!isAuth || !ready || !userId) return;
+    if (!isAuth || !ready || !splashDone || !userId) return;
     const handle = connectPassengerSocket({
       userId,
       onMessage: (msg) => {
@@ -129,7 +150,7 @@ export default function RootLayout() {
       },
     });
     return () => handle.close();
-  }, [isAuth, ready, userId]);
+  }, [isAuth, ready, splashDone, userId]);
 
   // Persist every received push notification into the in-app history.
   useEffect(() => {
@@ -147,19 +168,32 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
+  const handledNotifIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const sub = addNotificationResponseListener((response) => {
+    const handleResponse = (response: any) => {
+      const notifId = response?.notification?.request?.identifier;
+      if (notifId) {
+        if (handledNotifIdsRef.current.has(notifId)) return;
+        handledNotifIdsRef.current.add(notifId);
+      }
       const data = (response?.notification?.request?.content?.data || {}) as any;
       if (!useAuthStore.getState().isAuthenticated) return;
       if (data.type === 'order_cancelled' || data.type === 'order_expired') return;
       const orderId = data.order_id ?? data.orderId;
       if (orderId == null) return;
       const numericId = Number(orderId);
-      if (!Number.isFinite(numericId)) return;
+      if (!Number.isFinite(numericId) || numericId <= 0) return;
       router.push(`/order/${numericId}`);
-    });
+    };
+
+    const sub = addNotificationResponseListener(handleResponse);
+    if (ready && splashDone && isAuth) {
+      getLastNotificationResponseAsync().then((last) => {
+        if (last) handleResponse(last);
+      });
+    }
     return () => sub.remove();
-  }, []);
+  }, [ready, splashDone, isAuth]);
 
   // Show animated splash until both app is ready AND the exit animation finished.
   // `ready` is forwarded so the splash only starts fading out once bootstrap is

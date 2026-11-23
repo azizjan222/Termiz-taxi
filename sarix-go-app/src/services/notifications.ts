@@ -3,7 +3,8 @@ import * as Device from 'expo-device';
 import { Platform, AppState, Vibration } from 'react-native';
 import Constants from 'expo-constants';
 
-import { api } from '../api/client';
+import { api, getAuthToken } from '../api/client';
+import { useAuthStore } from '../store/auth';
 import i18n from '../i18n';
 
 // Order events the passenger app ALSO surfaces in-app over the realtime
@@ -187,11 +188,10 @@ export async function getExpoPushToken(): Promise<string | null> {
 
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ||
-      Constants.easConfig?.projectId;
+      Constants.easConfig?.projectId ||
+      '330d036a-8b82-4e50-8e4b-90b2e4fa93fa';
 
-    const token = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined
-    );
+    const token = await Notifications.getExpoPushTokenAsync({ projectId });
     return token.data;
   } catch (e) {
     console.warn('Failed to get push token:', e);
@@ -202,6 +202,12 @@ export async function getExpoPushToken(): Promise<string | null> {
 export async function registerPushToken(): Promise<boolean> {
   try {
     await setupNotificationChannels();
+    // Never POST to the authenticated push-token endpoint before sign-in (e.g., when
+    // changeLanguage() runs on the language onboarding screen).
+    if (!useAuthStore.getState().isAuthenticated) return false;
+    const authToken = await getAuthToken();
+    if (!authToken) return false;
+
     const token = await getExpoPushToken();
     if (!token) return false;
 
@@ -214,7 +220,9 @@ export async function registerPushToken(): Promise<boolean> {
 
 export async function unregisterPushToken(): Promise<void> {
   try {
-    await api.post('/api/notifications/remove-token');
+    await api.post('/api/notifications/remove-token', undefined, {
+      _skipUnauthorizedHandler: true,
+    } as any);
   } catch {}
 }
 
@@ -312,4 +320,12 @@ export function addNotificationResponseListener(
   handler: (response: Notifications.NotificationResponse) => void
 ) {
   return Notifications.addNotificationResponseReceivedListener(handler);
+}
+
+export async function getLastNotificationResponseAsync(): Promise<Notifications.NotificationResponse | null> {
+  try {
+    return await Notifications.getLastNotificationResponseAsync();
+  } catch {
+    return null;
+  }
 }

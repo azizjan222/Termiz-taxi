@@ -76,6 +76,8 @@ export default function OrderDetailScreen() {
   const colors = useThemeStore((s) => s.colors);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
+  const numericOrderId = Number(id);
+  const isValidOrderId = Number.isInteger(numericOrderId) && numericOrderId > 0;
 
   const [order, setOrder] = useState<DriverOrder | null>(null);
   const [loading, setLoading] = useState(false);
@@ -132,9 +134,9 @@ export default function OrderDetailScreen() {
   }, [chatVisible]);
 
   const loadMessages = async () => {
-    if (!useDriverStore.getState().isAuthenticated) return;
+    if (!isValidOrderId || cancelled || gone || notMine || !useDriverStore.getState().isAuthenticated) return;
     try {
-      const res = await listDriverOrderMessages(parseInt(String(id)));
+      const res = await listDriverOrderMessages(numericOrderId);
       const list = res.messages || [];
       setMessages(list);
       const maxId = list.reduce((acc, m) => (m.id > acc ? m.id : acc), 0);
@@ -159,7 +161,7 @@ export default function OrderDetailScreen() {
             !wasChatMessageAlerted(lastMsg.id)
           ) {
             playChatMessageAlert({
-              orderId: parseInt(String(id)),
+              orderId: numericOrderId,
               text: lastMsg.text,
               messageId: lastMsg.id,
             });
@@ -179,7 +181,7 @@ export default function OrderDetailScreen() {
           const latest = freshFromPassenger[freshFromPassenger.length - 1];
           if (latest && !wasChatMessageAlerted(latest.id)) {
             playChatMessageAlert({
-              orderId: parseInt(String(id)),
+              orderId: numericOrderId,
               text: latest.text,
               messageId: latest.id,
             });
@@ -192,6 +194,7 @@ export default function OrderDetailScreen() {
   };
 
   useEffect(() => {
+    if (!isValidOrderId || cancelled || gone || notMine) return;
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         loadMessages();
@@ -207,7 +210,7 @@ export default function OrderDetailScreen() {
       clearInterval(chatPoll);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, isValidOrderId, cancelled, gone, notMine]);
 
   // Load the order, then KEEP polling. This is the screen the driver lands on right
   // after accepting a ride, and it has no other refresh path: a single un-caught fetch
@@ -220,6 +223,10 @@ export default function OrderDetailScreen() {
   // rejected token) the driver kept driving to a pickup that no longer existed, with the
   // 15-minute contact countdown still ticking.
   useEffect(() => {
+    if (!isValidOrderId) {
+      setNotMine(true);
+      return;
+    }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let initialMissRetried = false;
@@ -342,7 +349,8 @@ export default function OrderDetailScreen() {
     return () => clearInterval(i);
   }, [order?.accepted_at]);
 
-  const formatPrice = (p: number) => p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const formatPrice = (p: number | null | undefined) =>
+    (typeof p === 'number' && Number.isFinite(p) ? p : 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const mmss = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
@@ -402,6 +410,7 @@ export default function OrderDetailScreen() {
         // would send the same position twice. While the app is alive the task runs in this
         // same JS context, so the flag it sets is visible here.
         if (isBackgroundSending()) return;
+        if (!useDriverStore.getState().isAuthenticated) return;
         // Throttle the backend broadcast to preserve the ~10s cadence.
         const now = Date.now();
         if (now - lastSentAtRef.current >= BACKEND_MIN_INTERVAL_MS) {
@@ -539,7 +548,7 @@ export default function OrderDetailScreen() {
 
   const callPassenger = () => {
     if (order?.passenger_phone) {
-      Linking.openURL(`tel:${order.passenger_phone}`);
+      Linking.openURL(`tel:${order.passenger_phone}`).catch(() => {});
     }
   };
 
@@ -603,11 +612,11 @@ export default function OrderDetailScreen() {
         {
           text: t('more.yesPickedUp'),
           onPress: async () => {
-            if (startInFlightRef.current) return;
+            if (startInFlightRef.current || !isValidOrderId) return;
             startInFlightRef.current = true;
             setLoading(true);
             try {
-              const res = await startTrip(parseInt(id));
+              const res = await startTrip(numericOrderId);
               playDriverStatusChime('started');
               if (res?.order) setOrder(res.order);
             } catch (e: any) {
@@ -630,13 +639,13 @@ export default function OrderDetailScreen() {
       {
         text: t('common.yes'),
         onPress: async () => {
-          if (completeInFlightRef.current) return;
+          if (completeInFlightRef.current || !isValidOrderId) return;
           completeInFlightRef.current = true;
           setLoading(true);
           try {
             const passengerName = order?.passenger_name || '';
             const canRate = order?.can_rate_passenger === true;
-            await completeOrder(parseInt(String(id)));
+            await completeOrder(numericOrderId);
             playDriverStatusChime('completed');
             completedByMeRef.current = true;
             await stopBackgroundLocation().catch(() => {});
@@ -1043,7 +1052,7 @@ export default function OrderDetailScreen() {
               {order.parcel_recipient_phone ? (
                 <TouchableOpacity
                   style={styles.callCircleBtn}
-                  onPress={() => Linking.openURL(`tel:${order.parcel_recipient_phone}`)}
+                  onPress={() => Linking.openURL(`tel:${order.parcel_recipient_phone}`).catch(() => {})}
                   accessibilityRole="button"
                   accessibilityLabel={t('order.callRecipient')}
                 >

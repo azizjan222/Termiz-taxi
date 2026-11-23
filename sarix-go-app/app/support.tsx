@@ -61,7 +61,11 @@ export default function SupportScreen() {
         {/* Telegram — the primary channel, so it carries the filled treatment. */}
         <TouchableOpacity
           style={styles.supportBtn}
-          onPress={() => Linking.openURL(telegramUrl)}
+          onPress={() => {
+            if (/^(https?:|tg:)/i.test(telegramUrl)) {
+              Linking.openURL(telegramUrl).catch(() => {});
+            }
+          }}
           activeOpacity={0.85}
         >
           <Icon name="chat" size={20} color={colors.textOnPrimary} />
@@ -74,7 +78,7 @@ export default function SupportScreen() {
         {/* Email — questions & suggestions. */}
         <TouchableOpacity
           style={styles.emailBtn}
-          onPress={() => Linking.openURL(`mailto:${email}`)}
+          onPress={() => Linking.openURL(`mailto:${email}`).catch(() => {})}
           activeOpacity={0.85}
         >
           <Icon name="email" size={20} color={colors.primary} />

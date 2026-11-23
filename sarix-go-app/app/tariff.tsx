@@ -103,8 +103,10 @@ export default function TariffScreen() {
     };
   }, [orderStore.fromCity, orderStore.toCity, reloadKey]);
 
-  const formatPrice = (p: number) =>
-    p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const formatPrice = (p: number | null | undefined) =>
+    (typeof p === 'number' && Number.isFinite(p) ? p : 0)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
   const handlePersonCount = (n: number) => {
     // No early return on 'full_car': switching back to a per-person count is exactly

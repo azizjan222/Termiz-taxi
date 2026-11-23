@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -48,6 +48,10 @@ export { CrashScreen as ErrorBoundary };
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
+  const splashDoneRef = useRef(false);
+  useEffect(() => {
+    splashDoneRef.current = splashDone;
+  }, [splashDone]);
   const {
     forceUpdate,
     maintenance,
@@ -92,7 +96,7 @@ export default function RootLayout() {
   // Retrying when the app returns to the foreground covers the recoverable cases (network
   // came back, permission granted later from Settings).
   useEffect(() => {
-    if (!(isAuth && ready)) return;
+    if (!(isAuth && ready && splashDone)) return;
     let cancelled = false;
 
     const attempt = () => {
@@ -111,19 +115,19 @@ export default function RootLayout() {
       cancelled = true;
       sub.remove();
     };
-  }, [isAuth, ready, driver?.has_push_token]);
+  }, [isAuth, ready, splashDone, driver?.has_push_token]);
 
   // Pull admin announcements once signed in, and again whenever the app is brought back
   // to the foreground. Push is not a reliable delivery channel — it needs a registered
   // token on a real device — so this sync is what actually makes a broadcast arrive.
   useEffect(() => {
-    if (!(isAuth && ready)) return;
+    if (!(isAuth && ready && splashDone)) return;
     syncAnnouncements().catch(() => {});
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') syncAnnouncements().catch(() => {});
     });
     return () => sub.remove();
-  }, [isAuth, ready]);
+  }, [isAuth, ready, splashDone]);
 
   // Session expiry: the server rejected our token (HTTP 401, or the realtime socket's
   // "unauthorized" frame). Sign the driver out locally and send them to login.
@@ -134,13 +138,15 @@ export default function RootLayout() {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       const wasAuthenticated = useDriverStore.getState().isAuthenticated;
+      const uiMounted = splashDoneRef.current;
       realtime.disconnect();
       stopOnlineBackgroundWatch().catch(() => {});
       useDriverStore.getState().expireSession();
       // Only show the "session expired" alert if the driver was already signed in and
-      // actively using the app. Cold-start token checks or stray requests on /language
-      // or /login should silently clear the stale token without interrupting onboarding.
-      if (wasAuthenticated) {
+      // actively using the mounted app. Cold-start token checks or stray requests before
+      // splash finishes (or on /language / /login) silently clear the stale token so the
+      // app lands cleanly on /login without a modal error popup.
+      if (wasAuthenticated && uiMounted) {
         router.replace('/login');
         Alert.alert(i18n.t('common.error'), i18n.t('more.sessionExpired'));
       }
@@ -148,23 +154,22 @@ export default function RootLayout() {
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  // App-wide realtime order socket: connect once the driver is authenticated,
-  // disconnect on logout / id loss. The manager is a singleton, so this lives
-  // outside any one screen and survives tab/screen changes.
+  // App-wide realtime order socket: connect once the driver is authenticated and the
+  // navigation stack is mounted, disconnect on logout / id loss.
   useEffect(() => {
-    if (isAuth && driver?.telegram_id) {
+    if (ready && splashDone && isAuth && driver?.telegram_id) {
       realtime.connect(driver.telegram_id);
       return () => {
         realtime.disconnect();
       };
     }
-  }, [isAuth, driver?.telegram_id]);
+  }, [ready, splashDone, isAuth, driver?.telegram_id]);
 
   // Keep the Android Foreground Service & background order watcher active whenever the
   // driver is Online so new orders trigger loud notifications even when the app is
   // minimized, another app is in front, or the phone screen is locked.
   useEffect(() => {
-    if (!ready || !isAuth) return;
+    if (!ready || !splashDone || !isAuth) return;
     if (isOnline && driver?.is_verified) {
       startOnlineBackgroundWatch({
         labels: {
@@ -188,12 +193,13 @@ export default function RootLayout() {
     } else if (!isOnline) {
       stopOnlineBackgroundWatch().catch(() => {});
     }
-  }, [ready, isAuth, isOnline, driver?.is_verified]);
+  }, [ready, splashDone, isAuth, isOnline, driver?.is_verified]);
 
   // Reconnect when the app changes state (foreground or background while online)
   // and the socket is not OPEN (the manager is idempotent, so a redundant call is a no-op).
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
+      if (!splashDoneRef.current) return;
       const st = useDriverStore.getState();
       if (!st.isAuthenticated) return;
       if ((nextState === 'active' || st.isOnline) && !realtime.isOpen()) {

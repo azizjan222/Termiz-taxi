@@ -231,9 +231,16 @@ export default function OrderDetailScreen() {
     }
   }, [chatVisible]);
 
+  const numericOrderId = Number(id);
+  const isValidOrderId = Number.isFinite(numericOrderId) && numericOrderId > 0;
+  const orderTerminalRef = useRef(false);
+  const hasDriverRef = useRef(false);
+
   const loadMessages = useCallback(async () => {
+    if (!isValidOrderId || !useAuthStore.getState().isAuthenticated) return;
+    if (!hasDriverRef.current && !chatVisibleRef.current) return;
     try {
-      const res = await listOrderMessages(parseInt(id));
+      const res = await listOrderMessages(numericOrderId);
       const list = res.messages || [];
       setMessages(list);
       const maxId = list.reduce((acc, m) => (m.id > acc ? m.id : acc), 0);
@@ -305,10 +312,18 @@ export default function OrderDetailScreen() {
   }, [id, t]);
 
   const load = async () => {
+    if (!isValidOrderId) {
+      setLoadError(true);
+      setLoading(false);
+      return;
+    }
+    if (!useAuthStore.getState().isAuthenticated) return;
     try {
-      const data = await getOrder(parseInt(id));
+      const data = await getOrder(numericOrderId);
       setOrder(data);
       setLoadError(false);
+      hasDriverRef.current = !!data.driver;
+      orderTerminalRef.current = ['completed', 'cancelled', 'expired'].includes(data.status);
       if (data.driver?.first_name) {
         driverNameRef.current = data.driver.first_name;
       }
@@ -336,17 +351,21 @@ export default function OrderDetailScreen() {
   };
 
   useEffect(() => {
+    orderTerminalRef.current = false;
+    hasDriverRef.current = false;
     load();
     const i = setInterval(() => {
-      if (isAppForeground()) load();
+      if (isAppForeground() && !orderTerminalRef.current) load();
     }, 10000);
     const chatInterval = setInterval(() => {
-      if (isAppForeground()) loadMessages();
+      if (isAppForeground() && !orderTerminalRef.current && hasDriverRef.current) {
+        loadMessages();
+      }
     }, 3500);
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
+      if (state === 'active' && !orderTerminalRef.current) {
         load();
-        loadMessages();
+        if (hasDriverRef.current) loadMessages();
       }
     });
     return () => {
@@ -503,12 +522,14 @@ export default function OrderDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.status, id]);
 
-  const formatPrice = (p: number) =>
-    p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const formatPrice = (p: number | null | undefined) =>
+    (typeof p === 'number' && Number.isFinite(p) ? p : 0)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
   const callDriver = () => {
     if (order?.driver?.phone) {
-      Linking.openURL(`tel:${order.driver.phone}`);
+      Linking.openURL(`tel:${order.driver.phone}`).catch(() => {});
     }
   };
 
@@ -1369,7 +1390,7 @@ const CARD_SHADOW = {
 };
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1398,7 +1419,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
   },
   headerServicePill: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: colors.primary50,
     borderRadius: radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -1480,7 +1501,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: colors.card,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: radius.pill,
@@ -1521,12 +1542,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border,
     marginBottom: 12,
     gap: 8,
   },
@@ -1549,7 +1570,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   carModelText: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
+    color: colors.text,
   },
   carColorRow: {
     flexDirection: 'row',

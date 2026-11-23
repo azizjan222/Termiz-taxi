@@ -114,10 +114,11 @@ api.interceptors.response.use(
       const url = cfg?.url || '';
       const isAuthEndpoint = AUTH_ENDPOINTS.some((p) => url.includes(p));
       const reqToken = extractBearerToken(cfg?.headers);
-      // Ignore a 401 from an older in-flight request if the user has already signed in with a new token.
-      const matchesCurrentToken = !cachedToken || !reqToken || reqToken === cachedToken;
+      // Ignore a 401 from an older in-flight request if we are already signed out or the
+      // user has already signed in with a newer token.
+      const matchesCurrentToken = Boolean(cachedToken && reqToken && reqToken === cachedToken);
 
-      if (!isAuthEndpoint && reqToken && matchesCurrentToken) {
+      if (!isAuthEndpoint && matchesCurrentToken) {
         await clearAuthToken();
         if (!cfg?._skipUnauthorizedHandler) {
           // Previously this only dropped the token and left the store believing the driver was

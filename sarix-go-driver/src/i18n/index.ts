@@ -158,6 +158,7 @@ export const uz = {
     chatPlaceholder: 'Xabar yozing...',
     chatEmpty: "Yo'lovchiga xabar yozishingiz mumkin (masalan: yetib kelganingiz haqida)",
     chatClosedNotice: "🔒 Zakas yopilgan — chatda yozishish to'xtatilgan",
+    passengerLabel: "Yo'lovchi",
   },
   profile: {
     title: 'Profil',
@@ -916,6 +917,7 @@ export const ru = {
     chatPlaceholder: 'Напишите сообщение...',
     chatEmpty: 'Напишите пассажиру (например, что вы подъезжаете)',
     chatClosedNotice: '🔒 Заказ закрыт — отправка сообщений недоступна',
+    passengerLabel: 'Пассажир',
   },
   profile: {
     title: 'Профиль', name: 'Имя', phone: 'Телефон', car: 'Машина',
@@ -1638,6 +1640,7 @@ export const en = {
     chatPlaceholder: 'Type a message...',
     chatEmpty: 'Send a message to the passenger (e.g., that you have arrived)',
     chatClosedNotice: '🔒 Order closed — chat is now read-only',
+    passengerLabel: 'Passenger',
   },
   profile: {
     title: 'Profile', name: 'Name', phone: 'Phone', car: 'Car',
@@ -2358,6 +2361,7 @@ export const uzCyrl = {
     chatPlaceholder: 'Хабар ёзинг...',
     chatEmpty: 'Йўловчига хабар ёзишингиз мумкин (масалан: етиб келганингиз ҳақида)',
     chatClosedNotice: '🔒 Заказ ёпилган — чатда ёзишиш тўхтатилган',
+    passengerLabel: 'Йўловчи',
   },
   profile: {
     title: 'Профил', name: 'Исм', phone: 'Телефон', car: 'Машина',

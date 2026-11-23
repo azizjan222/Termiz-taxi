@@ -33,7 +33,7 @@ export const SosButton: React.FC<Props> = ({ orderId, style }) => {
       t('sos.subtitle'),
       [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('sos.police'), onPress: () => Linking.openURL('tel:102') },
+        { text: t('sos.police'), onPress: () => Linking.openURL('tel:102').catch(() => {}) },
         { text: t('sos.sendSos'), style: 'destructive', onPress: () => setModalOpen(true) },
       ]
     );

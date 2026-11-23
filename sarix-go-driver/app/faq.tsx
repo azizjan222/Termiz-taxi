@@ -29,11 +29,14 @@ export default function FaqScreen() {
   }, []);
 
   const openSupport = () => {
-    Linking.openURL(support?.telegram_url || 'https://t.me/SarixGo_support_bot');
+    const url = support?.telegram_url || 'https://t.me/SarixGo_support_bot';
+    if (/^(https?:|tg:)/i.test(url)) {
+      Linking.openURL(url).catch(() => {});
+    }
   };
 
   const supportEmail = support?.email || 'sarixgo.support@gmail.com';
-  const openEmail = () => Linking.openURL(`mailto:${supportEmail}`);
+  const openEmail = () => Linking.openURL(`mailto:${supportEmail}`).catch(() => {});
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.surface }]} edges={['top']}>
@@ -75,7 +78,7 @@ export default function FaqScreen() {
           onPress={openSupport}
           activeOpacity={0.85}
         >
-          <Icon name="chat" size={20} color={colors.primary} />
+          <Icon name="chat" size={20} color={colors.textOnPrimary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.supportTitle}>{t('faq.contactSupport')}</Text>
             <Text style={styles.supportSub}>
@@ -120,6 +123,7 @@ const styles = StyleSheet.create({
   supportBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
     padding: spacing.md,
     borderRadius: radius.md,
     marginTop: spacing.lg,
@@ -129,6 +133,7 @@ const styles = StyleSheet.create({
   emailBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
     padding: spacing.md,
     borderRadius: radius.md,
     marginTop: spacing.sm,

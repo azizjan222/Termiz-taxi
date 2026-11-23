@@ -13,6 +13,7 @@ import {
   FlatList,
   Linking,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -197,7 +198,7 @@ export default function DriverDocumentsScreen() {
     if (!current.canAskAgain) {
       Alert.alert(t('docs.permTitle'), t('docs.permDeniedBody'), [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('docs.openSettings'), onPress: () => Linking.openSettings() },
+        { text: t('docs.openSettings'), onPress: () => Linking.openSettings().catch(() => {}) },
       ]);
       return false;
     }
@@ -210,7 +211,7 @@ export default function DriverDocumentsScreen() {
       if (!requested.canAskAgain) {
         Alert.alert(t('docs.permTitle'), t('docs.permDeniedBody'), [
           { text: t('common.cancel'), style: 'cancel' },
-          { text: t('docs.openSettings'), onPress: () => Linking.openSettings() },
+          { text: t('docs.openSettings'), onPress: () => Linking.openSettings().catch(() => {}) },
         ]);
       }
       return false;
@@ -524,7 +525,15 @@ export default function DriverDocumentsScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* 1-BO'LIM: Shaxsiy va mashina ma'lumotlari (zamonaviy bitta ixcham bo'limda) */}
         <View style={styles.card}>
           <View style={styles.sectionHeaderRow}>
@@ -775,6 +784,7 @@ export default function DriverDocumentsScreen() {
           <Text style={styles.skipBtnText}>{t('docs.skipForNow')}</Text>
         </TouchableOpacity>
       </View>
+      </KeyboardAvoidingView>
 
       {/* Car model picker */}
       <Modal visible={pickerOpen} animationType="slide" onRequestClose={() => setPickerOpen(false)}>

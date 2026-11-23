@@ -1,9 +1,11 @@
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { type Driver, getMe } from '../api/driver';
 import { clearAuthToken, getAuthToken } from '../api/client';
 
 const DRIVER_CACHE_KEY = 'sarixgo_driver_cache';
+const ONBOARDED_KEY = '@sarixgo-driver/onboarded';
 
 interface DriverState {
   driver: Driver | null;
@@ -38,6 +40,7 @@ export const useDriverStore = create<DriverState>((set) => ({
     });
     if (d) {
       SecureStore.setItemAsync(DRIVER_CACHE_KEY, JSON.stringify(d)).catch(() => {});
+      AsyncStorage.setItem(ONBOARDED_KEY, 'true').catch(() => {});
     } else {
       SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
     }
@@ -67,6 +70,7 @@ export const useDriverStore = create<DriverState>((set) => ({
         if (e?.response?.status === 401) {
           await clearAuthToken();
           await SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
+          await AsyncStorage.setItem(ONBOARDED_KEY, 'true').catch(() => {});
           import('../services/backgroundLocation')
             .then((m) => m.stopBackgroundLocation())
             .catch(() => {});
@@ -94,6 +98,13 @@ export const useDriverStore = create<DriverState>((set) => ({
     set({ driver: null, isAuthenticated: false, isOnline: false, isLoading: false });
     clearAuthToken().catch(() => {});
     SecureStore.deleteItemAsync(DRIVER_CACHE_KEY).catch(() => {});
+    AsyncStorage.setItem(ONBOARDED_KEY, 'true').catch(() => {});
+    import('../services/realtime')
+      .then((m) => m.disconnect())
+      .catch(() => {});
+    import('../services/notifications')
+      .then((m) => m.stopAlert())
+      .catch(() => {});
     import('../services/backgroundLocation')
       .then((m) => m.stopBackgroundLocation())
       .catch(() => {});
@@ -104,8 +115,14 @@ export const useDriverStore = create<DriverState>((set) => ({
     // Without this a logged-out driver kept receiving that account's new-order alarms,
     // which use importance MAX and bypassDnd on the orders channel.
     try {
-      const { unregisterPushToken } = await import('../services/notifications');
+      const { unregisterPushToken, stopAlert } = await import('../services/notifications');
+      await stopAlert();
       await unregisterPushToken();
+    } catch {}
+    // Close realtime socket immediately so no orders or alerts arrive after sign-out.
+    try {
+      const { disconnect } = await import('../services/realtime');
+      disconnect();
     } catch {}
     // Drop the cached notification history too. Announcements are per-account, so on a
     // shared phone the next driver to sign in would otherwise read the previous one's

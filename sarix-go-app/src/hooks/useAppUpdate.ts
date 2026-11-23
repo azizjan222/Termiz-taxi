@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 
 import { getAppConfig, compareVersions } from '../api/app-config';
 
-const DEFAULT_PASSENGER_PLAY_URL = 'https://play.google.com/store/apps/details?id=uz.sarixgo.app';
+const DEFAULT_PASSENGER_PLAY_URL = 'https://play.google.com/store/apps/details?id=uz.sarixgo.passenger';
 
 export interface ForceUpdateState {
   show: boolean;
@@ -61,7 +61,7 @@ export function useAppUpdate(enabled = true): UseAppUpdateResult {
 
     const promise = (async () => {
       const cfg = await getAppConfig('passenger');
-      const currentVersion = Constants.expoConfig?.version || '1.0.0';
+      const currentVersion = Constants.expoConfig?.version || '1.0.4';
       const minVersion = cfg?.min_version || '1.0.0';
       const needsUpdate =
         Boolean(cfg?.force_update) || compareVersions(currentVersion, minVersion) < 0;

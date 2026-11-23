@@ -10,6 +10,8 @@ import {
   Modal,
   TextInput,
   Switch,
+  KeyboardAvoidingView,
+  Platform,
   type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -65,6 +67,7 @@ export default function NewOrderScreen() {
   const [routeUnavailable, setRouteUnavailable] = useState(false);
   // Non-404 quote failure (network etc.): distinct from "route not available".
   const [quoteFailed, setQuoteFailed] = useState(false);
+  const [quoteReloadKey, setQuoteReloadKey] = useState(0);
   const [submitting, setSubmitting] = useState<number | 'find' | null>(null);
   // Synchronous double-submit guard. `submitting` is state, so the `disabled` prop below
   // only takes effect after a React commit — a fast second tap lands before that and,
@@ -98,8 +101,10 @@ export default function NewOrderScreen() {
   // "Bo'sh mashina" (full car): books the whole car, priced as 4 people.
   const isFullCar = orderStore.serviceType === 'full_car';
 
-  const formatPrice = (p: number) =>
-    p.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const formatPrice = (p: number | null | undefined) =>
+    (typeof p === 'number' && Number.isFinite(p) ? p : 0)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
   // --- Passenger-count segmented control ---
   // The sliding indicator needs the real track width, which is only known after layout.
@@ -172,7 +177,7 @@ export default function NewOrderScreen() {
     return () => {
       active = false;
     };
-  }, [from, to, persons, isFullCar]);
+  }, [from, to, persons, isFullCar, quoteReloadKey]);
 
   // Recommendations were removed: passengers no longer see/choose specific drivers.
   // Orders are broadcast to all eligible drivers via the "Buyurtma berish" button.
@@ -598,15 +603,30 @@ export default function NewOrderScreen() {
               {footerNote}
             </Text>
           </View>
-          <Text style={styles.priceValue}>
-            {quote
-              ? `${formatPrice(quote.price)} ${t('common.currency')}`
-              : // "…" while the quote is still in flight, "—" once we know there won't be
-                // one, so a slow network never looks like a missing price.
-                routeUnavailable || quoteFailed
-              ? '—'
-              : '…'}
-          </Text>
+          {quoteFailed ? (
+            <TouchableOpacity
+              onPress={() => setQuoteReloadKey((k) => k + 1)}
+              activeOpacity={0.75}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: radius.pill,
+                backgroundColor: colors.primary50,
+              }}
+            >
+              <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
+                ↻ {t('common.retry')}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.priceValue}>
+              {quote
+                ? `${formatPrice(quote.price)} ${t('common.currency')}`
+                : routeUnavailable
+                ? '—'
+                : '…'}
+            </Text>
+          )}
         </View>
 
         <OrderCtaButton
@@ -681,6 +701,10 @@ export default function NewOrderScreen() {
         animationType="slide"
         onRequestClose={() => setOptionsSheet(false)}
       >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
         <TouchableOpacity
           style={styles.sheetBackdrop}
           activeOpacity={1}
@@ -752,6 +776,7 @@ export default function NewOrderScreen() {
             </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

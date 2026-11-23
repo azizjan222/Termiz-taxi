@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
+import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState, useMemo } from 'react';
 import { StyleSheet, View, ViewStyle, StyleProp, Text, ActivityIndicator } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import Constants from 'expo-constants';
@@ -57,22 +57,30 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState<string>('');
 
-  const html = generateMapHtml({
-    apiKey: YANDEX_API_KEY,
-    initialLat: props.initialLat ?? DEFAULT_LAT,
-    initialLon: props.initialLon ?? DEFAULT_LON,
-    initialZoom: props.initialZoom ?? DEFAULT_ZOOM,
-    markers: props.markers ?? [],
-    isDark,
-    // Diagnostics rendered inside the WebView, localized here because the page has no
-    // access to i18n.
-    msgApiFailed: t('map.apiLoadFailed'),
-    msgInitFailed: t('map.initFailed'),
-    msgApiTimeout: t('map.apiTimeout'),
-  });
+  const initialHtmlRef = useRef<string | null>(null);
+  const lastIsDarkRef = useRef<boolean>(isDark);
+  if (initialHtmlRef.current === null || lastIsDarkRef.current !== isDark) {
+    lastIsDarkRef.current = isDark;
+    initialHtmlRef.current = generateMapHtml({
+      apiKey: YANDEX_API_KEY,
+      initialLat: props.initialLat ?? DEFAULT_LAT,
+      initialLon: props.initialLon ?? DEFAULT_LON,
+      initialZoom: props.initialZoom ?? DEFAULT_ZOOM,
+      markers: props.markers ?? [],
+      isDark,
+      // Diagnostics rendered inside the WebView, localized here because the page has no
+      // access to i18n.
+      msgApiFailed: t('map.apiLoadFailed'),
+      msgInitFailed: t('map.initFailed'),
+      msgApiTimeout: t('map.apiTimeout'),
+    });
+  }
+  const html = initialHtmlRef.current;
+  const webViewSource = useMemo(() => ({ html, baseUrl: 'https://yandex.com/' }), [html]);
 
   const sendCommand = (cmd: object) => {
-    const js = `(function(){window.handleCommand && window.handleCommand(${JSON.stringify(cmd)});})();true;`;
+    const safePayload = JSON.stringify(cmd).replace(/</g, '\\u003c');
+    const js = `(function(){var c=${safePayload};if(window.handleCommand){window.handleCommand(c);}else{(window.__cmdQueue=window.__cmdQueue||[]).push(c);}})();true;`;
     webViewRef.current?.injectJavaScript(js);
   };
 
@@ -127,7 +135,7 @@ const YandexMap = forwardRef<YandexMapHandle, YandexMapProps>((props, ref) => {
         // A real https baseUrl gives the page a proper origin/referrer. Without it the
         // page origin is about:blank and the Yandex Maps script (and referrer-restricted
         // API keys) can silently fail to load -> blank map.
-        source={{ html, baseUrl: 'https://yandex.com/' }}
+        source={webViewSource}
         style={styles.webview}
         onMessage={handleMessage}
         javaScriptEnabled
@@ -210,10 +218,10 @@ function generateMapHtml(opts: MapHtmlOptions): string {
     apiKey, initialLat, initialLon, initialZoom, markers, isDark,
     msgApiFailed, msgInitFailed, msgApiTimeout,
   } = opts;
-  // Embedded in a JS string literal inside the page -> escape quotes.
-  const js = (v: string) => JSON.stringify(v);
+  // Embedded in a JS string/object literal inside the page -> escape quotes & '<' to prevent script breakouts.
+  const safeJson = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
   const apiUrl = apiKey
-    ? `https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=${mapLang()}`
+    ? `https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(apiKey)}&lang=${mapLang()}`
     : `https://api-maps.yandex.ru/2.1/?lang=${mapLang()}`;
 
   const darkCss = isDark
@@ -243,9 +251,9 @@ function generateMapHtml(opts: MapHtmlOptions): string {
 </style>
 <script>
   window.__MSG = {
-    apiFailed: ${js(msgApiFailed)},
-    initFailed: ${js(msgInitFailed)},
-    apiTimeout: ${js(msgApiTimeout)}
+    apiFailed: ${safeJson(msgApiFailed)},
+    initFailed: ${safeJson(msgInitFailed)},
+    apiTimeout: ${safeJson(msgApiTimeout)}
   };
 </script>
 <script src="${apiUrl}" type="text/javascript" onerror="window.__mapApiError &amp;&amp; window.__mapApiError(window.__MSG.apiFailed)"></script>
@@ -291,11 +299,17 @@ function generateMapHtml(opts: MapHtmlOptions): string {
       });
     });
 
-    setMarkers(${JSON.stringify(markers)});
+    setMarkers(${safeJson(markers)});
+    if (window.__cmdQueue && window.__cmdQueue.length) {
+      var queued = window.__cmdQueue.slice();
+      window.__cmdQueue = [];
+      queued.forEach(function(c) { window.handleCommand(c); });
+    }
     send({ type: 'ready' });
   }
 
   function setMarkers(markers) {
+    if (!map) return;
     // Clear old
     for (var key in markerObjects) {
       map.geoObjects.remove(markerObjects[key]);
@@ -320,11 +334,12 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   }
 
   function setCenter(lat, lon, zoom) {
+    if (!map) return;
     map.setCenter([lat, lon], zoom || map.getZoom(), { duration: 500 });
   }
 
   function fitBounds(markers) {
-    if (!markers || markers.length === 0) return;
+    if (!map || !markers || markers.length === 0) return;
     var bounds = markers.map(function(m) { return [m.lat, m.lon]; });
     map.setBounds(
       [
@@ -338,10 +353,12 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   }
 
   function drawRoute(from, to) {
+    if (!map) return;
     if (routeLine) {
       map.geoObjects.remove(routeLine);
     }
     ymaps.route([from, to], { mapStateAutoApply: true }).then(function(route) {
+      if (!map) return;
       routeLine = route;
       map.geoObjects.add(route);
     }, function(err) {
@@ -350,6 +367,10 @@ function generateMapHtml(opts: MapHtmlOptions): string {
   }
 
   window.handleCommand = function(cmd) {
+    if (!map) {
+      (window.__cmdQueue = window.__cmdQueue || []).push(cmd);
+      return;
+    }
     switch (cmd.type) {
       case 'setCenter': setCenter(cmd.lat, cmd.lon, cmd.zoom); break;
       case 'setMarkers': setMarkers(cmd.markers || []); break;
